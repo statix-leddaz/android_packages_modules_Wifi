@@ -1455,17 +1455,14 @@ public class WifiServiceImpl extends BaseWifiService {
         private void startForFirstRequestLocked(LocalOnlyHotspotRequestInfo request) {
             int band = SoftApConfiguration.BAND_2GHZ;
 
-            // For auto only
-            if (hasAutomotiveFeature(mContext)) {
-                if (mContext.getResources().getBoolean(R.bool.config_wifiLocalOnlyHotspot6ghz)
-                        && mContext.getResources().getBoolean(R.bool.config_wifiSoftap6ghzSupported)
-                        && is6GhzBandSupportedInternal()) {
-                    band = SoftApConfiguration.BAND_6GHZ;
-                } else if (mContext.getResources().getBoolean(
-                        R.bool.config_wifi_local_only_hotspot_5ghz)
-                        && is5GhzBandSupportedInternal()) {
-                    band = SoftApConfiguration.BAND_5GHZ;
-                }
+            if (mContext.getResources().getBoolean(R.bool.config_wifiLocalOnlyHotspot6ghz)
+                    && mContext.getResources().getBoolean(R.bool.config_wifiSoftap6ghzSupported)
+                    && is6GhzBandSupportedInternal()) {
+                band = SoftApConfiguration.BAND_6GHZ;
+            } else if (mContext.getResources().getBoolean(
+                    R.bool.config_wifi_local_only_hotspot_5ghz)
+                    && is5GhzBandSupportedInternal()) {
+                band = SoftApConfiguration.BAND_5GHZ;
             }
 
             SoftApConfiguration softApConfig = WifiApConfigStore.generateLocalOnlyHotspotConfig(
