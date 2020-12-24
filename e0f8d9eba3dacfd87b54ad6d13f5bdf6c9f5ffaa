@@ -1,0 +1,50 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "0780d5c9_94de9eb7",
+        "filename": "framework/Android.bp",
+        "patchSetId": 2
+      },
+      "lineNbr": 58,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2020-12-24T14:25:54Z",
+      "side": 1,
+      "message": "I think we should move this below.",
+      "range": {
+        "startLine": 58,
+        "startChar": 4,
+        "endLine": 58,
+        "endChar": 38
+      },
+      "revId": "e0f8d9eba3dacfd87b54ad6d13f5bdf6c9f5ffaa",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "69803968_a31f214e",
+        "filename": "framework/Android.bp",
+        "patchSetId": 2
+      },
+      "lineNbr": 123,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2020-12-24T14:25:54Z",
+      "side": 1,
+      "message": "Hi Baligh, I think we should move it here as \"//packages/modules/Wifi/service:__subpackages__\"",
+      "range": {
+        "startLine": 123,
+        "startChar": 8,
+        "endLine": 123,
+        "endChar": 59
+      },
+      "revId": "e0f8d9eba3dacfd87b54ad6d13f5bdf6c9f5ffaa",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
