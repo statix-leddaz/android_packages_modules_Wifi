@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "a5180246_bc7837b4",
+        "filename": "/COMMIT_MSG",
+        "patchSetId": 1
+      },
+      "lineNbr": 20,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2020-12-24T17:59:36Z",
+      "side": 1,
+      "message": "hmm yea, we don\u0027t have unit tests configured on AOSP (unless it automerges to master). But I think this was the case even before the migration.",
+      "range": {
+        "startLine": 20,
+        "startChar": 6,
+        "endLine": 20,
+        "endChar": 51
+      },
+      "revId": "e9e0d6360b0f414094c6c20d620a5505c5bd6f88",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
