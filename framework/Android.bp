@@ -55,6 +55,7 @@ test_access_hidden_api_whitelist = [
     "//frameworks/opt/net/wifi/tests/wifitests:__subpackages__",
 
     "//packages/modules/Wifi/framework/tests",
+    "//packages/modules/Wifi/service",
     "//packages/modules/Wifi/service/tests/wifitests:__subpackages__",
 
     "//external/robolectric-shadows:__subpackages__",
