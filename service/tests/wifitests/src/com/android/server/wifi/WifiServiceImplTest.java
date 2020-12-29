@@ -133,6 +133,7 @@ import android.os.IBinder;
 import android.os.IPowerManager;
 import android.os.IThermalService;
 import android.os.Message;
+import android.os.Parcel;
 import android.os.PowerManager;
 import android.os.Process;
 import android.os.RemoteException;
@@ -1617,6 +1618,14 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mClientModeImpl.syncRequestConnectionInfo()).thenReturn(wifiInfo);
     }
 
+    private WifiInfo parcelingRoundTrip(WifiInfo wifiInfo) {
+        Parcel parcel = Parcel.obtain();
+        wifiInfo.writeToParcel(parcel, 0);
+        // Rewind the pointer to the head of the parcel.
+        parcel.setDataPosition(0);
+        return WifiInfo.CREATOR.createFromParcel(parcel);
+    }
+
     /**
      * Test that connected SSID and BSSID are not exposed to an app that does not have the
      * appropriate permissions.
@@ -1628,7 +1637,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
         doThrow(new SecurityException()).when(mWifiPermissionsUtil).enforceCanAccessScanResults(
                 anyString(), nullable(String.class), anyInt(), nullable(String.class));
 
-        WifiInfo connectionInfo = mWifiServiceImpl.getConnectionInfo(TEST_PACKAGE, TEST_FEATURE_ID);
+        WifiInfo connectionInfo = parcelingRoundTrip(
+                mWifiServiceImpl.getConnectionInfo(TEST_PACKAGE, TEST_FEATURE_ID));
 
         assertEquals(WifiManager.UNKNOWN_SSID, connectionInfo.getSSID());
         assertEquals(WifiInfo.DEFAULT_MAC_ADDRESS, connectionInfo.getBSSID());
@@ -1648,7 +1658,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
         doThrow(new SecurityException()).when(mWifiPermissionsUtil).enforceCanAccessScanResults(
                 anyString(), nullable(String.class), anyInt(), nullable(String.class));
 
-        WifiInfo connectionInfo = mWifiServiceImpl.getConnectionInfo(TEST_PACKAGE, TEST_FEATURE_ID);
+        WifiInfo connectionInfo = parcelingRoundTrip(
+                mWifiServiceImpl.getConnectionInfo(TEST_PACKAGE, TEST_FEATURE_ID));
 
         assertEquals(WifiManager.UNKNOWN_SSID, connectionInfo.getSSID());
         assertEquals(WifiInfo.DEFAULT_MAC_ADDRESS, connectionInfo.getBSSID());
@@ -1665,7 +1676,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
     public void testConnectedIdsAreVisibleFromPermittedApp() throws Exception {
         setupForGetConnectionInfo();
 
-        WifiInfo connectionInfo = mWifiServiceImpl.getConnectionInfo(TEST_PACKAGE, TEST_FEATURE_ID);
+        WifiInfo connectionInfo = parcelingRoundTrip(
+                mWifiServiceImpl.getConnectionInfo(TEST_PACKAGE, TEST_FEATURE_ID));
 
         assertEquals(TEST_SSID_WITH_QUOTES, connectionInfo.getSSID());
         assertEquals(TEST_BSSID, connectionInfo.getBSSID());

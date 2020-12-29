@@ -76,7 +76,6 @@ import android.net.wifi.WifiManager.LocalOnlyHotspotCallback;
 import android.net.wifi.WifiManager.SuggestionConnectionStatusListener;
 import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiScanner;
-import android.net.wifi.WifiSsid;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.hotspot2.PasspointConfiguration;
@@ -2672,10 +2671,9 @@ public class WifiServiceImpl extends BaseWifiService {
         }
         long ident = Binder.clearCallingIdentity();
         try {
-            WifiInfo result = mClientModeImpl.syncRequestConnectionInfo();
+            WifiInfo wifiInfo = mClientModeImpl.syncRequestConnectionInfo();
             boolean hideDefaultMacAddress = true;
-            boolean hideBssidSsidNetworkIdAndFqdn = true;
-
+            boolean hideLocationSensitiveData = true;
             try {
                 if (mWifiInjector.getWifiPermissionsWrapper().getLocalMacAddressPermission(uid)
                         == PERMISSION_GRANTED) {
@@ -2683,25 +2681,17 @@ public class WifiServiceImpl extends BaseWifiService {
                 }
                 mWifiPermissionsUtil.enforceCanAccessScanResults(callingPackage, callingFeatureId,
                         uid, null);
-                hideBssidSsidNetworkIdAndFqdn = false;
+                hideLocationSensitiveData = false;
             } catch (SecurityException ignored) {
             }
+            WifiInfo result = wifiInfo.makeCopy(!hideLocationSensitiveData);
             if (hideDefaultMacAddress) {
                 result.setMacAddress(WifiInfo.DEFAULT_MAC_ADDRESS);
             }
-            if (hideBssidSsidNetworkIdAndFqdn) {
-                result.setBSSID(WifiInfo.DEFAULT_MAC_ADDRESS);
-                result.setSSID(WifiSsid.createFromHex(null));
-                result.setNetworkId(WifiConfiguration.INVALID_NETWORK_ID);
-                result.setFQDN(null);
-                result.setProviderFriendlyName(null);
-                result.setPasspointUniqueId(null);
-            }
-
             if (mVerboseLoggingEnabled
-                    && (hideBssidSsidNetworkIdAndFqdn || hideDefaultMacAddress)) {
-                mLog.v("getConnectionInfo: hideBssidSsidAndNetworkId="
-                        + hideBssidSsidNetworkIdAndFqdn
+                    && (hideLocationSensitiveData || hideDefaultMacAddress)) {
+                mLog.v("getConnectionInfo: hideLocationSensitiveData="
+                        + hideLocationSensitiveData
                         + ", hideDefaultMacAddress="
                         + hideDefaultMacAddress);
             }
