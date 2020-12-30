@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "f935df04_7a9899df",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2020-12-30T20:00:06Z",
+      "side": 1,
+      "message": "Removed CtsWifiTestCases on AOSP because configuring a Wifi SSID is not supported, see b/158150376",
+      "revId": "cefd770f66f77f1b1ae4e6d35044fe8ad44ab890",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
