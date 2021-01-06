@@ -33,6 +33,24 @@
       "message": "Does this need to be cherry-picked internally?",
       "revId": "0f3c9d69e6c96e9d2dbe94a5f57882f46cb53117",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "5392b9b2_528b21de",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-01-06T19:29:17Z",
+      "side": 1,
+      "message": "As long as there\u0027s no merge conflict (doesn\u0027t look like there is), it will simply automerge down to internal master.",
+      "parentUuid": "e10a828f_b764844e",
+      "revId": "0f3c9d69e6c96e9d2dbe94a5f57882f46cb53117",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
