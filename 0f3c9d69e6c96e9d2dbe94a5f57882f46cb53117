@@ -16,6 +16,23 @@
       "message": "This looks reasonable to me.",
       "revId": "0f3c9d69e6c96e9d2dbe94a5f57882f46cb53117",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "e10a828f_b764844e",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2021-01-06T19:08:38Z",
+      "side": 1,
+      "message": "Does this need to be cherry-picked internally?",
+      "revId": "0f3c9d69e6c96e9d2dbe94a5f57882f46cb53117",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
