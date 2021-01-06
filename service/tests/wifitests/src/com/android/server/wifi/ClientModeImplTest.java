@@ -79,6 +79,8 @@ import android.net.NetworkSpecifier;
 import android.net.StaticIpConfiguration;
 import android.net.ip.IIpClient;
 import android.net.ip.IpClientCallbacks;
+import android.net.vcn.VcnManager;
+import android.net.vcn.VcnUnderlyingNetworkPolicy;
 import android.net.wifi.IActionListener;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SupplicantState;
@@ -259,6 +261,13 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(context.getSystemService(ActivityManager.class)).thenReturn(
                 mock(ActivityManager.class));
 
+        when(context.getSystemService(VcnManager.class)).thenReturn(mVcnManager);
+        doAnswer(invocation -> {
+            NetworkCapabilities nc = invocation.getArgument(0);
+            return new VcnUnderlyingNetworkPolicy(
+                    false /* isTearDownRequested */, nc);
+        }).when(mVcnManager).getUnderlyingNetworkPolicy(any(), any());
+
         WifiP2pManager p2pm = mock(WifiP2pManager.class);
         when(context.getSystemService(WifiP2pManager.class)).thenReturn(p2pm);
         final CountDownLatch untilDone = new CountDownLatch(1);
@@ -423,6 +432,7 @@ public class ClientModeImplTest extends WifiBaseTest {
     @Mock ScanRequestProxy mScanRequestProxy;
     @Mock DeviceConfigFacade mDeviceConfigFacade;
     @Mock Network mNetwork;
+    @Mock VcnManager mVcnManager;
 
     final ArgumentCaptor<WifiConfigManager.OnNetworkUpdateListener> mConfigUpdateListenerCaptor =
             ArgumentCaptor.forClass(WifiConfigManager.OnNetworkUpdateListener.class);
