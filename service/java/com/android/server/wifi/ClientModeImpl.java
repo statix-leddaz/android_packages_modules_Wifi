@@ -67,6 +67,9 @@ import android.net.ip.IpClientManager;
 import android.net.shared.Layer2Information;
 import android.net.shared.ProvisioningConfiguration;
 import android.net.shared.ProvisioningConfiguration.ScanResultInfo;
+import android.net.vcn.VcnManager;
+import android.net.vcn.VcnManager.VcnUnderlyingNetworkPolicyListener;
+import android.net.vcn.VcnUnderlyingNetworkPolicy;
 import android.net.wifi.IActionListener;
 import android.net.wifi.INetworkRequestMatchCallback;
 import android.net.wifi.ScanResult;
@@ -154,6 +157,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -246,6 +250,10 @@ public class ClientModeImpl extends StateMachine {
 
     private final McastLockManagerFilterController mMcastLockManagerFilterController;
     private final ActivityManager mActivityManager;
+
+    private final VcnManager mVcnManager;
+    private final WifiVcnUnderlyingNetworkPolicyListener mVcnPolicyListener =
+            new WifiVcnUnderlyingNetworkPolicyListener();
 
     private boolean mScreenOn = false;
 
@@ -803,6 +811,7 @@ public class ClientModeImpl extends StateMachine {
         mLinkProperties = new LinkProperties();
         mMcastLockManagerFilterController = new McastLockManagerFilterController();
         mActivityManager = context.getSystemService(ActivityManager.class);
+        mVcnManager = context.getSystemService(VcnManager.class);
 
         mLastBssid = null;
         mLastNetworkId = WifiConfiguration.INVALID_NETWORK_ID;
@@ -4560,7 +4569,15 @@ public class ClientModeImpl extends StateMachine {
         if (mNetworkAgent == null) {
             return;
         }
-        mNetworkAgent.sendNetworkCapabilities(networkCapabilities);
+
+        VcnUnderlyingNetworkPolicy networkPolicy =
+                mVcnManager.getUnderlyingNetworkPolicy(networkCapabilities, mLinkProperties);
+        if (networkPolicy.isTeardownRequested()) {
+            disconnectCommand();
+            return;
+        }
+
+        mNetworkAgent.sendNetworkCapabilities(networkPolicy.getMergedNetworkCapabilities());
     }
 
     private void handleEapAuthFailure(int networkId, int errorCode) {
@@ -4766,12 +4783,23 @@ public class ClientModeImpl extends StateMachine {
                             explicitlySelected && config.noInternetAccessExpected)
                     .setPartialConnectivityAcceptable(config.noInternetAccessExpected)
                     .build();
-            final NetworkCapabilities nc = getCapabilities(getCurrentWifiConfiguration());
+
+            final VcnUnderlyingNetworkPolicy networkPolicy =
+                    mVcnManager.getUnderlyingNetworkPolicy(
+                            getCapabilities(getCurrentWifiConfiguration()), mLinkProperties);
+            if (networkPolicy.isTeardownRequested()) {
+                disconnectCommand();
+            }
+            final NetworkCapabilities nc = networkPolicy.getMergedNetworkCapabilities();
             // This should never happen.
             if (mNetworkAgent != null) {
                 Log.wtf(TAG, "mNetworkAgent is not null: " + mNetworkAgent);
                 mNetworkAgent.unregister();
             }
+
+            mVcnManager.addVcnUnderlyingNetworkPolicyListener(
+                    Executors.newSingleThreadExecutor(), mVcnPolicyListener);
+
             mNetworkAgent = new WifiNetworkAgent(mContext, getHandler().getLooper(),
                     "WifiNetworkAgent", nc, mLinkProperties, 60, naConfig,
                     mNetworkFactory.getProvider());
@@ -5591,6 +5619,7 @@ public class ClientModeImpl extends StateMachine {
 
         @Override
         public void enter() {
+            mVcnManager.removeVcnUnderlyingNetworkPolicyListener(mVcnPolicyListener);
 
             if (mVerboseLoggingEnabled) {
                 logd(" Enter DisconnectingState State screenOn=" + mScreenOn);
@@ -6622,4 +6651,18 @@ public class ClientModeImpl extends StateMachine {
         return true;
     }
 
+    /**
+     * WifiVcnUnderlyingNetworkPolicyListener tracks VCN-defined Network policies for a
+     * WifiNetworkAgent. These policies are used to restart Networks or update their
+     * NetworkCapabilities.
+     */
+    private class WifiVcnUnderlyingNetworkPolicyListener
+            implements VcnUnderlyingNetworkPolicyListener {
+        @Override
+        public void onPolicyChanged() {
+            // Update the NetworkAgent's NetworkCapabilities which will merge the current
+            // capabilities with VcnManagementService's underlying Network policy.
+            updateCapabilities();
+        }
+    }
 }
