@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "0d0ad088_f4ceef63",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1193375
+      },
+      "writtenOn": "2021-01-06T19:18:48Z",
+      "side": 1,
+      "message": "The relevant code is now in the new repo packages/modules/Wifi.\n      Thanks,\n        Blair",
+      "revId": "eb38fe7347c862a2d8bee62c6115d77be080e1bb",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
