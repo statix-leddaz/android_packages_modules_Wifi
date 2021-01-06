@@ -67,6 +67,9 @@ import android.net.ip.IpClientManager;
 import android.net.shared.Layer2Information;
 import android.net.shared.ProvisioningConfiguration;
 import android.net.shared.ProvisioningConfiguration.ScanResultInfo;
+import android.net.vcn.VcnManager;
+import android.net.vcn.VcnManager.VcnUnderlyingNetworkPolicyListener;
+import android.net.vcn.VcnUnderlyingNetworkPolicy;
 import android.net.wifi.IActionListener;
 import android.net.wifi.INetworkRequestMatchCallback;
 import android.net.wifi.ScanResult;
@@ -87,6 +90,7 @@ import android.net.wifi.p2p.WifiP2pManager;
 import android.os.BatteryStatsManager;
 import android.os.Bundle;
 import android.os.ConditionVariable;
+import android.os.HandlerExecutor;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
@@ -246,6 +250,9 @@ public class ClientModeImpl extends StateMachine {
 
     private final McastLockManagerFilterController mMcastLockManagerFilterController;
     private final ActivityManager mActivityManager;
+
+    private final WifiVcnUnderlyingNetworkPolicyListener mVcnPolicyListener =
+            new WifiVcnUnderlyingNetworkPolicyListener();
 
     private boolean mScreenOn = false;
 
@@ -4511,7 +4518,24 @@ public class ClientModeImpl extends StateMachine {
                     currentWifiConfiguration, getCurrentBSSID()));
         }
         updateLinkBandwidth(builder);
-        return builder.build();
+
+        final NetworkCapabilities networkCapabilities = builder.build();
+        if (!SdkLevel.isAtLeastS()) {
+            return networkCapabilities;
+        } else {
+            final VcnManager vcnManager = mContext.getSystemService(VcnManager.class);
+            if (vcnManager == null) {
+                return networkCapabilities;
+            }
+
+            final VcnUnderlyingNetworkPolicy vcnNetworkPolicy =
+                    vcnManager.getUnderlyingNetworkPolicy(networkCapabilities, mLinkProperties);
+            if (vcnNetworkPolicy.isTeardownRequested()) {
+                disconnectCommand();
+            }
+
+            return vcnNetworkPolicy.getMergedNetworkCapabilities();
+        }
     }
 
     private void updateLinkBandwidth(NetworkCapabilities.Builder networkCapabilitiesBuilder) {
@@ -4776,6 +4800,15 @@ public class ClientModeImpl extends StateMachine {
                 Log.wtf(TAG, "mNetworkAgent is not null: " + mNetworkAgent);
                 mNetworkAgent.unregister();
             }
+
+            if (SdkLevel.isAtLeastS()) {
+                final VcnManager vcnManager = mContext.getSystemService(VcnManager.class);
+                if (vcnManager != null) {
+                    vcnManager.addVcnUnderlyingNetworkPolicyListener(
+                            new HandlerExecutor(getHandler()), mVcnPolicyListener);
+                }
+            }
+
             mNetworkAgent = new WifiNetworkAgent(mContext, getHandler().getLooper(),
                     "WifiNetworkAgent", nc, mLinkProperties, 60, naConfig,
                     mNetworkFactory.getProvider());
@@ -5595,6 +5628,12 @@ public class ClientModeImpl extends StateMachine {
 
         @Override
         public void enter() {
+            if (SdkLevel.isAtLeastS()) {
+                final VcnManager vcnManager = mContext.getSystemService(VcnManager.class);
+                if (vcnManager != null) {
+                    vcnManager.removeVcnUnderlyingNetworkPolicyListener(mVcnPolicyListener);
+                }
+            }
 
             if (mVerboseLoggingEnabled) {
                 logd(" Enter DisconnectingState State screenOn=" + mScreenOn);
@@ -6626,4 +6665,18 @@ public class ClientModeImpl extends StateMachine {
         return true;
     }
 
+    /**
+     * WifiVcnUnderlyingNetworkPolicyListener tracks VCN-defined Network policies for a
+     * WifiNetworkAgent. These policies are used to restart Networks or update their
+     * NetworkCapabilities.
+     */
+    private class WifiVcnUnderlyingNetworkPolicyListener
+            implements VcnUnderlyingNetworkPolicyListener {
+        @Override
+        public void onPolicyChanged() {
+            // Update the NetworkAgent's NetworkCapabilities which will merge the current
+            // capabilities with VcnManagementService's underlying Network policy.
+            updateCapabilities();
+        }
+    }
 }
