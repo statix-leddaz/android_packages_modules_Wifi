@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "97a56ed9_f1032615",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1288034
+      },
+      "writtenOn": "2021-01-06T01:16:21Z",
+      "side": 1,
+      "message": "Note this exact change (not conflicts when changing project) was approved in aosp/1502379",
+      "revId": "86d4c1e7794b6fbfd4d405a1c080d1c4c54848d1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
