@@ -79,6 +79,8 @@ import android.net.NetworkSpecifier;
 import android.net.StaticIpConfiguration;
 import android.net.ip.IIpClient;
 import android.net.ip.IpClientCallbacks;
+import android.net.vcn.VcnManager;
+import android.net.vcn.VcnUnderlyingNetworkPolicy;
 import android.net.wifi.IActionListener;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SupplicantState;
@@ -205,6 +207,8 @@ public class ClientModeImplTest extends WifiBaseTest {
     private static final int DATA_SUBID = 1;
     private static final int CARRIER_ID_1 = 100;
 
+    private static final String VCN_PACKAGE = "android.net.vcn";
+
     private long mBinderToken;
     private MockitoSession mSession;
 
@@ -261,6 +265,13 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         when(context.getSystemService(ActivityManager.class)).thenReturn(
                 mock(ActivityManager.class));
+
+        when(context.getSystemService(VcnManager.class)).thenReturn(mVcnManager);
+        doAnswer(invocation -> {
+            NetworkCapabilities nc = invocation.getArgument(0);
+            return new VcnUnderlyingNetworkPolicy(
+                    false /* isTearDownRequested */, nc);
+        }).when(mVcnManager).getUnderlyingNetworkPolicy(any(), any());
 
         WifiP2pManager p2pm = mock(WifiP2pManager.class);
         when(context.getSystemService(WifiP2pManager.class)).thenReturn(p2pm);
@@ -426,6 +437,7 @@ public class ClientModeImplTest extends WifiBaseTest {
     @Mock ScanRequestProxy mScanRequestProxy;
     @Mock DeviceConfigFacade mDeviceConfigFacade;
     @Mock Network mNetwork;
+    @Mock VcnManager mVcnManager;
 
     final ArgumentCaptor<WifiConfigManager.OnNetworkUpdateListener> mConfigUpdateListenerCaptor =
             ArgumentCaptor.forClass(WifiConfigManager.OnNetworkUpdateListener.class);
@@ -1339,6 +1351,29 @@ public class ClientModeImplTest extends WifiBaseTest {
         assertEquals(WifiConfigurationTestUtil.TEST_FQDN, wifiInfo.getPasspointFqdn());
         assertEquals(WifiConfigurationTestUtil.TEST_PROVIDER_FRIENDLY_NAME,
                 wifiInfo.getPasspointProviderFriendlyName());
+    }
+
+    /** Test that we query to VcnManager when registering a Wifi Network. */
+    @Test
+    public void testConnectUsesVcnUnderlyingNetworkPolicy() throws Exception {
+        doAnswer(invocation -> {
+            NetworkCapabilities networkCapabilities = invocation.getArgument(0);
+            NetworkCapabilities mergedNetworkCapabilities =
+                    new NetworkCapabilities.Builder(networkCapabilities)
+                            .setRequestorPackageName(VCN_PACKAGE)
+                            .build();
+            return new VcnUnderlyingNetworkPolicy(
+                    false /* isTearDownRequested */, mergedNetworkCapabilities);
+        }).when(mVcnManager).getUnderlyingNetworkPolicy(any(), any());
+
+        connect();
+        expectRegisterNetworkAgent(
+                (config) -> { },
+                (cap) -> {
+                    assertTrue(cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED));
+                    assertEquals(VCN_PACKAGE, cap.getRequestorPackageName());
+                });
+        verify(mVcnManager, atLeastOnce()).getUnderlyingNetworkPolicy(any(), any());
     }
 
     /**
@@ -5083,7 +5118,6 @@ public class ClientModeImplTest extends WifiBaseTest {
             assertTrue(cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED));
         });
     }
-
 
     /**
      * Verify that we disconnect when we mark a previous unmetered network metered.
