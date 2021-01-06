@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "32e7c66a_b8e49a1d",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2021-01-06T15:46:39Z",
+      "side": 1,
+      "message": "I\u0027m not sure if this is necessary since the `config_wifiSaeUpgradeEnabled` configuration exists which can control whether the upgrade happens. That config can be set to `false` on DUTs which don\u0027t support SAE.\n",
+      "revId": "1b8d0d0e72b9299b942a0c3baa1e714b20079246",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
