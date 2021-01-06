@@ -6371,6 +6371,11 @@ public class ClientModeImpl extends StateMachine {
         }
     }
 
+    private boolean isWpa3SaeSupported() {
+        return (mWifiNative.getSupportedFeatureSet(mInterfaceName)
+                & WifiManager.WIFI_FEATURE_WPA3_SAE) != 0;
+    }
+
     /**
      * Update the wifi configuration before sending connect to
      * supplicant/driver.
@@ -6385,7 +6390,7 @@ public class ClientModeImpl extends StateMachine {
 
         setTargetBssid(config, bssid);
 
-        if (isWpa3SaeUpgradeEnabled() && config.allowedKeyManagement.get(
+        if (isWpa3SaeSupported() && isWpa3SaeUpgradeEnabled() && config.allowedKeyManagement.get(
                 WifiConfiguration.KeyMgmt.WPA_PSK)) {
             isFrameworkWpa3SaeUpgradePossible = true;
         }
