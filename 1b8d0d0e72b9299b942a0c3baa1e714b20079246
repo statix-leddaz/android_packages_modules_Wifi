@@ -16,6 +16,24 @@
       "message": "I\u0027m not sure if this is necessary since the `config_wifiSaeUpgradeEnabled` configuration exists which can control whether the upgrade happens. That config can be set to `false` on DUTs which don\u0027t support SAE.\n",
       "revId": "1b8d0d0e72b9299b942a0c3baa1e714b20079246",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "ab6c7ab9_1a72905b",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1733189
+      },
+      "writtenOn": "2021-01-07T01:45:42Z",
+      "side": 1,
+      "message": "I think it is necessary.\n\nLogically speaking, \n1.devices that support SAE can set config_wifiSaeUpgradeEnabled true or false; 2.devices that do not support SAE should set config_wifiSaeUpgradeEnabled false as default, but now it does not support, which can be solved by this patch.\n\n\n\nIn the actual project, we encountered two problems\n\n1.Devices OTA to R which do not support SAE fail to connect to WiFi until the programmer finds out config_wifiSaeUpgradeEnabled\n\n2. If we maintain dozens of projects, it is difficult to distinguish the support of each project\u0027s SAE, and each project is configured manually config_wifiSaeUpgradeEnabled is a difficult, tedious and error prone job. This patch can solve this problem.\n\nI hope this patch can be merged, so that when we upgrade to Android s, we don\u0027t need to readapt many projects. Thank you",
+      "parentUuid": "32e7c66a_b8e49a1d",
+      "revId": "1b8d0d0e72b9299b942a0c3baa1e714b20079246",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
