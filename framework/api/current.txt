@@ -317,6 +317,7 @@ package android.net.wifi {
     method @Deprecated @RequiresPermission(allOf={android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_WIFI_STATE}) public java.util.List<android.net.wifi.WifiConfiguration> getConfiguredNetworks();
     method @Deprecated public android.net.wifi.WifiInfo getConnectionInfo();
     method public android.net.DhcpInfo getDhcpInfo();
+    method @NonNull @RequiresPermission(allOf={android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_WIFI_STATE}) public java.util.List<java.lang.String> getFdqnsForScanResult(@NonNull android.net.wifi.ScanResult);
     method public int getMaxNumberOfNetworkSuggestionsPerApp();
     method @IntRange(from=0) public int getMaxSignalLevel();
     method @NonNull @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE) public java.util.List<android.net.wifi.WifiNetworkSuggestion> getNetworkSuggestions();

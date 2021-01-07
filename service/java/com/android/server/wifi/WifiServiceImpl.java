@@ -53,6 +53,7 @@ import android.net.Uri;
 import android.net.ip.IpClientUtil;
 import android.net.wifi.IActionListener;
 import android.net.wifi.IDppCallback;
+import android.net.wifi.IFqdnResultsCallback;
 import android.net.wifi.ILocalOnlyHotspotCallback;
 import android.net.wifi.INetworkRequestMatchCallback;
 import android.net.wifi.IOnWifiActivityEnergyInfoListener;
@@ -2243,6 +2244,44 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     /**
+     * Return a list of FQDNs for profiles that may be able to provide service for the
+     * corresponding {@code scanResults} (or an empty map if none).
+     *
+     * @param bssid BSSID as string {@link ScanResult#BSSID}.
+     * @param packageName Package name of the app that requests the scan results FQDNs
+     * @param featureId The feature in the package
+     * @return List of FQDNs (Fully Qualified Domain Name) for profiles that may provide access
+     * to the specified access point.
+     */
+    @Override
+    public List<String> getAllFqdnsForScanResult(String bssid, String packageName,
+            String featureId) {
+        // Check if the caller has permission to get FQDNs
+        // Requires ACCESS_WIFI_STATE and location permission.
+        final int uid = Binder.getCallingUid();
+        enforceAccessPermission();
+        enforceLocationPermission(packageName, featureId, uid);
+        if (mVerboseLoggingEnabled) {
+            mLog.info("getAllFqdnsForScanResult id=%").c(uid).flush();
+        }
+        return mWifiThreadRunner.call(
+            () -> {
+                ScanResult scanResult = mScanRequestProxy.getScanResult(bssid);
+                if (scanResult == null) {
+                    return Collections.emptyList();
+                }
+
+                if (!ScanResultUtil.validateScanResultList(Collections.singletonList(scanResult))) {
+                    Log.e(TAG, "Attempt to retrieve passpoint FQDNs with invalid scanResult");
+                    return Collections.emptyList();
+                } else {
+                    return mPasspointManager.getAllMatchingFqdnsForScanResult(scanResult);
+                }
+            },
+            Collections.emptyList());
+    }
+
+    /**
      * Returns list of OSU (Online Sign-Up) providers associated with the given list of ScanResult.
      *
      * @param scanResults a list of ScanResult that has Passpoint APs.
@@ -4170,6 +4209,44 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiMetrics.logUserActionEvent(UserActionEvent.EVENT_FORGET_WIFI, netId);
         }
         mClientModeImpl.forget(netId, binder, callback, callbackIdentifier, uid);
+    }
+
+
+    /**
+     * See {@link WifiManager#registerFqdnsCallback(WifiManager.FqdnResultsCallback)}
+     */
+    public void registerFqdnsCallback(@NonNull IFqdnResultsCallback callback, String packageName,
+            String featureId) {
+        if (callback == null) {
+            throw new IllegalArgumentException("callback must not be null");
+        }
+        final int uid = Binder.getCallingUid();
+        enforceAccessPermission();
+        enforceLocationPermission(packageName, featureId, uid);
+
+        if (mVerboseLoggingEnabled) {
+            mLog.info("registerFqdnsCallback uid=%").c(uid).flush();
+        }
+        mWifiThreadRunner.post(() -> {
+            if (!mPasspointManager.registerFqdnResultsCallback(callback)) {
+                Log.e(TAG, "registerFqdnsCallback: Failed to register callback");
+            }
+        });
+    }
+
+    /**
+     * See {@link WifiManager#registerFqdnsCallback(WifiManager.FqdnResultsCallback)}
+     */
+    public void unregisterFqdnsCallback(@NonNull IFqdnResultsCallback callback, String packageName,
+            String featureId) {
+        final int uid = Binder.getCallingUid();
+        if (mVerboseLoggingEnabled) {
+            mLog.info("unregisterScanResultCallback uid=%").c(uid).flush();
+        }
+        enforceAccessPermission();
+        enforceLocationPermission(packageName, featureId, uid);
+        // post operation to handler thread
+        mWifiThreadRunner.post(() -> mPasspointManager.unregisterFqdnResultsCallback(callback));
     }
 
     /**

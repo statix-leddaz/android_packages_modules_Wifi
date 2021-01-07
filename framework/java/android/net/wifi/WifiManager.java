@@ -2841,6 +2841,29 @@ public class WifiManager {
         }
     }
 
+   /**
+     * Return the FQDNs for the access point referenced by {@code scanResult}
+     * that have matching {@link PasspointConfiguration} provisioned on this
+     * device.
+     *
+     * @param bssid BSSID as string {@link ScanResult#BSSID}.
+     * @return List of FQDNs from the designated access point which match
+     *     profiles installed on this device.
+     */
+    @RequiresPermission(allOf = {ACCESS_FINE_LOCATION, ACCESS_WIFI_STATE})
+    @NonNull
+    public List<String> getFdqnsForScanResult(@NonNull String bssid) {
+        if (TextUtils.isEmpty(bssid)) {
+            throw new IllegalArgumentException("bssid must not be null");
+        }
+        try {
+            return mService.getAllFqdnsForScanResult(bssid, mContext.getOpPackageName(),
+                      mContext.getAttributionTag());
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
     /**
      * Set if scanning is always available.
      *

@@ -1141,6 +1141,53 @@ public class PasspointManagerTest extends WifiBaseTest {
             session.finishMocking();
         }
     }
+
+
+    /**
+     * Verify that an expected list of FQDNs will be returned when a scanResult is matched to
+     * installed Passpoint profiles.
+     */
+    @Test
+    public void getAllMatchingFqdnsForScanResult() {
+        // static mocking
+        MockitoSession session =
+                com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession().mockStatic(
+                        InformationElementUtil.class).startMocking();
+        try {
+            PasspointProvider providerHome = addTestProvider(TEST_FQDN + 0, TEST_FRIENDLY_NAME,
+                    TEST_PACKAGE, false, null);
+            providerHome.getWifiConfig().isHomeProviderNetwork = true;
+            PasspointProvider providerRoaming = addTestProvider(TEST_FQDN + 1, TEST_FRIENDLY_NAME,
+                    TEST_PACKAGE, false, null);
+            WifiConfiguration wifiConfiguration = WifiConfigurationTestUtil.generateWifiConfig(-1,
+                    TEST_UID, "\"PasspointTestSSID\"", true, true,
+                    TEST_FQDN + 2, TEST_FRIENDLY_NAME, SECURITY_EAP);
+            PasspointProvider providerNone = addTestProvider(TEST_FQDN + 2, TEST_FRIENDLY_NAME,
+                    TEST_PACKAGE, wifiConfiguration, false, null);
+            ANQPData entry = new ANQPData(mClock, null);
+            InformationElementUtil.Vsa vsa = new InformationElementUtil.Vsa();
+            vsa.anqpDomainID = TEST_ANQP_DOMAIN_ID2;
+
+            when(mAnqpCache.getEntry(TEST_ANQP_KEY2)).thenReturn(entry);
+            when(InformationElementUtil.getHS2VendorSpecificIE(isNull())).thenReturn(vsa);
+            when(providerHome.match(anyMap(), isNull()))
+                    .thenReturn(PasspointMatch.HomeProvider);
+            when(providerRoaming.match(anyMap(), isNull()))
+                    .thenReturn(PasspointMatch.RoamingProvider);
+            when(providerNone.match(anyMap(), isNull()))
+                    .thenReturn(PasspointMatch.None);
+
+            List<String> fqdns =
+                    mManager.getAllMatchingFqdnsForScanResult(createTestScanResult());
+
+            // Expects to be matched with home Provider for each AP (two APs).
+            assertEquals(Arrays.asList(TEST_FQDN + 0, TEST_FQDN + 1), fqdns);
+        } finally {
+            session.finishMocking();
+        }
+    }
+
+
     /**
      * Verify that an expected map of FQDN and a list of ScanResult will be returned when provided
      * scanResults are matched to installed Passpoint profiles.
@@ -1264,6 +1311,45 @@ public class PasspointManagerTest extends WifiBaseTest {
         WifiConfiguration config = mManager.getWifiConfigsForPasspointProfiles(
                 Collections.singletonList(provider.getConfig().getUniqueId())).get(0);
         assertEquals(config.getRandomizedMacAddress(), MacAddress.fromString(DEFAULT_MAC_ADDRESS));
+    }
+
+    /**
+     * Verify that an empty map will be returned when trying to get a all matching FQDN for a {@link
+     * ScanResult} with a {@code null} BSSID.
+     */
+    @Test
+    public void getAllMatchingFqdnsForScanResultWithNullBSSID() throws Exception {
+        ScanResult scanResult = createTestScanResult();
+        scanResult.BSSID = null;
+
+        assertEquals(0,
+                mManager.getAllMatchingFqdnsForScanResult(scanResult).size());
+    }
+
+    /**
+     * Verify that an empty map will be returned when trying to get all matching FQDN for a {@link
+     * ScanResult} with an invalid BSSID.
+     */
+    @Test
+    public void getAllMatchingFqdnsForScanResultWithInvalidBSSID() throws Exception {
+        ScanResult scanResult = createTestScanResult();
+        scanResult.BSSID = "asdfdasfas";
+
+        assertEquals(0,
+                mManager.getAllMatchingFqdnsForScanResult(scanResult).size());
+    }
+
+    /**
+     * Verify that an empty map will be returned when trying to get all matching FQDN for a
+     * non-Passpoint AP.
+     */
+    @Test
+    public void getAllMatchingFqdnsForScanResultForNonPasspointAP() throws Exception {
+        ScanResult scanResult = createTestScanResult();
+        scanResult.flags = 0;
+
+        assertEquals(0,
+                mManager.getAllMatchingFqdnsForScanResult(scanResult).size());
     }
 
     /**

@@ -3256,6 +3256,58 @@ public class WifiServiceImplTest extends WifiBaseTest {
     }
 
     /**
+     * Verify that a call to getAllFqdnsForScanResult throws a SecurityException if the caller does
+     * not have ACCESS_WIFI_STATE permission.
+     */
+    @Test(expected = SecurityException.class)
+    public void testGetAllFqdnsForScanResultWithMissingPermission() throws Exception {
+        doThrow(new SecurityException()).when(mContext).enforceCallingOrSelfPermission(
+                eq(ACCESS_WIFI_STATE), eq("WifiService"));
+        mWifiServiceImpl.getAllFqdnsForScanResult(TEST_BSSID, TEST_PACKAGE, TEST_FEATURE_ID);
+    }
+
+    /**
+     * Verify that a call to getAllFqdnsForScanResult throws a SecurityException if the caller does
+     * not have Location permission.
+     */
+    @Test(expected = SecurityException.class)
+    public void testGetAllFqdnsForScanResultThrowsSecurityExceptionWithoutLocationPermission() {
+        doThrow(new SecurityException())
+                .when(mWifiPermissionsUtil).enforceLocationPermission(eq(TEST_PACKAGE),
+                                                                      eq(TEST_FEATURE_ID),
+                                                                      anyInt());
+        mWifiServiceImpl.getAllFqdnsForScanResult(TEST_BSSID, TEST_PACKAGE, TEST_FEATURE_ID);
+    }
+
+    /**
+     * Verify that the call to getAllFqdnsForScanResult is redirected to
+     * specific API getAllFqdnsForScanResult when the caller have
+     * NETWORK_SETTINGS permissions and NETWORK_SETUP_WIZARD.
+     */
+    @Test
+    public void testGetAllFqdnsForScanResultWithPermissions() {
+        when(mContext.checkPermission(eq(android.Manifest.permission.NETWORK_SETTINGS),
+                anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_GRANTED);
+        mWifiServiceImpl.getAllFqdnsForScanResult(TEST_BSSID, TEST_PACKAGE, TEST_FEATURE_ID);
+        mLooper.dispatchAll();
+        verify(mPasspointManager).getAllMatchingFqdnsForScanResult(any());
+    }
+
+    /**
+     * Verify that the call to getAllFqdnsForScanResult is not redirected to
+     * specific API getAllFqdnsForScanResult when the caller provider invalid
+     * ScanResult.
+     */
+    @Test
+    public void testGetAllFqdnsForScanResultWithInvalidScanResult() {
+        when(mContext.checkPermission(eq(android.Manifest.permission.NETWORK_SETTINGS),
+                anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_GRANTED);
+        mWifiServiceImpl.getAllFqdnsForScanResult("UNKNOWN_BSSID", TEST_PACKAGE, TEST_FEATURE_ID);
+        mLooper.dispatchAll();
+        verify(mPasspointManager, never()).getAllMatchingFqdnsForScanResult(any());
+    }
+
+    /**
      * Verify that the call to getWifiConfigsForPasspointProfiles is not redirected to specific API
      * syncGetWifiConfigsForPasspointProfiles when the caller doesn't have NETWORK_SETTINGS
      * permissions and NETWORK_SETUP_WIZARD.
@@ -5858,8 +5910,12 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mActiveModeWarden, never()).scanAlwaysModeChanged();
     }
 
+    private ScanResult createScanResult() {
+        return new ScanResult(WifiSsid.createFromAsciiEncoded(TEST_SSID),
+                TEST_SSID, TEST_BSSID, 1245, 0, TEST_CAP, -78, 2450, 1025, 22, 33, 20, 0, 0, true);
+    }
+
     private List<ScanResult> createScanResultList() {
-        return Collections.singletonList(new ScanResult(WifiSsid.createFromAsciiEncoded(TEST_SSID),
-                TEST_SSID, TEST_BSSID, 1245, 0, TEST_CAP, -78, 2450, 1025, 22, 33, 20, 0, 0, true));
+        return Collections.singletonList(createScanResult());
     }
 }

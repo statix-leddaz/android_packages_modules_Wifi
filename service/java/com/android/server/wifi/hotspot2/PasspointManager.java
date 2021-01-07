@@ -26,6 +26,7 @@ import android.annotation.NonNull;
 import android.app.AppOpsManager;
 import android.content.Context;
 import android.net.MacAddress;
+import android.net.wifi.IFqdnResultsCallback;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiEnterpriseConfig;
@@ -37,6 +38,8 @@ import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Process;
+import android.os.RemoteCallbackList;
+import android.os.RemoteException;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.Pair;
@@ -122,6 +125,9 @@ public class PasspointManager {
     private final AppOpsManager mAppOps;
     private final WifiCarrierInfoManager mWifiCarrierInfoManager;
     private final MacAddressUtil mMacAddressUtil;
+
+    // external ScanResultCallback tracker
+    private final RemoteCallbackList<IFqdnResultsCallback> mRegisteredFqdnResultsCallbacks;
 
     /**
      * Map of package name of an app to the app ops changed listener for the app.
@@ -332,6 +338,7 @@ public class PasspointManager {
         mAppOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
         sPasspointManager = this;
         mMacAddressUtil = macAddressUtil;
+        mRegisteredFqdnResultsCallbacks = new RemoteCallbackList<>();
     }
 
     /**
@@ -953,6 +960,24 @@ public class PasspointManager {
     }
 
     /**
+     * Return a list of FQDNs for profiles that may be able to provide service for the
+     * corresponding {@code scanResult} (or an empty map if none).
+     *
+     * @param scanResult The scan result associated with the AP
+     * @return List of FQDNs (Fully Qualified Domain Name) for profiles that may provide access
+     * to the specified access point.
+     */
+    public @NonNull List<String> getAllMatchingFqdnsForScanResult(ScanResult scanResult) {
+        if (!scanResult.isPasspointNetwork()) {
+            return Collections.emptyList();
+        }
+
+        return getAllMatchedProviders(scanResult).stream()
+            .map(matchedProvider -> matchedProvider.first.getConfig().getHomeSp().getFqdn())
+            .collect(Collectors.toList());
+    }
+
+    /**
      * Return a map of all matching configurations keys with corresponding scanResults (or an empty
      * map if none).
      *
@@ -1258,6 +1283,35 @@ public class PasspointManager {
             }
         }
         return false;
+    }
+
+    private void sendFqdnResultsAvailableToCallbacks() {
+        int itemCount = mRegisteredFqdnResultsCallbacks.beginBroadcast();
+        for (int i = 0; i < itemCount; i++) {
+            try {
+                mRegisteredFqdnResultsCallbacks.getBroadcastItem(i).onFqdnResultsAvailable();
+            } catch (RemoteException e) {
+                Log.e(TAG, "onFqdnResultsAvailable: remote exception -- " + e);
+            }
+        }
+        mRegisteredFqdnResultsCallbacks.finishBroadcast();
+    }
+
+    /**
+     * Register a callback on FQDN result event
+     * @param callback IScanResultListener instance to add.
+     * @return true if succeed otherwise false.
+     */
+    public boolean registerFqdnResultsCallback(IFqdnResultsCallback callback) {
+        return mRegisteredFqdnResultsCallbacks.register(callback);
+    }
+
+    /**
+     * Unregister a callback on FQDN result event
+     * @param callback IScanResultListener instance to add.
+     */
+    public void unregisterFqdnResultsCallback(IFqdnResultsCallback callback) {
+        mRegisteredFqdnResultsCallbacks.unregister(callback);
     }
 
     /**

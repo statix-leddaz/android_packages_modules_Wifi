@@ -26,6 +26,7 @@ import android.net.DhcpInfo;
 import android.net.Network;
 import android.net.wifi.IActionListener;
 import android.net.wifi.IDppCallback;
+import android.net.wifi.IFqdnResultsCallback;
 import android.net.wifi.ILocalOnlyHotspotCallback;
 import android.net.wifi.INetworkRequestMatchCallback;
 import android.net.wifi.IOnWifiActivityEnergyInfoListener;
@@ -61,6 +62,8 @@ interface IWifiManager
     ParceledListSlice getPrivilegedConfiguredNetworks(String packageName, String featureId);
 
     Map getAllMatchingFqdnsForScanResults(in List<ScanResult> scanResult);
+
+    List<String> getAllFqdnsForScanResult(String bssid, String packageName, String featureId);
 
     Map getMatchingOsuProviders(in List<ScanResult> scanResult);
 
@@ -244,6 +247,10 @@ interface IWifiManager
     oneway void save(in WifiConfiguration config, in IBinder binder, in IActionListener listener, int callbackIdentifier);
 
     oneway void forget(int netId, in IBinder binder, in IActionListener listener, int callbackIdentifier);
+
+    void registerFqdnResultsCallback(in IFqdnResultsCallback callback, String packageName, String featureId);
+
+    void unregisterFqdnResultsCallback(in IFqdnResultsCallback callback, String packageName, String featureId);
 
     void registerScanResultsCallback(in IScanResultsCallback callback);
 

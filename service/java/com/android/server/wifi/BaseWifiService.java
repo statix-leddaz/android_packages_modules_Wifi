@@ -21,6 +21,7 @@ import android.net.DhcpInfo;
 import android.net.Network;
 import android.net.wifi.IActionListener;
 import android.net.wifi.IDppCallback;
+import android.net.wifi.IFqdnResultsCallback;
 import android.net.wifi.ILocalOnlyHotspotCallback;
 import android.net.wifi.INetworkRequestMatchCallback;
 import android.net.wifi.IOnWifiActivityEnergyInfoListener;
@@ -105,6 +106,12 @@ public class BaseWifiService extends IWifiManager.Stub {
     @Override
     public Map<String, Map<Integer, List<ScanResult>>> getAllMatchingFqdnsForScanResults(
             List<ScanResult> scanResults) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public List<String> getAllFqdnsForScanResult(String bssid, String packageName,
+            String featureId) {
         throw new UnsupportedOperationException();
     }
 
@@ -596,6 +603,18 @@ public class BaseWifiService extends IWifiManager.Stub {
     @Deprecated
     public void getTxPacketCount(String packageName, IBinder binder,
             ITxPacketCountListener callback, int callbackIdentifier) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void registerFqdnResultsCallback(IFqdnResultsCallback callback, String packageName,
+            String featureId) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void unregisterFqdnResultsCallback(IFqdnResultsCallback callback, String packageName,
+            String featureId) {
         throw new UnsupportedOperationException();
     }
 
