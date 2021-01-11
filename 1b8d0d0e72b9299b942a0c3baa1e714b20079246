@@ -34,6 +34,23 @@
       "parentUuid": "32e7c66a_b8e49a1d",
       "revId": "1b8d0d0e72b9299b942a0c3baa1e714b20079246",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "3e4bfff4_3e11ba16",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1480931
+      },
+      "writtenOn": "2021-01-11T18:33:04Z",
+      "side": 1,
+      "message": "As part of the new security parameters design, we are already handling this condition, also for Open and OWE.",
+      "revId": "1b8d0d0e72b9299b942a0c3baa1e714b20079246",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
