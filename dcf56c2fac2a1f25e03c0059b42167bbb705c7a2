@@ -1,0 +1,9 @@
+Code-Review+2: Etan Cohen <etancohen@google.com>
+API-Review+1: Etan Cohen <etancohen@google.com>
+Open-Source-Licensing+1: Lint 🤖 <ayeaye-gerrit@google.com>
+Presubmit-Verified+2: Treehugger Robot <treehugger-gerrit@google.com>
+Submitted-by: Roshan Pius <rpius@google.com>
+Submitted-at: Thu, 14 Jan 2021 15:38:08 +0000
+Reviewed-on: https://android-review.googlesource.com/c/platform/packages/modules/Wifi/+/1536814
+Project: platform/packages/modules/Wifi
+Branch: refs/heads/master
