@@ -1,0 +1,50 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "48c67e1c_4ed68b82",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 4787,
+      "author": {
+        "id": 1221725
+      },
+      "writtenOn": "2021-01-15T08:57:01Z",
+      "side": 1,
+      "message": "Suggest vcnNetworkPolicy; this need to be very obvious to the wifi folks regarding what this policy is/where it comes from",
+      "range": {
+        "startLine": 4787,
+        "startChar": 45,
+        "endLine": 4787,
+        "endChar": 58
+      },
+      "revId": "57c2da4f5538989af3b804487ac7583a069d2497",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "a538442b_47cd81bf",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 4801,
+      "author": {
+        "id": 1221725
+      },
+      "writtenOn": "2021-01-15T08:57:01Z",
+      "side": 1,
+      "message": "Hmm, this doesn\u0027t seem like a good idea to run updateCapabilities() on a new thread.\n\nMaybe create a HandlerExecutor with the StateMachine\u0027s handler?\n\nnew HandlerExecutor(getHandler());",
+      "range": {
+        "startLine": 4801,
+        "startChar": 20,
+        "endLine": 4801,
+        "endChar": 55
+      },
+      "revId": "57c2da4f5538989af3b804487ac7583a069d2497",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
