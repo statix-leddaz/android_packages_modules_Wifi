@@ -1,0 +1,10 @@
+Open-Source-Licensing+1: Lint 🤖 <ayeaye-gerrit@google.com>
+Presubmit-Verified+2: Treehugger Robot <treehugger-gerrit@google.com>
+Lint+1: Lint 🤖 <ayeaye-gerrit@google.com>
+Autosubmit+1: Chalard Jean <jchalard@google.com>
+Code-Review+2: Roshan Pius <rpius@google.com>
+Submitted-by: Treehugger Robot <treehugger-gerrit@google.com>
+Submitted-at: Mon, 18 Jan 2021 00:53:44 +0000
+Reviewed-on: https://android-review.googlesource.com/c/platform/packages/modules/Wifi/+/1547716
+Project: platform/packages/modules/Wifi
+Branch: refs/heads/master
