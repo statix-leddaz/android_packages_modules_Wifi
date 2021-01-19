@@ -24,6 +24,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "ee826849_0aad8b54",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 4787,
+      "author": {
+        "id": 1463964
+      },
+      "writtenOn": "2021-01-19T22:29:07Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "48c67e1c_4ed68b82",
+      "range": {
+        "startLine": 4787,
+        "startChar": 45,
+        "endLine": 4787,
+        "endChar": 58
+      },
+      "revId": "57c2da4f5538989af3b804487ac7583a069d2497",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "a538442b_47cd81bf",
@@ -37,6 +61,30 @@
       "writtenOn": "2021-01-15T08:57:01Z",
       "side": 1,
       "message": "Hmm, this doesn\u0027t seem like a good idea to run updateCapabilities() on a new thread.\n\nMaybe create a HandlerExecutor with the StateMachine\u0027s handler?\n\nnew HandlerExecutor(getHandler());",
+      "range": {
+        "startLine": 4801,
+        "startChar": 20,
+        "endLine": 4801,
+        "endChar": 55
+      },
+      "revId": "57c2da4f5538989af3b804487ac7583a069d2497",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "a7077aac_7ab7efae",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 4801,
+      "author": {
+        "id": 1463964
+      },
+      "writtenOn": "2021-01-19T22:29:07Z",
+      "side": 1,
+      "message": "Whoops - didn\u0027t know HandlerExecutor was a thing.\n\nDone.",
+      "parentUuid": "a538442b_47cd81bf",
       "range": {
         "startLine": 4801,
         "startChar": 20,
