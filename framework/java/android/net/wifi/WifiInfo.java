@@ -29,6 +29,7 @@ import android.net.TransportInfo;
 import android.os.Build;
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.telephony.SubscriptionManager;
 import android.text.TextUtils;
 
 import com.android.modules.utils.build.SdkLevel;
@@ -825,6 +826,20 @@ public class WifiInfo implements TransportInfo, Parcelable {
         return mRequestingPackageName;
     }
 
+    /**
+     * If this network is provisioned by a carrier, returns subscription Id corresponding to the
+     * associated SIM on the device. If this network is not provisioned by a carrier, returns
+     * {@link android.telephony.SubscriptionManager#INVALID_SUBSCRIPTION_ID}
+     *
+     * @see WifiNetworkSuggestion.Builder#setSubscriptionId(int)
+     * @see android.telephony.SubscriptionInfo#getSubscriptionId()
+     */
+    public int getSubscriptionId() {
+        if (!SdkLevel.isAtLeastS()) {
+            throw new UnsupportedOperationException();
+        }
+        return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    }
 
     /** @hide */
     @UnsupportedAppUsage
