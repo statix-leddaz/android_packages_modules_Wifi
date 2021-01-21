@@ -51,6 +51,24 @@
       "parentUuid": "dd0e1dd5_81af588a",
       "revId": "eb38fe7347c862a2d8bee62c6115d77be080e1bb",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "4cfce453_75a51fcd",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1241863
+      },
+      "writtenOn": "2021-01-21T15:40:16Z",
+      "side": 1,
+      "message": "Broadcom needs a solution for Android R.",
+      "parentUuid": "d7db45d3_2168ef6d",
+      "revId": "eb38fe7347c862a2d8bee62c6115d77be080e1bb",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
