@@ -33,6 +33,24 @@
       "message": "Les/Etan/Roshan - can you review this CL?",
       "revId": "eb38fe7347c862a2d8bee62c6115d77be080e1bb",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "d7db45d3_2168ef6d",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1074459
+      },
+      "writtenOn": "2021-01-21T14:54:16Z",
+      "side": 1,
+      "message": "This is being fixed internally with a different patch. Do we need to upstream this patch?",
+      "parentUuid": "dd0e1dd5_81af588a",
+      "revId": "eb38fe7347c862a2d8bee62c6115d77be080e1bb",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
