@@ -69,6 +69,24 @@
       "parentUuid": "d7db45d3_2168ef6d",
       "revId": "eb38fe7347c862a2d8bee62c6115d77be080e1bb",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "140197ce_0f36e3fd",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1074459
+      },
+      "writtenOn": "2021-01-21T17:15:55Z",
+      "side": 1,
+      "message": "Yeah, Broadcom can put this solution on their devices. I don\u0027t think we need to upstream this to AOSP since we\u0027re using different overlays, etc in the internal branch.",
+      "parentUuid": "4cfce453_75a51fcd",
+      "revId": "eb38fe7347c862a2d8bee62c6115d77be080e1bb",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
