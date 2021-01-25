@@ -248,6 +248,11 @@ public class ClientModeManager implements ActiveModeManager {
                 if (!mWifiNative.switchClientInterfaceToScanMode(mClientInterfaceName)) {
                     mModeListener.onStartFailure();
                 } else {
+                    updateConnectModeState(WifiManager.WIFI_STATE_DISABLED,
+                            WifiManager.WIFI_STATE_DISABLING);
+                    // Inform sar manager that wifi is being disabled
+                    mSarManager.setClientWifiState(WifiManager.WIFI_STATE_DISABLED);
+
                     mStateMachine.sendMessage(
                             ClientModeStateMachine.CMD_SWITCH_TO_SCAN_ONLY_MODE_CONTINUE);
                     mWifiMetrics.noteWifiOff(mIsDeferring, isTimedOut, deferringDurationMillis);
@@ -570,6 +575,12 @@ public class ClientModeManager implements ActiveModeManager {
                     mIfaceIsUp = false;
                 }
 
+                updateConnectModeState(WifiManager.WIFI_STATE_DISABLED,
+                        WifiManager.WIFI_STATE_DISABLING);
+
+                // Inform sar manager that wifi is being disabled
+                mSarManager.setClientWifiState(WifiManager.WIFI_STATE_DISABLED);
+
                 // once we leave started, nothing else to do...  stop the state machine
                 mRole = ROLE_UNSPECIFIED;
                 mStateMachine.quitNow();
@@ -674,11 +685,7 @@ public class ClientModeManager implements ActiveModeManager {
 
             @Override
             public void exit() {
-                updateConnectModeState(WifiManager.WIFI_STATE_DISABLED,
-                        WifiManager.WIFI_STATE_DISABLING);
 
-                // Inform sar manager that wifi is being disabled
-                mSarManager.setClientWifiState(WifiManager.WIFI_STATE_DISABLED);
             }
         }
     }
