@@ -3826,6 +3826,7 @@ public class ClientModeImpl extends StateMachine {
             mWifiHealthMonitor.setWifiEnabled(false);
             mWifiDataStall.reset();
             stopClientMode();
+            mTargetNetworkId = WifiConfiguration.INVALID_NETWORK_ID;
         }
 
         @Override
@@ -5203,6 +5204,7 @@ public class ClientModeImpl extends StateMachine {
     }
 
     private void sendConnectedState() {
+        if (mNetworkAgent == null) return;
         mNetworkAgent.markConnected();
         sendNetworkChangeBroadcast(DetailedState.CONNECTED);
     }
