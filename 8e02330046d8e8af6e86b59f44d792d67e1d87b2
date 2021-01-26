@@ -22,6 +22,30 @@
       },
       "revId": "8e02330046d8e8af6e86b59f44d792d67e1d87b2",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "e4ffc2fc_9af4b0ce",
+        "filename": "service/java/com/android/server/wifi/ClientModeManager.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 677,
+      "author": {
+        "id": 1074459
+      },
+      "writtenOn": "2021-01-26T17:50:08Z",
+      "side": 0,
+      "message": "zhujiatai@: Can you verify if the CL above fixes your issue?",
+      "parentUuid": "5ccfb7b6_6040d27c",
+      "range": {
+        "startLine": 677,
+        "startChar": 16,
+        "endLine": 677,
+        "endChar": 38
+      },
+      "revId": "8e02330046d8e8af6e86b59f44d792d67e1d87b2",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
