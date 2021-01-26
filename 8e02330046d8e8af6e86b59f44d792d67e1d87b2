@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "5ccfb7b6_6040d27c",
+        "filename": "service/java/com/android/server/wifi/ClientModeManager.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 677,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-01-26T17:04:13Z",
+      "side": 0,
+      "message": "Hey Roshan, this looks a lot like b/174119612, which you fixed for S. Internal CL ag/13178619, AOSP CL https://android-review.googlesource.com/c/platform/frameworks/opt/net/wifi/+/1521171\n\nCould you take a look? Thanks!",
+      "range": {
+        "startLine": 677,
+        "startChar": 16,
+        "endLine": 677,
+        "endChar": 38
+      },
+      "revId": "8e02330046d8e8af6e86b59f44d792d67e1d87b2",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
