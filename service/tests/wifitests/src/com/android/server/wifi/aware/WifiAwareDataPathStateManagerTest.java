@@ -152,6 +152,7 @@ public class WifiAwareDataPathStateManagerTest extends WifiBaseTest {
         mMockLooperHandler = new Handler(mMockLooper.getLooper());
 
         when(mMockContext.getSystemService(Context.CONNECTIVITY_SERVICE)).thenReturn(mMockCm);
+        when(mMockContext.getSystemService(ConnectivityManager.class)).thenReturn(mMockCm);
         when(mMockContext.getSystemServiceName(PowerManager.class)).thenReturn(
                 Context.POWER_SERVICE);
         when(mMockContext.getSystemService(PowerManager.class)).thenReturn(mMockPowerManager);
