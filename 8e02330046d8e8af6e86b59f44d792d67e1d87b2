@@ -70,6 +70,30 @@
       },
       "revId": "8e02330046d8e8af6e86b59f44d792d67e1d87b2",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "fec7f78c_322ffa2c",
+        "filename": "service/java/com/android/server/wifi/ClientModeManager.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 677,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-01-27T21:30:55Z",
+      "side": 0,
+      "message": "I see, thanks for the explanation.\n\nCurrently, we send out the disabled broadcast immediately upon exiting ConnectModeState, but you\u0027re saying we should wait for the time consuming WifiNative operations to complete before sending out the broadcasts.\n\nMakes sense to me. \nIt\u0027s just that we need to now duplicate the broadcast in every possible location we exit ConnectModeState. Is there a way to finish the time consuming WifiNative operations before exiting ConnectModeState? Then we can leave the broadcast in ConnectModeState.exit().\nWhat do you think Roshan?",
+      "parentUuid": "4448e12d_c9964abe",
+      "range": {
+        "startLine": 677,
+        "startChar": 16,
+        "endLine": 677,
+        "endChar": 38
+      },
+      "revId": "8e02330046d8e8af6e86b59f44d792d67e1d87b2",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }

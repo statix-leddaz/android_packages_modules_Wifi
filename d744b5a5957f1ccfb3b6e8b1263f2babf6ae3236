@@ -1,0 +1,50 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "e6309b1d_24c6a2fa",
+        "filename": "service/java/com/android/server/wifi/ClientModeManager.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 248,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-01-27T21:30:55Z",
+      "side": 1,
+      "message": "And similarly here waits for the interface to finish switching to scan only mode before sending the disabled broadcast.",
+      "range": {
+        "startLine": 248,
+        "startChar": 33,
+        "endLine": 248,
+        "endChar": 64
+      },
+      "revId": "d744b5a5957f1ccfb3b6e8b1263f2babf6ae3236",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "edb2ae63_bda7d638",
+        "filename": "service/java/com/android/server/wifi/ClientModeManager.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 573,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-01-27T21:30:55Z",
+      "side": 1,
+      "message": "I see, so this change moves the broadcast after the interface was fully torn down.",
+      "range": {
+        "startLine": 573,
+        "startChar": 32,
+        "endLine": 573,
+        "endChar": 49
+      },
+      "revId": "d744b5a5957f1ccfb3b6e8b1263f2babf6ae3236",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
