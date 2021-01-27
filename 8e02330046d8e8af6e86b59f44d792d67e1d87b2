@@ -46,6 +46,30 @@
       },
       "revId": "8e02330046d8e8af6e86b59f44d792d67e1d87b2",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "4448e12d_c9964abe",
+        "filename": "service/java/com/android/server/wifi/ClientModeManager.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 677,
+      "author": {
+        "id": 1733189
+      },
+      "writtenOn": "2021-01-27T02:51:41Z",
+      "side": 0,
+      "message": "@Roshan \u0026 David\nThe changes are not the same.\nI\u0027ve sorted out the process. Let\u0027s restore the scene of quick opening after closing, because sometimes there is a need to restart WiFi. Suppose WiFi takes 0.5s to toggle off and 0.5s to toggle on and don\u0027t think about scanOnlyMode.\n\n1.When the user toggles off wifi, ClientModeManager will quit the stateMachine, ConnectModeState will exit and the WIFI_STATE_DISABLED broadcast will be sent at onece, the switch in wifiSettings will be enabled.It takes almost no time.\n\n2.Then the user can toggle on the wifi. CMD_WIFI_TOGGLED will be put into the messageQueue in WifiController to wait 0.5s for handling. At this time, the WiFi thread is processing the process of toggling off WiFi. When the wifi is toggled off, the onStopped callback in ActiveModeWarden will be called, and then CMD_WIFI_TOGGLED will be handled. \n\n3.CMD_WIFI_TOGGLED will wait 0.5s for toggling off wifi and then be handled last for 0.5s.From the UI, it takes almost no time to close, but it takes double time to open.\n\nIn general, it\u0027s a process optimization and the only difference is the presentation of the UI.When WiFi is toggled off and on again quickly, the switch of WiFi changing from off to on consumes more time than really cost in\ntoggle on. It also includes the time cost in toggled off.\n \nThanks.",
+      "parentUuid": "e4ffc2fc_9af4b0ce",
+      "range": {
+        "startLine": 677,
+        "startChar": 16,
+        "endLine": 677,
+        "endChar": 38
+      },
+      "revId": "8e02330046d8e8af6e86b59f44d792d67e1d87b2",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
