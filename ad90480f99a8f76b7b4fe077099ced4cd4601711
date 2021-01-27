@@ -16,6 +16,24 @@
       "message": "Thanks! Does this need to be cherry-picked to sc-dev?",
       "revId": "ad90480f99a8f76b7b4fe077099ced4cd4601711",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "c99f91c1_1ef9fead",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2021-01-27T17:52:36Z",
+      "side": 1,
+      "message": "Everything from AOSP now has to be cherry-picked to sc-dev. I assume that this is a well know/worn path for the networking team.",
+      "parentUuid": "3b7d99b2_ab9611c1",
+      "revId": "ad90480f99a8f76b7b4fe077099ced4cd4601711",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
