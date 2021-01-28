@@ -94,6 +94,30 @@
       },
       "revId": "8e02330046d8e8af6e86b59f44d792d67e1d87b2",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "aae6a3bd_1203d7fe",
+        "filename": "service/java/com/android/server/wifi/ClientModeManager.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 677,
+      "author": {
+        "id": 1074459
+      },
+      "writtenOn": "2021-01-28T23:24:24Z",
+      "side": 0,
+      "message": "We could do make this change more easily in S with the recent refactors. dysu@: Can we move the broadcast sending to the onStopped() handling added internally in ag/13351527?",
+      "parentUuid": "fec7f78c_322ffa2c",
+      "range": {
+        "startLine": 677,
+        "startChar": 16,
+        "endLine": 677,
+        "endChar": 38
+      },
+      "revId": "8e02330046d8e8af6e86b59f44d792d67e1d87b2",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
