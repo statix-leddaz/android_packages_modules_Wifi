@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "77f54dfa_4fc33a98",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1015428
+      },
+      "writtenOn": "2021-01-28T07:18:14Z",
+      "side": 1,
+      "message": "Wait don\u0027t review this just yet... WifiAwareDataPathStateManagerTests don\u0027t pass. Some of them check that there were no interactions on the mock and depended on the mock not being installed.",
+      "revId": "5b07007b76ef386709e1c2975e4f37a279bfb787",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
