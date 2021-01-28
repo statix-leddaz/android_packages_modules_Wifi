@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "951d7fa5_78b6c88a",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1306837
+      },
+      "writtenOn": "2021-01-28T08:21:01Z",
+      "side": 1,
+      "message": "This cannot get build pass since the capability is not yet a system API.",
+      "revId": "799fdb1d39c17382716444bb8d6a683e46f20f7a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
