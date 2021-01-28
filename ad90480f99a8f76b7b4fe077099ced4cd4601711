@@ -34,6 +34,41 @@
       "parentUuid": "3b7d99b2_ab9611c1",
       "revId": "ad90480f99a8f76b7b4fe077099ced4cd4601711",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "f4c3c79b_43f95f69",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1015428
+      },
+      "writtenOn": "2021-01-28T07:04:12Z",
+      "side": 1,
+      "message": "Nope. AOSP merges into sc-dev for the time being.\nhttps://g3doc.corp.google.com/company/teams/android/releasing/android-s/branching.md?cl\u003dhead#aosp-auto-mergers\n\nFeel like moving to AOSP yet ? :D",
+      "parentUuid": "c99f91c1_1ef9fead",
+      "revId": "ad90480f99a8f76b7b4fe077099ced4cd4601711",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "23a86e58_850c2bf5",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1015428
+      },
+      "writtenOn": "2021-01-28T07:04:12Z",
+      "side": 1,
+      "message": "Turns out there was another one of those... as long as TH flaked this one, I might as well update it, though I\u0027ll need a new +2.",
+      "revId": "ad90480f99a8f76b7b4fe077099ced4cd4601711",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
