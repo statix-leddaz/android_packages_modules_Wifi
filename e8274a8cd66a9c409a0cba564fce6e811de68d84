@@ -16,6 +16,23 @@
       "message": "Updated the cover comment to give more context on some of the more surprising parts of this.",
       "revId": "e8274a8cd66a9c409a0cba564fce6e811de68d84",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "688eb6b6_cfdc369d",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 4
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2021-01-28T16:20:35Z",
+      "side": 1,
+      "message": "+2 and turns out aosp/master auto-merges down to the correct dev branch so no need for cherry-picking.",
+      "revId": "e8274a8cd66a9c409a0cba564fce6e811de68d84",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
