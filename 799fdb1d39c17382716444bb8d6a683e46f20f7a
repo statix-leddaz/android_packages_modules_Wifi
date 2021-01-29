@@ -39,6 +39,30 @@
       },
       "revId": "799fdb1d39c17382716444bb8d6a683e46f20f7a",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "3a1c6376_9937341b",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 828,
+      "author": {
+        "id": 1221725
+      },
+      "writtenOn": "2021-01-29T09:01:33Z",
+      "side": 1,
+      "message": "Yep, this looks right.\n\nmNetworkCapabilitiesFilter is used as a baseline for the NetworkAgent\u0027s capabilities, so this looks right.",
+      "parentUuid": "86855e5a_3ec23d94",
+      "range": {
+        "startLine": 828,
+        "startChar": 0,
+        "endLine": 828,
+        "endChar": 82
+      },
+      "revId": "799fdb1d39c17382716444bb8d6a683e46f20f7a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
