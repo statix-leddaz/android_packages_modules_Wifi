@@ -62,6 +62,7 @@ import android.util.LocalLog;
 
 import androidx.test.filters.SmallTest;
 
+import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.ActiveModeWarden.ExternalClientModeManagerRequestListener;
 import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.util.LruConnectionTracker;
@@ -382,7 +383,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         WifiNetworkSelector ns = mock(WifiNetworkSelector.class);
 
         WifiConfiguration candidate = generateWifiConfig(
-                0, CANDIDATE_NETWORK_ID, CANDIDATE_SSID, false, true, null, null);
+                0, CANDIDATE_NETWORK_ID, CANDIDATE_SSID, false, true, null, null,
+                WifiConfigurationTestUtil.SECURITY_NONE);
         candidate.BSSID = ClientModeImpl.SUPPLICANT_BSSID_ANY;
         ScanResult candidateScanResult = new ScanResult();
         candidateScanResult.SSID = CANDIDATE_SSID;
@@ -394,7 +396,10 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         when(mWifiConfigManager.getConfiguredNetwork(CANDIDATE_NETWORK_ID)).thenReturn(candidate);
         MacAddress macAddress = MacAddress.fromString(CANDIDATE_BSSID);
-        WifiCandidates.Key key = new WifiCandidates.Key(mock(ScanResultMatchInfo.class),
+        ScanResultMatchInfo matchInfo = mock(ScanResultMatchInfo.class);
+        // Assume that this test use the default security params.
+        when(matchInfo.getDefaultSecurityParams()).thenReturn(candidate.getDefaultSecurityParams());
+        WifiCandidates.Key key = new WifiCandidates.Key(matchInfo,
                 macAddress, 0);
         when(mCandidate1.getKey()).thenReturn(key);
         when(mCandidate1.getScanRssi()).thenReturn(-40);
@@ -1419,7 +1424,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         // Setup WifiNetworkSelector to return 2 valid candidates from scan results
         MacAddress macAddress = MacAddress.fromString(CANDIDATE_BSSID_2);
         WifiCandidates.Key key = new WifiCandidates.Key(mock(ScanResultMatchInfo.class),
-                macAddress, 0);
+                macAddress, 0, WifiConfiguration.SECURITY_TYPE_OPEN);
         WifiCandidates.Candidate otherCandidate = mock(WifiCandidates.Candidate.class);
         when(otherCandidate.getKey()).thenReturn(key);
         List<WifiCandidates.Candidate> candidateList = new ArrayList<>();
@@ -1485,7 +1490,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         when(mClock.getElapsedSinceBootMillis()).thenReturn(0L);
         MacAddress macAddress = MacAddress.fromString(CANDIDATE_BSSID_2);
         WifiCandidates.Key key = new WifiCandidates.Key(mock(ScanResultMatchInfo.class),
-                macAddress, 0);
+                macAddress, 0, WifiConfiguration.SECURITY_TYPE_OPEN);
         WifiCandidates.Candidate otherCandidate = mock(WifiCandidates.Candidate.class);
         when(otherCandidate.getKey()).thenReturn(key);
         List<WifiCandidates.Candidate> candidateList = new ArrayList<>();
@@ -2578,6 +2583,10 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
                     WorkSource workSource) throws Exception {
                 assertEquals(settings.band, WifiScanner.WIFI_BAND_UNSPECIFIED);
                 assertEquals(settings.channels.length, channelList.size());
+                if (SdkLevel.isAtLeastS()) {
+                    assertEquals("Should never force enable RNR for partial scans",
+                            WifiScanner.WIFI_RNR_NOT_NEEDED, settings.getRnrSetting());
+                }
                 for (int chanIdx = 0; chanIdx < settings.channels.length; chanIdx++) {
                     assertTrue(channelList.contains(settings.channels[chanIdx].frequency));
                 }
@@ -2674,6 +2683,10 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
                     WorkSource workSource) throws Exception {
                 assertEquals(settings.band, WifiScanner.WIFI_BAND_ALL);
                 assertNull(settings.channels);
+                if (SdkLevel.isAtLeastS()) {
+                    assertEquals("RNR should be enabled for full scans",
+                            WifiScanner.WIFI_RNR_ENABLED, settings.getRnrSetting());
+                }
             }}).when(mWifiScanner).startScan(anyObject(), anyObject(), anyObject(), anyObject());
 
         // Set screen to ON
@@ -2923,7 +2936,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         when(mWifiConnectivityHelper.isFirmwareRoamingSupported()).thenReturn(true);
         // Prepare for a forced connection attempt.
         WifiConfiguration currentNetwork = generateWifiConfig(
-                0, CANDIDATE_NETWORK_ID, CANDIDATE_SSID, false, true, null, null);
+                0, CANDIDATE_NETWORK_ID, CANDIDATE_SSID, false, true, null, null,
+                WifiConfigurationTestUtil.SECURITY_NONE);
         when(mWifiConfigManager.getConfiguredNetwork(anyInt())).thenReturn(currentNetwork);
         mWifiConnectivityManager.prepareForForcedConnection(1);
         verify(mWifiBlocklistMonitor).clearBssidBlocklistForSsid(CANDIDATE_SSID);
@@ -3002,7 +3016,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         // Set up the candidate configuration such that it has a BSSID specified.
         WifiConfiguration candidate = generateWifiConfig(
-                0, CANDIDATE_NETWORK_ID, CANDIDATE_SSID, false, true, null, null);
+                0, CANDIDATE_NETWORK_ID, CANDIDATE_SSID, false, true, null, null,
+                WifiConfigurationTestUtil.SECURITY_NONE);
         candidate.BSSID = CANDIDATE_BSSID; // config specified
         ScanResult candidateScanResult = new ScanResult();
         candidateScanResult.SSID = CANDIDATE_SSID;
@@ -3058,7 +3073,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     public void useConfigSpecifiedBssidToConnectionWhenFirmwareRoamingOff() {
         // Set up the candidate configuration such that it has a BSSID specified.
         WifiConfiguration candidate = generateWifiConfig(
-                0, CANDIDATE_NETWORK_ID, CANDIDATE_SSID, false, true, null, null);
+                0, CANDIDATE_NETWORK_ID, CANDIDATE_SSID, false, true, null, null,
+                WifiConfigurationTestUtil.SECURITY_NONE);
         candidate.BSSID = CANDIDATE_BSSID; // config specified
         ScanResult candidateScanResult = new ScanResult();
         candidateScanResult.SSID = CANDIDATE_SSID;
@@ -3136,7 +3152,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     public void dropConnectAttemptIfConfigSpecifiedBssidDifferentFromScanResultBssid() {
         // Set up the candidate configuration such that it has a BSSID specified.
         WifiConfiguration candidate = generateWifiConfig(
-                0, CANDIDATE_NETWORK_ID, CANDIDATE_SSID, false, true, null, null);
+                0, CANDIDATE_NETWORK_ID, CANDIDATE_SSID, false, true, null, null,
+                WifiConfigurationTestUtil.SECURITY_NONE);
         candidate.BSSID = CANDIDATE_BSSID; // config specified
         ScanResult candidateScanResult = new ScanResult();
         candidateScanResult.SSID = CANDIDATE_SSID;
@@ -3170,12 +3187,14 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         // Mock the currently connected network which has the same networkID and
         // SSID as the one to be selected.
         WifiConfiguration currentNetwork = generateWifiConfig(
-                TEST_CONNECTED_NETWORK_ID, 0, CANDIDATE_SSID, false, true, null, null);
+                TEST_CONNECTED_NETWORK_ID, 0, CANDIDATE_SSID, false, true, null, null,
+                WifiConfigurationTestUtil.SECURITY_NONE);
         when(mWifiConfigManager.getConfiguredNetwork(anyInt())).thenReturn(currentNetwork);
 
         // Set up the candidate configuration such that it has a BSSID specified.
         WifiConfiguration candidate = generateWifiConfig(
-                TEST_CONNECTED_NETWORK_ID, 0, CANDIDATE_SSID, false, true, null, null);
+                TEST_CONNECTED_NETWORK_ID, 0, CANDIDATE_SSID, false, true, null, null,
+                WifiConfigurationTestUtil.SECURITY_NONE);
         candidate.BSSID = CANDIDATE_BSSID; // config specified
         ScanResult candidateScanResult = new ScanResult();
         candidateScanResult.SSID = CANDIDATE_SSID;
