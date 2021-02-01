@@ -22,10 +22,10 @@ import static org.mockito.Mockito.times;
 
 import android.content.Context;
 import android.net.wifi.ScanResult;
-import android.util.LocalLog;
 
 import androidx.test.filters.SmallTest;
 
+import com.android.modules.utils.LocalLog;
 import com.android.wifi.resources.R;
 
 import org.junit.Before;

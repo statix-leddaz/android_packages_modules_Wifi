@@ -23,9 +23,9 @@ import static org.mockito.Mockito.*;
 
 import android.net.wifi.WifiConfiguration;
 import android.test.suitebuilder.annotation.SmallTest;
-import android.util.LocalLog;
 import android.util.Pair;
 
+import com.android.modules.utils.LocalLog;
 import com.android.server.wifi.WifiNetworkSelector.NetworkNominator.OnConnectableListener;
 import com.android.server.wifi.WifiNetworkSelectorTestUtil.ScanDetailsAndWifiConfigs;
 import com.android.server.wifi.hotspot2.PasspointNetworkNominateHelper;

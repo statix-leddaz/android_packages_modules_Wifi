@@ -20,9 +20,9 @@ import android.annotation.NonNull;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.telephony.TelephonyManager;
-import android.util.LocalLog;
 import android.util.Pair;
 
+import com.android.modules.utils.LocalLog;
 import com.android.server.wifi.hotspot2.PasspointNetworkNominateHelper;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 

@@ -41,9 +41,9 @@ import android.provider.Settings.Secure;
 import android.security.keystore.AndroidKeyStoreProvider;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
-import android.util.LocalLog;
 import android.util.Log;
 
+import com.android.modules.utils.LocalLog;
 import com.android.server.wifi.aware.WifiAwareMetrics;
 import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.hotspot2.PasspointNetworkNominateHelper;

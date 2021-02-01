@@ -39,11 +39,11 @@ import android.os.HandlerExecutor;
 import android.os.Process;
 import android.os.WorkSource;
 import android.util.ArrayMap;
-import android.util.LocalLog;
 import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.modules.utils.LocalLog;
 import com.android.server.wifi.util.ScanResultUtil;
 import com.android.wifi.resources.R;
 

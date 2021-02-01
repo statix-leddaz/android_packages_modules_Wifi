@@ -49,10 +49,10 @@ import android.os.Process;
 import android.os.SystemClock;
 import android.os.WorkSource;
 import android.os.test.TestLooper;
-import android.util.LocalLog;
 
 import androidx.test.filters.SmallTest;
 
+import com.android.modules.utils.LocalLog;
 import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.util.LruConnectionTracker;
 import com.android.server.wifi.util.ScanResultUtil;

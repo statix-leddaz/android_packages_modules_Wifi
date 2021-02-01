@@ -35,10 +35,10 @@ import android.net.wifi.WifiConfiguration;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.util.LocalLog;
 
 import androidx.test.filters.SmallTest;
 
+import com.android.modules.utils.LocalLog;
 import com.android.server.wifi.WifiNetworkSelector.NetworkNominator.OnConnectableListener;
 import com.android.server.wifi.WifiNetworkSelectorTestUtil.ScanDetailsAndWifiConfigs;
 import com.android.server.wifi.util.WifiPermissionsUtil;

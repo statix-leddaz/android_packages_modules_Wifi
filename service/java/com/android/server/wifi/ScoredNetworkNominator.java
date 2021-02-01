@@ -28,11 +28,11 @@ import android.net.wifi.WifiConfiguration;
 import android.os.Handler;
 import android.provider.Settings;
 import android.text.TextUtils;
-import android.util.LocalLog;
 import android.util.Log;
 import android.util.Pair;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.modules.utils.LocalLog;
 import com.android.server.wifi.util.ScanResultUtil;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 

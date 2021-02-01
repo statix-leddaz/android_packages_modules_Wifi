@@ -19,9 +19,9 @@ package com.android.server.wifi.hotspot2;
 import android.annotation.NonNull;
 import android.net.wifi.WifiConfiguration;
 import android.os.Process;
-import android.util.LocalLog;
 import android.util.Pair;
 
+import com.android.modules.utils.LocalLog;
 import com.android.server.wifi.NetworkUpdateResult;
 import com.android.server.wifi.ScanDetail;
 import com.android.server.wifi.WifiConfigManager;

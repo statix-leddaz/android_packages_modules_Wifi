@@ -35,10 +35,10 @@ import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiConfiguration.NetworkSelectionStatus;
 import android.net.wifi.WifiInfo;
 import android.os.SystemClock;
-import android.util.LocalLog;
 
 import androidx.test.filters.SmallTest;
 
+import com.android.modules.utils.LocalLog;
 import com.android.server.wifi.WifiNetworkSelectorTestUtil.ScanDetailsAndWifiConfigs;
 import com.android.server.wifi.hotspot2.NetworkDetail;
 import com.android.server.wifi.proto.nano.WifiMetricsProto;

@@ -24,10 +24,10 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.util.ArrayMap;
 import android.util.ArraySet;
-import android.util.LocalLog;
 import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.modules.utils.LocalLog;
 import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;

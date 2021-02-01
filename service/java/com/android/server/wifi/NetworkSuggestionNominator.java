@@ -18,10 +18,10 @@ package com.android.server.wifi;
 
 import android.annotation.NonNull;
 import android.net.wifi.WifiConfiguration;
-import android.util.LocalLog;
 import android.util.Log;
 import android.util.Pair;
 
+import com.android.modules.utils.LocalLog;
 import com.android.server.wifi.WifiNetworkSuggestionsManager.ExtendedWifiNetworkSuggestion;
 import com.android.server.wifi.hotspot2.PasspointNetworkNominateHelper;
 
