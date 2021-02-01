@@ -79,9 +79,10 @@ public class WifiInfoTest {
         writeWifiInfo.setWifiStandard(TEST_WIFI_STANDARD);
         writeWifiInfo.setMaxSupportedTxLinkSpeedMbps(TEST_MAX_SUPPORTED_TX_LINK_SPEED_MBPS);
         writeWifiInfo.setMaxSupportedRxLinkSpeedMbps(TEST_MAX_SUPPORTED_RX_LINK_SPEED_MBPS);
+        writeWifiInfo.setMacAddress(TEST_BSSID);
 
         // Make a copy which allows parcelling of location sensitive data.
-        WifiInfo writeWifiInfoWithLocationSensitiveInfo = writeWifiInfo.makeCopy(true);
+        WifiInfo writeWifiInfoWithLocationSensitiveInfo = writeWifiInfo.makeCopy(true, true);
 
         Parcel parcel = Parcel.obtain();
         writeWifiInfoWithLocationSensitiveInfo.writeToParcel(parcel, 0);
@@ -108,15 +109,15 @@ public class WifiInfoTest {
                 readWifiInfo.getMaxSupportedTxLinkSpeedMbps());
         assertEquals(TEST_MAX_SUPPORTED_RX_LINK_SPEED_MBPS,
                 readWifiInfo.getMaxSupportedRxLinkSpeedMbps());
+        assertEquals(TEST_BSSID, readWifiInfo.getMacAddress());
     }
 
     /**
      *  Verify parcel write/read with WifiInfo.
      */
     @Test
-    public void testWifiInfoParcelWriteReadWithoutLocationSensitiveInfo() throws Exception {
-        assumeTrue(SdkLevel.isAtLeastS());
-
+    public void testWifiInfoParcelWriteReadWithoutLocationSensitiveAndLocalMacInfo()
+            throws Exception {
         WifiInfo writeWifiInfo = new WifiInfo();
         writeWifiInfo.txSuccess = TEST_TX_SUCCESS;
         writeWifiInfo.txRetries = TEST_TX_RETRIES;
@@ -133,9 +134,10 @@ public class WifiInfoTest {
         writeWifiInfo.setWifiStandard(TEST_WIFI_STANDARD);
         writeWifiInfo.setMaxSupportedTxLinkSpeedMbps(TEST_MAX_SUPPORTED_TX_LINK_SPEED_MBPS);
         writeWifiInfo.setMaxSupportedRxLinkSpeedMbps(TEST_MAX_SUPPORTED_RX_LINK_SPEED_MBPS);
+        writeWifiInfo.setMacAddress(TEST_BSSID);
 
         // Make a copy which allows parcelling of location sensitive data.
-        WifiInfo writeWifiInfoWithoutLocationSensitiveInfo = writeWifiInfo.makeCopy(false);
+        WifiInfo writeWifiInfoWithoutLocationSensitiveInfo = writeWifiInfo.makeCopy(false, false);
 
         Parcel parcel = Parcel.obtain();
         writeWifiInfoWithoutLocationSensitiveInfo.writeToParcel(parcel, 0);
@@ -162,6 +164,7 @@ public class WifiInfoTest {
                 readWifiInfo.getMaxSupportedTxLinkSpeedMbps());
         assertEquals(TEST_MAX_SUPPORTED_RX_LINK_SPEED_MBPS,
                 readWifiInfo.getMaxSupportedRxLinkSpeedMbps());
+        assertEquals(WifiInfo.DEFAULT_MAC_ADDRESS, readWifiInfo.getMacAddress());
     }
 
     @Test

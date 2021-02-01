@@ -201,27 +201,20 @@ public final class WifiAwareNetworkInfo implements TransportInfo, Parcelable {
     /**
      * Make a copy of WifiAwareNetworkInfo instance.
      *
-     * @param parcelSensitiveFields Whether to parcel location sensitive fields or not.
+     * @param parcelLocationSensitiveFields Whether the location sensitive fields should be kept
+     *                                      when parceling
+     * @param parcelLocalMacAddressFields Whether the local MAC address fields should be kept when
+     *                                    parceling
      * @return instance of {@link WifiAwareNetworkInfo}.
      */
-    @Override
     @NonNull
-    public WifiAwareNetworkInfo makeCopy(boolean parcelSensitiveFields) {
+    @Override
+    public WifiAwareNetworkInfo makeCopy(
+            boolean parcelLocationSensitiveFields, boolean parcelLocalMacAddressFields) {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
         }
         // No location sensitive data, ignore parcelSensitiveFields.
         return new WifiAwareNetworkInfo(this);
-    }
-
-    /**
-     * Whether it has location sensitive data or not.
-     */
-    @Override
-    public boolean hasLocationSensitiveFields() {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
-        return false;
     }
 }

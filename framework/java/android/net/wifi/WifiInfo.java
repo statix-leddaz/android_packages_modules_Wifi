@@ -92,7 +92,13 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * Indicates whether parceling should preserve fields that are set based on permissions of
      * the process receiving the {@link NetworkCapabilities}.
      */
-    private final boolean mParcelLocationSenstiveFields;
+    private final boolean mParcelLocationSensitiveFields;
+
+    /**
+     * Indicates whether parceling should preserve fields that are set based on permissions of
+     * the process receiving the {@link NetworkCapabilities}.
+     */
+    private final boolean mParcelLocalMacAddressFields;
 
     private SupplicantState mSupplicantState;
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.P, trackingBug = 115609023)
@@ -318,7 +324,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
     /** @hide */
     @UnsupportedAppUsage
     public WifiInfo() {
-        mParcelLocationSenstiveFields = false;
+        mParcelLocationSensitiveFields = false;
+        mParcelLocalMacAddressFields = false;
         mWifiSsid = null;
         mBSSID = null;
         mNetworkId = -1;
@@ -330,11 +337,12 @@ public class WifiInfo implements TransportInfo, Parcelable {
 
     /** @hide */
     public void reset() {
-        if (mParcelLocationSenstiveFields) {
+        if (mParcelLocationSensitiveFields || mParcelLocalMacAddressFields) {
             // To ensure that we don't accidentally set this bit on the master copy of WifiInfo
             // (reset is only invoked in the master copy)
             throw new UnsupportedOperationException(
-                    "Cannot clear WifiInfo when parcelSensitiveLocationFields is set");
+                    "Cannot clear WifiInfo when parcelLocationSensitiveLocationFields or "
+                            + "parcelLocalMacAddressFields is set");
         }
         setInetAddress(null);
         setBSSID(null);
@@ -370,15 +378,17 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * @hide
      */
     public WifiInfo(WifiInfo source) {
-        this(source, true);
+        this(source, true, true);
     }
 
     /**
      * Copy constructor
      * @hide
      */
-    private WifiInfo(WifiInfo source, boolean parcelSensitiveFields) {
-        mParcelLocationSenstiveFields = parcelSensitiveFields;
+    private WifiInfo(WifiInfo source, boolean parcelLocationSensitiveFields,
+            boolean parcelLocalMacAddressFields) {
+        mParcelLocationSensitiveFields = parcelLocationSensitiveFields;
+        mParcelLocalMacAddressFields = parcelLocalMacAddressFields;
         if (source != null) {
             mSupplicantState = source.mSupplicantState;
             mBSSID = source.mBSSID;
@@ -699,6 +709,10 @@ public class WifiInfo implements TransportInfo, Parcelable {
         this.mMacAddress = macAddress;
     }
 
+    /**
+     * Returns the MAC address used for this connection.
+     * @return MAC address of the connection.
+     */
     public String getMacAddress() {
         return mMacAddress;
     }
@@ -971,7 +985,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
 
     /** Implement the Parcelable interface {@hide} */
     public void writeToParcel(Parcel dest, int flags) {
-        dest.writeInt(mParcelLocationSenstiveFields ? mNetworkId : INVALID_NETWORK_ID);
+        dest.writeInt(mParcelLocationSensitiveFields ? mNetworkId : INVALID_NETWORK_ID);
         dest.writeInt(mRssi);
         dest.writeInt(mLinkSpeed);
         dest.writeInt(mTxLinkSpeed);
@@ -986,7 +1000,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
         if (mWifiSsid != null) {
             dest.writeInt(1);
             final WifiSsid ssid;
-            if (mParcelLocationSenstiveFields) {
+            if (mParcelLocationSensitiveFields) {
                 ssid = mWifiSsid;
             } else {
                 ssid = WifiSsid.createFromHex(null);
@@ -995,8 +1009,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
         } else {
             dest.writeInt(0);
         }
-        dest.writeString(mParcelLocationSenstiveFields ? mBSSID : DEFAULT_MAC_ADDRESS);
-        dest.writeString(mMacAddress);
+        dest.writeString(mParcelLocationSensitiveFields ? mBSSID : DEFAULT_MAC_ADDRESS);
+        dest.writeString(mParcelLocalMacAddressFields ? mMacAddress : DEFAULT_MAC_ADDRESS);
         dest.writeInt(mMeteredHint ? 1 : 0);
         dest.writeInt(mEphemeral ? 1 : 0);
         dest.writeInt(mTrusted ? 1 : 0);
@@ -1012,12 +1026,12 @@ public class WifiInfo implements TransportInfo, Parcelable {
         mSupplicantState.writeToParcel(dest, flags);
         dest.writeInt(mOsuAp ? 1 : 0);
         dest.writeString(mRequestingPackageName);
-        dest.writeString(mParcelLocationSenstiveFields ? mFqdn : null);
-        dest.writeString(mParcelLocationSenstiveFields ? mProviderFriendlyName : null);
+        dest.writeString(mParcelLocationSensitiveFields ? mFqdn : null);
+        dest.writeString(mParcelLocationSensitiveFields ? mProviderFriendlyName : null);
         dest.writeInt(mWifiStandard);
         dest.writeInt(mMaxSupportedTxLinkSpeed);
         dest.writeInt(mMaxSupportedRxLinkSpeed);
-        dest.writeString(mParcelLocationSenstiveFields ? mPasspointUniqueId : null);
+        dest.writeString(mParcelLocationSensitiveFields ? mPasspointUniqueId : null);
     }
 
     /** Implement the Parcelable interface {@hide} */
@@ -1178,16 +1192,36 @@ public class WifiInfo implements TransportInfo, Parcelable {
     /**
      * Make a copy of WifiInfo instance.
      *
-     * @param parcelSensitiveFields Whether to parcel location sensitive fields or not.
+     * @param parcelLocationSensitiveFields Whether the location sensitive fields should be kept
+     *                                      when parceling
+     * @param parcelLocalMacAddressFields Whether the local MAC address fields should be kept when
+     *                                    parceling
+     * @return instance of {@link WifiInfo}.
+     * @hide
+     */
+    @NonNull
+    public WifiInfo makeCopyInternal(boolean parcelLocationSensitiveFields,
+            boolean parcelLocalMacAddressFields) {
+        return new WifiInfo(this, parcelLocationSensitiveFields, parcelLocalMacAddressFields);
+    }
+
+    /**
+     * Make a copy of WifiInfo instance.
+     *
+     * @param parcelLocationSensitiveFields Whether the location sensitive fields should be kept
+     *                                      when parceling
+     * @param parcelLocalMacAddressFields Whether the local MAC address fields should be kept when
+     *                                    parceling
      * @return instance of {@link WifiInfo}.
      */
-    @Override
     @NonNull
-    public WifiInfo makeCopy(boolean parcelSensitiveFields) {
+    @Override
+    public WifiInfo makeCopy(
+            boolean parcelLocationSensitiveFields, boolean parcelLocalMacAddressFields) {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
         }
-        return new WifiInfo(this, parcelSensitiveFields);
+        return makeCopyInternal(parcelLocationSensitiveFields, parcelLocalMacAddressFields);
     }
 
     /**
@@ -1195,6 +1229,18 @@ public class WifiInfo implements TransportInfo, Parcelable {
      */
     @Override
     public boolean hasLocationSensitiveFields() {
+        if (!SdkLevel.isAtLeastS()) {
+            throw new UnsupportedOperationException();
+        }
+        return true;
+    }
+
+
+    /**
+     * Whether it has local MAC address data or not.
+     */
+    @Override
+    public boolean hasLocalMacAddressFields() {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
         }
