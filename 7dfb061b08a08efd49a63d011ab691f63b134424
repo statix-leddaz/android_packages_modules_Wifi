@@ -18,6 +18,24 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "1faa0ee2_6c6fff6d",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 4519,
+      "author": {
+        "id": 1463964
+      },
+      "writtenOn": "2021-02-03T23:57:39Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "69023c47_d323fa58",
+      "revId": "7dfb061b08a08efd49a63d011ab691f63b134424",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "4dc57b26_042b5225",
@@ -31,6 +49,30 @@
       "writtenOn": "2021-01-29T09:21:33Z",
       "side": 1,
       "message": "Suggest remove NOT_VCN_MANAGED; that\u0027s the closest use case to what we do now.",
+      "range": {
+        "startLine": 1363,
+        "startChar": 28,
+        "endLine": 1363,
+        "endChar": 65
+      },
+      "revId": "7dfb061b08a08efd49a63d011ab691f63b134424",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "6829dc7e_c1bbf912",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/ClientModeImplTest.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 1363,
+      "author": {
+        "id": 1463964
+      },
+      "writtenOn": "2021-02-03T23:57:39Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "4dc57b26_042b5225",
       "range": {
         "startLine": 1363,
         "startChar": 28,
