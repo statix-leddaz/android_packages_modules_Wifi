@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b01d4022_75dba364",
+        "filename": "service/java/com/android/server/wifi/ClientModeManager.java",
+        "patchSetId": 4
+      },
+      "lineNbr": 579,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-02-05T03:52:16Z",
+      "side": 1,
+      "message": "The problem with this is that the wifi disabled broadcast is sent out even when shutting down from ScanOnlyModeState (StartedState is the parent of both ScanOnlyModeState and ConnectModeState), but it shouldn\u0027t send it out because ScanOnlyModeState \u003d\u003e already disabled.\nThat\u0027s why this line fits better in ConnectModeState.exit().\n\nWith how the StateMachine is architected right now, there isn\u0027t a clean way to to do what we want. Though I suppose we could add a field like `exitingFrom \u003d {ConnectMode, ScanOnlyMode}`, and only call updateConnectModeState when exiting from ConnectMode.\n\nThoughts?",
+      "range": {
+        "startLine": 578,
+        "startChar": 16,
+        "endLine": 579,
+        "endChar": 58
+      },
+      "revId": "f095e0c53af919a0ac3374a632624d6646bb2453",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}

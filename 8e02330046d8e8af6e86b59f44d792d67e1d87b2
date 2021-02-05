@@ -118,6 +118,30 @@
       },
       "revId": "8e02330046d8e8af6e86b59f44d792d67e1d87b2",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "c28a2e07_e9f1fca2",
+        "filename": "service/java/com/android/server/wifi/ClientModeManager.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 677,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-02-05T03:52:16Z",
+      "side": 0,
+      "message": "\u003e Can we move the broadcast sending to the onStopped() handling added internally in ag/13351527?\n\nI don\u0027t think that CL changes how this CL would apply to S. (That CL is for delaying role switch after CMI stop, this CL is for delaying broadcast after WifiNative calls). I would implement this change the same way in S.\n\nAlso, ag/13351527 doesn\u0027t take care of the case where we transition from ConnectMode to ScanOnlyMode.",
+      "parentUuid": "aae6a3bd_1203d7fe",
+      "range": {
+        "startLine": 677,
+        "startChar": 16,
+        "endLine": 677,
+        "endChar": 38
+      },
+      "revId": "8e02330046d8e8af6e86b59f44d792d67e1d87b2",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
