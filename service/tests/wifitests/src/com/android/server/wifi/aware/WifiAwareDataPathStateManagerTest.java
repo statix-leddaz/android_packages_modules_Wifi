@@ -1556,7 +1556,7 @@ public class WifiAwareDataPathStateManagerTest extends WifiBaseTest {
                 inOrder.verify(mMockNetdWrapper).setInterfaceUp(anyString());
                 inOrder.verify(mMockNetdWrapper).enableIpv6(anyString());
                 inOrder.verify(mMockCm).registerNetworkAgent(agentCaptor.capture(), any(),
-                        any(), netCapCaptor.capture(), anyInt(), any(), anyInt());
+                        any(), netCapCaptor.capture(), any(), any(), any());
                 inOrderM.verify(mAwareMetricsMock).recordNdpStatus(eq(NanStatusType.SUCCESS),
                         eq(useDirect), anyLong());
                 inOrderM.verify(mAwareMetricsMock).recordNdpCreation(anyInt(), any(), any());
