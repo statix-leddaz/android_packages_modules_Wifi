@@ -1,0 +1,50 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "fd80cd96_0ca6109f",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 4519,
+      "author": {
+        "id": 1221725
+      },
+      "writtenOn": "2021-02-05T07:42:09Z",
+      "side": 1,
+      "message": "Do we have a bug showing what the problem is here? It\u0027d be helpful to have a todo, listing why we go through these odd twists",
+      "range": {
+        "startLine": 4519,
+        "startChar": 14,
+        "endLine": 4519,
+        "endChar": 35
+      },
+      "revId": "0e4c576dd9fb04c1f1a14b1f9b046f6fdaeaa9ee",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "d66a0429_ab900279",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 4528,
+      "author": {
+        "id": 1221725
+      },
+      "writtenOn": "2021-02-05T07:42:09Z",
+      "side": 1,
+      "message": "All this will probably have to be guarded by a SDK check for \u003e\u003d SC\n\nhttps://android-review.googlesource.com/c/platform/packages/modules/Wifi/+/1574140/3/service/java/com/android/server/wifi/ClientModeImpl.java#832",
+      "range": {
+        "startLine": 4518,
+        "startChar": 0,
+        "endLine": 4528,
+        "endChar": 9
+      },
+      "revId": "0e4c576dd9fb04c1f1a14b1f9b046f6fdaeaa9ee",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
