@@ -16,6 +16,23 @@
       "message": "The failing presubmit test has a fully failing history",
       "revId": "b5eec1f3115fa5eb2d4c3c26bb69b2de1a408ea5",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "0ca9ca49_22f73a8a",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-02-05T16:10:38Z",
+      "side": 1,
+      "message": "Since we don\u0027t monitor AOSP unit test status, LGTM.",
+      "revId": "b5eec1f3115fa5eb2d4c3c26bb69b2de1a408ea5",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
