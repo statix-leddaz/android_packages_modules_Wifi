@@ -24,6 +24,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "1b56e9e7_f12f036a",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 4519,
+      "author": {
+        "id": 1463964
+      },
+      "writtenOn": "2021-02-09T23:52:05Z",
+      "side": 1,
+      "message": "per b/179399829#comment3, this is working as intended. It appears that this is the best that can be done\n\nMarking resolved",
+      "parentUuid": "fd80cd96_0ca6109f",
+      "range": {
+        "startLine": 4519,
+        "startChar": 14,
+        "endLine": 4519,
+        "endChar": 35
+      },
+      "revId": "0e4c576dd9fb04c1f1a14b1f9b046f6fdaeaa9ee",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "d66a0429_ab900279",
@@ -37,6 +61,30 @@
       "writtenOn": "2021-02-05T07:42:09Z",
       "side": 1,
       "message": "All this will probably have to be guarded by a SDK check for \u003e\u003d SC\n\nhttps://android-review.googlesource.com/c/platform/packages/modules/Wifi/+/1574140/3/service/java/com/android/server/wifi/ClientModeImpl.java#832",
+      "range": {
+        "startLine": 4518,
+        "startChar": 0,
+        "endLine": 4528,
+        "endChar": 9
+      },
+      "revId": "0e4c576dd9fb04c1f1a14b1f9b046f6fdaeaa9ee",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "d36e72b6_5cfd33d7",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 4528,
+      "author": {
+        "id": 1463964
+      },
+      "writtenOn": "2021-02-09T23:52:05Z",
+      "side": 1,
+      "message": "forgot that versioning gets wonky in modules - will keep in mind for the future\n\nDone",
+      "parentUuid": "d66a0429_ab900279",
       "range": {
         "startLine": 4518,
         "startChar": 0,
