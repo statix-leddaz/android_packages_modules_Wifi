@@ -695,7 +695,12 @@ public class SupplicantStaIfaceHal {
                 return startDaemon_V1_1();
             } else {
                 Log.i(TAG, "Starting supplicant using init");
-                mFrameworkFacade.startSupplicant();
+                try {
+                    mFrameworkFacade.startSupplicant();
+                } catch (RuntimeException e) {
+                    Log.e(TAG, "Exception while trying to start supplicant", e);
+                    return false;
+                }
                 return true;
             }
         }
