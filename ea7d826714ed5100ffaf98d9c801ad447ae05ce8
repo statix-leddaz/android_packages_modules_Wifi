@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "8c0277d0_6a92ef5a",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1067098
+      },
+      "writtenOn": "2021-02-12T02:36:50Z",
+      "side": 1,
+      "message": "Hmm, I don\u0027t see why my presubmits are failing with a merge conflict despite the Merged-In tag. Any ideas?",
+      "revId": "ea7d826714ed5100ffaf98d9c801ad447ae05ce8",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
