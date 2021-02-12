@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "595225ed_c9997bf4",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1074459
+      },
+      "writtenOn": "2021-02-12T00:31:15Z",
+      "side": 1,
+      "message": "There have been 2 CL\u0027s that have been submitted on internal master with similar changes. You might want to cherry-pick those 2 to AOSP instead to avoid merge conflicts with internal master.\n\n1. ag/12976822\n2. ag/13220305 (on top of 1)",
+      "revId": "89a9d05e704c3011c0fbc1d45f975a2f8f1c8f44",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
