@@ -55,6 +55,29 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "75ed2a11_539e5079",
+        "filename": "apex/Android.bp",
+        "patchSetId": 1
+      },
+      "lineNbr": 39,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-02-16T17:03:53Z",
+      "side": 1,
+      "message": "Also if you put it here, you don\u0027t need to duplicate in both `apex`s",
+      "range": {
+        "startLine": 39,
+        "startChar": 4,
+        "endLine": 39,
+        "endChar": 6
+      },
+      "revId": "940d8d8b1ec8071a67b37c79df18cf677d938021",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "4d1a80c5_f578a3a5",
         "filename": "apex/Android.bp",
         "patchSetId": 1
