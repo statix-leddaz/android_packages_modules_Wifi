@@ -18,6 +18,24 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "fd00269c_469dfe16",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1060959
+      },
+      "writtenOn": "2021-02-16T16:58:59Z",
+      "side": 1,
+      "message": "They\u0027re already out of sync, this just makes it explicit :)",
+      "parentUuid": "22ecf347_036eff4a",
+      "revId": "940d8d8b1ec8071a67b37c79df18cf677d938021",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "4d1a80c5_f578a3a5",
@@ -49,6 +67,24 @@
       "side": 1,
       "message": "Ok, I will make sure this doesn\u0027t merge downstream. We can keep this change as is in aosp to unblock the rest of the work here.",
       "parentUuid": "4d1a80c5_f578a3a5",
+      "revId": "940d8d8b1ec8071a67b37c79df18cf677d938021",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "7e37ce4c_8957fc3b",
+        "filename": "apex/Android.bp",
+        "patchSetId": 1
+      },
+      "lineNbr": 52,
+      "author": {
+        "id": 1060959
+      },
+      "writtenOn": "2021-02-16T16:58:59Z",
+      "side": 1,
+      "message": "this should do the trick:\nMerged-In: I68114df38c7c5b6694db8c0a48fd1dce3a2e6572",
+      "parentUuid": "c64fd5f3_3b7774bc",
       "revId": "940d8d8b1ec8071a67b37c79df18cf677d938021",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
