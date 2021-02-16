@@ -49,6 +49,7 @@ apex {
     name: "com.android.wifi",
     defaults: ["com.android.wifi-defaults"],
     manifest: "apex_manifest.json",
+    updatable: false,
 }
 
 apex_key {

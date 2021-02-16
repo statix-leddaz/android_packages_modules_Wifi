@@ -29,4 +29,5 @@ apex_test {
     file_contexts: ":com.android.wifi-file_contexts",
     // Test APEX, should never be installed
     installable: false,
+    updatable: false,
 }
