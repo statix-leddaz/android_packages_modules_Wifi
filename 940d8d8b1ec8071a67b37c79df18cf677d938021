@@ -36,6 +36,23 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "69b52acf_bded4ac0",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-02-16T17:02:38Z",
+      "side": 1,
+      "message": "Thanks for clarifying Anton \u0026 Matthew. +1 assuming the Merged-In will be added.",
+      "revId": "940d8d8b1ec8071a67b37c79df18cf677d938021",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "4d1a80c5_f578a3a5",
