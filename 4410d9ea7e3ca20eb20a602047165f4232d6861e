@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "9662626f_b7ea02be",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 5
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1015428
+      },
+      "writtenOn": "2021-02-18T09:14:06Z",
+      "side": 1,
+      "message": "Sorry that version of the patch will not help me avoid conflicts. I do need the version that I had at first, or something similar.",
+      "revId": "4410d9ea7e3ca20eb20a602047165f4232d6861e",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
