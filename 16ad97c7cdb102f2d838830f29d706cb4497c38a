@@ -51,6 +51,23 @@
       "parentUuid": "8970b792_f72da0b3",
       "revId": "16ad97c7cdb102f2d838830f29d706cb4497c38a",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "92fc5857_5d497e43",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 8
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-02-22T16:20:51Z",
+      "side": 1,
+      "message": "LGTM since AOSP will be overwritten by internal master.",
+      "revId": "16ad97c7cdb102f2d838830f29d706cb4497c38a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
