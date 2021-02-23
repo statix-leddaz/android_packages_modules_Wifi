@@ -49,6 +49,7 @@ import android.net.DhcpResultsParcelable;
 import android.net.InetAddresses;
 import android.net.Network;
 import android.net.NetworkStack;
+import android.net.TransportInfo;
 import android.net.Uri;
 import android.net.ip.IpClientUtil;
 import android.net.wifi.IActionListener;
@@ -2679,7 +2680,7 @@ public class WifiServiceImpl extends BaseWifiService {
             try {
                 if (mWifiInjector.getWifiPermissionsWrapper().getLocalMacAddressPermission(uid)
                         == PERMISSION_GRANTED) {
-                    hideDefaultMacAddress = false;
+                    redactions &= ~TransportInfo.REDACTION_LOCAL_MAC_ADDRESS;
                 }
                 mWifiPermissionsUtil.enforceCanAccessScanResults(callingPackage, callingFeatureId,
                         uid, null);
