@@ -25,6 +25,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
+import android.net.TransportInfo;
 import android.os.Parcel;
 
 import androidx.test.filters.SmallTest;
@@ -60,9 +61,8 @@ public class WifiInfoTest {
      *  Verify parcel write/read with WifiInfo.
      */
     @Test
-    public void testWifiInfoParcelWriteReadWithLocationSensitiveInfo() throws Exception {
+    public void testWifiInfoParcelWriteReadWithNoRedactions() throws Exception {
         assumeTrue(SdkLevel.isAtLeastS());
-
         WifiInfo writeWifiInfo = new WifiInfo();
         writeWifiInfo.txSuccess = TEST_TX_SUCCESS;
         writeWifiInfo.txRetries = TEST_TX_RETRIES;
@@ -81,10 +81,11 @@ public class WifiInfoTest {
         writeWifiInfo.setMaxSupportedRxLinkSpeedMbps(TEST_MAX_SUPPORTED_RX_LINK_SPEED_MBPS);
 
         // Make a copy which allows parcelling of location sensitive data.
-        WifiInfo writeWifiInfoWithLocationSensitiveInfo = writeWifiInfo.makeCopy(true);
+        WifiInfo writeWifiInfoCopy =
+                writeWifiInfo.makeCopyInternal(TransportInfo.REDACTION_NONE);
 
         Parcel parcel = Parcel.obtain();
-        writeWifiInfoWithLocationSensitiveInfo.writeToParcel(parcel, 0);
+        writeWifiInfoCopy.writeToParcel(parcel, 0);
         // Rewind the pointer to the head of the parcel.
         parcel.setDataPosition(0);
         WifiInfo readWifiInfo = WifiInfo.CREATOR.createFromParcel(parcel);
@@ -135,10 +136,11 @@ public class WifiInfoTest {
         writeWifiInfo.setMaxSupportedRxLinkSpeedMbps(TEST_MAX_SUPPORTED_RX_LINK_SPEED_MBPS);
 
         // Make a copy which allows parcelling of location sensitive data.
-        WifiInfo writeWifiInfoWithoutLocationSensitiveInfo = writeWifiInfo.makeCopy(false);
+        WifiInfo writeWifiInfoCopy =
+                writeWifiInfo.makeCopyInternal(TransportInfo.REDACTION_ACCESS_FINE_LOCATION);
 
         Parcel parcel = Parcel.obtain();
-        writeWifiInfoWithoutLocationSensitiveInfo.writeToParcel(parcel, 0);
+        writeWifiInfoCopy.writeToParcel(parcel, 0);
         // Rewind the pointer to the head of the parcel.
         parcel.setDataPosition(0);
         WifiInfo readWifiInfo = WifiInfo.CREATOR.createFromParcel(parcel);
