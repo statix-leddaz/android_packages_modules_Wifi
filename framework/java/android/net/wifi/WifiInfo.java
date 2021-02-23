@@ -89,10 +89,9 @@ public class WifiInfo implements TransportInfo, Parcelable {
     }
 
     /**
-     * Indicates whether parceling should preserve fields that are set based on permissions of
-     * the process receiving the {@link NetworkCapabilities}.
+     * @see TransportInfo.RedactionType
      */
-    private final boolean mParcelLocationSenstiveFields;
+    private final /* @TransportInfo.RedactionType */ long mRedactions;
 
     private SupplicantState mSupplicantState;
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.P, trackingBug = 115609023)
@@ -318,7 +317,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
     /** @hide */
     @UnsupportedAppUsage
     public WifiInfo() {
-        mParcelLocationSenstiveFields = false;
+        mRedactions = TransportInfo.REDACTION_ALL;
         mWifiSsid = null;
         mBSSID = null;
         mNetworkId = -1;
@@ -330,7 +329,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
 
     /** @hide */
     public void reset() {
-        if (mParcelLocationSenstiveFields) {
+        if (mRedactions != TransportInfo.REDACTION_ALL) {
             // To ensure that we don't accidentally set this bit on the master copy of WifiInfo
             // (reset is only invoked in the master copy)
             throw new UnsupportedOperationException(
@@ -370,15 +369,15 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * @hide
      */
     public WifiInfo(WifiInfo source) {
-        this(source, true);
+        this(source, TransportInfo.REDACTION_NONE);
     }
 
     /**
      * Copy constructor
      * @hide
      */
-    private WifiInfo(WifiInfo source, boolean parcelSensitiveFields) {
-        mParcelLocationSenstiveFields = parcelSensitiveFields;
+    private WifiInfo(WifiInfo source, /* @TransportInfo.RedactionType */ long redactions) {
+        mRedactions = redactions;
         if (source != null) {
             mSupplicantState = source.mSupplicantState;
             mBSSID = source.mBSSID;
@@ -969,9 +968,19 @@ public class WifiInfo implements TransportInfo, Parcelable {
         return 0;
     }
 
+    private boolean shouldParcelLocationSensitiveFields() {
+        return (mRedactions & TransportInfo.REDACTION_ACCESS_FINE_LOCATION) == 0;
+    }
+
+    private boolean shouldParcelLocalMacAddressFields() {
+        return (mRedactions & TransportInfo.REDACTION_LOCAL_MAC_ADDRESS) == 0;
+    }
+
     /** Implement the Parcelable interface {@hide} */
     public void writeToParcel(Parcel dest, int flags) {
-        dest.writeInt(mParcelLocationSenstiveFields ? mNetworkId : INVALID_NETWORK_ID);
+        // TODO (b/162602799): Should we proactively redact instance fields in memory instead of
+        // current approach of redacting while parceling.
+        dest.writeInt(shouldParcelLocationSensitiveFields() ? mNetworkId : INVALID_NETWORK_ID);
         dest.writeInt(mRssi);
         dest.writeInt(mLinkSpeed);
         dest.writeInt(mTxLinkSpeed);
@@ -986,7 +995,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
         if (mWifiSsid != null) {
             dest.writeInt(1);
             final WifiSsid ssid;
-            if (mParcelLocationSenstiveFields) {
+            if (shouldParcelLocationSensitiveFields()) {
                 ssid = mWifiSsid;
             } else {
                 ssid = WifiSsid.createFromHex(null);
@@ -995,8 +1004,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
         } else {
             dest.writeInt(0);
         }
-        dest.writeString(mParcelLocationSenstiveFields ? mBSSID : DEFAULT_MAC_ADDRESS);
-        dest.writeString(mMacAddress);
+        dest.writeString(shouldParcelLocationSensitiveFields() ? mBSSID : DEFAULT_MAC_ADDRESS);
+        dest.writeString(shouldParcelLocalMacAddressFields() ? mMacAddress : DEFAULT_MAC_ADDRESS);
         dest.writeInt(mMeteredHint ? 1 : 0);
         dest.writeInt(mEphemeral ? 1 : 0);
         dest.writeInt(mTrusted ? 1 : 0);
@@ -1012,12 +1021,12 @@ public class WifiInfo implements TransportInfo, Parcelable {
         mSupplicantState.writeToParcel(dest, flags);
         dest.writeInt(mOsuAp ? 1 : 0);
         dest.writeString(mRequestingPackageName);
-        dest.writeString(mParcelLocationSenstiveFields ? mFqdn : null);
-        dest.writeString(mParcelLocationSenstiveFields ? mProviderFriendlyName : null);
+        dest.writeString(shouldParcelLocationSensitiveFields() ? mFqdn : null);
+        dest.writeString(shouldParcelLocationSensitiveFields() ? mProviderFriendlyName : null);
         dest.writeInt(mWifiStandard);
         dest.writeInt(mMaxSupportedTxLinkSpeed);
         dest.writeInt(mMaxSupportedRxLinkSpeed);
-        dest.writeString(mParcelLocationSenstiveFields ? mPasspointUniqueId : null);
+        dest.writeString(shouldParcelLocationSensitiveFields() ? mPasspointUniqueId : null);
     }
 
     /** Implement the Parcelable interface {@hide} */
@@ -1176,28 +1185,34 @@ public class WifiInfo implements TransportInfo, Parcelable {
     }
 
     /**
-     * Make a copy of WifiInfo instance.
-     *
-     * @param parcelSensitiveFields Whether to parcel location sensitive fields or not.
-     * @return instance of {@link WifiInfo}.
+     * @hide
      */
-    @Override
     @NonNull
-    public WifiInfo makeCopy(boolean parcelSensitiveFields) {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
-        return new WifiInfo(this, parcelSensitiveFields);
+    public WifiInfo makeCopyInternal(/* @TransportInfo.RedactionType */ long redactions) {
+        return new WifiInfo(this, redactions);
     }
 
     /**
-     * Whether it has location sensitive data or not.
+     * @hide
      */
     @Override
-    public boolean hasLocationSensitiveFields() {
+    @NonNull
+    public WifiInfo makeCopy(/* @TransportInfo.RedactionType */ long redactions) {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
         }
-        return true;
+        return makeCopyInternal(redactions);
+    }
+
+    /**
+     * @hide
+     */
+    @Override
+    public /* @TransportInfo.RedactionType */ long getRequiredRedactions() {
+        if (!SdkLevel.isAtLeastS()) {
+            throw new UnsupportedOperationException();
+        }
+        return TransportInfo.REDACTION_ACCESS_FINE_LOCATION
+                | TransportInfo.REDACTION_LOCAL_MAC_ADDRESS;
     }
 }
