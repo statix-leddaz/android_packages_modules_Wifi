@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 java_defaults {
     name: "wifi-module-sdk-version-defaults",
     min_sdk_version: "30",
@@ -76,7 +80,13 @@ java_defaults {
     ],
     libs: [
         "unsupportedappusage", // for android.compat.annotation.UnsupportedAppUsage
+        "framework-connectivity",
     ],
+    aidl: {
+        include_dirs: [
+            "frameworks/base/packages/Connectivity/framework/aidl-export",
+        ],
+    },
     srcs: [
         ":framework-wifi-updatable-sources",
         ":framework-wifi-util-lib-aidls",
@@ -108,6 +118,8 @@ java_sdk_library {
         "framework-module-defaults",
         "framework-wifi-defaults",
     ],
+
+    stub_only_libs: ["framework-connectivity"],
 
     jarjar_rules: ":wifi-jarjar-rules",
 
