@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "4ddad038_cea4af0f",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2021-03-04T05:17:55Z",
+      "side": 1,
+      "message": "Can this remain on AOSP only or do you need it in master as well?",
+      "revId": "72f180dd79c03eb7ea9fa42c76683b5d3ddf524f",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
