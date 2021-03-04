@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "b7e47110_64ffce5c",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2021-03-04T17:38:56Z",
+      "side": 1,
+      "message": "Where do we use a single long bit field and where do we use 2 booleans?",
+      "revId": "98e1d58d9be3855dc2d9c0885472e75e25bf9f1c",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
