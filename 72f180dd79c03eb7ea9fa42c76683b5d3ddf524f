@@ -16,6 +16,24 @@
       "message": "Can this remain on AOSP only or do you need it in master as well?",
       "revId": "72f180dd79c03eb7ea9fa42c76683b5d3ddf524f",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "c324dbb7_aec274b8",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1015428
+      },
+      "writtenOn": "2021-03-04T05:55:49Z",
+      "side": 1,
+      "message": "The goal being to let me deal with conflicts in the tests, I would need it in sc-dev and master too if you don\u0027t mind.",
+      "parentUuid": "4ddad038_cea4af0f",
+      "revId": "72f180dd79c03eb7ea9fa42c76683b5d3ddf524f",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
