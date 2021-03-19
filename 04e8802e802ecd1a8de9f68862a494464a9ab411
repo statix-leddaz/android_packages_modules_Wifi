@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "14b491bd_7c745c72",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1074459
+      },
+      "writtenOn": "2021-03-19T15:44:35Z",
+      "side": 1,
+      "message": "Inheriting +2 after rebasing to resolve merge conflicts. ",
+      "revId": "04e8802e802ecd1a8de9f68862a494464a9ab411",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
