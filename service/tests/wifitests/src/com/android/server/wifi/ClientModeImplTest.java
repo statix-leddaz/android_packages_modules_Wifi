@@ -5324,6 +5324,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         connect();
 
+
         // syncGetCurrentNetwork() returns non-null Network when connected
         mLooper.startAutoDispatch();
         assertEquals(mNetwork, mCmi.syncGetCurrentNetwork(mCmiAsyncChannel));
