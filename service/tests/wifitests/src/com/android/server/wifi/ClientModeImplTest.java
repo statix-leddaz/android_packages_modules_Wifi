@@ -171,6 +171,7 @@ import java.util.function.Consumer;
  */
 @SmallTest
 public class ClientModeImplTest extends WifiBaseTest {
+
     public static final String TAG = "ClientModeImplTest";
 
     private static final int MANAGED_PROFILE_UID = 1100000;
