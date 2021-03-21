@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "11d219c9_13ac67d8",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1000835
+      },
+      "writtenOn": "2021-03-21T11:26:45Z",
+      "side": 1,
+      "message": "Change LGTM.\nGlobal-approval because this only changes the imports, and the code in sc-dev and newer removed these imports anyway, see ag/13547668 and ag/13554028.",
+      "revId": "c189884cd0fb5eb7d0462975e3847bdfb3ee13d5",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
