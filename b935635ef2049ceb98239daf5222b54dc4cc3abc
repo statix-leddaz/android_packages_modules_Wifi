@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "4e2c253d_e21ec271",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1304263
+      },
+      "writtenOn": "2021-03-30T00:29:49Z",
+      "side": 1,
+      "message": "Thanks! but it looks setInformationElements missing in WifiInfo",
+      "revId": "b935635ef2049ceb98239daf5222b54dc4cc3abc",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
