@@ -151,6 +151,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
     private final ConnectivityManager mConnectivityManager;
     private final WifiCarrierInfoManager mWifiCarrierInfoManager;
     private final WifiNetworkFactory mWifiNetworkFactory;
+    private final SelfRecovery mSelfRecovery;
     private int mSapState = WifiManager.WIFI_STATE_UNKNOWN;
 
     /**
@@ -210,6 +211,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         mConnectivityManager = context.getSystemService(ConnectivityManager.class);
         mWifiCarrierInfoManager = wifiInjector.getWifiCarrierInfoManager();
         mWifiNetworkFactory = wifiInjector.getWifiNetworkFactory();
+        mSelfRecovery = wifiInjector.getSelfRecovery();
     }
 
     @Override
@@ -360,7 +362,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                                     + "- must be a positive integer");
                             return -1;
                         }
-                        int apChannel = ScanResult.convertFrequencyMhzToChannel(apChannelMHz);
+                        int apChannel = ScanResult.convertFrequencyMhzToChannelIfSupported(
+                                apChannelMHz);
                         int band = ApConfigUtil.convertFrequencyToBand(apChannelMHz);
                         pw.println("channel: " + apChannel + " band: " + band);
                         if (apChannel == -1 || band == -1) {
@@ -872,7 +875,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     return 0;
                 }
                 case "trigger-recovery": {
-                    mActiveModeWarden.recoveryRestartWifi(REASON_API_CALL, null, false);
+                    mSelfRecovery.trigger(REASON_API_CALL);
                     return 0;
                 }
                 default:

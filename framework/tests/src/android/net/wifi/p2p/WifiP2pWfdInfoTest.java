@@ -87,9 +87,10 @@ public class WifiP2pWfdInfoTest {
     public void testWfdR2SetterGetter() throws Exception {
         assumeTrue(SdkLevel.isAtLeastS());
         WifiP2pWfdInfo info = new WifiP2pWfdInfo();
-        assertFalse(info.isR2Enabled());
-        info.setWfdR2Device(WifiP2pWfdInfo.DEVICE_TYPE_WFD_SOURCE);
-        assertTrue(info.isR2Enabled());
+        assertFalse(info.isR2Supported());
+        info.setR2DeviceType(WifiP2pWfdInfo.DEVICE_TYPE_WFD_SOURCE);
+        assertEquals(WifiP2pWfdInfo.DEVICE_TYPE_WFD_SOURCE, info.getR2DeviceType());
+        assertTrue(info.isR2Supported());
     }
 
     /**

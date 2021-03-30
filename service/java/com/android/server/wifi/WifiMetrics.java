@@ -97,6 +97,8 @@ import com.android.server.wifi.proto.nano.WifiMetricsProto.PasspointProfileTypeC
 import com.android.server.wifi.proto.nano.WifiMetricsProto.PasspointProvisionStats;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.PasspointProvisionStats.ProvisionFailureCount;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.PnoScanMetrics;
+import com.android.server.wifi.proto.nano.WifiMetricsProto.RadioStats;
+import com.android.server.wifi.proto.nano.WifiMetricsProto.RateStats;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.SoftApConnectedClientsEvent;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.StaEvent;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.StaEvent.ConfigInfo;
@@ -1538,6 +1540,8 @@ public class WifiMetrics {
      * @param newStats
      */
     public void incrementWifiLinkLayerUsageStats(WifiLinkLayerStats newStats) {
+        // This is only collected for primary STA currently because RSSI polling is disabled for
+        // non-primary STAs.
         if (newStats == null) {
             return;
         }
@@ -4083,6 +4087,20 @@ public class WifiMetrics {
         line.append(",total_tx_retries=" + entry.totalTxRetries);
         line.append(",total_tx_bad=" + entry.totalTxBad);
         line.append(",total_rx_success=" + entry.totalRxSuccess);
+        if (entry.radioStats != null) {
+            for (RadioStats radioStat : entry.radioStats) {
+                line.append(",Radio Stats from radio_id=" + radioStat.radioId);
+                line.append(",radio_on_time_ms=" + radioStat.totalRadioOnTimeMs);
+                line.append(",radio_tx_time_ms=" + radioStat.totalRadioTxTimeMs);
+                line.append(",radio_rx_time_ms=" + radioStat.totalRadioRxTimeMs);
+                line.append(",scan_time_ms=" + radioStat.totalScanTimeMs);
+                line.append(",nan_scan_time_ms=" + radioStat.totalNanScanTimeMs);
+                line.append(",background_scan_time_ms=" + radioStat.totalBackgroundScanTimeMs);
+                line.append(",roam_scan_time_ms=" + radioStat.totalRoamScanTimeMs);
+                line.append(",pno_scan_time_ms=" + radioStat.totalPnoScanTimeMs);
+                line.append(",hotspot_2_scan_time_ms=" + radioStat.totalHotspot2ScanTimeMs);
+            }
+        }
         line.append(",total_radio_on_time_ms=" + entry.totalRadioOnTimeMs);
         line.append(",total_radio_tx_time_ms=" + entry.totalRadioTxTimeMs);
         line.append(",total_radio_rx_time_ms=" + entry.totalRadioRxTimeMs);
@@ -4112,6 +4130,21 @@ public class WifiMetrics {
         line.append(",is_throughput_sufficient=" + entry.isThroughputSufficient);
         line.append(",is_wifi_scoring_enabled=" + entry.isWifiScoringEnabled);
         line.append(",is_cellular_data_available=" + entry.isCellularDataAvailable);
+        line.append(",sta_count=" + entry.staCount);
+        line.append(",channel_utilization=" + entry.channelUtilization);
+        if (entry.rateStats != null) {
+            for (RateStats rateStat : entry.rateStats) {
+                line.append(",preamble=" + rateStat.preamble);
+                line.append(",nss=" + rateStat.nss);
+                line.append(",bw=" + rateStat.bw);
+                line.append(",rate_mcs_idx=" + rateStat.rateMcsIdx);
+                line.append(",bit_rate_in_kbps=" + rateStat.bitRateInKbps);
+                line.append(",tx_mpdu=" + rateStat.txMpdu);
+                line.append(",rx_mpdu=" + rateStat.rxMpdu);
+                line.append(",mpdu_lost=" + rateStat.mpduLost);
+                line.append(",retries=" + rateStat.retries);
+            }
+        }
         pw.println(line.toString());
     }
 
@@ -4758,6 +4791,7 @@ public class WifiMetrics {
             mWifiLogProto.mainlineModuleVersion = mWifiHealthMonitor.getWifiStackVersion();
             mWifiLogProto.firstConnectAfterBootStats = mFirstConnectAfterBootStats;
             mWifiLogProto.wifiToWifiSwitchStats = mWifiToWifiSwitchStats;
+            mWifiLogProto.bandwidthEstimatorStats = mWifiScoreCard.dumpBandwidthEstimatorStats();
         }
     }
 
@@ -5834,6 +5868,8 @@ public class WifiMetrics {
      * @param stats
      */
     public void updateWifiUsabilityStatsEntries(WifiInfo info, WifiLinkLayerStats stats) {
+        // This is only collected for primary STA currently because RSSI polling is disabled for
+        // non-primary STAs.
         synchronized (mLock) {
             if (info == null) {
                 return;
@@ -5860,6 +5896,27 @@ public class WifiMetrics {
                     + stats.lostmpdu_vi + stats.lostmpdu_vo;
             wifiUsabilityStatsEntry.totalRxSuccess = stats.rxmpdu_be + stats.rxmpdu_bk
                     + stats.rxmpdu_vi + stats.rxmpdu_vo;
+            /* Update per radio stats */
+            if (stats.radioStats != null && stats.radioStats.length > 0) {
+                int numRadios = stats.radioStats.length;
+                wifiUsabilityStatsEntry.radioStats =
+                        new RadioStats[numRadios];
+                for (int i = 0; i < numRadios; i++) {
+                    RadioStats radioStats = new RadioStats();
+                    WifiLinkLayerStats.RadioStat radio = stats.radioStats[i];
+                    radioStats.radioId = radio.radio_id;
+                    radioStats.totalRadioOnTimeMs = radio.on_time;
+                    radioStats.totalRadioTxTimeMs = radio.tx_time;
+                    radioStats.totalRadioRxTimeMs = radio.rx_time;
+                    radioStats.totalScanTimeMs = radio.on_time_scan;
+                    radioStats.totalNanScanTimeMs = radio.on_time_nan_scan;
+                    radioStats.totalBackgroundScanTimeMs = radio.on_time_background_scan;
+                    radioStats.totalRoamScanTimeMs = radio.on_time_roam_scan;
+                    radioStats.totalPnoScanTimeMs = radio.on_time_pno_scan;
+                    radioStats.totalHotspot2ScanTimeMs = radio.on_time_hs20_scan;
+                    wifiUsabilityStatsEntry.radioStats[i] = radioStats;
+                }
+            }
             wifiUsabilityStatsEntry.totalRadioOnTimeMs = stats.on_time;
             wifiUsabilityStatsEntry.totalRadioTxTimeMs = stats.tx_time;
             wifiUsabilityStatsEntry.totalRadioRxTimeMs = stats.rx_time;
@@ -5986,6 +6043,30 @@ public class WifiMetrics {
                 wifiUsabilityStatsEntry.isWifiScoringEnabled =
                         mWifiSettingsStore.isWifiScoringEnabled();
             }
+            // Here it is assumed there is only one peer information from HAL and the peer is the
+            // AP that STA is associated with.
+            if (stats.peerInfo != null && stats.peerInfo.length > 0
+                    && stats.peerInfo[0].rateStats != null) {
+                wifiUsabilityStatsEntry.staCount = stats.peerInfo[0].staCount;
+                wifiUsabilityStatsEntry.channelUtilization = stats.peerInfo[0].chanUtil;
+                int numRates = stats.peerInfo[0].rateStats != null
+                        ? stats.peerInfo[0].rateStats.length : 0;
+                wifiUsabilityStatsEntry.rateStats = new RateStats[numRates];
+                for (int i = 0; i < numRates; i++) {
+                    RateStats rate = new RateStats();
+                    WifiLinkLayerStats.RateStat curRate = stats.peerInfo[0].rateStats[i];
+                    rate.preamble = curRate.preamble;
+                    rate.nss = curRate.nss;
+                    rate.bw = curRate.bw;
+                    rate.rateMcsIdx = curRate.rateMcsIdx;
+                    rate.bitRateInKbps = curRate.bitRateInKbps;
+                    rate.txMpdu = curRate.txMpdu;
+                    rate.rxMpdu = curRate.rxMpdu;
+                    rate.mpduLost = curRate.mpduLost;
+                    rate.retries = curRate.retries;
+                    wifiUsabilityStatsEntry.rateStats[i] = rate;
+                }
+            }
 
             mWifiUsabilityStatsEntriesList.add(wifiUsabilityStatsEntry);
             mWifiUsabilityStatsCounter++;
@@ -6005,6 +6086,8 @@ public class WifiMetrics {
             }
 
             // Invoke Wifi usability stats listener.
+            // TODO(b/179518316): Enable this for secondary transient STA also if external scorer
+            // is in charge of MBB.
             sendWifiUsabilityStats(mSeqNumInsideFramework, isSameBssidAndFreq,
                     createNewWifiUsabilityStatsEntryParcelable(wifiUsabilityStatsEntry));
 
@@ -6057,6 +6140,14 @@ public class WifiMetrics {
                 new android.net.wifi.WifiUsabilityStatsEntry.ContentionTimeStats[
                         android.net.wifi.WifiUsabilityStatsEntry.NUM_WME_ACCESS_CATEGORIES];
         createNewContentionTimeStatsParcelable(contentionTimeStats, s.contentionTimeStats);
+        int numRates = s.rateStats != null ? s.rateStats.length : 0;
+        android.net.wifi.WifiUsabilityStatsEntry.RateStats[] rateStats =
+                new android.net.wifi.WifiUsabilityStatsEntry.RateStats[numRates];
+        createNewRateStatsParcelable(rateStats, s.rateStats);
+        int numRadios = s.radioStats != null ? s.radioStats.length : 0;
+        android.net.wifi.WifiUsabilityStatsEntry.RadioStats[] radioStats =
+                new android.net.wifi.WifiUsabilityStatsEntry.RadioStats[numRadios];
+        createNewRadioStatsParcelable(radioStats, s.radioStats);
         // TODO: remove the following hardcoded values once if they are removed from public API
         return new android.net.wifi.WifiUsabilityStatsEntry(s.timeStampMs, s.rssi,
                 s.linkSpeedMbps, s.totalTxSuccess, s.totalTxRetries,
@@ -6066,9 +6157,9 @@ public class WifiMetrics {
                 s.totalPnoScanTimeMs, s.totalHotspot2ScanTimeMs, s.totalCcaBusyFreqTimeMs,
                 s.totalRadioOnFreqTimeMs, s.totalBeaconRx, probeStatus,
                 s.probeElapsedTimeSinceLastUpdateMs, s.probeMcsRateSinceLastUpdate,
-                s.rxLinkSpeedMbps, s.timeSliceDutyCycleInPercent, contentionTimeStats,
-                s.channelUtilizationRatio, s.isThroughputSufficient, s.isWifiScoringEnabled,
-                s.isCellularDataAvailable, 0, 0, 0, false
+                s.rxLinkSpeedMbps, s.timeSliceDutyCycleInPercent, contentionTimeStats, rateStats,
+                radioStats, s.channelUtilizationRatio, s.isThroughputSufficient,
+                s.isWifiScoringEnabled, s.isCellularDataAvailable, 0, 0, 0, false
         );
     }
 
@@ -6111,6 +6202,107 @@ public class WifiMetrics {
         }
     }
 
+    private void createNewRateStatsParcelable(
+            android.net.wifi.WifiUsabilityStatsEntry.RateStats[] statsParcelable,
+                    RateStats[] stats) {
+        if (stats == null) {
+            return;
+        }
+        for (int i = 0; i < stats.length; i++) {
+            statsParcelable[i] = new android.net.wifi.WifiUsabilityStatsEntry.RateStats(
+                    convertPreambleTypeEnumToUsabilityStatsType(stats[i].preamble),
+                    convertSpatialStreamEnumToUsabilityStatsType(stats[i].nss),
+                    convertBandwidthEnumToUsabilityStatsType(stats[i].bw),
+                    stats[i].rateMcsIdx, stats[i].bitRateInKbps, stats[i].txMpdu, stats[i].rxMpdu,
+                    stats[i].mpduLost, stats[i].retries
+            );
+        }
+    }
+
+    /**
+     * Converts bandwidth enum in proto to WifiUsabilityStatsEntry type.
+     * @param value
+     */
+    private static int convertBandwidthEnumToUsabilityStatsType(int value) {
+        switch (value) {
+            case RateStats.WIFI_BANDWIDTH_20_MHZ:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_BANDWIDTH_20_MHZ;
+            case RateStats.WIFI_BANDWIDTH_40_MHZ:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_BANDWIDTH_40_MHZ;
+            case RateStats.WIFI_BANDWIDTH_80_MHZ:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_BANDWIDTH_80_MHZ;
+            case RateStats.WIFI_BANDWIDTH_160_MHZ:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_BANDWIDTH_160_MHZ;
+            case RateStats.WIFI_BANDWIDTH_80P80_MHZ:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_BANDWIDTH_80P80_MHZ;
+            case RateStats.WIFI_BANDWIDTH_5_MHZ:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_BANDWIDTH_5_MHZ;
+            case RateStats.WIFI_BANDWIDTH_10_MHZ:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_BANDWIDTH_10_MHZ;
+        }
+        return android.net.wifi.WifiUsabilityStatsEntry.WIFI_BANDWIDTH_INVALID;
+    }
+
+    /**
+     * Converts spatial streams enum in proto to WifiUsabilityStatsEntry type.
+     * @param value
+     */
+    private static int convertSpatialStreamEnumToUsabilityStatsType(int value) {
+        switch (value) {
+            case RateStats.WIFI_SPATIAL_STREAMS_ONE:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_SPATIAL_STREAMS_ONE;
+            case RateStats.WIFI_SPATIAL_STREAMS_TWO:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_SPATIAL_STREAMS_TWO;
+            case RateStats.WIFI_SPATIAL_STREAMS_THREE:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_SPATIAL_STREAMS_THREE;
+            case RateStats.WIFI_SPATIAL_STREAMS_FOUR:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_SPATIAL_STREAMS_FOUR;
+        }
+        return android.net.wifi.WifiUsabilityStatsEntry.WIFI_SPATIAL_STREAMS_INVALID;
+    }
+
+    /**
+     * Converts preamble type enum in proto to WifiUsabilityStatsEntry type.
+     * @param value
+     */
+    private static int convertPreambleTypeEnumToUsabilityStatsType(int value) {
+        switch (value) {
+            case RateStats.WIFI_PREAMBLE_OFDM:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_PREAMBLE_OFDM;
+            case RateStats.WIFI_PREAMBLE_CCK:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_PREAMBLE_CCK;
+            case RateStats.WIFI_PREAMBLE_HT:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_PREAMBLE_HT;
+            case RateStats.WIFI_PREAMBLE_VHT:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_PREAMBLE_VHT;
+            case RateStats.WIFI_PREAMBLE_HE:
+                return android.net.wifi.WifiUsabilityStatsEntry.WIFI_PREAMBLE_HE;
+        }
+        return android.net.wifi.WifiUsabilityStatsEntry.WIFI_PREAMBLE_INVALID;
+    }
+
+    private void createNewRadioStatsParcelable(
+            android.net.wifi.WifiUsabilityStatsEntry.RadioStats[] statsParcelable,
+            RadioStats[] stats) {
+        if (stats == null) {
+            return;
+        }
+        for (int i = 0; i < stats.length; i++) {
+            statsParcelable[i] =
+                    new android.net.wifi.WifiUsabilityStatsEntry.RadioStats(
+                            stats[i].radioId,
+                            stats[i].totalRadioOnTimeMs,
+                            stats[i].totalRadioTxTimeMs,
+                            stats[i].totalRadioRxTimeMs,
+                            stats[i].totalScanTimeMs,
+                            stats[i].totalNanScanTimeMs,
+                            stats[i].totalBackgroundScanTimeMs,
+                            stats[i].totalRoamScanTimeMs,
+                            stats[i].totalPnoScanTimeMs,
+                            stats[i].totalHotspot2ScanTimeMs);
+        }
+    }
+
     private WifiUsabilityStatsEntry createNewWifiUsabilityStatsEntry(WifiUsabilityStatsEntry s) {
         WifiUsabilityStatsEntry out = new WifiUsabilityStatsEntry();
         out.timeStampMs = s.timeStampMs;
@@ -6149,6 +6341,10 @@ public class WifiMetrics {
         out.isThroughputSufficient = s.isThroughputSufficient;
         out.isWifiScoringEnabled = s.isWifiScoringEnabled;
         out.isCellularDataAvailable = s.isCellularDataAvailable;
+        out.rateStats = s.rateStats;
+        out.staCount = s.staCount;
+        out.channelUtilization = s.channelUtilization;
+        out.radioStats = s.radioStats;
         return out;
     }
 

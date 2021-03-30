@@ -102,6 +102,8 @@ import android.net.wifi.WifiManager.SuggestionUserApprovalStatusListener;
 import android.net.wifi.WifiManager.TrafficStateCallback;
 import android.net.wifi.WifiManager.WifiConnectedNetworkScorer;
 import android.net.wifi.WifiUsabilityStatsEntry.ContentionTimeStats;
+import android.net.wifi.WifiUsabilityStatsEntry.RadioStats;
+import android.net.wifi.WifiUsabilityStatsEntry.RateStats;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerExecutor;
@@ -451,9 +453,8 @@ public class WifiManagerTest {
      */
     @Test
     public void testRestartWifiSubsystem() throws Exception {
-        String reason = "some reason";
-        mWifiManager.restartWifiSubsystem(reason);
-        verify(mWifiService).restartWifiSubsystem(reason);
+        mWifiManager.restartWifiSubsystem();
+        verify(mWifiService).restartWifiSubsystem();
     }
 
     /**
@@ -1118,56 +1119,58 @@ public class WifiManagerTest {
      * Verify an IllegalArgumentException is thrown if a callback or executor is not provided.
      */
     @Test
-    public void testAddWifiVerboseLoggingStatusCallbackIllegalArguments() throws Exception {
+    public void testAddWifiVerboseLoggingStatusChangedListenerIllegalArguments() throws Exception {
         try {
-            mWifiManager.registerWifiVerboseLoggingStatusCallback(
+            mWifiManager.addWifiVerboseLoggingStatusChangedListener(
                     new HandlerExecutor(mHandler), null);
             fail("expected IllegalArgumentException - null callback");
         } catch (IllegalArgumentException expected) {
         }
         try {
-            WifiManager.WifiVerboseLoggingStatusCallback verboseLoggingStatusCallback =
-                    new WifiManager.WifiVerboseLoggingStatusCallback() {
-                @Override
-                public void onStatusChanged(boolean enabled) {
+            WifiManager.WifiVerboseLoggingStatusChangedListener listener =
+                    new WifiManager.WifiVerboseLoggingStatusChangedListener() {
+                        @Override
+                        public void onWifiVerboseLoggingStatusChanged(boolean enabled) {
 
-                }
-            };
-            mWifiManager.registerWifiVerboseLoggingStatusCallback(
-                    null, verboseLoggingStatusCallback);
+                        }
+                    };
+            mWifiManager.addWifiVerboseLoggingStatusChangedListener(null, listener);
             fail("expected IllegalArgumentException - null executor");
         } catch (IllegalArgumentException expected) {
         }
     }
 
     /**
-     * Verify the call to registerWifiVerboseLoggingStatusCallback and
-     * unregisterWifiVerboseLoggingStatusCallback goes to WifiServiceImpl.
+     * Verify the call to addWifiVerboseLoggingStatusChangedListener and
+     * removeWifiVerboseLoggingStatusChangedListener goes to WifiServiceImpl.
      */
     @Test
-    public void testWifiVerboseLoggingStatusCallbackGoesToWifiServiceImpl() throws Exception {
-        WifiManager.WifiVerboseLoggingStatusCallback verboseLoggingStatusCallback =
-                new WifiManager.WifiVerboseLoggingStatusCallback() {
+    public void testWifiVerboseLoggingStatusChangedListenerGoesToWifiServiceImpl()
+            throws Exception {
+        WifiManager.WifiVerboseLoggingStatusChangedListener listener =
+                new WifiManager.WifiVerboseLoggingStatusChangedListener() {
                     @Override
-                    public void onStatusChanged(boolean enabled) {
+                    public void onWifiVerboseLoggingStatusChanged(boolean enabled) {
+
                     }
                 };
-        mWifiManager.registerWifiVerboseLoggingStatusCallback(new HandlerExecutor(mHandler),
-                verboseLoggingStatusCallback);
-        verify(mWifiService).registerWifiVerboseLoggingStatusCallback(
-                any(IWifiVerboseLoggingStatusCallback.Stub.class));
-        mWifiManager.unregisterWifiVerboseLoggingStatusCallback(verboseLoggingStatusCallback);
-        verify(mWifiService).unregisterWifiVerboseLoggingStatusCallback(
-                any(IWifiVerboseLoggingStatusCallback.Stub.class));
+        mWifiManager.addWifiVerboseLoggingStatusChangedListener(new HandlerExecutor(mHandler),
+                listener);
+        verify(mWifiService).addWifiVerboseLoggingStatusChangedListener(
+                any(IWifiVerboseLoggingStatusChangedListener.Stub.class));
+        mWifiManager.removeWifiVerboseLoggingStatusChangedListener(listener);
+        verify(mWifiService).removeWifiVerboseLoggingStatusChangedListener(
+                any(IWifiVerboseLoggingStatusChangedListener.Stub.class));
     }
 
     /**
      * Verify an IllegalArgumentException is thrown if a callback is not provided.
      */
     @Test
-    public void testRemoveWifiVerboseLoggingStatusCallbackIllegalArguments() throws Exception {
+    public void testRemoveWifiVerboseLoggingStatusChangedListenerIllegalArguments()
+            throws Exception {
         try {
-            mWifiManager.unregisterWifiVerboseLoggingStatusCallback(null);
+            mWifiManager.removeWifiVerboseLoggingStatusChangedListener(null);
             fail("expected IllegalArgumentException - null callback");
         } catch (IllegalArgumentException expected) {
         }
@@ -2107,22 +2110,15 @@ public class WifiManagerTest {
     }
 
     /**
-     * Check the call to getAllMatchingWifiConfigs calls getAllMatchingFqdnsForScanResults and
-     * getWifiConfigsForPasspointProfiles of WifiService in order.
+     * Check the call to getAllMatchingWifiConfigs calls getAllMatchingWifiConfigsForPasspoint of
+     * WifiService.
      */
     @Test
     public void testGetAllMatchingWifiConfigs() throws Exception {
-        Map<String, List<ScanResult>> passpointProfiles = new HashMap<>();
-        passpointProfiles.put("www.test.com_987a69bca26", new ArrayList<>());
-        when(mWifiService.getAllMatchingPasspointProfilesForScanResults(
-                any(List.class))).thenReturn(passpointProfiles);
-        InOrder inOrder = inOrder(mWifiService);
-
         mWifiManager.getAllMatchingWifiConfigs(new ArrayList<>());
-
-        inOrder.verify(mWifiService).getAllMatchingPasspointProfilesForScanResults(any(List.class));
-        inOrder.verify(mWifiService).getWifiConfigsForPasspointProfiles(any(List.class));
+        verify(mWifiService).getAllMatchingWifiConfigsForPasspoint(any(List.class));
     }
+
 
     /**
      * Check the call to getMatchingOsuProviders calls getMatchingOsuProviders of WifiService
@@ -2222,10 +2218,17 @@ public class WifiManagerTest {
         contentionTimeStats[1] = new ContentionTimeStats(5, 6, 7, 8);
         contentionTimeStats[2] = new ContentionTimeStats(9, 10, 11, 12);
         contentionTimeStats[3] = new ContentionTimeStats(13, 14, 15, 16);
+        RateStats[] rateStats = new RateStats[2];
+        rateStats[0] = new RateStats(1, 3, 5, 7, 9, 11, 13, 15, 17);
+        rateStats[1] = new RateStats(2, 4, 6, 8, 10, 12, 14, 16, 18);
+        RadioStats[] radioStats = new RadioStats[2];
+        radioStats[0] = new RadioStats(0, 10, 11, 12, 13, 14, 15, 16, 17, 18);
+        radioStats[1] = new RadioStats(1, 20, 21, 22, 23, 24, 25, 26, 27, 28);
         callbackCaptor.getValue().onWifiUsabilityStats(1, true,
-                new WifiUsabilityStatsEntry(System.currentTimeMillis(), -50, 100, 10, 0, 5, 5, 100,
-                        100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 1, 100, 10, 100, 27,
-                        contentionTimeStats, 101, true, true, true, 0, 10, 10, true));
+                new WifiUsabilityStatsEntry(System.currentTimeMillis(), -50, 100, 10, 0, 5, 5,
+                        100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 1, 100, 10,
+                        100, 27, contentionTimeStats, rateStats, radioStats, 101, true, true, true,
+                        0, 10, 10, true));
         verify(mOnWifiUsabilityStatsListener).onWifiUsabilityStats(anyInt(), anyBoolean(),
                 any(WifiUsabilityStatsEntry.class));
     }
@@ -2363,6 +2366,25 @@ public class WifiManagerTest {
 
         // send a null config
         assertEquals(mWifiManager.addNetwork(null), -1);
+    }
+
+    /**
+     * Test {@link WifiManager#addNetworkPrivileged(WifiConfiguration)} goes to WifiService.
+     * Also verify that an IllegalArgumentException is thrown if the input is null.
+     */
+    @Test
+    public void testAddNetworkPrivileged() throws Exception {
+        WifiConfiguration configuration = new WifiConfiguration();
+        mWifiManager.addNetworkPrivileged(configuration);
+        verify(mWifiService).addOrUpdateNetworkPrivileged(configuration,
+                mContext.getOpPackageName());
+
+        // send a null config and verify an exception is thrown
+        try {
+            mWifiManager.addNetworkPrivileged(null);
+            fail("configuration is null - IllegalArgumentException is expected.");
+        } catch (IllegalArgumentException e) {
+        }
     }
 
     /**
@@ -3257,5 +3279,35 @@ public class WifiManagerTest {
         when(mWifiService.getSupportedFeatures())
                 .thenReturn(new Long(~WIFI_FEATURE_DECORATED_IDENTITY));
         assertFalse(mWifiManager.isDecoratedIdentitySupported());
+    }
+
+    /**
+     * Verify call to getAllowedChannels goes to WifiServiceImpl
+     */
+    @Test
+    public void testGetAllowedChannels() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
+        int band = WifiScanner.WIFI_BAND_24_5_6_GHZ;
+        int mode = WifiAvailableChannel.OP_MODE_WIFI_AWARE
+                | WifiAvailableChannel.OP_MODE_WIFI_DIRECT_GO
+                | WifiAvailableChannel.OP_MODE_WIFI_DIRECT_CLI;
+        mWifiManager.getAllowedChannels(band, mode);
+        verify(mWifiService).getUsableChannels(eq(band), eq(mode),
+                eq(WifiAvailableChannel.FILTER_REGULATORY));
+    }
+
+    /**
+     * Verify call to getUsableChannels goes to WifiServiceImpl
+     */
+    @Test
+    public void testGetUsableChannels() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
+        int band = WifiScanner.WIFI_BAND_BOTH_WITH_DFS;
+        int mode = WifiAvailableChannel.OP_MODE_WIFI_AWARE
+                | WifiAvailableChannel.OP_MODE_WIFI_DIRECT_CLI;
+        mWifiManager.getUsableChannels(band, mode);
+        verify(mWifiService).getUsableChannels(eq(band), eq(mode),
+                eq(WifiAvailableChannel.FILTER_CONCURRENCY
+                    | WifiAvailableChannel.FILTER_CELLULAR_COEXISTENCE));
     }
 }

@@ -16,12 +16,4 @@
 
 package android.net.wifi;
 
-/**
- * Interface for wifi verbose logging status listener.
- *
- * @hide
- */
-oneway interface IWifiVerboseLoggingStatusCallback
-{
-   void onStatusChanged(in boolean enabled);
-}
+parcelable WifiManager.AddNetworkResult;

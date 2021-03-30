@@ -21,6 +21,8 @@ import static org.junit.Assert.fail;
 import static org.mockito.Mockito.validateMockitoUsage;
 
 import android.net.wifi.WifiUsabilityStatsEntry.ContentionTimeStats;
+import android.net.wifi.WifiUsabilityStatsEntry.RadioStats;
+import android.net.wifi.WifiUsabilityStatsEntry.RateStats;
 import android.os.Parcel;
 
 import androidx.test.filters.SmallTest;
@@ -75,18 +77,25 @@ public class WifiUsabilityStatsEntryTest {
         contentionTimeStats[1] = new ContentionTimeStats(5, 6, 7, 8);
         contentionTimeStats[2] = new ContentionTimeStats(9, 10, 11, 12);
         contentionTimeStats[3] = new ContentionTimeStats(13, 14, 15, 16);
+        RateStats[] rateStats = new RateStats[2];
+        rateStats[0] = new RateStats(1, 3, 4, 7, 9, 11, 13, 15, 17);
+        rateStats[1] = new RateStats(2, 2, 3, 8, 10, 12, 14, 16, 18);
+
+        RadioStats[] radioStats = new RadioStats[2];
+        radioStats[0] = new RadioStats(0, 10, 11, 12, 13, 14, 15, 16, 17, 18);
+        radioStats[1] = new RadioStats(1, 20, 21, 22, 23, 24, 25, 26, 27, 28);
 
         WifiUsabilityStatsEntry usabilityStatsEntry = new WifiUsabilityStatsEntry(
-                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
-                14, 15, 16, 17, 18, 19, 20, 21, 22, 32, contentionTimeStats, 100, true, true, true,
-                23, 24, 25, true);
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+                32, contentionTimeStats, rateStats, radioStats, 100, true,
+                true, true, 23, 24, 25, true);
         assertEquals(32, usabilityStatsEntry.getTimeSliceDutyCycleInPercent());
 
         WifiUsabilityStatsEntry usabilityStatsEntryWithInvalidDutyCycleValue =
                 new WifiUsabilityStatsEntry(
                         0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-                        21, 22, -1, contentionTimeStats, 101, true, true, true,
-                        23, 24, 25, true);
+                        21, 22, -1, contentionTimeStats, rateStats, radioStats, 101, true, true,
+                        true, 23, 24, 25, true);
         try {
             usabilityStatsEntryWithInvalidDutyCycleValue.getTimeSliceDutyCycleInPercent();
             fail();
@@ -112,11 +121,18 @@ public class WifiUsabilityStatsEntryTest {
         contentionTimeStats[1] = new ContentionTimeStats(5, 6, 7, 8);
         contentionTimeStats[2] = new ContentionTimeStats(9, 10, 11, 12);
         contentionTimeStats[3] = new ContentionTimeStats(13, 14, 15, 16);
+        RateStats[] rateStats = new RateStats[2];
+        rateStats[0] = new RateStats(1, 3, 4, 7, 9, 11, 13, 15, 17);
+        rateStats[1] = new RateStats(2, 2, 3, 8, 10, 12, 14, 16, 18);
+
+        RadioStats[] radioStats = new RadioStats[2];
+        radioStats[0] = new RadioStats(0, 10, 11, 12, 13, 14, 15, 16, 17, 18);
+        radioStats[1] = new RadioStats(1, 20, 21, 22, 23, 24, 25, 26, 27, 28);
 
         return new WifiUsabilityStatsEntry(
-                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
-                14, 15, 16, 17, 18, 19, 20, 21, 22, 50, contentionTimeStats, 102, true, true, true,
-                23, 24, 25, true
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+                50, contentionTimeStats, rateStats, radioStats, 102, true,
+                true, true, 23, 24, 25, true
         );
     }
 
@@ -130,6 +146,32 @@ public class WifiUsabilityStatsEntryTest {
         assertEquals(expected.getTotalTxRetries(), actual.getTotalTxRetries());
         assertEquals(expected.getTotalTxBad(), actual.getTotalTxBad());
         assertEquals(expected.getTotalRxSuccess(), actual.getTotalRxSuccess());
+        assertEquals(expected.getWifiLinkLayerRadioStats().size(),
+                actual.getWifiLinkLayerRadioStats().size());
+        for (int i = 0; i < expected.getWifiLinkLayerRadioStats().size(); i++) {
+            RadioStats expectedRadioStats = expected.getWifiLinkLayerRadioStats().get(i);
+            RadioStats actualRadioStats = actual.getWifiLinkLayerRadioStats().get(i);
+            assertEquals(expectedRadioStats.getRadioId(),
+                    actualRadioStats.getRadioId());
+            assertEquals(expectedRadioStats.getTotalRadioOnTimeMillis(),
+                    actualRadioStats.getTotalRadioOnTimeMillis());
+            assertEquals(expectedRadioStats.getTotalRadioTxTimeMillis(),
+                    actualRadioStats.getTotalRadioTxTimeMillis());
+            assertEquals(expectedRadioStats.getTotalRadioRxTimeMillis(),
+                    actualRadioStats.getTotalRadioRxTimeMillis());
+            assertEquals(expectedRadioStats.getTotalScanTimeMillis(),
+                    actualRadioStats.getTotalScanTimeMillis());
+            assertEquals(expectedRadioStats.getTotalNanScanTimeMillis(),
+                    actualRadioStats.getTotalNanScanTimeMillis());
+            assertEquals(expectedRadioStats.getTotalBackgroundScanTimeMillis(),
+                    actualRadioStats.getTotalBackgroundScanTimeMillis());
+            assertEquals(expectedRadioStats.getTotalRoamScanTimeMillis(),
+                    actualRadioStats.getTotalRoamScanTimeMillis());
+            assertEquals(expectedRadioStats.getTotalPnoScanTimeMillis(),
+                    actualRadioStats.getTotalPnoScanTimeMillis());
+            assertEquals(expectedRadioStats.getTotalHotspot2ScanTimeMillis(),
+                    actualRadioStats.getTotalHotspot2ScanTimeMillis());
+        }
         assertEquals(expected.getTotalRadioOnTimeMillis(), actual.getTotalRadioOnTimeMillis());
         assertEquals(expected.getTotalRadioTxTimeMillis(), actual.getTotalRadioTxTimeMillis());
         assertEquals(expected.getTotalRadioRxTimeMillis(), actual.getTotalRadioRxTimeMillis());
@@ -235,6 +277,20 @@ public class WifiUsabilityStatsEntryTest {
                         .getContentionNumSamples(),
                 actual.getContentionTimeStats(WifiUsabilityStatsEntry.WME_ACCESS_CATEGORY_VO)
                         .getContentionNumSamples());
+        for (int i = 0; i < expected.getRateStats().size(); i++) {
+            RateStats expectedStats = expected.getRateStats().get(i);
+            RateStats actualStats = actual.getRateStats().get(i);
+            assertEquals(expectedStats.getPreamble(), actualStats.getPreamble());
+            assertEquals(expectedStats.getNumberOfSpatialStreams(),
+                    actualStats.getNumberOfSpatialStreams());
+            assertEquals(expectedStats.getBandwidthInMhz(), actualStats.getBandwidthInMhz());
+            assertEquals(expectedStats.getRateMcsIdx(), actualStats.getRateMcsIdx());
+            assertEquals(expectedStats.getBitRateInKbps(), actualStats.getBitRateInKbps());
+            assertEquals(expectedStats.getTxMpdu(), actualStats.getTxMpdu());
+            assertEquals(expectedStats.getRxMpdu(), actualStats.getRxMpdu());
+            assertEquals(expectedStats.getMpduLost(), actualStats.getMpduLost());
+            assertEquals(expectedStats.getRetries(), actualStats.getRetries());
+        }
         assertEquals(expected.getChannelUtilizationRatio(), actual.getChannelUtilizationRatio());
         assertEquals(expected.isThroughputSufficient(), actual.isThroughputSufficient());
         assertEquals(expected.isWifiScoringEnabled(), actual.isWifiScoringEnabled());
