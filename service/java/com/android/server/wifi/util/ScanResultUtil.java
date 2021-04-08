@@ -16,9 +16,11 @@
 
 package com.android.server.wifi.util;
 
+import android.annotation.Nullable;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiConfiguration;
+import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.wifi.ScanDetail;
@@ -35,6 +37,7 @@ import java.util.List;
  *   > Helper methods to identify the encryption of a ScanResult.
  */
 public class ScanResultUtil {
+    private static final String TAG = "ScanResultUtil";
     private ScanResultUtil() { /* not constructable */ }
 
     /**
@@ -231,9 +234,17 @@ public class ScanResultUtil {
     }
 
     /**
+     *  Helper method to check if the provided |scanResult| corresponds to an unknown amk network.
+     *  This checks if the provided capabilities string contains ? or not.
+     */
+    public static boolean isScanResultForUnknownAkmNetwork(ScanResult scanResult) {
+        return scanResult.capabilities.contains("?");
+    }
+
+    /**
      * Helper method to check if the provided |scanResult| corresponds to an open network or not.
      * This checks if the provided capabilities string does not contain either of WEP, PSK, SAE
-     * or EAP encryption types or not.
+     * EAP, or unknown encryption types or not.
      */
     public static boolean isScanResultForOpenNetwork(ScanResult scanResult) {
         return (!(isScanResultForWepNetwork(scanResult) || isScanResultForPskNetwork(scanResult)
@@ -242,7 +253,8 @@ public class ScanResultUtil {
                 || isScanResultForWpa3EnterpriseOnlyNetwork(scanResult)
                 || isScanResultForWapiPskNetwork(scanResult)
                 || isScanResultForWapiCertNetwork(scanResult)
-                || isScanResultForEapSuiteBNetwork(scanResult)));
+                || isScanResultForEapSuiteBNetwork(scanResult)
+                || isScanResultForUnknownAkmNetwork(scanResult)));
     }
 
     /**
@@ -258,17 +270,21 @@ public class ScanResultUtil {
      * Creates a network configuration object using the provided |scanResult|.
      * This is used to create ephemeral network configurations.
      */
-    public static WifiConfiguration createNetworkFromScanResult(ScanResult scanResult) {
+    public static @Nullable WifiConfiguration createNetworkFromScanResult(ScanResult scanResult) {
         WifiConfiguration config = new WifiConfiguration();
         config.SSID = createQuotedSSID(scanResult.SSID);
-        config.setSecurityParams(generateSecurityParamsListFromScanResult(scanResult));
+        List<SecurityParams> list = generateSecurityParamsListFromScanResult(scanResult);
+        if (null == list) {
+            return null;
+        }
+        config.setSecurityParams(list);
         return config;
     }
 
     /**
      * Generate security params from the scan result.
      */
-    public static List<SecurityParams> generateSecurityParamsListFromScanResult(
+    public static @Nullable List<SecurityParams> generateSecurityParamsListFromScanResult(
             ScanResult scanResult) {
         List<SecurityParams> list = new ArrayList<>();
 
@@ -354,9 +370,7 @@ public class ScanResultUtil {
             list.add(SecurityParams.createSecurityParamsBySecurityType(
                     WifiConfiguration.SECURITY_TYPE_PASSPOINT_R3));
         }
-        if (!list.isEmpty()) return list;
-
-        throw new IllegalArgumentException("Invalid ScanResult: " + scanResult);
+        return list.isEmpty() ? null : list;
     }
 
     /**
@@ -410,10 +424,12 @@ public class ScanResultUtil {
      */
     public static boolean validateScanResultList(List<ScanResult> scanResults) {
         if (scanResults == null || scanResults.isEmpty()) {
+            Log.w(TAG, "Empty or null ScanResult list");
             return false;
         }
         for (ScanResult scanResult : scanResults) {
             if (!validate(scanResult)) {
+                Log.w(TAG, "Invalid ScanResult: " + scanResult);
                 return false;
             }
         }

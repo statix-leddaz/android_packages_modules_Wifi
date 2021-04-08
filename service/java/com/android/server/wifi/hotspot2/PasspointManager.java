@@ -514,6 +514,9 @@ public class PasspointManager {
                     + " and unique ID: " + config.getUniqueId());
             old.uninstallCertsAndKeys();
             mProviders.remove(config.getUniqueId());
+            // Keep the user connect choice and AnonymousIdentity
+            newProvider.setUserConnectChoice(old.getConnectChoice(), old.getConnectChoiceRssi());
+            newProvider.setAnonymousIdentity(old.getAnonymousIdentity());
             // New profile changes the credential, remove the related WifiConfig.
             if (!old.equals(newProvider)) {
                 mWifiConfigManager.removePasspointConfiguredNetwork(
@@ -1134,18 +1137,21 @@ public class PasspointManager {
     }
 
     /**
-     * Returns the corresponding wifi configurations for given a list Passpoint profile unique
-     * identifiers.
+     * Returns the corresponding wifi configurations from {@link WifiConfigManager} for given a list
+     * of Passpoint profile unique identifiers.
+     *
+     * Note: Not all matched Passpoint profile's WifiConfiguration will be returned, only the ones
+     * already be added into the {@link WifiConfigManager} will be returned. As the returns of this
+     * method is expected to show in Wifi Picker or use with
+     * {@link WifiManager#connect(int, WifiManager.ActionListener)} API, each WifiConfiguration must
+     * have a valid network Id.
      *
      * An empty list will be returned when no match is found.
      *
      * @param idList a list of unique identifiers
-     * @param isFromWifiConfigManagerOnly true will only return configs already added into
-     *                                    WifiConfigManager, false will return all matched ones.
      * @return List of {@link WifiConfiguration} converted from {@link PasspointProvider}
      */
-    public List<WifiConfiguration> getWifiConfigsForPasspointProfiles(List<String> idList,
-            boolean isFromWifiConfigManagerOnly) {
+    public List<WifiConfiguration> getWifiConfigsForPasspointProfiles(List<String> idList) {
         if (mProviders.isEmpty()) {
             return Collections.emptyList();
         }
@@ -1158,14 +1164,9 @@ public class PasspointManager {
                 continue;
             }
             WifiConfiguration config = provider.getWifiConfig();
-            if (mWifiConfigManager.shouldUseEnhancedRandomization(config)) {
-                config.setRandomizedMacAddress(MacAddress.fromString(DEFAULT_MAC_ADDRESS));
-            } else {
-                MacAddress result = mMacAddressUtil.calculatePersistentMac(config.getNetworkKey(),
-                        mMacAddressUtil.obtainMacRandHashFunction(Process.WIFI_UID));
-                if (result != null) {
-                    config.setRandomizedMacAddress(result);
-                }
+            config = mWifiConfigManager.getConfiguredNetwork(config.getProfileKeyInternal());
+            if (config == null) {
+                continue;
             }
             // If the Passpoint configuration is from a suggestion, check if the app shares this
             // suggestion with the user.
@@ -1174,10 +1175,13 @@ public class PasspointManager {
                     .isPasspointSuggestionSharedWithUser(config)) {
                 continue;
             }
-            if (isFromWifiConfigManagerOnly) {
-                config = mWifiConfigManager.getConfiguredNetwork(config.getProfileKey());
-                if (config == null) {
-                    continue;
+            if (mWifiConfigManager.shouldUseEnhancedRandomization(config)) {
+                config.setRandomizedMacAddress(MacAddress.fromString(DEFAULT_MAC_ADDRESS));
+            } else {
+                MacAddress result = mMacAddressUtil.calculatePersistentMac(config.getNetworkKey(),
+                        mMacAddressUtil.obtainMacRandHashFunction(Process.WIFI_UID));
+                if (result != null) {
+                    config.setRandomizedMacAddress(result);
                 }
             }
             configs.add(config);
@@ -1588,34 +1592,5 @@ public class PasspointManager {
         Log.i(TAG, "Captive network, Terms and Conditions URL: " + termsAndConditionsUrl
                 + " from BSSID: " + Utils.macToString(event.getBssid()));
         return termsAndConditionsUrl;
-    }
-
-    /**
-     * Returns a list of all matching WifiConfigurations for a given list of ScanResult.
-     * @param scanResults The list of scan results
-     * @param isFromWifiConfigManagerOnly true will only return configs already added into
-     *                                    WifiConfigManager, false will return all matched ones.
-     * @return List that consists of {@link WifiConfiguration} and corresponding scanResults per
-     * network type({@link WifiManager#PASSPOINT_HOME_NETWORK} and
-     * {@link WifiManager#PASSPOINT_ROAMING_NETWORK}).
-     */
-    public List<Pair<WifiConfiguration, Map<Integer, List<ScanResult>>>> getAllMatchingWifiConfigs(
-            @NonNull List<ScanResult> scanResults, boolean isFromWifiConfigManagerOnly) {
-        List<Pair<WifiConfiguration, Map<Integer, List<ScanResult>>>> configs = new ArrayList<>();
-        Map<String, Map<Integer, List<ScanResult>>> results =
-                getAllMatchingPasspointProfilesForScanResults(scanResults);
-        if (results.isEmpty()) {
-            return configs;
-        }
-        List<WifiConfiguration> wifiConfigurations = getWifiConfigsForPasspointProfiles(
-                new ArrayList<>(results.keySet()), isFromWifiConfigManagerOnly);
-        for (WifiConfiguration configuration : wifiConfigurations) {
-            Map<Integer, List<ScanResult>> scanResultsPerNetworkType =
-                    results.get(configuration.getProfileKeyInternal());
-            if (scanResultsPerNetworkType != null) {
-                configs.add(Pair.create(configuration, scanResultsPerNetworkType));
-            }
-        }
-        return configs;
     }
 }

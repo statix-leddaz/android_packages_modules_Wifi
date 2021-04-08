@@ -2209,6 +2209,14 @@ message BssidBlocklistStats {
   // Number of times connection is initiated in the high movement state
   // only relevant if high_movement_multiple_scans_feature_enabled=true
   optional int32 num_high_movement_connection_started = 4;
+
+  // Histogram corresponding to the number of times BSSIDs are blocked per
+  // WifiBlocklistMonitor.FailureReason.
+  repeated Int32Count bssid_blocklist_per_reason_count = 5;
+
+  // Histogram corresponding to the number of times WifiConfigurations are blocked per
+  // WifiConfiguration.NetworkSelectionStatus.NetworkSelectionDisableReason.
+  repeated Int32Count wifi_config_blocklist_per_reason_count = 6;
 }
 
 message WifiIsUnusableEvent {
@@ -2564,16 +2572,16 @@ message ContentionTimeStats {
   optional AccessCategory access_category = 1;
 
   // Data packet min contention time in microseconds
-  optional int32 contention_time_min_micros = 2;
+  optional int64 contention_time_min_micros = 2;
 
   // Data packet max contention time in microseconds
-  optional int32 contention_time_max_micros = 3;
+  optional int64 contention_time_max_micros = 3;
 
   // Data packet average contention time in microseconds
-  optional int32 contention_time_avg_micros = 4;
+  optional int64 contention_time_avg_micros = 4;
 
   // Number of data packets used for contention statistics
-  optional int32 contention_num_samples = 5;
+  optional int64 contention_num_samples = 5;
 }
 
 message RateStats {

@@ -90,6 +90,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * Interprets and executes 'adb shell cmd wifi [args]'.
@@ -542,18 +543,11 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     } else {
                         pw.println("Network Id      SSID                         Security type");
                         for (WifiConfiguration network : networks.getList()) {
-                            String securityType = null;
-                            if (WifiConfigurationUtil.isConfigForSaeNetwork(network)) {
-                                securityType = "wpa3";
-                            } else if (WifiConfigurationUtil.isConfigForPskNetwork(network)) {
-                                securityType = "wpa2";
-                            } else if (WifiConfigurationUtil.isConfigForEapNetwork(network)) {
-                                securityType = "eap";
-                            } else if (WifiConfigurationUtil.isConfigForOweNetwork(network)) {
-                                securityType = "owe";
-                            } else if (WifiConfigurationUtil.isConfigForOpenNetwork(network)) {
-                                securityType = "open";
-                            }
+                            String securityType = network.getSecurityParamsList().stream()
+                                    .map(p -> WifiConfiguration.getSecurityTypeName(
+                                                    p.getSecurityType())
+                                            + (p.isAddedByAutoUpgrade() ? "^" : ""))
+                                    .collect(Collectors.joining("/"));
                             pw.println(String.format("%-12d %-32s %-4s",
                                     network.networkId, WifiInfo.sanitizeSsid(network.SSID),
                                     securityType));
@@ -623,6 +617,17 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     mWifiService.forget(Integer.parseInt(networkId), actionListener);
                     // wait for status.
                     countDownLatch.await(500, TimeUnit.MILLISECONDS);
+                    return 0;
+                }
+                case "pmksa-flush": {
+                    String networkId = getNextArgRequired();
+                    int netId = Integer.parseInt(networkId);
+                    WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(netId);
+                    if (config == null) {
+                        pw.println("No Wifi config corresponding to networkId: " + netId);
+                        return -1;
+                    }
+                    mWifiNative.removeNetworkCachedData(netId);
                     return 0;
                 }
                 case "status":
@@ -1488,6 +1493,9 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 + "force-softap-channel command");
         pw.println("  stop-softap");
         pw.println("    Stop softap (hotspot)");
+        pw.println("  pmksa-flush <networkId>");
+        pw.println("        - Flush the local PMKSA cache associated with the network id."
+                + " Use list-networks to retrieve <networkId> for the network");
     }
 
     private void onHelpPrivileged(PrintWriter pw) {

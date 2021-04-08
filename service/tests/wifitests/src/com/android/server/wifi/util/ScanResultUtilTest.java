@@ -403,6 +403,24 @@ public class ScanResultUtilTest extends WifiBaseTest {
         verifyPasspointNetwork(caps, true, null, false, false);
     }
 
+    /**
+     * Test that an unknown AMK network is not detected as an open network.
+     */
+    @Test
+    public void testUnknownAkmNotOpenNetwork() {
+        final String ssid = "UnknownAkm-Network";
+        String caps = "[RSN-?-TKIP+CCMP][ESS][WPS]";
+
+        ScanResult input = new ScanResult(WifiSsid.createFromAsciiEncoded(ssid), ssid,
+                "ab:cd:01:ef:45:89", 1245, 0, caps, -78, 2450, 1025, 22, 33, 20, 0,
+                0, true);
+
+        input.informationElements = new InformationElement[] {
+                createIE(InformationElement.EID_SSID, ssid.getBytes(StandardCharsets.UTF_8))
+        };
+
+        assertFalse(ScanResultUtil.isScanResultForOpenNetwork(input));
+    }
 
     /**
      * Verify ScanResultList validation.
@@ -422,6 +440,24 @@ public class ScanResultUtilTest extends WifiBaseTest {
         scanResult.capabilities = "[RSN-PSK-CCMP]";
         scanResult.BSSID = "ab:cd:01:ef:45:89";
         assertTrue(ScanResultUtil.validateScanResultList(scanResults));
+    }
+
+    /**
+     * Verify that unknown AKM in the scan result
+     */
+    @Test
+    public void testUnknownAkmForSecurityParamsGeneration() {
+        final String ssid = "Another SSid";
+        ScanResult scanResult = new ScanResult(ssid, "ab:cd:01:ef:45:89", 1245, 0, "",
+                -78, 2450, 1025, 22, 33, 20, 0, 0, true);
+        scanResult.informationElements = new InformationElement[] {
+                createIE(InformationElement.EID_SSID, ssid.getBytes(StandardCharsets.UTF_8))
+        };
+        WifiConfiguration config;
+
+        scanResult.capabilities = "[RSN-?-CCMP]";
+        config = ScanResultUtil.createNetworkFromScanResult(scanResult);
+        assertNull(config);
     }
 
     private static InformationElement createIE(int id, byte[] bytes) {

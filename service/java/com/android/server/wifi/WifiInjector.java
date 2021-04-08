@@ -61,6 +61,7 @@ import com.android.server.wifi.p2p.WifiP2pMetrics;
 import com.android.server.wifi.p2p.WifiP2pMonitor;
 import com.android.server.wifi.p2p.WifiP2pNative;
 import com.android.server.wifi.rtt.RttMetrics;
+import com.android.server.wifi.util.LastCallerInfoManager;
 import com.android.server.wifi.util.LruConnectionTracker;
 import com.android.server.wifi.util.NetdWrapper;
 import com.android.server.wifi.util.SettingsMigrationDataHolder;
@@ -230,6 +231,7 @@ public class WifiInjector {
     private final ClientModeImplMonitor mCmiMonitor = new ClientModeImplMonitor();
     private final ExternalScoreUpdateObserverProxy mExternalScoreUpdateObserverProxy;
     private final WifiNotificationManager mWifiNotificationManager;
+    private final LastCallerInfoManager mLastCallerInfoManager;
 
     public WifiInjector(WifiContext context) {
         if (context == null) {
@@ -348,7 +350,7 @@ public class WifiInjector {
         mWifiBlocklistMonitor = new WifiBlocklistMonitor(mContext, mWifiConnectivityHelper,
                 mWifiLastResortWatchdog, mClock, new LocalLog(
                 mContext.getSystemService(ActivityManager.class).isLowRamDevice() ? 128 : 256),
-                mWifiScoreCard, mScoringParams);
+                mWifiScoreCard, mScoringParams, mWifiMetrics);
         mWifiMetrics.setWifiBlocklistMonitor(mWifiBlocklistMonitor);
         // Config Manager
         mWifiConfigManager = new WifiConfigManager(mContext, mClock,
@@ -501,6 +503,7 @@ public class WifiInjector {
 
         mSimRequiredNotifier = new SimRequiredNotifier(mContext, mFrameworkFacade,
                 mWifiNotificationManager);
+        mLastCallerInfoManager = new LastCallerInfoManager();
     }
 
     /**
@@ -1021,5 +1024,9 @@ public class WifiInjector {
 
     public WifiNotificationManager getWifiNotificationManager() {
         return mWifiNotificationManager;
+    }
+
+    public LastCallerInfoManager getLastCallerInfoManager() {
+        return mLastCallerInfoManager;
     }
 }

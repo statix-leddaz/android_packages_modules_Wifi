@@ -1542,11 +1542,28 @@ public class WifiManager {
     @NonNull
     public List<Pair<WifiConfiguration, Map<Integer, List<ScanResult>>>> getAllMatchingWifiConfigs(
             @NonNull List<ScanResult> scanResults) {
+        List<Pair<WifiConfiguration, Map<Integer, List<ScanResult>>>> configs = new ArrayList<>();
         try {
-            return mService.getAllMatchingWifiConfigsForPasspoint(scanResults);
+            Map<String, Map<Integer, List<ScanResult>>> results =
+                    mService.getAllMatchingPasspointProfilesForScanResults(scanResults);
+            if (results.isEmpty()) {
+                return configs;
+            }
+            List<WifiConfiguration> wifiConfigurations =
+                    mService.getWifiConfigsForPasspointProfiles(
+                            new ArrayList<>(results.keySet()));
+            for (WifiConfiguration configuration : wifiConfigurations) {
+                Map<Integer, List<ScanResult>> scanResultsPerNetworkType =
+                        results.get(configuration.getProfileKeyInternal());
+                if (scanResultsPerNetworkType != null) {
+                    configs.add(Pair.create(configuration, scanResultsPerNetworkType));
+                }
+            }
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
+
+        return configs;
     }
 
     /**

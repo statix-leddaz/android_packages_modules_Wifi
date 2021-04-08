@@ -147,10 +147,10 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
      * Data packet contention time statistics.
      */
     public static final class ContentionTimeStats implements Parcelable {
-        private int mContentionTimeMinMicros;
-        private int mContentionTimeMaxMicros;
-        private int mContentionTimeAvgMicros;
-        private int mContentionNumSamples;
+        private long mContentionTimeMinMicros;
+        private long mContentionTimeMaxMicros;
+        private long mContentionTimeAvgMicros;
+        private long mContentionNumSamples;
 
         /** @hide */
         public ContentionTimeStats() {
@@ -163,7 +163,7 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
          * @param timeAvg The average data packet contention time
          * @param numSamples The number of samples used to get the reported statistics
          */
-        public ContentionTimeStats(int timeMin, int timeMax, int timeAvg, int numSamples) {
+        public ContentionTimeStats(long timeMin, long timeMax, long timeAvg, long numSamples) {
             this.mContentionTimeMinMicros = timeMin;
             this.mContentionTimeMaxMicros = timeMax;
             this.mContentionTimeAvgMicros = timeAvg;
@@ -177,10 +177,10 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
 
         @Override
         public void writeToParcel(@NonNull Parcel dest, int flags) {
-            dest.writeInt(mContentionTimeMinMicros);
-            dest.writeInt(mContentionTimeMaxMicros);
-            dest.writeInt(mContentionTimeAvgMicros);
-            dest.writeInt(mContentionNumSamples);
+            dest.writeLong(mContentionTimeMinMicros);
+            dest.writeLong(mContentionTimeMaxMicros);
+            dest.writeLong(mContentionTimeAvgMicros);
+            dest.writeLong(mContentionNumSamples);
         }
 
         /** Implement the Parcelable interface */
@@ -188,10 +188,10 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
                 new Creator<ContentionTimeStats>() {
             public ContentionTimeStats createFromParcel(Parcel in) {
                 ContentionTimeStats stats = new ContentionTimeStats();
-                stats.mContentionTimeMinMicros = in.readInt();
-                stats.mContentionTimeMaxMicros = in.readInt();
-                stats.mContentionTimeAvgMicros = in.readInt();
-                stats.mContentionNumSamples = in.readInt();
+                stats.mContentionTimeMinMicros = in.readLong();
+                stats.mContentionTimeMaxMicros = in.readLong();
+                stats.mContentionTimeAvgMicros = in.readLong();
+                stats.mContentionNumSamples = in.readLong();
                 return stats;
             }
             public ContentionTimeStats[] newArray(int size) {
@@ -200,22 +200,22 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
         };
 
         /** Data packet min contention time in microseconds */
-        public int getContentionTimeMinMicros() {
+        public long getContentionTimeMinMicros() {
             return mContentionTimeMinMicros;
         }
 
         /** Data packet max contention time in microseconds */
-        public int getContentionTimeMaxMicros() {
+        public long getContentionTimeMaxMicros() {
             return mContentionTimeMaxMicros;
         }
 
         /** Data packet average contention time in microseconds */
-        public int getContentionTimeAvgMicros() {
+        public long getContentionTimeAvgMicros() {
             return mContentionTimeAvgMicros;
         }
 
         /** Number of data packets used for contention statistics */
-        public int getContentionNumSamples() {
+        public long getContentionNumSamples() {
             return mContentionNumSamples;
         }
     }
@@ -256,13 +256,13 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
     public @interface WifiSpatialStreams {}
 
     /** Single stream, 1x1 */
-    public static final int WIFI_SPATIAL_STREAMS_ONE = 0;
+    public static final int WIFI_SPATIAL_STREAMS_ONE = 1;
     /** Dual streams, 2x2 */
-    public static final int WIFI_SPATIAL_STREAMS_TWO = 1;
+    public static final int WIFI_SPATIAL_STREAMS_TWO = 2;
     /** Three streams, 3x3 */
-    public static final int WIFI_SPATIAL_STREAMS_THREE = 2;
+    public static final int WIFI_SPATIAL_STREAMS_THREE = 3;
     /** Four streams, 4x4 */
-    public static final int WIFI_SPATIAL_STREAMS_FOUR = 3;
+    public static final int WIFI_SPATIAL_STREAMS_FOUR = 4;
     /** Invalid */
     public static final int WIFI_SPATIAL_STREAMS_INVALID = -1;
 
@@ -875,8 +875,16 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
     }
 
     /**
-     * Per rate information and statistics.
-     * @return A list of rate statistics, see {@link RateStats}.
+     * Rate information and statistics, which are ordered by preamble, modulation and coding scheme
+     * (MCS), and number of spatial streams (NSS).
+     * @return A list of rate statistics in the form of a list of {@link RateStats} objects.
+     *         Depending on the link type, the list is created following the order of:
+     *         - HT (IEEE Std 802.11-2020, Section 19): LEGACY rates (1Mbps, ..., 54Mbps),
+     *           HT MCS0, ..., MCS15;
+     *         - VHT (IEEE Std 802.11-2020, Section 21): LEGACY rates (1Mbps, ..., 54Mbps),
+     *           VHT MCS0/NSS1, ..., VHT MCS11/NSS1, VHT MCSO/NSS2, ..., VHT MCS11/NSS2;
+     *         - HE (IEEE Std 802.11-2020, Section 27): LEGACY rates (1Mbps, ..., 54Mbps),
+     *           HE MCS0/NSS1, ..., HE MCS11/NSS1, HE MCSO/NSS2, ..., HE MCS11/NSS2.
      */
     @NonNull
     public List<RateStats> getRateStats() {

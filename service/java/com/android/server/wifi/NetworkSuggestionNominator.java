@@ -71,6 +71,8 @@ public class NetworkSuggestionNominator implements WifiNetworkSelector.NetworkNo
 
     @Override
     public void update(List<ScanDetail> scanDetails) {
+        // Update the matching profiles into WifiConfigManager, help displaying Suggestion and
+        // Passpoint networks in Wifi Picker
         addOrUpdateSuggestionsToWifiConfigManger(scanDetails);
         mPasspointNetworkNominateHelper.getPasspointNetworkCandidates(scanDetails, true);
     }
