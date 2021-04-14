@@ -1,0 +1,56 @@
+{
+  "comments": [
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000009888580",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1675532?revision\u003d1",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "3af1c678_5f274246",
+        "filename": "service/lint-baseline-pre-jarjar.xml",
+        "patchSetId": 1
+      },
+      "lineNbr": 7,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-04-14T11:56:51Z",
+      "side": 1,
+      "message": "Lines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details.",
+      "range": {
+        "startLine": 7,
+        "startChar": 0,
+        "endLine": 7,
+        "endChar": 115
+      },
+      "revId": "dcb2681d6969dfb8a89902727f2ad2354f629b83",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000009888580",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1675532?revision\u003d1",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "81a4f927_933f9684",
+        "filename": "service/lint-baseline-pre-jarjar.xml",
+        "patchSetId": 1
+      },
+      "lineNbr": 8,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-04-14T11:56:51Z",
+      "side": 1,
+      "message": "Lines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details.",
+      "range": {
+        "startLine": 8,
+        "startChar": 0,
+        "endLine": 8,
+        "endChar": 108
+      },
+      "revId": "dcb2681d6969dfb8a89902727f2ad2354f629b83",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
