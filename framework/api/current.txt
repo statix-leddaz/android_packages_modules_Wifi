@@ -272,7 +272,7 @@ package android.net.wifi {
     method public boolean getHiddenSSID();
     method public int getIpAddress();
     method public int getLinkSpeed();
-    method public String getMacAddress();
+    method @RequiresPermission(allOf={android.Manifest.permission.LOCAL_MAC_ADDRESS, android.Manifest.permission.ACCESS_FINE_LOCATION}) public String getMacAddress();
     method public int getMaxSupportedRxLinkSpeedMbps();
     method public int getMaxSupportedTxLinkSpeedMbps();
     method public int getNetworkId();
@@ -284,7 +284,7 @@ package android.net.wifi {
     method public android.net.wifi.SupplicantState getSupplicantState();
     method @IntRange(from=0xffffffff) public int getTxLinkSpeedMbps();
     method public int getWifiStandard();
-    method @NonNull public android.net.wifi.WifiInfo makeCopy(boolean);
+    method @NonNull public android.net.wifi.WifiInfo makeCopy(long);
     method public void writeToParcel(android.os.Parcel, int);
     field public static final String FREQUENCY_UNITS = "MHz";
     field public static final String LINK_SPEED_UNITS = "Mbps";
@@ -662,7 +662,6 @@ package android.net.wifi.aware {
     method @Nullable public java.net.Inet6Address getPeerIpv6Addr();
     method public int getPort();
     method public int getTransportProtocol();
-    method @NonNull public android.net.wifi.aware.WifiAwareNetworkInfo makeCopy(boolean);
     method public void writeToParcel(android.os.Parcel, int);
     field @NonNull public static final android.os.Parcelable.Creator<android.net.wifi.aware.WifiAwareNetworkInfo> CREATOR;
   }
