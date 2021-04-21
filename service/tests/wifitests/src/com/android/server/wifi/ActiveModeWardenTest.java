@@ -58,7 +58,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.res.Resources;
 import android.location.LocationManager;
-import android.net.ConnectivityManager;
 import android.net.wifi.ISubsystemRestartCallback;
 import android.net.wifi.IWifiConnectedNetworkScorer;
 import android.net.wifi.SoftApCapability;
@@ -149,7 +148,6 @@ public class ActiveModeWardenTest extends WifiBaseTest {
     @Mock ActiveModeWarden.PrimaryClientModeManagerChangedCallback mPrimaryChangedCallback;
     @Mock WifiMetrics mWifiMetrics;
     @Mock ISubsystemRestartCallback mSubsystemRestartCallback;
-    @Mock ConnectivityManager mConnectivityManager;
     @Mock ExternalScoreUpdateObserverProxy mExternalScoreUpdateObserverProxy;
     @Mock DppManager mDppManager;
     @Mock SarManager mSarManager;
@@ -187,7 +185,6 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         when(mClientModeManager.getRole()).thenReturn(ROLE_CLIENT_PRIMARY);
         when(mClientModeManager.getInterfaceName()).thenReturn(WIFI_IFACE_NAME);
         when(mContext.getResources()).thenReturn(mResources);
-        when(mContext.getSystemService(ConnectivityManager.class)).thenReturn(mConnectivityManager);
         when(mSoftApManager.getRole()).thenReturn(ROLE_SOFTAP_TETHERED);
 
         when(mResources.getString(R.string.wifi_localhotspot_configure_ssid_default))
@@ -1168,6 +1165,9 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                 anyBoolean());
         mClientListener.onStarted(mClientModeManager);
         mLooper.dispatchAll();
+
+        // always set primary, even with single STA
+        verify(mWifiNative).setMultiStaPrimaryConnection(WIFI_IFACE_NAME);
 
         assertInEnabledState();
     }
@@ -2325,6 +2325,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                 any(), eq(TEST_WORKSOURCE), eq(ROLE_CLIENT_PRIMARY), anyBoolean());
         assertInEmergencyMode();
         assertInDisabledState();
+
+        verify(mClientModeManager, atLeastOnce()).getInterfaceName();
         verifyNoMoreInteractions(mClientModeManager, mSoftApManager);
     }
 
@@ -2637,14 +2639,23 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                         eq(additionaClientModeManagerRole), anyBoolean());
         additionalClientListener.value.onStarted(additionalClientModeManager);
         mLooper.dispatchAll();
+        // capture last use case set
+        ArgumentCaptor<Integer> useCaseCaptor = ArgumentCaptor.forClass(Integer.class);
+        verify(mWifiNative, atLeastOnce()).setMultiStaUseCase(useCaseCaptor.capture());
+        int lastUseCaseSet = useCaseCaptor.getValue().intValue();
         // Ensure the hardware is correctly configured for STA + STA
         if (additionaClientModeManagerRole == ROLE_CLIENT_LOCAL_ONLY
                 || additionaClientModeManagerRole == ROLE_CLIENT_SECONDARY_LONG_LIVED) {
-            verify(mWifiNative).setMultiStaUseCase(WifiNative.DUAL_STA_NON_TRANSIENT_UNBIASED);
+            assertEquals(WifiNative.DUAL_STA_NON_TRANSIENT_UNBIASED, lastUseCaseSet);
         } else if (additionaClientModeManagerRole == ROLE_CLIENT_SECONDARY_TRANSIENT) {
-            verify(mWifiNative).setMultiStaUseCase(WifiNative.DUAL_STA_TRANSIENT_PREFER_PRIMARY);
+            assertEquals(WifiNative.DUAL_STA_TRANSIENT_PREFER_PRIMARY, lastUseCaseSet);
         }
-        verify(mWifiNative).setMultiStaPrimaryConnection(WIFI_IFACE_NAME);
+
+        // verify last set of primary connection is for WIFI_IFACE_NAME
+        ArgumentCaptor<String> ifaceNameCaptor = ArgumentCaptor.forClass(String.class);
+        verify(mWifiNative, atLeastOnce()).setMultiStaPrimaryConnection(ifaceNameCaptor.capture());
+        assertEquals(WIFI_IFACE_NAME, ifaceNameCaptor.getValue());
+
         // Returns the new local only client mode manager.
         ArgumentCaptor<ClientModeManager> requestedClientModeManager =
                 ArgumentCaptor.forClass(ClientModeManager.class);
@@ -3301,9 +3312,16 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         when(additionalClientModeManager.getRole()).thenReturn(ROLE_CLIENT_PRIMARY);
         additionalClientListener.onRoleChanged(additionalClientModeManager);
 
-        verify(mWifiNative, times(3)).setMultiStaUseCase(
-                WifiNative.DUAL_STA_TRANSIENT_PREFER_PRIMARY);
-        verify(mWifiNative).setMultiStaPrimaryConnection(WIFI_IFACE_NAME_1);
+        // verify last use case set is PREFER_PRIMARY
+        ArgumentCaptor<Integer> useCaseCaptor = ArgumentCaptor.forClass(Integer.class);
+        verify(mWifiNative, atLeastOnce()).setMultiStaUseCase(useCaseCaptor.capture());
+        int lastUseCaseSet = useCaseCaptor.getValue().intValue();
+        assertEquals(WifiNative.DUAL_STA_TRANSIENT_PREFER_PRIMARY, lastUseCaseSet);
+
+        // verify last set of primary connection is for WIFI_IFACE_NAME_1
+        ArgumentCaptor<String> ifaceNameCaptor = ArgumentCaptor.forClass(String.class);
+        verify(mWifiNative, atLeastOnce()).setMultiStaPrimaryConnection(ifaceNameCaptor.capture());
+        assertEquals(WIFI_IFACE_NAME_1, ifaceNameCaptor.getValue());
     }
 
     @Test

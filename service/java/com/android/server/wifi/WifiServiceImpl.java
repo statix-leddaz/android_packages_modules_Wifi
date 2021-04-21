@@ -159,11 +159,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -227,6 +225,8 @@ public class WifiServiceImpl extends BaseWifiService {
     private final LohsSoftApTracker mLohsSoftApTracker;
 
     private final BuildProperties mBuildProperties;
+
+    private final DefaultClientModeManager mDefaultClientModeManager;
 
     /**
      * Callback for use with LocalOnlyHotspot to unregister requesting applications upon death.
@@ -356,6 +356,7 @@ public class WifiServiceImpl extends BaseWifiService {
         mMakeBeforeBreakManager = mWifiInjector.getMakeBeforeBreakManager();
         mLastCallerInfoManager = mWifiInjector.getLastCallerInfoManager();
         mBuildProperties = mWifiInjector.getBuildProperties();
+        mDefaultClientModeManager = mWifiInjector.getDefaultClientModeManager();
     }
 
     /**
@@ -422,6 +423,9 @@ public class WifiServiceImpl extends BaseWifiService {
                                 Log.d(TAG, "resetting networks as default data SIM is changed");
                                 resetCarrierNetworks(RESET_SIM_REASON_DEFAULT_DATA_SIM_CHANGED);
                                 mLastSubId = subId;
+                                mWifiThreadRunner.post(() -> {
+                                    mWifiDataStall.resetPhoneStateListener();
+                                });
                             }
                         }
                     },
@@ -722,7 +726,14 @@ public class WifiServiceImpl extends BaseWifiService {
         return checkNetworkSettingsPermission(pid, uid)
                 || checkNetworkSetupWizardPermission(pid, uid)
                 || checkNetworkStackPermission(pid, uid)
-                || checkNetworkManagedProvisioningPermission(pid, uid);
+                || checkNetworkManagedProvisioningPermission(pid, uid)
+                || isSignedWithPlatformKey(uid);
+    }
+
+    /** Whether the uid is signed with the same key as the platform. */
+    private boolean isSignedWithPlatformKey(int uid) {
+        return mContext.getPackageManager().checkSignatures(uid, Process.SYSTEM_UID)
+                == PackageManager.SIGNATURE_MATCH;
     }
 
     /**
@@ -852,6 +863,16 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     /**
+     * Get the current primary ClientModeManager in a thread safe manner, but blocks on the main
+     * Wifi thread.
+     */
+    private ClientModeManager getPrimaryClientModeManagerBlockingThreadSafe() {
+        return mWifiThreadRunner.call(
+                () -> mActiveModeWarden.getPrimaryClientModeManager(),
+                mDefaultClientModeManager);
+    }
+
+    /**
      * see {@link android.net.wifi.WifiManager#setWifiEnabled(boolean)}
      * @param enable {@code true} to enable, {@code false} to disable.
      * @return {@code true} if the enable/disable operation was
@@ -899,7 +920,7 @@ public class WifiServiceImpl extends BaseWifiService {
                 mWifiMetrics.logUserActionEvent(UserActionEvent.EVENT_TOGGLE_WIFI_ON);
             } else {
                 WifiInfo wifiInfo =
-                        mActiveModeWarden.getPrimaryClientModeManager().syncRequestConnectionInfo();
+                        getPrimaryClientModeManagerBlockingThreadSafe().syncRequestConnectionInfo();
                 mWifiMetrics.logUserActionEvent(UserActionEvent.EVENT_TOGGLE_WIFI_OFF,
                         wifiInfo == null ? -1 : wifiInfo.getNetworkId());
             }
@@ -953,11 +974,11 @@ public class WifiServiceImpl extends BaseWifiService {
         if (isVerboseLoggingEnabled()) {
             mLog.info("restartWifiSubsystem uid=%").c(Binder.getCallingUid()).flush();
         }
-        WifiInfo wifiInfo =
-                mActiveModeWarden.getPrimaryClientModeManager().syncRequestConnectionInfo();
-        mWifiMetrics.logUserActionEvent(UserActionEvent.EVENT_RESTART_WIFI_SUB_SYSTEM,
-                wifiInfo == null ? -1 : wifiInfo.getNetworkId());
         mWifiThreadRunner.post(() -> {
+            WifiInfo wifiInfo =
+                    mActiveModeWarden.getPrimaryClientModeManager().syncRequestConnectionInfo();
+            mWifiMetrics.logUserActionEvent(UserActionEvent.EVENT_RESTART_WIFI_SUB_SYSTEM,
+                    wifiInfo == null ? -1 : wifiInfo.getNetworkId());
             mWifiInjector.getSelfRecovery().trigger(REASON_API_CALL);
         });
     }
@@ -976,7 +997,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (isVerboseLoggingEnabled()) {
             mLog.info("getWifiEnabledState uid=%").c(Binder.getCallingUid()).flush();
         }
-        return mActiveModeWarden.getPrimaryClientModeManager().syncGetWifiState();
+        return getPrimaryClientModeManagerBlockingThreadSafe().syncGetWifiState();
     }
 
     /**
@@ -1027,7 +1048,7 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     /**
-     * see {@link android.net.wifi.WifiManager#setCoexUnsafeChannels(Set, int)}
+     * see {@link android.net.wifi.WifiManager#setCoexUnsafeChannels(List, int)}
      * @param unsafeChannels List of {@link CoexUnsafeChannel} to avoid.
      * @param restrictions Bitmap of {@link CoexRestriction} specifying the mandatory
      *                     uses of the specified channels.
@@ -1047,37 +1068,8 @@ public class WifiServiceImpl extends BaseWifiService {
             Log.e(TAG, "setCoexUnsafeChannels called but default coex algorithm is enabled");
             return;
         }
-        mWifiThreadRunner.post(() -> mCoexManager.setCoexUnsafeChannels(
-                new HashSet<>(unsafeChannels), restrictions));
-    }
-
-    /**
-     * see {@link android.net.wifi.WifiManager#getCoexUnsafeChannels()}
-     * @return List of current CoexUnsafeChannels.
-     */
-    @Override
-    public List<CoexUnsafeChannel> getCoexUnsafeChannels() {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
-        mContext.enforceCallingOrSelfPermission(
-                Manifest.permission.WIFI_ACCESS_COEX_UNSAFE_CHANNELS, "WifiService");
-        return mWifiThreadRunner.call(() -> new ArrayList<>(mCoexManager.getCoexUnsafeChannels()),
-                Collections.emptyList());
-    }
-
-    /**
-     * see {@link android.net.wifi.WifiManager#getCoexRestrictions()}
-     * @return Bitmask of current coex restrictions.
-     */
-    @Override
-    public int getCoexRestrictions() {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
-        mContext.enforceCallingOrSelfPermission(
-                Manifest.permission.WIFI_ACCESS_COEX_UNSAFE_CHANNELS, "WifiService");
-        return mWifiThreadRunner.call(mCoexManager::getCoexRestrictions, 0);
+        mWifiThreadRunner.post(() ->
+                mCoexManager.setCoexUnsafeChannels(unsafeChannels, restrictions));
     }
 
     /**
@@ -2286,7 +2278,7 @@ public class WifiServiceImpl extends BaseWifiService {
             return false;
         }
         mLog.info("disconnect uid=%").c(Binder.getCallingUid()).flush();
-        mActiveModeWarden.getPrimaryClientModeManager().disconnect();
+        mWifiThreadRunner.post(() -> mActiveModeWarden.getPrimaryClientModeManager().disconnect());
         return true;
     }
 
@@ -2298,15 +2290,16 @@ public class WifiServiceImpl extends BaseWifiService {
         if (enforceChangePermission(packageName) != MODE_ALLOWED) {
             return false;
         }
-        if (!isTargetSdkLessThanQOrPrivileged(
-                packageName, Binder.getCallingPid(), Binder.getCallingUid())) {
-            mLog.info("reconnect not allowed for uid=%")
-                    .c(Binder.getCallingUid()).flush();
+        int callingUid = Binder.getCallingUid();
+        if (!isTargetSdkLessThanQOrPrivileged(packageName, Binder.getCallingPid(), callingUid)) {
+            mLog.info("reconnect not allowed for uid=%").c(callingUid).flush();
             return false;
         }
-        mLog.info("reconnect uid=%").c(Binder.getCallingUid()).flush();
-        mActiveModeWarden.getPrimaryClientModeManager().reconnect(
-                new WorkSource(Binder.getCallingUid()));
+        mLog.info("reconnect uid=%").c(callingUid).flush();
+
+        mWifiThreadRunner.post(() -> {
+            mActiveModeWarden.getPrimaryClientModeManager().reconnect(new WorkSource(callingUid));
+        });
         return true;
     }
 
@@ -2325,7 +2318,7 @@ public class WifiServiceImpl extends BaseWifiService {
             return false;
         }
         mLog.info("reassociate uid=%").c(Binder.getCallingUid()).flush();
-        mActiveModeWarden.getPrimaryClientModeManager().reassociate();
+        mWifiThreadRunner.post(() -> mActiveModeWarden.getPrimaryClientModeManager().reassociate());
         return true;
     }
 
@@ -2745,10 +2738,16 @@ public class WifiServiceImpl extends BaseWifiService {
 
         if (config.isEnterprise() && config.enterpriseConfig.isTlsBasedEapMethod()
                 && !config.enterpriseConfig.isMandatoryParameterSetForServerCertValidation()) {
-            Log.e(TAG, "Enterprise network configuration is missing either a Root CA "
-                    + "or a domain name");
-            return new AddNetworkResult(
-                    AddNetworkResult.STATUS_INVALID_CONFIGURATION_ENTERPRISE, -1);
+            if (!(mContext.getResources().getBoolean(
+                    R.bool.config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW)
+                    && isSettingsOrSuw(Binder.getCallingPid(), Binder.getCallingUid()))) {
+                Log.e(TAG, "Enterprise network configuration is missing either a Root CA "
+                        + "or a domain name");
+                return new AddNetworkResult(
+                        AddNetworkResult.STATUS_INVALID_CONFIGURATION_ENTERPRISE, -1);
+            }
+            Log.w(TAG, "Insecure Enterprise network " + config.SSID
+                    + " configured by Settings/SUW");
         }
 
         Log.i("addOrUpdateNetworkInternal", " uid = " + Binder.getCallingUid()
@@ -3299,8 +3298,9 @@ public class WifiServiceImpl extends BaseWifiService {
     public void queryPasspointIcon(long bssid, String fileName) {
         enforceAccessPermission();
         mLog.info("queryPasspointIcon uid=%").c(Binder.getCallingUid()).flush();
-        mActiveModeWarden.getPrimaryClientModeManager().syncQueryPasspointIcon(
-                bssid, fileName);
+        mWifiThreadRunner.post(() -> {
+            mActiveModeWarden.getPrimaryClientModeManager().syncQueryPasspointIcon(bssid, fileName);
+        });
     }
 
     /**
@@ -3724,7 +3724,7 @@ public class WifiServiceImpl extends BaseWifiService {
             @NonNull ParcelFileDescriptor out, @NonNull ParcelFileDescriptor err,
             @NonNull String[] args) {
         WifiShellCommand shellCommand =  new WifiShellCommand(mWifiInjector, this, mContext,
-                mWifiGlobals);
+                mWifiGlobals, mWifiThreadRunner);
         return shellCommand.exec(this, in.getFileDescriptor(), out.getFileDescriptor(),
                 err.getFileDescriptor(), args);
     }
@@ -4078,7 +4078,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (isVerboseLoggingEnabled()) {
             mLog.info("getCurrentNetwork uid=%").c(Binder.getCallingUid()).flush();
         }
-        return mActiveModeWarden.getPrimaryClientModeManager().syncGetCurrentNetwork();
+        return getPrimaryClientModeManagerBlockingThreadSafe().syncGetCurrentNetwork();
     }
 
     public static String toHexString(String s) {
@@ -4234,8 +4234,8 @@ public class WifiServiceImpl extends BaseWifiService {
         }
         final int uid = Binder.getCallingUid();
         mLog.trace("startSubscriptionProvisioning uid=%").c(uid).flush();
-        if (mActiveModeWarden.getPrimaryClientModeManager().syncStartSubscriptionProvisioning(
-                uid, provider, callback)) {
+        if (getPrimaryClientModeManagerBlockingThreadSafe()
+                .syncStartSubscriptionProvisioning(uid, provider, callback)) {
             mLog.trace("Subscription provisioning started with %")
                     .c(provider.toString()).flush();
         }
@@ -4262,8 +4262,7 @@ public class WifiServiceImpl extends BaseWifiService {
             mLog.info("registerTrafficStateCallback uid=%").c(Binder.getCallingUid()).flush();
         }
         // Post operation to handler thread
-        mWifiThreadRunner.post(() ->
-                mWifiTrafficPoller.addCallback(callback));
+        mWifiThreadRunner.post(() -> mWifiTrafficPoller.addCallback(callback));
     }
 
     /**
@@ -4281,8 +4280,7 @@ public class WifiServiceImpl extends BaseWifiService {
             mLog.info("unregisterTrafficStateCallback uid=%").c(Binder.getCallingUid()).flush();
         }
         // Post operation to handler thread
-        mWifiThreadRunner.post(() ->
-                mWifiTrafficPoller.removeCallback(callback));
+        mWifiThreadRunner.post(() -> mWifiTrafficPoller.removeCallback(callback));
     }
 
     private long getSupportedFeaturesInternal() {

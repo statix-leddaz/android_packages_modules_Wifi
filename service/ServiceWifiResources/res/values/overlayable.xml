@@ -156,6 +156,7 @@
           <item type="integer" name="config_wifiPnoWatchdogIntervalMs" />
           <item type="bool" name="config_wifiSuspendOptimizationsEnabled" />
           <item type="bool" name="config_wifiHighMovementNetworkSelectionOptimizationEnabled" />
+          <item type="bool" name="config_wifiScanOnCellularDataLossEnabled" />
           <item type="integer" name="config_wifiHighMovementNetworkSelectionOptimizationScanDelayMs" />
           <item type="integer" name="config_wifiHighMovementNetworkSelectionOptimizationRssiDelta" />
           <item type="integer" name="config_wifiEstimateRssiErrorMarginDb" />
@@ -195,6 +196,10 @@
           <item type="string" name="config_wifiP2pDeviceNamePrefix"/>
           <item type="integer" name="config_wifiP2pDeviceNamePostfixNumDigits" />
           <item type="integer" name="config_wifiMaxNumWifiConfigurations" />
+          <item type="bool" name="config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW" />
+          <item type="integer" name="config_wifiConnectivityLocalLogMaxLinesLowRam" />
+          <item type="integer" name="config_wifiConnectivityLocalLogMaxLinesHighRam" />
+          <item type="integer" name="config_wifiClientModeImplNumLogRecs" />
           <!-- Params from config.xml that can be overlayed -->
 
           <!-- Params from strings.xml that can be overlayed -->

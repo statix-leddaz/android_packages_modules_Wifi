@@ -38,7 +38,6 @@ import android.os.HandlerExecutor;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Process;
-import android.os.SystemProperties;
 import android.os.UserManager;
 import android.os.WorkSource;
 import android.provider.Settings.Secure;
@@ -68,6 +67,7 @@ import com.android.server.wifi.util.SettingsMigrationDataHolder;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.server.wifi.util.WifiPermissionsWrapper;
 import com.android.server.wifi.util.WorkSourceHelper;
+import com.android.wifi.resources.R;
 
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -339,8 +339,13 @@ public class WifiInjector {
         mLruConnectionTracker = new LruConnectionTracker(MAX_RECENTLY_CONNECTED_NETWORK,
                 mContext);
         mWifiConnectivityHelper = new WifiConnectivityHelper(this);
+        int maxLinesLowRam = mContext.getResources().getInteger(
+                R.integer.config_wifiConnectivityLocalLogMaxLinesLowRam);
+        int maxLinesHighRam = mContext.getResources().getInteger(
+                R.integer.config_wifiConnectivityLocalLogMaxLinesHighRam);
         mConnectivityLocalLog = new LocalLog(
-                mContext.getSystemService(ActivityManager.class).isLowRamDevice() ? 256 : 512);
+                mContext.getSystemService(ActivityManager.class).isLowRamDevice() ? maxLinesLowRam
+                        : maxLinesHighRam);
         mWifiDiagnostics = new WifiDiagnostics(
                 mContext, this, mWifiNative, mBuildProperties,
                 new LastMileLogger(this), mClock, mWifiDiagnosticsHandlerThread.getLooper());
@@ -453,7 +458,7 @@ public class WifiInjector {
                 mActiveModeWarden);
         mMboOceController = new MboOceController(makeTelephonyManager(), mActiveModeWarden);
         mCountryCode = new WifiCountryCode(mContext, mActiveModeWarden,
-                mCmiMonitor, mWifiNative, SystemProperties.get(BOOT_DEFAULT_WIFI_COUNTRY_CODE));
+                mCmiMonitor, mWifiNative, mSettingsConfigStore);
         mConnectionFailureNotifier = new ConnectionFailureNotifier(
                 mContext, mFrameworkFacade, mWifiConfigManager,
                 mWifiConnectivityManager, wifiHandler,
@@ -737,12 +742,11 @@ public class WifiInjector {
     public WifiNetworkAgent makeWifiNetworkAgent(
             @NonNull NetworkCapabilities nc,
             @NonNull LinkProperties linkProperties,
-            int score,
             @NonNull NetworkAgentConfig naConfig,
             @Nullable NetworkProvider provider,
             @NonNull WifiNetworkAgent.Callback callback) {
         return new WifiNetworkAgent(mContext, mWifiHandlerThread.getLooper(),
-                nc, linkProperties, score, naConfig, provider, callback);
+                nc, linkProperties, naConfig, provider, callback);
     }
 
     /**
@@ -1032,5 +1036,9 @@ public class WifiInjector {
 
     public BuildProperties getBuildProperties() {
         return mBuildProperties;
+    }
+
+    public DefaultClientModeManager getDefaultClientModeManager() {
+        return mDefaultClientModeManager;
     }
 }

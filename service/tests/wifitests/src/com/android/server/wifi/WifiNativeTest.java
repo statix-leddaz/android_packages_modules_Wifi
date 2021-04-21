@@ -258,8 +258,8 @@ public class WifiNativeTest extends WifiBaseTest {
             ArgumentCaptor.forClass(WifiNl80211Manager.ScanEventCallback.class);
 
     @Captor
-    private ArgumentCaptor<WifiNl80211Manager.CountryCodeChangeListener>
-            mCountryCodeChangeListenerCaptor;
+    private ArgumentCaptor<WifiNl80211Manager.CountryCodeChangedListener>
+            mCountryCodeChangedListenerCaptor;
 
     private WifiNative mWifiNative;
 
@@ -726,7 +726,7 @@ public class WifiNativeTest extends WifiBaseTest {
     @Test
     public void testStartHalUpdatesCoexUnsafeChannels() {
         assumeTrue(SdkLevel.isAtLeastS());
-        final Set<CoexUnsafeChannel> unsafeChannels = new HashSet<>();
+        final List<CoexUnsafeChannel> unsafeChannels = new ArrayList<>();
         unsafeChannels.add(new CoexUnsafeChannel(WIFI_BAND_24_GHZ, 6));
         unsafeChannels.add(new CoexUnsafeChannel(WIFI_BAND_5_GHZ, 36));
         final int restrictions = 0;
@@ -971,8 +971,8 @@ public class WifiNativeTest extends WifiBaseTest {
     @Test
     public void testSetCoexUnsafeChannels() throws Exception {
         assumeTrue(SdkLevel.isAtLeastS());
-        mWifiNative.setCoexUnsafeChannels(Collections.emptySet(), 0);
-        verify(mWifiVendorHal).setCoexUnsafeChannels(Collections.emptySet(), 0);
+        mWifiNative.setCoexUnsafeChannels(Collections.emptyList(), 0);
+        verify(mWifiVendorHal).setCoexUnsafeChannels(Collections.emptyList(), 0);
     }
 
     /**
@@ -1260,13 +1260,13 @@ public class WifiNativeTest extends WifiBaseTest {
 
 
     @Test
-    public void testCountryCodeChangeListener() {
+    public void testCountryCodeChangedListener() {
         final String testCountryCode = "US";
         WifiCountryCode.ChangeListener changeListener = mock(WifiCountryCode.ChangeListener.class);
         mWifiNative.registerCountryCodeEventListener(changeListener);
-        verify(mWificondControl).registerCountryCodeChangeListener(any(),
-                mCountryCodeChangeListenerCaptor.capture());
-        mCountryCodeChangeListenerCaptor.getValue().onChanged(testCountryCode);
+        verify(mWificondControl).registerCountryCodeChangedListener(any(),
+                mCountryCodeChangedListenerCaptor.capture());
+        mCountryCodeChangedListenerCaptor.getValue().onCountryCodeChanged(testCountryCode);
         verify(changeListener).onDriverCountryCodeChanged(testCountryCode);
     }
 }

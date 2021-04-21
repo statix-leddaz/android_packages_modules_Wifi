@@ -167,7 +167,6 @@ import java.util.stream.Collectors;
  */
 public class ClientModeImpl extends StateMachine implements ClientMode {
     private static final String NETWORKTYPE = "WIFI";
-    @VisibleForTesting public static final short NUM_LOG_RECS_NORMAL = 100;
     @VisibleForTesting public static final short NUM_LOG_RECS_VERBOSE_LOW_MEMORY = 200;
     @VisibleForTesting public static final short NUM_LOG_RECS_VERBOSE = 3000;
 
@@ -614,13 +613,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     @Nullable
     private WifiVcnNetworkPolicyChangeListener mVcnPolicyChangeListener;
 
-    /**
-     * Whether this ClientModeImpl is in lingering mode. When in lingering mode, the ClientModeImpl
-     * will automatically stop its owner {@link ClientModeManager} upon disconnecting from its
-     * current Wifi network (i.e. exiting {@link L2ConnectedState}.
-     */
-    private boolean mLingering = false;
-
     /** NETWORK_NOT_FOUND_EVENT event counter */
     private int mNetworkNotFoundEventCount = 0;
 
@@ -786,11 +778,14 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         setInitialState(mDisconnectedState);
 
-        setLogRecSize(NUM_LOG_RECS_NORMAL);
+        setLogRecSize(mWifiGlobals.getClientModeImplNumLogRecs());
         setLogOnlyTransitions(false);
 
         // Start the StateMachine
         start();
+
+        // update with initial role for ConcreteClientModeManager
+        onRoleChanged();
     }
 
     private static final int[] WIFI_MONITOR_EVENTS = {
@@ -993,7 +988,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // The current connected or connecting network has been removed, trigger a disconnect.
             if (config.networkId == mTargetNetworkId || config.networkId == mLastNetworkId) {
                 // Disconnect and let autojoin reselect a new network
-                sendMessage(CMD_DISCONNECT);
+                sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_NETWORK_REMOVED);
             } else {
                 WifiConfiguration currentConfig = getConnectedWifiConfiguration();
                 if (currentConfig != null && currentConfig.isLinked(config)) {
@@ -1033,7 +1028,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // If metered->unmetered update capabilities.
             if (isMetered) {
                 Log.w(getTag(), "Network marked metered, triggering disconnect");
-                sendMessage(CMD_DISCONNECT);
+                sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_NETWORK_METERED);
             } else {
                 Log.i(getTag(), "Network marked unmetered, triggering capabilities update");
                 updateCapabilities(newConfig);
@@ -1045,7 +1040,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             if (disableReason == DISABLED_NO_INTERNET_TEMPORARY) return;
             if (config.networkId == mTargetNetworkId || config.networkId == mLastNetworkId) {
                 // Disconnect and let autojoin reselect a new network
-                sendMessage(CMD_DISCONNECT);
+                sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_NETWORK_TEMPORARY_DISABLED);
             }
 
         }
@@ -1059,7 +1054,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             if (disableReason == DISABLED_NO_INTERNET_PERMANENT) return;
             if (config.networkId == mTargetNetworkId || config.networkId == mLastNetworkId) {
                 // Disconnect and let autojoin reselect a new network
-                sendMessage(CMD_DISCONNECT);
+                sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_NETWORK_PERMANENT_DISABLED);
             }
         }
     }
@@ -1078,7 +1073,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             if (configuration.subscriptionId == subscriptionId
                     && configuration.carrierMerged == merged) {
                 Log.i(getTag(), "Carrier network offload disabled, triggering disconnect");
-                sendMessage(CMD_DISCONNECT);
+                sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_CARRIER_OFFLOAD_DISABLED);
             }
         }
     }
@@ -1095,7 +1090,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     ? NUM_LOG_RECS_VERBOSE_LOW_MEMORY : NUM_LOG_RECS_VERBOSE);
         } else {
             mVerboseLoggingEnabled = false;
-            setLogRecSize(NUM_LOG_RECS_NORMAL);
+            setLogRecSize(mWifiGlobals.getClientModeImplNumLogRecs());
         }
 
         mWifiScoreReport.enableVerboseLogging(mVerboseLoggingEnabled);
@@ -1479,7 +1474,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      * Disconnect from Access Point
      */
     public void disconnect() {
-        sendMessage(CMD_DISCONNECT);
+        sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_GENERIC);
     }
 
     /**
@@ -2072,6 +2067,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
     }
 
+    /** Check whether this connection is the primary connection on the device. */
+    private boolean isPrimary() {
+        return mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY;
+    }
+
     private void handleScreenStateChanged(boolean screenOn) {
         mScreenOn = screenOn;
         if (mVerboseLoggingEnabled) {
@@ -2081,7 +2081,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             R.bool.config_wifiSuspendOptimizationsEnabled)
                     + " state " + getCurrentState().getName());
         }
-        if (mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+        if (isPrimary()) {
             // Only enable RSSI polling on primary STA, none of the secondary STA use-cases
             // can become the default route when other networks types that provide internet
             // connectivity (e.g. cellular) are available. So, no point in scoring
@@ -2518,7 +2518,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (config.fromWifiNetworkSpecifier || config.fromWifiNetworkSuggestion) {
             mWifiInfo.setRequestingPackageName(config.creatorName);
         }
-        mWifiInfo.setIsPrimary(mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY);
+        mWifiInfo.setIsPrimary(isPrimary());
         SecurityParams securityParams = config.getNetworkSelectionStatus()
                 .getCandidateSecurityParams();
         if (securityParams != null) {
@@ -2595,7 +2595,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (wifiConfig != null) {
             ScanResultMatchInfo matchInfo = ScanResultMatchInfo.fromWifiConfiguration(wifiConfig);
             // WakeupController should only care about the primary, internet providing network
-            if (mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+            if (isPrimary()) {
                 mWakeupController.setLastDisconnectInfo(matchInfo);
             }
             mWifiNetworkSuggestionsManager.handleDisconnect(
@@ -2785,7 +2785,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mWifiDiagnostics.takeBugReport(bugTitle, bugDetail);
         }
         mWifiDiagnostics.reportConnectionEvent(WifiDiagnostics.CONNECTION_EVENT_STARTED);
-        mWrongPasswordNotifier.onNewConnectionAttempt();
+        if (isPrimary()) {
+            mWrongPasswordNotifier.onNewConnectionAttempt();
+        }
         removeMessages(CMD_DIAGS_CONNECT_TIMEOUT);
         sendMessageDelayed(CMD_DIAGS_CONNECT_TIMEOUT, DIAGS_CONNECT_TIMEOUT_MILLIS);
     }
@@ -2861,7 +2863,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 == WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE
                 && level2FailureReason != WifiMetricsProto.ConnectionEvent.AUTH_FAILURE_WRONG_PSWD;
         if ((isAssociationRejection || isAuthenticationFailure)
-                && mWifiConfigManager.isInFlakyRandomizationSsidHotlist(mTargetNetworkId)) {
+                && mWifiConfigManager.isInFlakyRandomizationSsidHotlist(mTargetNetworkId)
+                && isPrimary()) {
             mConnectionFailureNotifier
                     .showFailedToConnectDueToNoRandomizedMacSupportNotification(mTargetNetworkId);
         }
@@ -3184,7 +3187,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         setMulticastFilter(true);
         registerForWifiMonitorEvents();
-        mWifiLastResortWatchdog.clearAllFailureCounts();
+        if (isPrimary()) {
+            mWifiLastResortWatchdog.clearAllFailureCounts();
+        }
         mWifiNative.setSupplicantLogLevel(mVerboseLoggingEnabled);
 
         // Initialize data structures
@@ -3390,9 +3395,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         return getMacAddressFromBssidString(mLastBssid);
     }
 
-    void connectToNetwork(WifiConfiguration config) {
+    private void connectToNetwork(WifiConfiguration config) {
         if ((config != null) && mWifiNative.connectToNetwork(mInterfaceName, config)) {
-            mWifiLastResortWatchdog.noteStartConnectTime();
+            mWifiLastResortWatchdog.noteStartConnectTime(config.networkId);
             mWifiMetrics.logStaEvent(mInterfaceName, StaEvent.TYPE_CMD_START_CONNECT, config);
             mIsAutoRoaming = false;
             transitionTo(mL2ConnectingState);
@@ -3683,7 +3688,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     if (mTermsAndConditionsUrl == null) {
                         loge("Disconnecting from Passpoint network due to an issue with the "
                                 + "Terms and Conditions URL");
-                        sendMessage(CMD_DISCONNECT);
+                        sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_PASSPOINT_TAC);
                     }
                     break;
                 case WifiMonitor.HS20_REMEDIATION_EVENT:
@@ -3716,7 +3721,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     mCachedPacketFilter = (byte[]) message.obj;
                     if (mContext.getResources().getBoolean(
                             R.bool.config_wifiEnableApfOnNonPrimarySta)
-                            || mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+                            || isPrimary()) {
                         mWifiNative.installPacketFilter(mInterfaceName, mCachedPacketFilter);
                     } else {
                         Log.v(TAG, "Not applying packet filter on non primary CMM");
@@ -3727,7 +3732,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     final byte[] packetFilter;
                     if (mContext.getResources().getBoolean(
                             R.bool.config_wifiEnableApfOnNonPrimarySta)
-                            || mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+                            || isPrimary()) {
                         packetFilter = mWifiNative.readPacketFilter(mInterfaceName);
                     } else {
                         Log.v(TAG, "Retrieving cached packet filter on non primary CMM");
@@ -3859,10 +3864,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             builder.removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED);
         }
         if (SdkLevel.isAtLeastS()) {
-            if (mWifiInfo.isOemPaid()
-                    // TODO(b/177373513): hack to match OEM_PAID NetworkRequest for Make Before
-                    //  Break
-                    || mClientModeManager.getRole() == ROLE_CLIENT_SECONDARY_TRANSIENT) {
+            if (mWifiInfo.isOemPaid()) {
                 builder.addCapability(NetworkCapabilities.NET_CAPABILITY_OEM_PAID);
             } else {
                 builder.removeCapability(NetworkCapabilities.NET_CAPABILITY_OEM_PAID);
@@ -3903,7 +3905,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
             if (mWifiInfo.getSubscriptionId() != SubscriptionManager.INVALID_SUBSCRIPTION_ID
                     && mWifiInfo.isCarrierMerged()) {
-                builder.setSubIds(Collections.singleton(mWifiInfo.getSubscriptionId()));
+                builder.setSubscriptionIds(Collections.singleton(mWifiInfo.getSubscriptionId()));
             }
         }
 
@@ -3923,9 +3925,22 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         final VcnNetworkPolicyResult vcnNetworkPolicy =
                 mVcnManager.applyVcnNetworkPolicy(networkCapabilities, mLinkProperties);
         if (vcnNetworkPolicy.isTeardownRequested()) {
-            sendMessage(CMD_DISCONNECT);
+            sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_VCN_REQUEST);
         }
-        return vcnNetworkPolicy.getNetworkCapabilities();
+        final NetworkCapabilities vcnCapability = vcnNetworkPolicy.getNetworkCapabilities();
+        if (!vcnCapability.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VCN_MANAGED)) {
+            if (mVerboseLoggingEnabled) {
+                logd("NET_CAPABILITY_NOT_VCN_MANAGED is removed");
+            }
+            builder.removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VCN_MANAGED);
+        }
+        if (!vcnCapability.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)) {
+            if (mVerboseLoggingEnabled) {
+                logd("NET_CAPABILITY_NOT_RESTRICTED is removed");
+            }
+            builder.removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED);
+        }
+        return builder.build();
     }
 
     private void updateLinkBandwidth(NetworkCapabilities.Builder networkCapabilitiesBuilder) {
@@ -4248,7 +4263,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     if (config == null) {
                         logw("Connected to unknown networkId " + mLastNetworkId
                                 + ", disconnecting...");
-                        sendMessage(CMD_DISCONNECT);
+                        sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_UNKNOWN_NETWORK);
                         break;
                     }
                     mWifiInfo.setBSSID(mLastBssid);
@@ -4324,7 +4339,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 ? mTargetBssid : eventInfo.bssid;
                         mWifiLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                                 getConnectingSsidInternal(), bssid,
-                                WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
+                                WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
+                                isConnected());
                     }
                     clearNetworkCachedDataIfNeeded(
                             getConnectingWifiConfigurationInternal(), eventInfo.reasonCode);
@@ -4359,7 +4375,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 }
                 case CMD_DISCONNECT: {
                     mWifiMetrics.logStaEvent(mInterfaceName, StaEvent.TYPE_FRAMEWORK_DISCONNECT,
-                            StaEvent.DISCONNECT_GENERIC);
+                            message.arg1);
                     mWifiNative.disconnect(mInterfaceName);
                     break;
                 }
@@ -4481,7 +4497,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             .ASSOCIATION_REJECTION_AP_UNABLE_TO_HANDLE_NEW_STA) {
                         mWifiLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                                 getConnectingSsidInternal(), bssid,
-                                WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
+                                WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
+                                isConnected());
                     }
                     transitionTo(mDisconnectedState); // End of connection attempt.
                     break;
@@ -4502,13 +4519,15 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     if (isPermanentWrongPasswordFailure(mTargetNetworkId, reasonCode)) {
                         disableReason = WifiConfiguration.NetworkSelectionStatus
                                 .DISABLED_BY_WRONG_PASSWORD;
-                        if (targetedNetwork != null) {
+                        if (targetedNetwork != null && isPrimary()) {
                             mWrongPasswordNotifier.onWrongPasswordError(targetedNetwork.SSID);
                         }
                     } else if (reasonCode == WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE) {
                         if (targetedNetwork != null && targetedNetwork.enterpriseConfig != null
                                 && targetedNetwork.enterpriseConfig.isAuthenticationSimBased()) {
-                            if (mEapFailureNotifier.onEapFailure(errorCode, targetedNetwork)) {
+                            // only show EAP failure notification if primary
+                            if (mEapFailureNotifier
+                                    .onEapFailure(errorCode, targetedNetwork, isPrimary())) {
                                 disableReason = WifiConfiguration.NetworkSelectionStatus
                                     .DISABLED_AUTHENTICATION_PRIVATE_EAP_ERROR;
                                 mWifiBlocklistMonitor.loadCarrierConfigsForDisableReasonInfos();
@@ -4557,7 +4576,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         mWifiLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                                 getConnectingSsidInternal(),
                                 (mLastBssid == null) ? mTargetBssid : mLastBssid,
-                                WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
+                                WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
+                                isConnected());
                     }
                     transitionTo(mDisconnectedState); // End of connection attempt.
                     break;
@@ -4705,8 +4725,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             final boolean explicitlySelected;
             // Non primary CMMs is never user selected. This prevents triggering the No Internet
             // dialog for those networks, which is difficult to handle.
-            if (mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY
-                    && isRecentlySelectedByTheUser(config)) {
+            if (isPrimary() && isRecentlySelectedByTheUser(config)) {
                 // If explicitlySelected is true, the network was selected by the user via Settings
                 // or QuickSettings. If this network has Internet access, switch to it. Otherwise,
                 // switch to it only if the user confirms that they really want to switch, or has
@@ -4760,7 +4779,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 Log.wtf(getTag(), "mNetworkAgent is not null: " + mNetworkAgent);
                 mNetworkAgent.unregister();
             }
-            mNetworkAgent = mWifiInjector.makeWifiNetworkAgent(nc, mLinkProperties, 60, naConfig,
+            mNetworkAgent = mWifiInjector.makeWifiNetworkAgent(nc, mLinkProperties, naConfig,
                     mNetworkFactory.getProvider(), new WifiNetworkAgentCallback());
             mWifiScoreReport.setNetworkAgent(mNetworkAgent);
 
@@ -4833,7 +4852,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     mWifiLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                             getConnectingSsidInternal(),
                             (mLastBssid == null) ? mTargetBssid : mLastBssid,
-                            WifiLastResortWatchdog.FAILURE_CODE_DHCP);
+                            WifiLastResortWatchdog.FAILURE_CODE_DHCP,
+                            isConnected());
                     break;
                 }
                 case CMD_IP_CONFIGURATION_SUCCESSFUL: {
@@ -4863,7 +4883,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     mWifiLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                             getConnectingSsidInternal(),
                             (mLastBssid == null) ? mTargetBssid : mLastBssid,
-                            WifiLastResortWatchdog.FAILURE_CODE_DHCP);
+                            WifiLastResortWatchdog.FAILURE_CODE_DHCP,
+                            isConnected());
                     break;
                 }
                 case CMD_IP_REACHABILITY_LOST: {
@@ -4927,8 +4948,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         sendMessageDelayed(obtainMessage(CMD_RSSI_POLL, mRssiPollToken, 0),
                                 mWifiGlobals.getPollRssiIntervalMillis());
                         if (mVerboseLoggingEnabled) sendRssiChangeBroadcast(mWifiInfo.getRssi());
-                        mWifiTrafficPoller.notifyOnDataActivity(mWifiInfo.txSuccess,
-                                mWifiInfo.rxSuccess);
+                        if (isPrimary()) {
+                            mWifiTrafficPoller.notifyOnDataActivity(
+                                    mWifiInfo.txSuccess, mWifiInfo.rxSuccess);
+                        }
                     } else {
                         // Polling has completed
                     }
@@ -5008,8 +5031,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             mWifiNative.removeNetworkCachedData(mLastNetworkId);
                             // remove network so that supplicant's PMKSA cache is cleared
                             mWifiNative.removeAllNetworks(mInterfaceName);
-                            mSimRequiredNotifier.showSimRequiredNotification(
-                                    config, mLastSimBasedConnectionCarrierName);
+                            if (isPrimary()) {
+                                mSimRequiredNotifier.showSimRequiredNotification(
+                                        config, mLastSimBasedConnectionCarrierName);
+                            }
                         }
                     }
                     break;
@@ -5176,7 +5201,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             getConnectingSsidInternal(),
                             !isValidBssid(eventInfo.bssid)
                             ? mTargetBssid : eventInfo.bssid,
-                            WifiLastResortWatchdog.FAILURE_CODE_DHCP);
+                            WifiLastResortWatchdog.FAILURE_CODE_DHCP,
+                            isConnected());
                     handleStatus = NOT_HANDLED;
                     break;
                 }
@@ -6260,6 +6286,22 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiScoreReport.dump(fd, pw, args);
     }
 
+    /**
+     * Notifies changes in data connectivity of the default data SIM.
+     */
+    @Override
+    public void onCellularConnectivityChanged(@WifiDataStall.CellularDataStatusCode int status) {
+        mWifiConfigManager.onCellularConnectivityChanged(status);
+        // do a scan if no cell data and currently not connect to wifi
+        if (status == WifiDataStall.CELLULAR_DATA_NOT_AVAILABLE
+                && getConnectedWifiConfigurationInternal() == null) {
+            if (mContext.getResources().getBoolean(
+                    R.bool.config_wifiScanOnCellularDataLossEnabled)) {
+                mWifiConnectivityManager.forceConnectivityScan(WIFI_WORK_SOURCE);
+            }
+        }
+    }
+
     @Override
     public void setMboCellularDataStatus(boolean available) {
         mWifiNative.setMboCellularDataStatus(mInterfaceName, available);
@@ -6320,7 +6362,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      * Invoked by parent ConcreteClientModeManager whenever a role change occurs.
      */
     public void onRoleChanged() {
-        if (mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+        ClientRole role = mClientModeManager.getRole();
+        if (role == ROLE_CLIENT_PRIMARY) {
             applyCachedPacketFilter();
             if (mScreenOn) {
                 // Start RSSI polling for the new primary network to enable scoring.
@@ -6338,6 +6381,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // Update capabilities after a role change.
             updateCapabilities(connectedNetwork);
         }
+        mWifiScoreReport.onRoleChanged(role);
     }
 
     private void addPasspointInfoToLinkProperties(LinkProperties linkProperties) {

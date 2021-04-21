@@ -79,7 +79,6 @@ import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -3014,38 +3013,34 @@ public class WifiManager {
     }
 
     /**
-     * Query whether the device supports Station (STA) + Bridged access point (AP)
-     * concurrency or not.
-     *
-     * The bridged AP support means that the device supports AP + AP concurrency with the 2 APs
-     * bridged together.
+     * Query whether or not the device supports concurrency of Station (STA) + multiple access
+     * points (AP) (where the APs bridged together).
      *
      * See {@link SoftApConfiguration.Builder#setBands(int[])}
-     * or {@link SoftApConfiguration.Builder#setChannels(SparseIntArray)} to configure bridged AP
-     * when the bridged AP supported.
+     * or {@link SoftApConfiguration.Builder#setChannels(android.util.SparseIntArray)} to configure
+     * bridged AP when the bridged AP supported.
      *
-     * @return true if this device supports STA + bridged AP concurrency, false otherwise.
+     * @return true if this device supports concurrency of STA + multiple APs which are bridged
+     *         together, false otherwise.
      */
     public boolean isStaBridgedApConcurrencySupported() {
         return isFeatureSupported(WIFI_FEATURE_STA_BRIDGED_AP);
     }
 
     /**
-     * Query whether the device supports Bridged Access point (AP) concurrency or not.
-     *
-     * The bridged AP support means that the device supports AP + AP concurrency with the 2 APs
-     * bridged together.
+     * Query whether or not the device supports multiple Access point (AP) which are bridged
+     * together.
      *
      * See {@link SoftApConfiguration.Builder#setBands(int[])}
-     * or {@link SoftApConfiguration.Builder#setChannels(SparseIntArray)} to configure bridged AP
-     * when the bridged AP supported.
+     * or {@link SoftApConfiguration.Builder#setChannels(android.util.SparseIntArray)} to configure
+     * bridged AP when the bridged AP supported.
      *
-     * @return true if this device supports bridged AP concurrency, false otherwise.
+     * @return true if this device supports concurrency of multiple AP which bridged together,
+     *         false otherwise.
      */
     public boolean isBridgedApConcurrencySupported() {
         return isFeatureSupported(WIFI_FEATURE_BRIDGED_AP);
     }
-
 
     /**
      * Interface for Wi-Fi activity energy info listener. Should be implemented by applications and
@@ -3756,7 +3751,7 @@ public class WifiManager {
     /**
      * Mandatory coex restriction flag for Wi-Fi Direct.
      *
-     * @see #setCoexUnsafeChannels(Set, int)
+     * @see #setCoexUnsafeChannels(List, int)
      *
      * @hide
      */
@@ -3766,7 +3761,7 @@ public class WifiManager {
     /**
      * Mandatory coex restriction flag for SoftAP
      *
-     * @see #setCoexUnsafeChannels(Set, int)
+     * @see #setCoexUnsafeChannels(List, int)
      *
      * @hide
      */
@@ -3776,7 +3771,7 @@ public class WifiManager {
     /**
      * Mandatory coex restriction flag for Wi-Fi Aware.
      *
-     * @see #setCoexUnsafeChannels(Set, int)
+     * @see #setCoexUnsafeChannels(List, int)
      *
      * @hide
      */
@@ -3806,76 +3801,27 @@ public class WifiManager {
     }
 
     /**
-     * Specify the set of {@link CoexUnsafeChannel} to propagate through the framework for
+     * Specify the list of {@link CoexUnsafeChannel} to propagate through the framework for
      * Wi-Fi/Cellular coex channel avoidance if the default algorithm is disabled via overlay
      * (i.e. config_wifiCoexDefaultAlgorithmEnabled = false). Otherwise do nothing.
      *
-     * @param unsafeChannels Set of {@link CoexUnsafeChannel} to avoid.
-     * @param restrictions Bitmap of {@link CoexRestriction} specifying the mandatory restricted
-     *                     uses of the specified channels. If any restrictions are set, then the
-     *                     supplied CoexUnsafeChannels will be completely avoided for the
-     *                     specified modes, rather than be avoided with best effort.
+     * @param unsafeChannels List of {@link CoexUnsafeChannel} to avoid.
+     * @param restrictions Bitmap of {@code COEX_RESTRICTION_*} constants specifying the mode
+     *                     restrictions on the specified channels. If any restrictions are set,
+     *                     then the supplied CoexUnsafeChannels should be completely avoided for
+     *                     the specified modes, rather than be avoided with best effort.
      *
      * @hide
      */
     @SystemApi
     @RequiresPermission(android.Manifest.permission.WIFI_UPDATE_COEX_UNSAFE_CHANNELS)
-    public void setCoexUnsafeChannels(@NonNull Set<CoexUnsafeChannel> unsafeChannels,
-            int restrictions) {
+    public void setCoexUnsafeChannels(
+            @NonNull List<CoexUnsafeChannel> unsafeChannels, @CoexRestriction int restrictions) {
         if (unsafeChannels == null) {
             throw new IllegalArgumentException("unsafeChannels must not be null");
         }
         try {
-            mService.setCoexUnsafeChannels(new ArrayList<>(unsafeChannels), restrictions);
-        } catch (RemoteException e) {
-            throw e.rethrowFromSystemServer();
-        }
-    }
-
-    /**
-     * Returns the set of current {@link CoexUnsafeChannel} being used for Wi-Fi/Cellular coex
-     * channel avoidance.
-     *
-     * This returns the set calculated by the default algorithm if
-     * config_wifiCoexDefaultAlgorithmEnabled is {@code true}. Otherwise, returns the set supplied
-     * in {@link #setCoexUnsafeChannels(Set, int)}.
-     *
-     * If any {@link CoexRestriction} flags are set in {@link #getCoexRestrictions()}, then the
-     * CoexUnsafeChannels should be totally avoided (i.e. not best effort) for the Wi-Fi modes
-     * specified by the flags.
-     *
-     * @return Set of current CoexUnsafeChannels.
-     *
-     * @hide
-     */
-    @NonNull
-    @SystemApi
-    @RequiresPermission(android.Manifest.permission.WIFI_ACCESS_COEX_UNSAFE_CHANNELS)
-    public Set<CoexUnsafeChannel> getCoexUnsafeChannels() {
-        try {
-            return new HashSet<>(mService.getCoexUnsafeChannels());
-        } catch (RemoteException e) {
-            throw e.rethrowFromSystemServer();
-        }
-    }
-
-    /**
-     * Returns the current coex restrictions being used for Wi-Fi/Cellular coex
-     * channel avoidance.
-     *
-     * This returns the restrictions calculated by the default algorithm if
-     * config_wifiCoexDefaultAlgorithmEnabled is {@code true}. Otherwise, returns the value supplied
-     * in {@link #setCoexUnsafeChannels(Set, int)}.
-     *
-     * @return int containing a bitwise-OR combination of {@link CoexRestriction}.
-     *
-     * @hide
-     */
-    @SystemApi
-    @RequiresPermission(android.Manifest.permission.WIFI_ACCESS_COEX_UNSAFE_CHANNELS)
-    public int getCoexRestrictions() {
-        try {
-            return mService.getCoexRestrictions();
+            mService.setCoexUnsafeChannels(unsafeChannels, restrictions);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -3883,7 +3829,10 @@ public class WifiManager {
 
     /**
      * Registers a CoexCallback to listen on the current CoexUnsafeChannels and restrictions being
-     * used for Wi-Fi/cellular coex channel avoidance.
+     * used for Wi-Fi/cellular coex channel avoidance. The callback method
+     * {@link CoexCallback#onCoexUnsafeChannelsChanged(List, int)} will be called immediately after
+     * registration to return the current values.
+     *
      * @param executor Executor to execute listener callback on
      * @param callback CoexCallback to register
      *
@@ -3948,11 +3897,18 @@ public class WifiManager {
         }
 
         /**
-         * Indicates that the current CoexUnsafeChannels or restrictions have changed.
-         * Clients should call {@link #getCoexUnsafeChannels()} and {@link #getCoexRestrictions()}
-         * to get the updated values.
+         * This indicates the current CoexUnsafeChannels and restrictions calculated by the default
+         * coex algorithm if config_wifiCoexDefaultAlgorithmEnabled is {@code true}. Otherwise, the
+         * values will match the ones supplied to {@link #setCoexUnsafeChannels(List, int)}.
+         *
+         * @param unsafeChannels List of {@link CoexUnsafeChannel} to avoid.
+         * @param restrictions Bitmap of {@code COEX_RESTRICTION_*} constants specifying the mode
+         *                     restrictions on the specified channels. If any restrictions are set,
+         *                     then the supplied CoexUnsafeChannels should be completely avoided for
+         *                     the specified modes, rather than be avoided with best effort.
          */
-        public abstract void onCoexUnsafeChannelsChanged();
+        public abstract void onCoexUnsafeChannelsChanged(
+                @NonNull List<CoexUnsafeChannel> unsafeChannels, @CoexRestriction int restrictions);
 
         /**
          * Callback proxy for CoexCallback objects.
@@ -3983,7 +3939,9 @@ public class WifiManager {
             }
 
             @Override
-            public void onCoexUnsafeChannelsChanged() {
+            public void onCoexUnsafeChannelsChanged(
+                    @NonNull List<CoexUnsafeChannel> unsafeChannels,
+                    @CoexRestriction int restrictions) {
                 Executor executor;
                 CoexCallback callback;
                 synchronized (mLock) {
@@ -3994,7 +3952,8 @@ public class WifiManager {
                     return;
                 }
                 Binder.clearCallingIdentity();
-                executor.execute(callback::onCoexUnsafeChannelsChanged);
+                executor.execute(() ->
+                        callback.onCoexUnsafeChannelsChanged(unsafeChannels, restrictions));
             }
         }
     }
@@ -4607,9 +4566,11 @@ public class WifiManager {
          *
          * When the Soft AP is configured in single AP mode, this callback is invoked
          * with the same {@link SoftApInfo} for all connected clients changes.
-         * When the Soft AP is configured in bridged mode, this callback is invoked with
-         * the corresponding {@link SoftApInfo} for the instance in which the connected clients
-         * changed.
+         * When the Soft AP is configured as multiple Soft AP instances (using
+         * {@link SoftApConfiguration.Builder#setBands(int[])} or
+         * {@link SoftApConfiguration.Builder#setChannels(android.util.SparseIntArray)}), this
+         * callback is invoked with the corresponding {@link SoftApInfo} for the instance in which
+         * the connected clients changed.
          *
          * @param info The {@link SoftApInfo} of the AP.
          * @param clients The currently connected clients on the AP instance specified by
@@ -4619,14 +4580,16 @@ public class WifiManager {
                 @NonNull List<WifiClient> clients) {}
 
         /**
-         * Called when information of softap changes.
+         * Called when the Soft AP information changes.
          *
-         * Note: this API is only valid when the Soft AP is configured as a single AP
-         * - not as a bridged AP (2 Soft APs). When the Soft AP is configured as bridged AP
+         * Note: this API remains valid only when the Soft AP is configured as a single AP -
+         * not as multiple Soft APs (which are bridged to each other). When multiple Soft APs are
+         * configured (using {@link SoftApConfiguration.Builder#setBands(int[])} or
+         * {@link SoftApConfiguration.Builder#setChannels(android.util.SparseIntArray)})
          * this callback will not be triggered -  use the
-         * {@link #onInfoChanged(List<SoftApInfo>)} callback in bridged AP mode.
+         * {@link #onInfoChanged(List<SoftApInfo>)} callback in that case.
          *
-         * @param softApInfo is the softap information. {@link SoftApInfo}
+         * @param softApInfo is the Soft AP information. {@link SoftApInfo}
          *
          * @deprecated This API is deprecated. Use {@link #onInfoChanged(List<SoftApInfo>)}
          * instead.
@@ -4637,31 +4600,38 @@ public class WifiManager {
         }
 
         /**
-         * Called when information of softap changes.
+         * Called when the Soft AP information changes.
          *
-         * The number of the information elements in the list depends on Soft AP configuration
-         * and state.
-         * For instance, an empty list will be returned when the Soft AP is disabled.
-         * One information element will be returned in the list when the Soft AP is configured
-         * as a single AP, and two information elements will be returned in the list
-         * when the Soft AP is configured in bridged mode.
+         * Returns information on all configured Soft AP instances. The number of the elements in
+         * the list depends on Soft AP configuration and state:
+         * <ul>
+         * <li>An empty list will be returned when the Soft AP is disabled.
+         * <li>One information element will be returned in the list when the Soft AP is configured
+         *     as a single AP or when a single Soft AP remains active.
+         * <li>Two information elements will be returned in the list when the multiple Soft APs are
+         *     configured and are active.
+         *     (configured using {@link SoftApConfiguration.Builder#setBands(int[])} or
+         *     {@link SoftApConfiguration.Builder#setChannels(android.util.SparseIntArray)}).
+         * </ul>
          *
-         * Note: One of the Soft APs may be shut down independently of the other by the framework,
-         * for instance if no devices are connected to it for some duration.
-         * In that case, one information element will be returned in the list in bridged mode.
+         * Note: When multiple Soft AP instances are configured, one of the Soft APs may
+         * be shut down independently of the other by the framework. This can happen if no devices
+         * are connected to it for some duration. In that case, one information element will be
+         * returned.
          *
-         * See {@link #isBridgedApConcurrencySupported()} for the detail of the bridged AP.
+         * See {@link #isBridgedApConcurrencySupported()} for support info of multiple (bridged) AP.
          *
-         * @param softApInfoList is the list of the softap information elements. {@link SoftApInfo}
+         * @param softApInfoList is the list of the Soft AP information elements -
+         *        {@link SoftApInfo}.
          */
         default void onInfoChanged(@NonNull List<SoftApInfo> softApInfoList) {
             // Do nothing: can be updated to add SoftApInfo details (e.g. channel) to the UI.
         }
 
         /**
-         * Called when capability of softap changes.
+         * Called when capability of Soft AP changes.
          *
-         * @param softApCapability is the softap capability. {@link SoftApCapability}
+         * @param softApCapability is the Soft AP capability. {@link SoftApCapability}
          */
         default void onCapabilityChanged(@NonNull SoftApCapability softApCapability) {
             // Do nothing: can be updated to add SoftApCapability details (e.g. meximum supported

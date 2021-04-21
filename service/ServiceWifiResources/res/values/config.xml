@@ -512,6 +512,9 @@
     <!-- Network selection optimization at DEVICE_MOBILITY_STATE_HIGH_MVMT -->
     <bool translatable="false" name="config_wifiHighMovementNetworkSelectionOptimizationEnabled">true</bool>
 
+    <!-- Do a single scan when cell data loss is detected. -->
+    <bool translatable="false" name="config_wifiScanOnCellularDataLossEnabled">false</bool>
+
     <!-- Duration for the delayed scan used to verify access points are staying relatively stationary
     to the device at high mobility state. (default = 10 seconds) -->
     <integer translatable="false" name="config_wifiHighMovementNetworkSelectionOptimizationScanDelayMs">10000</integer>
@@ -632,9 +635,11 @@
     <bool translatable="false" name="config_wifiSaeH2eSupported">false</bool>
 
     <!-- Enable aggregation of Wifi link layer radio stats from all radios.
-         Defaults to true so that all full DBS capable devices report stats correctly in STA mode.
-         If false, fetch radio stats only from Radio 0. -->
-    <bool translatable="false" name="config_wifiLinkLayerAllRadiosStatsAggregationEnabled">true</bool>
+         Defaults to false will fetch radio stats only from Radio 0. This is to avoid
+         incorrect behavior due to driver/firmware returning bogus radio stats from other radios.
+         Note: Full DBS capable devices interested in radio stats from all the radios can enable this
+         configuration. -->
+    <bool translatable="false" name="config_wifiLinkLayerAllRadiosStatsAggregationEnabled">false</bool>
 
     <!-- Indicate the prefix of wifi p2p device name, the length should be between 1 ~ 28. -->
     <string translatable="false" name="config_wifiP2pDeviceNamePrefix">Android_</string>
@@ -646,4 +651,16 @@
          A value of -1 indicates no limit. If a max number is specified, then under-used configs will
          be deleted to make room for new configs.-->
     <integer translatable="false" name="config_wifiMaxNumWifiConfigurations">-1</integer>
+
+    <!-- Whether to allow Settings or SUW to create insecure Enterprise networks where server
+         certificate is not validated, by not specifying a Root CA certificate and/or server domain
+         name. It is STRONGLY RECOMMENDED to be set to false -->
+    <bool translatable="false" name="config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW">false</bool>
+
+    <!-- Indicate the max lines for connectivity local log based on the device ram size -->
+    <integer translatable="false" name="config_wifiConnectivityLocalLogMaxLinesLowRam">256</integer>
+    <integer translatable="false" name="config_wifiConnectivityLocalLogMaxLinesHighRam">512</integer>
+
+    <!-- Indicate max number of log records for WifiClientModeImpl -->
+    <integer translatable="false" name="config_wifiClientModeImplNumLogRecs">100</integer>
 </resources>
