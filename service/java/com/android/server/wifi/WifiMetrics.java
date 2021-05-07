@@ -21,6 +21,7 @@ import static android.net.wifi.WifiConfiguration.MeteredOverride;
 import static java.lang.StrictMath.toIntExact;
 
 import android.annotation.IntDef;
+import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
@@ -67,7 +68,6 @@ import android.util.SparseArray;
 import android.util.SparseIntArray;
 
 import com.android.internal.annotations.VisibleForTesting;
-import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.aware.WifiAwareMetrics;
 import com.android.server.wifi.hotspot2.ANQPNetworkKey;
 import com.android.server.wifi.hotspot2.NetworkDetail;
@@ -206,6 +206,8 @@ public class WifiMetrics {
     public static final int MAX_WIFI_USABILITY_STATS_PER_TYPE_TO_UPLOAD = 2;
     public static final int NUM_WIFI_USABILITY_STATS_ENTRIES_PER_WIFI_GOOD = 100;
     public static final int MIN_WIFI_GOOD_USABILITY_STATS_PERIOD_MS = 1000 * 3600; // 1 hour
+    public static final int PASSPOINT_DEAUTH_IMMINENT_SCOPE_ESS = 0;
+    public static final int PASSPOINT_DEAUTH_IMMINENT_SCOPE_BSS = 1;
     // Histogram for WifiConfigStore IO duration times. Indicates the following 5 buckets (in ms):
     //   < 50
     //   [50, 100)
@@ -275,6 +277,7 @@ public class WifiMetrics {
     private ScanMetrics mScanMetrics;
     private WifiChannelUtilization mWifiChannelUtilization;
     private WifiSettingsStore mWifiSettingsStore;
+    private IntCounter mPasspointDeauthImminentScope = new IntCounter();
 
     /**
      * Metrics are stored within an instance of the WifiLog proto during runtime,
@@ -2861,22 +2864,47 @@ public class WifiMetrics {
     /**
      * Adds a record indicating the current up state of soft AP
      */
-    public void addSoftApUpChangedEvent(boolean isUp, int mode, long defaultShutdownTimeoutMillis) {
+    public void addSoftApUpChangedEvent(boolean isUp, int mode, long defaultShutdownTimeoutMillis,
+            boolean isBridged) {
+        int numOfEventNeedToAdd = isBridged && isUp ? 2 : 1;
+        for (int i = 0; i < numOfEventNeedToAdd; i++) {
+            SoftApConnectedClientsEvent event = new SoftApConnectedClientsEvent();
+            if (isUp) {
+                event.eventType = isBridged ? SoftApConnectedClientsEvent.DUAL_AP_BOTH_INSTANCES_UP
+                        : SoftApConnectedClientsEvent.SOFT_AP_UP;
+            } else {
+                event.eventType = SoftApConnectedClientsEvent.SOFT_AP_DOWN;
+            }
+            event.numConnectedClients = 0;
+            event.defaultShutdownTimeoutSetting = defaultShutdownTimeoutMillis;
+            addSoftApConnectedClientsEvent(event, mode);
+        }
+    }
+
+    /**
+     * Adds a record indicating the one of the dual AP instances is down.
+     */
+    public void addSoftApInstanceDownEventInDualMode(int mode, @NonNull SoftApInfo info) {
         SoftApConnectedClientsEvent event = new SoftApConnectedClientsEvent();
-        event.eventType = isUp ? SoftApConnectedClientsEvent.SOFT_AP_UP :
-                SoftApConnectedClientsEvent.SOFT_AP_DOWN;
-        event.numConnectedClients = 0;
-        event.defaultShutdownTimeoutSetting = defaultShutdownTimeoutMillis;
+        event.eventType = SoftApConnectedClientsEvent.DUAL_AP_ONE_INSTANCE_DOWN;
+        event.channelFrequency = info.getFrequency();
+        event.channelBandwidth = info.getBandwidth();
+        event.generation = info.getWifiStandardInternal();
         addSoftApConnectedClientsEvent(event, mode);
     }
 
     /**
      * Adds a record for current number of associated stations to soft AP
      */
-    public void addSoftApNumAssociatedStationsChangedEvent(int numStations, int mode) {
+    public void addSoftApNumAssociatedStationsChangedEvent(int numTotalStations,
+            int numStationsOnCurrentFrequency, int mode, @NonNull SoftApInfo info) {
         SoftApConnectedClientsEvent event = new SoftApConnectedClientsEvent();
         event.eventType = SoftApConnectedClientsEvent.NUM_CLIENTS_CHANGED;
-        event.numConnectedClients = numStations;
+        event.channelFrequency = info.getFrequency();
+        event.channelBandwidth = info.getBandwidth();
+        event.generation = info.getWifiStandardInternal();
+        event.numConnectedClients = numTotalStations;
+        event.numConnectedClientsOnCurrentFrequency = numStationsOnCurrentFrequency;
         addSoftApConnectedClientsEvent(event, mode);
     }
 
@@ -2909,8 +2937,16 @@ public class WifiMetrics {
     /**
      * Updates current soft AP events with channel info
      */
-    public void addSoftApChannelSwitchedEvent(SoftApInfo info, int mode) {
+    public void addSoftApChannelSwitchedEvent(List<SoftApInfo> infos, int mode, boolean isBridged) {
         synchronized (mLock) {
+            int numOfEventNeededToUpdate = infos.size();
+            if (isBridged && numOfEventNeededToUpdate == 1) {
+                // Ignore the channel info update when only 1 info in bridged mode because it means
+                // that one of the instance was been shutdown.
+                return;
+            }
+            int apUpEvent = isBridged ? SoftApConnectedClientsEvent.DUAL_AP_BOTH_INSTANCES_UP
+                    : SoftApConnectedClientsEvent.SOFT_AP_UP;
             List<SoftApConnectedClientsEvent> softApEventList;
             switch (mode) {
                 case WifiManager.IFACE_IP_MODE_TETHERED:
@@ -2923,16 +2959,15 @@ public class WifiMetrics {
                     return;
             }
 
-            for (int index = softApEventList.size() - 1; index >= 0; index--) {
+            for (int index = softApEventList.size() - 1;
+                    index >= 0 && numOfEventNeededToUpdate != 0; index--) {
                 SoftApConnectedClientsEvent event = softApEventList.get(index);
-
-                if (event != null && event.eventType == SoftApConnectedClientsEvent.SOFT_AP_UP) {
-                    event.channelFrequency = info.getFrequency();
-                    event.channelBandwidth = info.getBandwidth();
-                    if (SdkLevel.isAtLeastS()) {
-                        event.generation = info.getWifiStandard();
-                    }
-                    break;
+                if (event != null && event.eventType == apUpEvent) {
+                    int infoIndex = numOfEventNeededToUpdate - 1;
+                    event.channelFrequency = infos.get(infoIndex).getFrequency();
+                    event.channelBandwidth = infos.get(infoIndex).getBandwidth();
+                    event.generation = infos.get(infoIndex).getWifiStandardInternal();
+                    numOfEventNeededToUpdate--;
                 }
             }
         }
@@ -2941,7 +2976,7 @@ public class WifiMetrics {
     /**
      * Updates current soft AP events with softap configuration
      */
-    public void updateSoftApConfiguration(SoftApConfiguration config, int mode) {
+    public void updateSoftApConfiguration(SoftApConfiguration config, int mode, boolean isBridged) {
         synchronized (mLock) {
             List<SoftApConnectedClientsEvent> softApEventList;
             switch (mode) {
@@ -2955,16 +2990,20 @@ public class WifiMetrics {
                     return;
             }
 
-            for (int index = softApEventList.size() - 1; index >= 0; index--) {
-                SoftApConnectedClientsEvent event = softApEventList.get(index);
+            int numOfEventNeededToUpdate = isBridged ? 2 : 1;
+            int apUpEvent = isBridged ? SoftApConnectedClientsEvent.DUAL_AP_BOTH_INSTANCES_UP
+                    : SoftApConnectedClientsEvent.SOFT_AP_UP;
 
-                if (event != null && event.eventType == SoftApConnectedClientsEvent.SOFT_AP_UP) {
+            for (int index = softApEventList.size() - 1;
+                    index >= 0 && numOfEventNeededToUpdate != 0; index--) {
+                SoftApConnectedClientsEvent event = softApEventList.get(index);
+                if (event != null && event.eventType == apUpEvent) {
                     event.maxNumClientsSettingInSoftapConfiguration =
                             config.getMaxNumberOfClients();
                     event.shutdownTimeoutSettingInSoftapConfiguration =
                             config.getShutdownTimeoutMillis();
                     event.clientControlIsEnabled = config.isClientControlByUserEnabled();
-                    break;
+                    numOfEventNeededToUpdate--;
                 }
             }
         }
@@ -2973,7 +3012,7 @@ public class WifiMetrics {
     /**
      * Updates current soft AP events with softap capability
      */
-    public void updateSoftApCapability(SoftApCapability capability, int mode) {
+    public void updateSoftApCapability(SoftApCapability capability, int mode, boolean isBridged) {
         synchronized (mLock) {
             List<SoftApConnectedClientsEvent> softApEventList;
             switch (mode) {
@@ -2987,12 +3026,17 @@ public class WifiMetrics {
                     return;
             }
 
-            for (int index = softApEventList.size() - 1; index >= 0; index--) {
+            int numOfEventNeededToUpdate = isBridged ? 2 : 1;
+            int apUpEvent = isBridged ? SoftApConnectedClientsEvent.DUAL_AP_BOTH_INSTANCES_UP
+                    : SoftApConnectedClientsEvent.SOFT_AP_UP;
+
+            for (int index = softApEventList.size() - 1;
+                    index >= 0 && numOfEventNeededToUpdate != 0; index--) {
                 SoftApConnectedClientsEvent event = softApEventList.get(index);
-                if (event != null && event.eventType == SoftApConnectedClientsEvent.SOFT_AP_UP) {
+                if (event != null && event.eventType == apUpEvent) {
                     event.maxNumClientsSettingInSoftapCapability =
                             capability.getMaxSupportedClients();
-                    break;
+                    numOfEventNeededToUpdate--;
                 }
             }
         }
@@ -3775,9 +3819,24 @@ public class WifiMetrics {
                         + mInstalledPasspointProfileTypeForR2);
 
                 pw.println("mWifiLogProto.passpointProvisionStats.numProvisionSuccess="
-                            + mNumProvisionSuccess);
+                        + mNumProvisionSuccess);
                 pw.println("mWifiLogProto.passpointProvisionStats.provisionFailureCount:"
-                            + mPasspointProvisionFailureCounts);
+                        + mPasspointProvisionFailureCounts);
+                pw.println("mWifiLogProto.totalNumberOfPasspointConnectionsWithVenueUrl="
+                        + mWifiLogProto.totalNumberOfPasspointConnectionsWithVenueUrl);
+                pw.println(
+                        "mWifiLogProto.totalNumberOfPasspointConnectionsWithTermsAndConditionsUrl="
+                                + mWifiLogProto
+                                .totalNumberOfPasspointConnectionsWithTermsAndConditionsUrl);
+                pw.println(
+                        "mWifiLogProto"
+                                + ".totalNumberOfPasspointAcceptanceOfTermsAndConditions="
+                                + mWifiLogProto
+                                .totalNumberOfPasspointAcceptanceOfTermsAndConditions);
+                pw.println("mWifiLogProto.totalNumberOfPasspointProfilesWithDecoratedIdentity="
+                        + mWifiLogProto.totalNumberOfPasspointProfilesWithDecoratedIdentity);
+                pw.println("mWifiLogProto.passpointDeauthImminentScope="
+                        + mPasspointDeauthImminentScope.toString());
 
                 pw.println("mWifiLogProto.numRadioModeChangeToMcc="
                         + mWifiLogProto.numRadioModeChangeToMcc);
@@ -3893,6 +3952,8 @@ public class WifiMetrics {
                     eventLine.append("event_type=" + event.eventType);
                     eventLine.append(",time_stamp_millis=" + event.timeStampMillis);
                     eventLine.append(",num_connected_clients=" + event.numConnectedClients);
+                    eventLine.append(",num_connected_clients_on_current_frequency="
+                            + event.numConnectedClientsOnCurrentFrequency);
                     eventLine.append(",channel_frequency=" + event.channelFrequency);
                     eventLine.append(",channel_bandwidth=" + event.channelBandwidth);
                     eventLine.append(",generation=" + event.generation);
@@ -3913,6 +3974,8 @@ public class WifiMetrics {
                     eventLine.append("event_type=" + event.eventType);
                     eventLine.append(",time_stamp_millis=" + event.timeStampMillis);
                     eventLine.append(",num_connected_clients=" + event.numConnectedClients);
+                    eventLine.append(",num_connected_clients_on_current_frequency="
+                            + event.numConnectedClientsOnCurrentFrequency);
                     eventLine.append(",channel_frequency=" + event.channelFrequency);
                     eventLine.append(",channel_bandwidth=" + event.channelBandwidth);
                     eventLine.append(",generation=" + event.generation);
@@ -4827,6 +4890,7 @@ public class WifiMetrics {
             mWifiLogProto.firstConnectAfterBootStats = mFirstConnectAfterBootStats;
             mWifiLogProto.wifiToWifiSwitchStats = mWifiToWifiSwitchStats;
             mWifiLogProto.bandwidthEstimatorStats = mWifiScoreCard.dumpBandwidthEstimatorStats();
+            mWifiLogProto.passpointDeauthImminentScope = mPasspointDeauthImminentScope.toProto();
         }
     }
 
@@ -5056,6 +5120,7 @@ public class WifiMetrics {
             mCarrierWifiMetrics.clear();
             mFirstConnectAfterBootStats = null;
             mWifiToWifiSwitchStats.clear();
+            mPasspointDeauthImminentScope.clear();
         }
     }
 
@@ -7945,5 +8010,51 @@ public class WifiMetrics {
                 + ",makeBeforeBreakLingerCompletedCount="
                 + stats.makeBeforeBreakLingerCompletedCount
                 + "}";
+    }
+
+    /**
+     * Increment number of number of Passpoint connections with a venue URL
+     */
+    public void incrementTotalNumberOfPasspointConnectionsWithVenueUrl() {
+        synchronized (mLock) {
+            mWifiLogProto.totalNumberOfPasspointConnectionsWithVenueUrl++;
+        }
+    }
+
+    /**
+     * Increment number of number of Passpoint connections with a T&C URL
+     */
+    public void incrementTotalNumberOfPasspointConnectionsWithTermsAndConditionsUrl() {
+        synchronized (mLock) {
+            mWifiLogProto.totalNumberOfPasspointConnectionsWithTermsAndConditionsUrl++;
+        }
+    }
+
+    /**
+     * Increment number of successful acceptance of Passpoint T&C
+     */
+    public void incrementTotalNumberOfPasspointAcceptanceOfTermsAndConditions() {
+        synchronized (mLock) {
+            mWifiLogProto.totalNumberOfPasspointAcceptanceOfTermsAndConditions++;
+        }
+    }
+
+    /**
+     * Increment number of Passpoint profiles with decorated identity prefix
+     */
+    public void incrementTotalNumberOfPasspointProfilesWithDecoratedIdentity() {
+        synchronized (mLock) {
+            mWifiLogProto.totalNumberOfPasspointProfilesWithDecoratedIdentity++;
+        }
+    }
+
+    /**
+     * Increment number of Passpoint Deauth-Imminent notification scope
+     */
+    public void incrementPasspointDeauthImminentScope(boolean isEss) {
+        synchronized (mLock) {
+            mPasspointDeauthImminentScope.increment(isEss ? PASSPOINT_DEAUTH_IMMINENT_SCOPE_ESS
+                    : PASSPOINT_DEAUTH_IMMINENT_SCOPE_BSS);
+        }
     }
 }

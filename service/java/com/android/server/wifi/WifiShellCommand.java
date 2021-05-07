@@ -117,6 +117,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             "get-country-code",
             "help",
             "-h",
+            "is-verbose-logging",
             "list-scan-results",
             "list-networks",
             "list-suggestions",
@@ -226,7 +227,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             final int uid = Binder.getCallingUid();
             if (uid != Process.ROOT_UID) {
                 throw new SecurityException(
-                        "Uid " + uid + " does not have access to " + cmd + " wifi command");
+                        "Uid " + uid + " does not have access to " + cmd + " wifi command "
+                                + "(or such command doesn't exist)");
             }
         }
 
@@ -663,6 +665,11 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     mWifiService.enableVerboseLogging(enabled ? 1 : 0);
                     return 0;
                 }
+                case "is-verbose-logging": {
+                    int enabled = mWifiService.getVerboseLoggingLevel();
+                    pw.println(enabled > 0 ? "enabled" : "disabled");
+                    return 0;
+                }
                 case "start-restricting-auto-join-to-subscription-id": {
                     int subId = Integer.parseInt(getNextArgRequired());
                     mWifiService.startRestrictingAutoJoinToSubscriptionId(subId);
@@ -978,6 +985,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                                 "-r non_persistent MAC randomization not supported before S");
                     }
                 }
+            } else if (option.equals("-h")) {
+                configuration.hiddenSSID = true;
             } else {
                 pw.println("Ignoring unknown option " + option);
             }
@@ -1092,9 +1101,9 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 }
             } else if (option.equals("-a")) {
                 if (SdkLevel.isAtLeastS()) {
-                    isCarrierMerged = true;
+                    suggestionBuilder.setCarrierMerged(true);
                 } else {
-                    pw.println("-a option is not supported before S");
+                    throw new IllegalArgumentException("-a option is not supported before S");
                 }
             } else if (option.equals("-i")) {
                 if (SdkLevel.isAtLeastS()) {
@@ -1107,19 +1116,14 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             } else if (option.equals("-c")) {
                 int carrierId = Integer.parseInt(getNextArgRequired());
                 suggestionBuilder.setCarrierId(carrierId);
+            } else if (option.equals("-h")) {
+                suggestionBuilder.setIsHiddenSsid(true);
             } else {
                 pw.println("Ignoring unknown option " + option);
             }
             option = getNextOption();
         }
         WifiNetworkSuggestion suggestion = suggestionBuilder.build();
-        if (isCarrierMerged) {
-            if (suggestion.getSubscriptionId() == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-                pw.println("Carrier merged network must have valid subscription Id");
-                return null;
-            }
-            suggestion.wifiConfiguration.carrierMerged = true;
-        }
         return suggestion;
     }
 
@@ -1221,7 +1225,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         + PhysicalChannelConfig.CELL_BANDWIDTH_UNKNOWN);
             }
             cellChannels.add(new CoexUtils.CoexCellChannel(rat, band,
-                    downlinkFreqKhz, downlinkBandwidthKhz, uplinkFreqKhz, uplinkBandwidthKhz));
+                    downlinkFreqKhz, downlinkBandwidthKhz, uplinkFreqKhz, uplinkBandwidthKhz,
+                    SubscriptionManager.INVALID_SUBSCRIPTION_ID));
         }
         return cellChannels;
     }
@@ -1404,6 +1409,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("           - 'wpa3' - WPA-3 PSK networks");
         pw.println("    -m - Mark the network metered.");
         pw.println("    -d - Mark the network autojoin disabled.");
+        pw.println("    -h - Mark the network hidden.");
         pw.println("    -b <bssid> - Set specific BSSID.");
         pw.println("    -r auto|none|persistent|non_persistent - MAC randomization scheme for the"
                 + " network");
@@ -1420,6 +1426,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("           - 'wpa3' - WPA-3 PSK networks");
         pw.println("    -m - Mark the network metered.");
         pw.println("    -d - Mark the network autojoin disabled.");
+        pw.println("    -h - Mark the network hidden.");
         pw.println("    -b <bssid> - Set specific BSSID.");
         pw.println("    -r auto|none|persistent|non_persistent - MAC randomization scheme for the"
                 + " network");
@@ -1430,6 +1437,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    Current wifi status");
         pw.println("  set-verbose-logging enabled|disabled ");
         pw.println("    Set the verbose logging enabled or disabled");
+        pw.println("  is-verbose-logging");
+        pw.println("    Check whether verbose logging enabled or disabled");
         pw.println("  start-restricting-auto-join-to-subscription-id subId");
         pw.println("    temporarily disable all wifi networks except merged carrier networks with"
                 + " the given subId");
@@ -1453,6 +1462,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    -o - Mark the suggestion oem paid.");
         pw.println("    -p - Mark the suggestion oem private.");
         pw.println("    -m - Mark the suggestion metered.");
+        pw.println("    -h - Mark the network hidden.");
         pw.println("    -s - Share the suggestion with user.");
         pw.println("    -d - Mark the suggestion autojoin disabled.");
         pw.println("    -b <bssid> - Set specific BSSID.");
