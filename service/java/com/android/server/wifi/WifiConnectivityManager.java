@@ -1713,6 +1713,7 @@ public class WifiConnectivityManager {
             setSingleScanningSchedule(mDisconnectedSingleScanScheduleSec);
             startConnectivityScan(SCAN_IMMEDIATELY);
         } else if (mWifiState == WIFI_STATE_CONNECTED) {
+            mLastConnectionAttemptBssid = null;
             if (useSingleSavedNetworkSchedule()) {
                 // Switch to Single-Saved-Network connected schedule
                 setSingleScanningSchedule(mConnectedSingleSavedNetworkSingleScanScheduleSec);
