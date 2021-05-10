@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "e12beb46_62293f3d",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1878533
+      },
+      "writtenOn": "2021-05-10T03:32:24Z",
+      "side": 1,
+      "message": "related log:\n2021-05-07T15:12:17.815 - setUserConnectChoice: netId\u003d6\n2021-05-07T15:12:17.815 - userSelectNetwork: network ID\u003d6\n2021-05-07T15:12:17.815 - Add key: \"Xiaomi_B5\"WPA_PSK to \"Xiaomi_B544\":5\n2021-05-07T15:12:17.816 - prepareForForcedConnection: SSID\u003d\"Xiaomi_B5\"\n2021-05-07T15:12:19.349 - handleConnectionStateChanged: state\u003dtransitioning\n...\n...Xiaomi_B5 is connected however the rssi of Xiaomi_B5 is poor\n...\n2021-05-07T15:13:20.657 - AllSingleScanListener:  WNS candidate-\"Xiaomi_B544\"\n2021-05-07T15:13:20.657 - connectToNetwork: Either already connected or is connecting to \"Xiaomi_B544\" : 8c:de:f9:b2:1f:cc\n\n\nrelated code:\n        // Check if we are already connected or in the process of connecting to the target\n        // BSSID. mWifiInfo.mBSSID tracks the currently connected BSSID. This is checked just\n        // in case the firmware automatically roamed to a BSSID different from what\n        // WifiNetworkSelector selected.\n        if (targetBssid !\u003d null\n                \u0026\u0026 (targetBssid.equals(mLastConnectionAttemptBssid)\n                    || targetBssid.equals(mWifiInfo.getBSSID()))\n                \u0026\u0026 SupplicantState.isConnecting(mWifiInfo.getSupplicantState())) {\n            localLog(\"connectToNetwork: Either already connected \"\n                    + \"or is connecting to \" + targetAssociationId);\n            return;\n        }\n\nmLastConnectionAttemptBssid is not the same as mWifiInfo.getBSSID() is this case.\nmLastConnectionAttemptBssid is meaningful only before it is connected. It can be reset after successful connection",
+      "revId": "4f29b0af3d03b64a6ac1ecc79e51d3e52e12d577",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
