@@ -16,6 +16,23 @@
       "message": "Sorry, didn\u0027t mean to upload patchset 2. repo uploaded a local commit that I was rebasing on top of.. :-(",
       "revId": "c7ebf81a502a51343c8918b19b8edbeee870cf7e",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "9b564fb8_f8f702c2",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-05-12T16:04:11Z",
+      "side": 1,
+      "message": "This is a cherry-pick of ag/13563658, so LGTM.",
+      "revId": "c7ebf81a502a51343c8918b19b8edbeee870cf7e",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
