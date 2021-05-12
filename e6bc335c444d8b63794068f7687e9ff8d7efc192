@@ -35,6 +35,23 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "5f18ba8f_b6a81dcc",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039338
+      },
+      "writtenOn": "2021-05-12T13:02:18Z",
+      "side": 1,
+      "message": "If you rebase on top of https://r.android.com/1705469 it should fix your issues.",
+      "revId": "e6bc335c444d8b63794068f7687e9ff8d7efc192",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "e3b4d1d6_76f61fbe",
