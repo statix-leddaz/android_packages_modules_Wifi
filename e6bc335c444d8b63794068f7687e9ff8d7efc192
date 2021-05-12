@@ -1,6 +1,23 @@
 {
   "comments": [
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "cc542206_d3f1ceb7",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039338
+      },
+      "writtenOn": "2021-05-12T12:55:45Z",
+      "side": 1,
+      "message": "The conflict you are seeing is because someone added an sdk module to the end of the apex/Android.bp file downstream. See http://ag/13563658.\n\nI need to cherry pick those changes into AOSP too so please don\u0027t resolve the conflict downstream as that will just lead to additional conflicts later. Either move the definition of the bootclasspath_fragment elsewhere in the file so it doesn\u0027t conflict (there are other changes downstream so be careful) or we can cherry pick the changes from downstream into AOSP to make them consistent.",
+      "revId": "e6bc335c444d8b63794068f7687e9ff8d7efc192",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "e3b4d1d6_76f61fbe",
