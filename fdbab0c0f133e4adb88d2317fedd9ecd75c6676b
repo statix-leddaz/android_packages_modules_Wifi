@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "302a0be4_737d1c95",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-05-12T16:15:38Z",
+      "side": 1,
+      "message": "Makes sense to me. We are explicitly extracting out the Wifi APIs in the bootclasspath into a separate build target for easier tracking.",
+      "revId": "fdbab0c0f133e4adb88d2317fedd9ecd75c6676b",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
