@@ -52,6 +52,42 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "62793daa_8a4f45b5",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1061164
+      },
+      "writtenOn": "2021-05-12T14:28:55Z",
+      "side": 1,
+      "message": "Thank you!",
+      "parentUuid": "5f18ba8f_b6a81dcc",
+      "revId": "e6bc335c444d8b63794068f7687e9ff8d7efc192",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "149ddb1b_9ce48173",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1061164
+      },
+      "writtenOn": "2021-05-12T14:28:55Z",
+      "side": 1,
+      "message": "Ack.",
+      "parentUuid": "cc542206_d3f1ceb7",
+      "revId": "e6bc335c444d8b63794068f7687e9ff8d7efc192",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "e3b4d1d6_76f61fbe",
@@ -75,6 +111,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "0f092138_030b847b",
+        "filename": "apex/Android.bp",
+        "patchSetId": 1
+      },
+      "lineNbr": 26,
+      "author": {
+        "id": 1061164
+      },
+      "writtenOn": "2021-05-12T14:28:55Z",
+      "side": 1,
+      "message": "It doesn\u0027t appear on BOOTCLASSPATH AFAICT.",
+      "parentUuid": "e3b4d1d6_76f61fbe",
+      "range": {
+        "startLine": 26,
+        "startChar": 8,
+        "endLine": 26,
+        "endChar": 22
+      },
+      "revId": "e6bc335c444d8b63794068f7687e9ff8d7efc192",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "4f0c80ef_a9e9cded",
@@ -88,6 +148,24 @@
       "writtenOn": "2021-05-12T12:51:44Z",
       "side": 1,
       "message": "Would be worth adding a comment here. Something like:\n\n// Encapsulate the contributions made by the com.android.wifi to the bootclasspath.",
+      "revId": "e6bc335c444d8b63794068f7687e9ff8d7efc192",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "c2ecb7f4_56f260c1",
+        "filename": "apex/Android.bp",
+        "patchSetId": 1
+      },
+      "lineNbr": 66,
+      "author": {
+        "id": 1061164
+      },
+      "writtenOn": "2021-05-12T14:28:55Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "4f0c80ef_a9e9cded",
       "revId": "e6bc335c444d8b63794068f7687e9ff8d7efc192",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
