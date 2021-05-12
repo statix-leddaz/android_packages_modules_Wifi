@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "33035526_24084cc2",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1061164
+      },
+      "writtenOn": "2021-05-12T14:28:31Z",
+      "side": 1,
+      "message": "Sorry, didn\u0027t mean to upload patchset 2. repo uploaded a local commit that I was rebasing on top of.. :-(",
+      "revId": "c7ebf81a502a51343c8918b19b8edbeee870cf7e",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
