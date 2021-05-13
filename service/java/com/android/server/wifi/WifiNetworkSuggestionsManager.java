@@ -1082,7 +1082,7 @@ public class WifiNetworkSuggestionsManager {
                 }
                 if (config.isEnterprise()) {
                     final WifiEnterpriseConfig enterpriseConfig = config.enterpriseConfig;
-                    if (enterpriseConfig.isTlsBasedEapMethod()
+                    if (enterpriseConfig.isEapMethodServerCertUsed()
                             && !enterpriseConfig.isMandatoryParameterSetForServerCertValidation()) {
                         Log.e(TAG, "Insecure enterprise suggestion is invalid.");
                         return false;
@@ -1125,17 +1125,6 @@ public class WifiNetworkSuggestionsManager {
                 }
                 if (wns.wifiConfiguration.carrierMerged) {
                     Log.e(TAG, "Setting carrier merged network is only allowed from Android S.");
-                    return false;
-                }
-                if (wns.wifiConfiguration.macRandomizationSetting
-                        != WifiConfiguration.RANDOMIZATION_PERSISTENT) {
-                    Log.e(TAG, "Setting macRandomizationSetting is only allowed from Android S.");
-                    return false;
-                }
-                if (wns.passpointConfiguration != null
-                        && wns.passpointConfiguration.isEnhancedMacRandomizationEnabled()) {
-                    Log.e(TAG, "Setting enhanced MAC randomization is only allowed from "
-                            + "Android S.");
                     return false;
                 }
             }
