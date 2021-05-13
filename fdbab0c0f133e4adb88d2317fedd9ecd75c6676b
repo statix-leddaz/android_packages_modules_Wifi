@@ -69,6 +69,24 @@
       "parentUuid": "97673b31_35de31a0",
       "revId": "fdbab0c0f133e4adb88d2317fedd9ecd75c6676b",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "4560c976_3fe18864",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2021-05-13T16:27:54Z",
+      "side": 1,
+      "message": "Yes - known issue. Please bypass.",
+      "parentUuid": "303643c8_577131c6",
+      "revId": "fdbab0c0f133e4adb88d2317fedd9ecd75c6676b",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
