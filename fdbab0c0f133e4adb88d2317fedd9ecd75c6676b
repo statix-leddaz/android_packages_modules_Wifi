@@ -33,6 +33,24 @@
       "message": "AFAICT, comms/wifi/presubmit/presubmit_2 failing on coral-userdebug is unrelated to this change. FWIW, omms/wifi/presubmit/presubmit_2 on bramble-userdebug on git_master passes in presubmit.\n\nThis change shouldn\u0027t really be affecting anything (aside from adding a file to the apex which is largely a no-op at the moment).\n\nEtan, is it okay to ignore the failure and submit?",
       "revId": "fdbab0c0f133e4adb88d2317fedd9ecd75c6676b",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "97673b31_35de31a0",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1061164
+      },
+      "writtenOn": "2021-05-13T13:00:12Z",
+      "side": 1,
+      "message": "Unresolved; Etan PTAL",
+      "parentUuid": "13f1a3a8_836cd259",
+      "revId": "fdbab0c0f133e4adb88d2317fedd9ecd75c6676b",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
