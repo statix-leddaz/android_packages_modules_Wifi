@@ -122,6 +122,8 @@ import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Log;
 
+import androidx.annotation.RequiresApi;
+
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.ParceledListSlice;
@@ -2478,7 +2480,8 @@ public class WifiServiceImpl extends BaseWifiService {
                 () -> mWifiConfigManager.getSavedNetworks(finalTargetConfigUid),
                 Collections.emptyList());
         if (isTargetSdkLessThanQOrPrivileged && !callerNetworksOnly) {
-            return new ParceledListSlice<>(configs);
+            return new ParceledListSlice<>(
+                    WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(configs));
         }
         // Should only get its own configs
         List<WifiConfiguration> creatorConfigs = new ArrayList<>();
@@ -2487,7 +2490,8 @@ public class WifiServiceImpl extends BaseWifiService {
                 creatorConfigs.add(config);
             }
         }
-        return new ParceledListSlice<>(creatorConfigs);
+        return new ParceledListSlice<>(
+                WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(creatorConfigs));
     }
 
     /**
@@ -2520,7 +2524,8 @@ public class WifiServiceImpl extends BaseWifiService {
         List<WifiConfiguration> configs = mWifiThreadRunner.call(
                 () -> mWifiConfigManager.getConfiguredNetworksWithPasswords(),
                 Collections.emptyList());
-        return new ParceledListSlice<>(configs);
+        return new ParceledListSlice<>(
+                WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(configs));
     }
 
     /**
@@ -2736,7 +2741,7 @@ public class WifiServiceImpl extends BaseWifiService {
             return new AddNetworkResult(AddNetworkResult.STATUS_SUCCESS, 0);
         }
 
-        if (config.isEnterprise() && config.enterpriseConfig.isTlsBasedEapMethod()
+        if (config.isEnterprise() && config.enterpriseConfig.isEapMethodServerCertUsed()
                 && !config.enterpriseConfig.isMandatoryParameterSetForServerCertValidation()) {
             if (!(mContext.getResources().getBoolean(
                     R.bool.config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW)
@@ -2918,6 +2923,7 @@ public class WifiServiceImpl extends BaseWifiService {
      *                       disabled.
      */
     @Override
+    @RequiresApi(Build.VERSION_CODES.S)
     public void startRestrictingAutoJoinToSubscriptionId(int subscriptionId) {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
@@ -2943,6 +2949,7 @@ public class WifiServiceImpl extends BaseWifiService {
      * See {@link android.net.wifi.WifiManager#stopRestrictingAutoJoinToSubscriptionId()}
      */
     @Override
+    @RequiresApi(Build.VERSION_CODES.S)
     public void stopRestrictingAutoJoinToSubscriptionId() {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
@@ -4147,7 +4154,7 @@ public class WifiServiceImpl extends BaseWifiService {
                                         .getNetworkId();
                         if (networkId == WifiConfiguration.INVALID_NETWORK_ID) {
                             Log.e(TAG, "Restore network failed: "
-                                    + configuration.getProfileKeyInternal());
+                                    + configuration.getProfileKey());
                             continue;
                         }
                         // Enable all networks restored.

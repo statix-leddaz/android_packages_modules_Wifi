@@ -3783,22 +3783,22 @@ public class WifiVendorHal {
      */
     private @WifiAvailableChannel.OpMode int frameworkFromHalIfaceMode(int halMode) {
         int mode = 0;
-        if ((mode & WifiIfaceMode.IFACE_MODE_STA) != 0) {
+        if ((halMode & WifiIfaceMode.IFACE_MODE_STA) != 0) {
             mode |= WifiAvailableChannel.OP_MODE_STA;
         }
-        if ((mode & WifiIfaceMode.IFACE_MODE_SOFTAP) != 0) {
+        if ((halMode & WifiIfaceMode.IFACE_MODE_SOFTAP) != 0) {
             mode |= WifiAvailableChannel.OP_MODE_SAP;
         }
-        if ((mode & WifiIfaceMode.IFACE_MODE_P2P_CLIENT) != 0) {
+        if ((halMode & WifiIfaceMode.IFACE_MODE_P2P_CLIENT) != 0) {
             mode |= WifiAvailableChannel.OP_MODE_WIFI_DIRECT_CLI;
         }
-        if ((mode & WifiIfaceMode.IFACE_MODE_P2P_GO) != 0) {
+        if ((halMode & WifiIfaceMode.IFACE_MODE_P2P_GO) != 0) {
             mode |= WifiAvailableChannel.OP_MODE_WIFI_DIRECT_GO;
         }
-        if ((mode & WifiIfaceMode.IFACE_MODE_NAN) != 0) {
+        if ((halMode & WifiIfaceMode.IFACE_MODE_NAN) != 0) {
             mode |= WifiAvailableChannel.OP_MODE_WIFI_AWARE;
         }
-        if ((mode & WifiIfaceMode.IFACE_MODE_TDLS) != 0) {
+        if ((halMode & WifiIfaceMode.IFACE_MODE_TDLS) != 0) {
             mode |= WifiAvailableChannel.OP_MODE_TDLS;
         }
         return mode;
@@ -3832,18 +3832,19 @@ public class WifiVendorHal {
                 if (iWifiChipV15 == null) {
                     return null;
                 }
-                ArrayList<WifiAvailableChannel> results = new ArrayList<>();
+                Mutable<List<WifiAvailableChannel>> answer = new Mutable<>();
                 iWifiChipV15.getUsableChannels(
                         makeWifiBandFromFrameworkBand(band),
                         frameworkToHalIfaceMode(mode),
                         frameworkToHalUsableFilter(filter), (status, channels) -> {
                             if (!ok(status)) return;
+                            answer.value = new ArrayList<>();
                             for (WifiUsableChannel ch : channels) {
-                                results.add(new WifiAvailableChannel(ch.channel,
+                                answer.value.add(new WifiAvailableChannel(ch.channel,
                                         frameworkFromHalIfaceMode(ch.ifaceModeMask)));
                             }
                         });
-                return results;
+                return answer.value;
             } catch (RemoteException e) {
                 handleRemoteException(e);
                 return null;

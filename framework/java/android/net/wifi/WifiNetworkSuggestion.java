@@ -28,12 +28,15 @@ import android.net.MacAddress;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.wifi.hotspot2.PasspointConfiguration;
+import android.os.Build;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+
+import androidx.annotation.RequiresApi;
 
 import com.android.modules.utils.build.SdkLevel;
 
@@ -353,7 +356,7 @@ public final class WifiNetworkSuggestion implements Parcelable {
         public @NonNull Builder setWpa2EnterpriseConfig(
                 @NonNull WifiEnterpriseConfig enterpriseConfig) {
             checkNotNull(enterpriseConfig);
-            if (enterpriseConfig.isTlsBasedEapMethod()
+            if (enterpriseConfig.isEapMethodServerCertUsed()
                     && !enterpriseConfig.isMandatoryParameterSetForServerCertValidation()) {
                 throw new IllegalArgumentException("Enterprise configuration mandates server "
                         + "certificate but validation is not enabled.");
@@ -383,7 +386,7 @@ public final class WifiNetworkSuggestion implements Parcelable {
         public @NonNull Builder setWpa3EnterpriseConfig(
                 @NonNull WifiEnterpriseConfig enterpriseConfig) {
             checkNotNull(enterpriseConfig);
-            if (enterpriseConfig.isTlsBasedEapMethod()
+            if (enterpriseConfig.isEapMethodServerCertUsed()
                     && !enterpriseConfig.isMandatoryParameterSetForServerCertValidation()) {
                 throw new IllegalArgumentException("Enterprise configuration mandates server "
                         + "certificate but validation is not enabled.");
@@ -405,11 +408,8 @@ public final class WifiNetworkSuggestion implements Parcelable {
          */
         public @NonNull Builder setWpa3EnterpriseStandardModeConfig(
                 @NonNull WifiEnterpriseConfig enterpriseConfig) {
-            if (!SdkLevel.isAtLeastS()) {
-                throw new UnsupportedOperationException();
-            }
             checkNotNull(enterpriseConfig);
-            if (enterpriseConfig.isTlsBasedEapMethod()
+            if (enterpriseConfig.isEapMethodServerCertUsed()
                     && !enterpriseConfig.isMandatoryParameterSetForServerCertValidation()) {
                 throw new IllegalArgumentException("Enterprise configuration mandates server "
                         + "certificate but validation is not enabled.");
@@ -434,9 +434,6 @@ public final class WifiNetworkSuggestion implements Parcelable {
          */
         public @NonNull Builder setWpa3Enterprise192BitModeConfig(
                 @NonNull WifiEnterpriseConfig enterpriseConfig) {
-            if (!SdkLevel.isAtLeastS()) {
-                throw new UnsupportedOperationException();
-            }
             checkNotNull(enterpriseConfig);
             if (enterpriseConfig.getEapMethod() != WifiEnterpriseConfig.Eap.TLS) {
                 throw new IllegalArgumentException("The 192-bit mode network type must be TLS");
@@ -512,6 +509,7 @@ public final class WifiNetworkSuggestion implements Parcelable {
          * @return Instance of {@link Builder} to enable chaining of the builder method.
          * @throws IllegalArgumentException if subscriptionId equals to {@link SubscriptionManager#INVALID_SUBSCRIPTION_ID}
          */
+        @RequiresApi(Build.VERSION_CODES.S)
         public @NonNull Builder setSubscriptionId(int subscriptionId) {
             if (!SdkLevel.isAtLeastS()) {
                 throw new UnsupportedOperationException();
@@ -548,9 +546,6 @@ public final class WifiNetworkSuggestion implements Parcelable {
          * @return Instance of {@link Builder} to enable chaining of the builder method.
          */
         public @NonNull Builder setPriorityGroup(@IntRange(from = 0) int priorityGroup) {
-            if (!SdkLevel.isAtLeastS()) {
-                throw new UnsupportedOperationException();
-            }
             mPriorityGroup = priorityGroup;
             return this;
         }
@@ -615,9 +610,6 @@ public final class WifiNetworkSuggestion implements Parcelable {
          */
         public @NonNull Builder setMacRandomizationSetting(
                 @MacRandomizationSetting int macRandomizationSetting) {
-            if (!SdkLevel.isAtLeastS()) {
-                throw new UnsupportedOperationException();
-            }
             switch (macRandomizationSetting) {
                 case RANDOMIZATION_PERSISTENT:
                 case RANDOMIZATION_NON_PERSISTENT:
@@ -801,6 +793,7 @@ public final class WifiNetworkSuggestion implements Parcelable {
          * @hide
          */
         @SystemApi
+        @RequiresApi(Build.VERSION_CODES.S)
         public @NonNull Builder setOemPaid(boolean isOemPaid) {
             if (!SdkLevel.isAtLeastS()) {
                 throw new UnsupportedOperationException();
@@ -843,6 +836,7 @@ public final class WifiNetworkSuggestion implements Parcelable {
          * @hide
          */
         @SystemApi
+        @RequiresApi(Build.VERSION_CODES.S)
         public @NonNull Builder setOemPrivate(boolean isOemPrivate) {
             if (!SdkLevel.isAtLeastS()) {
                 throw new UnsupportedOperationException();
@@ -875,6 +869,7 @@ public final class WifiNetworkSuggestion implements Parcelable {
          *                               merged network (if true) or non-merged network (if false);
          * @return Instance of {@link Builder} to enable chaining of the builder method.
          */
+        @RequiresApi(Build.VERSION_CODES.S)
         public @NonNull Builder setCarrierMerged(boolean isCarrierMerged) {
             if (!SdkLevel.isAtLeastS()) {
                 throw new UnsupportedOperationException();
@@ -897,6 +892,7 @@ public final class WifiNetworkSuggestion implements Parcelable {
          *        default is false.
          * @return Instance of {@link Builder} to enable chaining of the builder method.
          */
+        @RequiresApi(Build.VERSION_CODES.S)
         public @NonNull Builder setIsWpa3SaeH2eOnlyModeEnabled(boolean enable) {
             if (!SdkLevel.isAtLeastS()) {
                 throw new UnsupportedOperationException();
@@ -1436,6 +1432,7 @@ public final class WifiNetworkSuggestion implements Parcelable {
      * @hide
      */
     @SystemApi
+    @RequiresApi(Build.VERSION_CODES.S)
     public boolean isOemPaid() {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
@@ -1448,6 +1445,7 @@ public final class WifiNetworkSuggestion implements Parcelable {
      * @hide
      */
     @SystemApi
+    @RequiresApi(Build.VERSION_CODES.S)
     public boolean isOemPrivate() {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
@@ -1458,6 +1456,7 @@ public final class WifiNetworkSuggestion implements Parcelable {
     /**
      * @see Builder#setCarrierMerged(boolean)
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     public boolean isCarrierMerged() {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
@@ -1498,15 +1497,13 @@ public final class WifiNetworkSuggestion implements Parcelable {
      */
     @IntRange(from = 0)
     public int getPriorityGroup() {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
         return priorityGroup;
     }
 
     /**
      * @see Builder#setSubscriptionId(int)
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     public int getSubscriptionId() {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
@@ -1520,9 +1517,6 @@ public final class WifiNetworkSuggestion implements Parcelable {
      */
     @SystemApi
     public int getCarrierId() {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
         return wifiConfiguration.carrierId;
     }
 }

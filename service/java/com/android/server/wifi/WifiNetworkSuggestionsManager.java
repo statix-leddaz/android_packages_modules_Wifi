@@ -782,7 +782,7 @@ public class WifiNetworkSuggestionsManager {
 
     private void removeNetworkFromScoreCard(WifiConfiguration wifiConfiguration) {
         WifiConfiguration existing =
-                mWifiConfigManager.getConfiguredNetwork(wifiConfiguration.getProfileKeyInternal());
+                mWifiConfigManager.getConfiguredNetwork(wifiConfiguration.getProfileKey());
         // If there is a saved network, do not remove from the score card.
         if (existing != null && !existing.fromWifiNetworkSuggestion) {
             return;
@@ -853,7 +853,7 @@ public class WifiNetworkSuggestionsManager {
     private void updateWifiConfigInWcmIfPresent(
             WifiConfiguration newConfig, int uid, String packageName) {
         WifiConfiguration configInWcm =
-                mWifiConfigManager.getConfiguredNetwork(newConfig.getProfileKeyInternal());
+                mWifiConfigManager.getConfiguredNetwork(newConfig.getProfileKey());
         if (configInWcm == null) return;
         // !suggestion
         if (!configInWcm.fromWifiNetworkSuggestion) return;
@@ -1082,7 +1082,7 @@ public class WifiNetworkSuggestionsManager {
                 }
                 if (config.isEnterprise()) {
                     final WifiEnterpriseConfig enterpriseConfig = config.enterpriseConfig;
-                    if (enterpriseConfig.isTlsBasedEapMethod()
+                    if (enterpriseConfig.isEapMethodServerCertUsed()
                             && !enterpriseConfig.isMandatoryParameterSetForServerCertValidation()) {
                         Log.e(TAG, "Insecure enterprise suggestion is invalid.");
                         return false;
@@ -1125,17 +1125,6 @@ public class WifiNetworkSuggestionsManager {
                 }
                 if (wns.wifiConfiguration.carrierMerged) {
                     Log.e(TAG, "Setting carrier merged network is only allowed from Android S.");
-                    return false;
-                }
-                if (wns.wifiConfiguration.macRandomizationSetting
-                        != WifiConfiguration.RANDOMIZATION_PERSISTENT) {
-                    Log.e(TAG, "Setting macRandomizationSetting is only allowed from Android S.");
-                    return false;
-                }
-                if (wns.passpointConfiguration != null
-                        && wns.passpointConfiguration.isEnhancedMacRandomizationEnabled()) {
-                    Log.e(TAG, "Setting enhanced MAC randomization is only allowed from "
-                            + "Android S.");
                     return false;
                 }
             }
@@ -1281,7 +1270,7 @@ public class WifiNetworkSuggestionsManager {
                 removeFromScanResultMatchInfoMapAndRemoveRelatedScoreCard(ewns);
                 mWifiConfigManager.removeConnectChoiceFromAllNetworks(ewns
                         .createInternalWifiConfiguration(mWifiCarrierInfoManager)
-                        .getProfileKeyInternal());
+                        .getProfileKey());
             }
             removingSuggestions.add(ewns.wns);
             // Remove the config from WifiConfigManager. If current connected suggestion is remove,
@@ -1500,7 +1489,7 @@ public class WifiNetworkSuggestionsManager {
                 }
                 WifiConfiguration network = mWifiConfigManager
                         .getConfiguredNetwork(ewns.wns.getWifiConfiguration()
-                                .getProfileKeyInternal());
+                                .getProfileKey());
                 if (network == null) {
                     network = ewns.createInternalWifiConfiguration(mWifiCarrierInfoManager);
                 }
@@ -1811,6 +1800,13 @@ public class WifiNetworkSuggestionsManager {
      */
     public @NonNull List<WifiConfiguration> getWifiConfigForMatchedNetworkSuggestionsSharedWithUser(
             List<ScanResult> scanResults) {
+        // Create a temporary look-up table.
+        // As they are all single type configurations, they should have unique keys.
+        Map<String, WifiConfiguration> wifiConfigMap = new HashMap<>();
+        WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(
+                mWifiConfigManager.getConfiguredNetworks())
+                        .forEach(c -> wifiConfigMap.put(c.getProfileKey(), c));
+
         // Create a HashSet to avoid return multiple result for duplicate ScanResult.
         Set<String> networkKeys = new HashSet<>();
         List<WifiConfiguration> sharedWifiConfigs = new ArrayList<>();
@@ -1854,12 +1850,11 @@ public class WifiNetworkSuggestionsManager {
                         config.subscriptionId, ewns.perAppInfo.packageName)) {
                     continue;
                 }
-                WifiConfiguration wCmWifiConfig = mWifiConfigManager
-                        .getConfiguredNetwork(config.getProfileKeyInternal());
+                WifiConfiguration wCmWifiConfig = wifiConfigMap.get(config.getProfileKey());
                 if (wCmWifiConfig == null) {
                     continue;
                 }
-                if (networkKeys.add(wCmWifiConfig.getProfileKeyInternal())) {
+                if (networkKeys.add(wCmWifiConfig.getProfileKey())) {
                     sharedWifiConfigs.add(wCmWifiConfig);
                 }
             }
@@ -2077,7 +2072,7 @@ public class WifiNetworkSuggestionsManager {
         for (ExtendedWifiNetworkSuggestion ewns : matchingSuggestions) {
             WifiConfiguration config = ewns
                     .createInternalWifiConfiguration(mWifiCarrierInfoManager);
-            if (config.getProfileKeyInternal().equals(network.getProfileKeyInternal())
+            if (config.getProfileKey().equals(network.getProfileKey())
                     && config.creatorName.equals(network.creatorName)) {
                 matchingExtNetworkSuggestionsWithSameProfileKey.add(ewns);
             }
@@ -2295,7 +2290,7 @@ public class WifiNetworkSuggestionsManager {
         }
 
         if (config.isPasspoint()) {
-            if (!mWifiInjector.getPasspointManager().enableAutojoin(config.getProfileKeyInternal(),
+            if (!mWifiInjector.getPasspointManager().enableAutojoin(config.getProfileKey(),
                     null, choice)) {
                 return false;
             }
@@ -2472,7 +2467,7 @@ public class WifiNetworkSuggestionsManager {
                 continue;
             }
             WifiConfiguration wcmConfig = mWifiConfigManager
-                    .getConfiguredNetwork(ewns.wns.wifiConfiguration.getProfileKeyInternal());
+                    .getConfiguredNetwork(ewns.wns.wifiConfiguration.getProfileKey());
             // Network selection is disabled, ignore.
             if (wcmConfig != null && !wcmConfig.getNetworkSelectionStatus().isNetworkEnabled()) {
                 continue;
@@ -2551,14 +2546,14 @@ public class WifiNetworkSuggestionsManager {
             int rssi) {
         Set<String> networkKeys = networks.stream()
                 .filter(config -> config.fromWifiNetworkSuggestion)
-                .map(WifiConfiguration::getProfileKeyInternal)
+                .map(WifiConfiguration::getProfileKey)
                 .collect(Collectors.toSet());
         mActiveNetworkSuggestionsPerApp.values().stream()
                 .flatMap(e -> e.extNetworkSuggestions.values().stream())
                 .forEach(ewns -> {
                     String profileKey = ewns
                             .createInternalWifiConfiguration(mWifiCarrierInfoManager)
-                            .getProfileKeyInternal();
+                            .getProfileKey();
                     if (TextUtils.equals(profileKey, choiceKey)) {
                         ewns.connectChoice = null;
                         ewns.connectChoiceRssi = 0;

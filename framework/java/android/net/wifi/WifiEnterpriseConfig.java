@@ -20,10 +20,13 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.SystemApi;
 import android.compat.annotation.UnsupportedAppUsage;
+import android.os.Build;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.TextUtils;
 import android.util.Log;
+
+import androidx.annotation.RequiresApi;
 
 import com.android.modules.utils.build.SdkLevel;
 
@@ -1025,6 +1028,7 @@ public class WifiEnterpriseConfig implements Parcelable {
      * @param alias key pair alias
      * @see android.app.admin.DevicePolicyManager#grantKeyPairToWifiAuth(String)
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     public void setClientKeyPairAlias(@NonNull String alias) {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
@@ -1035,6 +1039,7 @@ public class WifiEnterpriseConfig implements Parcelable {
     /**
      * Get KeyChain alias to use for client authentication.
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     public @Nullable String getClientKeyPairAlias() {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
@@ -1482,18 +1487,6 @@ public class WifiEnterpriseConfig implements Parcelable {
      * @return True if configuration requires a CA certification, false otherwise.
      */
     public boolean isEapMethodServerCertUsed() {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
-        return isTlsBasedEapMethod();
-    }
-
-    /**
-     * A helper method to check if the EAP method of enterprise config is one of the target types.
-     * @return true if EAP method of enterprise config is one the target types, false otherwise.
-     * @hide
-     */
-    public boolean isTlsBasedEapMethod() {
         return mEapMethod == Eap.PEAP || mEapMethod == Eap.TLS || mEapMethod == Eap.TTLS;
     }
     /**
@@ -1513,9 +1506,6 @@ public class WifiEnterpriseConfig implements Parcelable {
      * @see #isEapMethodServerCertUsed()
      */
     public boolean isServerCertValidationEnabled() {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
         if (!isEapMethodServerCertUsed()) {
             throw new IllegalStateException("Configuration doesn't use server certificates for "
                     + "authentication");

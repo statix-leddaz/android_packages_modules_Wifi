@@ -66,6 +66,8 @@ import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
 
+import androidx.annotation.RequiresApi;
+
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.ParceledListSlice;
@@ -1553,7 +1555,7 @@ public class WifiManager {
                             new ArrayList<>(results.keySet()));
             for (WifiConfiguration configuration : wifiConfigurations) {
                 Map<Integer, List<ScanResult>> scanResultsPerNetworkType =
-                        results.get(configuration.getProfileKeyInternal());
+                        results.get(configuration.getProfileKey());
                 if (scanResultsPerNetworkType != null) {
                     configs.add(Pair.create(configuration, scanResultsPerNetworkType));
                 }
@@ -2978,6 +2980,7 @@ public class WifiManager {
      *
      * @return {@code true} if supported, {@code false} otherwise.
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     public boolean is60GHzBandSupported() {
         try {
             return mService.is60GHzBandSupported();
@@ -5324,6 +5327,7 @@ public class WifiManager {
     @RequiresPermission(anyOf = {
             android.Manifest.permission.NETWORK_SETTINGS,
             android.Manifest.permission.NETWORK_SETUP_WIZARD})
+    @RequiresApi(Build.VERSION_CODES.S)
     public void startRestrictingAutoJoinToSubscriptionId(int subscriptionId) {
         try {
             mService.startRestrictingAutoJoinToSubscriptionId(subscriptionId);
@@ -5341,6 +5345,7 @@ public class WifiManager {
     @RequiresPermission(anyOf = {
             android.Manifest.permission.NETWORK_SETTINGS,
             android.Manifest.permission.NETWORK_SETUP_WIZARD})
+    @RequiresApi(Build.VERSION_CODES.S)
     public void stopRestrictingAutoJoinToSubscriptionId() {
         try {
             mService.stopRestrictingAutoJoinToSubscriptionId();
@@ -7513,6 +7518,7 @@ public class WifiManager {
          *                 may be sent to ConnectivityService and used for setting default network.
          *                 Populated by connected network scorer in applications.
          */
+        @RequiresApi(Build.VERSION_CODES.S)
         default void notifyStatusUpdate(int sessionId, boolean isUsable) {}
 
         /**
@@ -7524,6 +7530,7 @@ public class WifiManager {
          * @param sessionId The ID to indicate current Wi-Fi network connection obtained from
          *                  {@link WifiConnectedNetworkScorer#onStart(int)}.
          */
+        @RequiresApi(Build.VERSION_CODES.S)
         default void requestNudOperation(int sessionId) {}
 
         /**
@@ -7533,6 +7540,7 @@ public class WifiManager {
          * @param sessionId The ID to indicate current Wi-Fi network connection obtained from
          *                  {@link WifiConnectedNetworkScorer#onStart(int)}.
          */
+        @RequiresApi(Build.VERSION_CODES.S)
         default void blocklistCurrentBssid(int sessionId) {}
     }
 
@@ -7850,9 +7858,6 @@ public class WifiManager {
             android.Manifest.permission.NETWORK_SETUP_WIZARD})
     public void setCarrierNetworkOffloadEnabled(int subscriptionId, boolean merged,
             boolean enabled) {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
         try {
             mService.setCarrierNetworkOffloadEnabled(subscriptionId, merged, enabled);
         } catch (RemoteException e) {
@@ -7870,9 +7875,6 @@ public class WifiManager {
      */
     @RequiresPermission(ACCESS_WIFI_STATE)
     public boolean isCarrierNetworkOffloadEnabled(int subscriptionId, boolean merged) {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
         try {
             return mService.isCarrierNetworkOffloadEnabled(subscriptionId, merged);
         } catch (RemoteException e) {
@@ -7930,9 +7932,6 @@ public class WifiManager {
     public void addSuggestionUserApprovalStatusListener(
             @NonNull @CallbackExecutor Executor executor,
             @NonNull SuggestionUserApprovalStatusListener listener) {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
         if (listener == null) throw new NullPointerException("Listener cannot be null");
         if (executor == null) throw new NullPointerException("Executor cannot be null");
         Log.v(TAG, "addSuggestionUserApprovalStatusListener listener=" + listener
@@ -7962,9 +7961,6 @@ public class WifiManager {
     @RequiresPermission(ACCESS_WIFI_STATE)
     public void removeSuggestionUserApprovalStatusListener(
             @NonNull SuggestionUserApprovalStatusListener listener) {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
         if (listener == null) throw new IllegalArgumentException("Listener cannot be null");
         Log.v(TAG, "removeSuggestionUserApprovalStatusListener: listener=" + listener);
         try {
@@ -8019,9 +8015,6 @@ public class WifiManager {
     @SystemApi
     @RequiresPermission(android.Manifest.permission.NETWORK_SETTINGS)
     public boolean setWifiScoringEnabled(boolean enabled) {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "setWifiScoringEnabled: " + enabled);
         }
