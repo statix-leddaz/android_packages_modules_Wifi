@@ -4,3 +4,6 @@ dysu@google.com
 etancohen@google.com
 rpius@google.com
 satk@google.com
+
+include platform/packages/modules/common:/MODULES_OWNERS
+
