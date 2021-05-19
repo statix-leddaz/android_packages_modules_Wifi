@@ -20,6 +20,7 @@ import static android.net.wifi.WifiManager.ALL_ZEROS_MAC_ADDRESS;
 
 import static com.android.server.wifi.util.NativeUtil.addEnclosingQuotes;
 
+import android.annotation.SuppressLint;
 import android.net.IpConfiguration;
 import android.net.MacAddress;
 import android.net.StaticIpConfiguration;
@@ -43,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -750,6 +752,12 @@ public class WifiConfigurationUtil {
         return false;
     }
 
+    // TODO: b/177434707 calls inside same module are safe
+    @SuppressLint("NewApi")
+    private static int getBand(WifiNetworkSpecifier s) {
+        return s.getBand();
+    }
+
     /**
      * Validate the configuration received from an external application inside
      * {@link WifiNetworkSpecifier}.
@@ -757,15 +765,16 @@ public class WifiConfigurationUtil {
      * This method checks for the following parameters:
      * 1. {@link WifiNetworkSpecifier#ssidPatternMatcher}
      * 2. {@link WifiNetworkSpecifier#bssidPatternMatcher}
-     * 3. {@link WifiConfiguration#SSID}
-     * 4. {@link WifiConfiguration#BSSID}
-     * 5. {@link WifiConfiguration#preSharedKey}
-     * 6. {@link WifiConfiguration#allowedKeyManagement}
-     * 7. {@link WifiConfiguration#allowedProtocols}
-     * 8. {@link WifiConfiguration#allowedAuthAlgorithms}
-     * 9. {@link WifiConfiguration#allowedGroupCiphers}
-     * 10. {@link WifiConfiguration#allowedPairwiseCiphers}
-     * 11. {@link WifiConfiguration#getIpConfiguration()}
+     * 3. {@link WifiNetworkSpecifier#getBand()}
+     * 4. {@link WifiConfiguration#SSID}
+     * 5. {@link WifiConfiguration#BSSID}
+     * 6. {@link WifiConfiguration#preSharedKey}
+     * 7. {@link WifiConfiguration#allowedKeyManagement}
+     * 8. {@link WifiConfiguration#allowedProtocols}
+     * 9. {@link WifiConfiguration#allowedAuthAlgorithms}
+     * 10. {@link WifiConfiguration#allowedGroupCiphers}
+     * 11. {@link WifiConfiguration#allowedPairwiseCiphers}
+     * 12. {@link WifiConfiguration#getIpConfiguration()}
      *
      * @param specifier Instance of {@link WifiNetworkSpecifier}.
      * @return true if the parameters are valid, false otherwise.
@@ -781,6 +790,9 @@ public class WifiConfigurationUtil {
         }
         if (isMatchAllNetworkSpecifier(specifier)) {
             Log.e(TAG, "validateNetworkSpecifier failed : match-all specifier");
+            return false;
+        }
+        if (!WifiNetworkSpecifier.validateBand(getBand(specifier))) {
             return false;
         }
         WifiConfiguration config = specifier.wifiConfiguration;
@@ -938,9 +950,6 @@ public class WifiConfigurationUtil {
         if (params.isSecurityType(WifiConfiguration.SECURITY_TYPE_OWE)) {
             return !wifiGlobals.isOweUpgradeEnabled();
         }
-        if (params.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE)) {
-            return !wifiGlobals.isWpa3EnterpriseUpgradeEnabled();
-        }
         return false;
     }
 
@@ -965,7 +974,6 @@ public class WifiConfigurationUtil {
     public static boolean isSecurityParamsValid(SecurityParams params) {
         if (!params.isEnabled()) return false;
         if (!isSecurityParamsSupported(params)) return false;
-        if (shouldOmitAutoUpgradeParams(params)) return false;
         return true;
     }
 
@@ -1015,4 +1023,29 @@ public class WifiConfigurationUtil {
             }
         }
     }
+
+    /**
+     * Convert multi-type configurations to a list of configurations with a single security type,
+     * where a configuration with multiple security configurations will be converted to multiple
+     * Wi-Fi configurations with a single security type..
+     *
+     * @param configs the list of multi-type configurations.
+     * @return a list of Wi-Fi configurations with a single security type,
+     *         that may contain multiple configurations with the same network ID.
+     */
+    public static List<WifiConfiguration> convertMultiTypeConfigsToLegacyConfigs(
+            List<WifiConfiguration> configs) {
+        List<WifiConfiguration> legacyConfigs = new ArrayList<>();
+        for (WifiConfiguration config : configs) {
+            for (SecurityParams params: config.getSecurityParamsList()) {
+                if (!params.isEnabled()) continue;
+                if (shouldOmitAutoUpgradeParams(params)) continue;
+                WifiConfiguration legacyConfig = new WifiConfiguration(config);
+                legacyConfig.setSecurityParams(params);
+                legacyConfigs.add(legacyConfig);
+            }
+        }
+        return legacyConfigs;
+    }
+
 }

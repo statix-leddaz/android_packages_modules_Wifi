@@ -78,11 +78,13 @@ import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkAgentSpecifier;
+import android.net.wifi.WifiNetworkSpecifier;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.nl80211.DeviceWiphyCapabilities;
 import android.net.wifi.nl80211.WifiNl80211Manager;
 import android.os.BatteryStatsManager;
+import android.os.Build;
 import android.os.ConditionVariable;
 import android.os.HandlerExecutor;
 import android.os.IBinder;
@@ -101,6 +103,8 @@ import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
 import android.util.Pair;
+
+import androidx.annotation.RequiresApi;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.IState;
@@ -3844,10 +3848,15 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     }
 
     private WifiNetworkAgentSpecifier createNetworkAgentSpecifier(
-            @NonNull WifiConfiguration currentWifiConfiguration, @Nullable String currentBssid) {
-        currentWifiConfiguration.BSSID = currentBssid;
+            @NonNull WifiConfiguration currentWifiConfiguration, @Nullable String currentBssid,
+            boolean matchLocationSensitiveInformation) {
+        // Defensive copy to avoid mutating the passed argument
+        final WifiConfiguration conf = new WifiConfiguration(currentWifiConfiguration);
+        conf.BSSID = currentBssid;
         WifiNetworkAgentSpecifier wns =
-                new WifiNetworkAgentSpecifier(currentWifiConfiguration);
+                new WifiNetworkAgentSpecifier(conf,
+                        WifiNetworkSpecifier.getBand(mWifiInfo.getFrequency()),
+                        matchLocationSensitiveInformation);
         return wns;
     }
 
@@ -3919,10 +3928,18 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (mNetworkFactory.isSpecificRequestInProgress(currentWifiConfiguration, currentBssid)) {
             // Remove internet capability.
             builder.removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
-            // Fill up the network agent specifier for this connection.
-            builder.setNetworkSpecifier(createNetworkAgentSpecifier(
-                    currentWifiConfiguration, getConnectedBssidInternal()));
+            // Fill up the network agent specifier for this connection, allowing NetworkCallbacks
+            // to match local-only specifiers in requests. TODO(b/187921303): a third-party app can
+            // observe this location-sensitive information by registering a NetworkCallback.
+            builder.setNetworkSpecifier(createNetworkAgentSpecifier(currentWifiConfiguration,
+                    getConnectedBssidInternal(), true /* matchLocalOnlySpecifiers */));
+        } else {
+            // Fill up the network agent specifier for this connection, without allowing
+            // NetworkCallbacks to match local-only specifiers in requests.
+            builder.setNetworkSpecifier(createNetworkAgentSpecifier(currentWifiConfiguration,
+                    getConnectedBssidInternal(), false /* matchLocalOnlySpecifiers */));
         }
+
         updateLinkBandwidth(builder);
         final NetworkCapabilities networkCapabilities = builder.build();
         if (mVcnManager == null || !currentWifiConfiguration.carrierMerged) {
@@ -4449,9 +4466,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 mTargetWifiConfiguration.networkId,
                                 WifiConfiguration.NetworkSelectionStatus
                                         .DISABLED_NETWORK_NOT_FOUND);
-                        mWifiConfigManager.setRecentFailureAssociationStatus(
-                                mTargetWifiConfiguration.networkId,
-                                WifiConfiguration.RECENT_FAILURE_NETWORK_NOT_FOUND);
+                        if (SdkLevel.isAtLeastS()) {
+                            mWifiConfigManager.setRecentFailureAssociationStatus(
+                                    mTargetWifiConfiguration.networkId,
+                                    WifiConfiguration.RECENT_FAILURE_NETWORK_NOT_FOUND);
+                        }
                         reportConnectionAttemptEnd(
                                 WifiMetrics.ConnectionEvent.FAILURE_NETWORK_NOT_FOUND,
                                 WifiMetricsProto.ConnectionEvent.HLF_NONE,
@@ -6591,6 +6610,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         return true;
     }
 
+    @RequiresApi(Build.VERSION_CODES.S)
     private @WifiConfiguration.RecentFailureReason int
             mboAssocDisallowedReasonCodeToWifiConfigurationRecentFailureReason(
             @MboOceConstants.MboAssocDisallowedReasonCode int reasonCode) {
@@ -6637,11 +6657,13 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 return;
         }
 
-        if (assocRejectEventInfo.mboAssocDisallowedInfo != null) {
-            reason = mboAssocDisallowedReasonCodeToWifiConfigurationRecentFailureReason(
-                    assocRejectEventInfo.mboAssocDisallowedInfo.mReasonCode);
-        } else if (assocRejectEventInfo.oceRssiBasedAssocRejectInfo != null) {
-            reason = WifiConfiguration.RECENT_FAILURE_OCE_RSSI_BASED_ASSOCIATION_REJECTION;
+        if (SdkLevel.isAtLeastS()) {
+            if (assocRejectEventInfo.mboAssocDisallowedInfo != null) {
+                reason = mboAssocDisallowedReasonCodeToWifiConfigurationRecentFailureReason(
+                        assocRejectEventInfo.mboAssocDisallowedInfo.mReasonCode);
+            } else if (assocRejectEventInfo.oceRssiBasedAssocRejectInfo != null) {
+                reason = WifiConfiguration.RECENT_FAILURE_OCE_RSSI_BASED_ASSOCIATION_REJECTION;
+            }
         }
 
         mWifiConfigManager.setRecentFailureAssociationStatus(netId, reason);

@@ -107,6 +107,7 @@ import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkAgentSpecifier;
+import android.net.wifi.WifiNetworkSpecifier;
 import android.net.wifi.WifiSsid;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
@@ -3628,6 +3629,7 @@ public class ClientModeImplTest extends WifiBaseTest {
     @Test
     public void testOceRssiBasedAssociationRejectionUpdatesRecentAssociationFailureStatus()
             throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
         initializeAndAddNetworkAndVerifySuccess();
         AssociationRejectionData assocRejectData = new AssociationRejectionData();
         assocRejectData.ssid = NativeUtil.decodeSsid(TEST_SSID);
@@ -3652,6 +3654,7 @@ public class ClientModeImplTest extends WifiBaseTest {
     @Test
     public void testMboAssocDisallowedIndInAssocRejectUpdatesRecentAssociationFailureStatus()
             throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
         initializeAndAddNetworkAndVerifySuccess();
         AssociationRejectionData assocRejectData = new AssociationRejectionData();
         assocRejectData.ssid = NativeUtil.decodeSsid(TEST_SSID);
@@ -4331,6 +4334,7 @@ public class ClientModeImplTest extends WifiBaseTest {
      */
     @Test
     public void verifyNetworkCapabilities() throws Exception {
+        mWifiInfo.setFrequency(5825);
         when(mPerNetwork.getTxLinkBandwidthKbps()).thenReturn(40_000);
         when(mPerNetwork.getRxLinkBandwidthKbps()).thenReturn(50_000);
         // Simulate the first connection.
@@ -4346,7 +4350,6 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         // Should have internet capability.
         assertTrue(networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET));
-        assertNull(networkCapabilities.getNetworkSpecifier());
 
         assertEquals(mConnectedNetwork.creatorUid, networkCapabilities.getOwnerUid());
         assertArrayEquals(
@@ -4357,6 +4360,16 @@ public class ClientModeImplTest extends WifiBaseTest {
         assertEquals(-42, mWifiInfo.getRssi());
         assertEquals(40_000, networkCapabilities.getLinkUpstreamBandwidthKbps());
         assertEquals(50_000, networkCapabilities.getLinkDownstreamBandwidthKbps());
+
+        // Should set band correctly.
+        // There is no accessor to get the band from the WifiNetworkAgentSpecifier, so match against
+        // a WifiNetworkSpecifier.
+        // TODO: should there be?
+        final NetworkSpecifier spec = networkCapabilities.getNetworkSpecifier();
+        assertTrue(spec instanceof WifiNetworkAgentSpecifier);
+        final WifiNetworkAgentSpecifier wnas = (WifiNetworkAgentSpecifier) spec;
+        assertTrue(wnas.satisfiesNetworkSpecifier(
+                new WifiNetworkSpecifier.Builder().setBand(ScanResult.WIFI_BAND_5_GHZ).build()));
     }
 
     /**
@@ -4366,6 +4379,7 @@ public class ClientModeImplTest extends WifiBaseTest {
      */
     @Test
     public void verifyNetworkCapabilitiesForSpecificRequest() throws Exception {
+        mWifiInfo.setFrequency(2437);
         when(mPerNetwork.getTxLinkBandwidthKbps()).thenReturn(30_000);
         when(mPerNetwork.getRxLinkBandwidthKbps()).thenReturn(40_000);
         when(mWifiNetworkFactory.isSpecificRequestInProgress(any(), any())).thenReturn(true);
@@ -4387,8 +4401,14 @@ public class ClientModeImplTest extends WifiBaseTest {
         assertTrue(networkSpecifier instanceof WifiNetworkAgentSpecifier);
         WifiNetworkAgentSpecifier wifiNetworkAgentSpecifier =
                 (WifiNetworkAgentSpecifier) networkSpecifier;
+
+        // createNetworkAgentSpecifier does not write the BSSID to the current wifi configuration.
+        WifiConfiguration expectedConfig = new WifiConfiguration(
+                mCmi.getConnectedWifiConfiguration());
+        expectedConfig.BSSID = TEST_BSSID_STR;
         WifiNetworkAgentSpecifier expectedWifiNetworkAgentSpecifier =
-                new WifiNetworkAgentSpecifier(mCmi.getConnectedWifiConfiguration());
+                new WifiNetworkAgentSpecifier(expectedConfig, ScanResult.WIFI_BAND_24_GHZ,
+                        true /* matchLocalOnlySpecifiers */);
         assertEquals(expectedWifiNetworkAgentSpecifier, wifiNetworkAgentSpecifier);
         assertEquals(30_000, networkCapabilities.getLinkUpstreamBandwidthKbps());
         assertEquals(40_000, networkCapabilities.getLinkDownstreamBandwidthKbps());
@@ -6081,6 +6101,7 @@ public class ClientModeImplTest extends WifiBaseTest {
     @Test
     public void testNetworkNotFoundEventUpdatesAssociationFailureStatus()
             throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
         initializeAndAddNetworkAndVerifySuccess();
         mCmi.sendMessage(ClientModeImpl.CMD_START_CONNECT, 0, 0, TEST_BSSID_STR);
         for (int i = 0; i < ClientModeImpl.NETWORK_NOT_FOUND_EVENT_THRESHOLD; i++) {
