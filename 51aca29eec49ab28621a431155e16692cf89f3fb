@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "00af74fa_73f5ceb3",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2021-05-20T13:13:31Z",
+      "side": 1,
+      "message": "+2, but considering we\u0027re developing internally it should be merged on sc-dev first.",
+      "revId": "51aca29eec49ab28621a431155e16692cf89f3fb",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
