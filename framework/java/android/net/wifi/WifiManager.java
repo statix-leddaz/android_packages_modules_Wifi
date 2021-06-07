@@ -2452,9 +2452,6 @@ public class WifiManager {
      */
     @RequiresPermission(android.Manifest.permission.CHANGE_WIFI_STATE)
     public boolean removeNonCallerConfiguredNetworks() {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
         try {
             return mService.removeNonCallerConfiguredNetworks(mContext.getOpPackageName());
         } catch (RemoteException e) {
@@ -3367,6 +3364,7 @@ public class WifiManager {
      *
      * @hide
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     @SystemApi
     @RequiresPermission(android.Manifest.permission.MANAGE_WIFI_COUNTRY_CODE)
     public void setOverrideCountryCode(@NonNull String country) {
@@ -3384,6 +3382,7 @@ public class WifiManager {
      *
      * @hide
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     @SystemApi
     @RequiresPermission(android.Manifest.permission.MANAGE_WIFI_COUNTRY_CODE)
     public void clearOverrideCountryCode() {
@@ -3401,6 +3400,7 @@ public class WifiManager {
      *
      * @hide
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     @SystemApi
     @RequiresPermission(android.Manifest.permission.MANAGE_WIFI_COUNTRY_CODE)
     public void setDefaultCountryCode(@NonNull String country) {
@@ -3479,6 +3479,7 @@ public class WifiManager {
      * restarting. The Wi-Fi subsystem can restart due to internal recovery mechanisms or via user
      * action.
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     public abstract static class SubsystemRestartTrackingCallback {
         private final SubsystemRestartTrackingCallback.SubsystemRestartCallbackProxy mProxy;
 
@@ -3571,6 +3572,7 @@ public class WifiManager {
      * @param executor Executor to execute callback on
      * @param callback {@link SubsystemRestartTrackingCallback} to register
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
     public void registerSubsystemRestartTrackingCallback(
             @NonNull @CallbackExecutor Executor executor,
@@ -3593,6 +3595,7 @@ public class WifiManager {
      *
      * @param callback {@link SubsystemRestartTrackingCallback} to unregister
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
     public void unregisterSubsystemRestartTrackingCallback(
             @NonNull SubsystemRestartTrackingCallback callback) {
@@ -3624,6 +3627,7 @@ public class WifiManager {
      *
      * @hide
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     @SystemApi
     @RequiresPermission(android.Manifest.permission.RESTART_WIFI_SUBSYSTEM)
     public void restartWifiSubsystem() {
@@ -8085,6 +8089,7 @@ public class WifiManager {
      * @throws UnsupportedOperationException if this API is not supported on this device.
      * @hide
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     @SystemApi
     @NonNull
     @RequiresPermission(android.Manifest.permission.LOCATION_HARDWARE)
@@ -8117,6 +8122,7 @@ public class WifiManager {
      * @throws UnsupportedOperationException if this API is not supported on this device.
      * @hide
      */
+    @RequiresApi(Build.VERSION_CODES.S)
     @SystemApi
     @NonNull
     @RequiresPermission(android.Manifest.permission.LOCATION_HARDWARE)
