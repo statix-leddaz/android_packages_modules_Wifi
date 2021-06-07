@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "0a303fdb_d3733dca",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1000835
+      },
+      "writtenOn": "2021-06-07T11:03:47Z",
+      "side": 1,
+      "message": "Roughly matches the code in internal master. This seems good enough to merge into AOSP now, since when S pushes to AOSP (presumably later this year), AOSP will snap to sc-dev anyway.",
+      "revId": "43acaa15e13e94a9deab9bd802bdaacc3a5cf836",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
