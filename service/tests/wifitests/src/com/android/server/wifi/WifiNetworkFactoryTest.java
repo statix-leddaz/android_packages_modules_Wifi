@@ -19,6 +19,7 @@ package com.android.server.wifi;
 import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
 import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE;
 import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_GONE;
+import static android.net.NetworkFactory.CMD_REQUEST_NETWORK;
 
 import static com.android.server.wifi.WifiNetworkFactory.PERIODIC_SCAN_INTERVAL_MS;
 import static com.android.server.wifi.util.NativeUtil.addEnclosingQuotes;
@@ -54,6 +55,7 @@ import android.net.wifi.WifiScanner.ScanSettings;
 import android.net.wifi.WifiSsid;
 import android.os.Binder;
 import android.os.IBinder;
+import android.os.Message;
 import android.os.PatternMatcher;
 import android.os.Process;
 import android.os.RemoteException;
@@ -2226,21 +2228,30 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
     }
 
     /**
-     * Verify handling of new network request with network specifier when wifi is off.
-     * The request should be rejected immediately.
+     * Verify handling of new network request with network specifier when wifi is off & then on.
+     * Note: Unlike the other unit tests, this test invokes the top level
+     * {@link NetworkFactory#CMD_REQUEST_NETWORK} to simulate the full flow.
      */
     @Test
     public void testFullHandleNetworkRequestWithSpecifierWhenWifiOff() {
         attachDefaultWifiNetworkSpecifierAndAppInfo(TEST_UID_1, false);
 
-        // wifi off
+        // set wifi off
         mWifiNetworkFactory.setWifiState(false);
         // Add the request, should do nothing.
-        mWifiNetworkFactory.needNetworkFor(mNetworkRequest);
+        Message message = Message.obtain();
+        message.what = CMD_REQUEST_NETWORK;
+        message.obj = mNetworkRequest;
+        mWifiNetworkFactory.sendMessage(message);
         mLooper.dispatchAll();
         verify(mWifiScanner, never()).startScan(any(), any(), any(), any());
-        // TODO: Send an immediate failure when wifi is off.
-        // verify(mConnectivityManager).declareNetworkRequestUnfulfillable(eq(mNetworkRequest));
+
+        // set wifi on
+        mWifiNetworkFactory.setWifiState(true);
+        mLooper.dispatchAll();
+        // Should trigger a re-evaluation of existing requests and the pending request will be
+        // processed now.
+        verify(mWifiScanner).startScan(any(), any(), any(), any());
     }
 
     /**
