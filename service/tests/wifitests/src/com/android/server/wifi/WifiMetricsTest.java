@@ -1745,16 +1745,36 @@ public class WifiMetricsTest extends WifiBaseTest {
         assertEquals(upper, mDecodedProto.staEventList[1].lastWifiUsabilityScore);
     }
 
-    private static final String SSID = "red";
-    private static final int CONFIG_DTIM = 3;
-    private static final int NETWORK_DETAIL_WIFIMODE = 5;
-    private static final int NETWORK_DETAIL_DTIM = 7;
-    private static final int SCAN_RESULT_LEVEL = -30;
     /**
      * Test that WifiMetrics is correctly getting data from ScanDetail and WifiConfiguration
      */
     @Test
     public void testScanDetailAndWifiConfigurationUsage() throws Exception {
+        setupNetworkAndVerify();
+    }
+
+    /**
+     * Test that WifiMetrics is correctly getting data from ScanDetail and WifiConfiguration for
+     * Passpoint use cases.
+     */
+    @Test
+    public void testScanDetailAndWifiConfigurationUsageForPasspoint() throws Exception {
+        setupNetworkAndVerify(true, false);
+        setupNetworkAndVerify(true, true);
+    }
+
+    private static final String SSID = "red";
+    private static final int CONFIG_DTIM = 3;
+    private static final int NETWORK_DETAIL_WIFIMODE = 5;
+    private static final int NETWORK_DETAIL_DTIM = 7;
+    private static final int SCAN_RESULT_LEVEL = -30;
+
+    private void setupNetworkAndVerify() throws Exception {
+        setupNetworkAndVerify(false, false);
+    }
+
+    private void setupNetworkAndVerify(boolean isPasspoint, boolean isPasspointHomeProvider)
+            throws Exception {
         //Setup mock configs and scan details
         NetworkDetail networkDetail = mock(NetworkDetail.class);
         when(networkDetail.getWifiMode()).thenReturn(NETWORK_DETAIL_WIFIMODE);
@@ -1788,6 +1808,9 @@ public class WifiMetricsTest extends WifiBaseTest {
         mWifiMetrics.setNominatorForNetwork(TEST_NETWORK_ID,
                 WifiMetricsProto.ConnectionEvent.NOMINATOR_MANUAL);
 
+        when(config.isPasspoint()).thenReturn(isPasspoint);
+        config.isHomeProviderNetwork = isPasspointHomeProvider;
+
         //Create a connection event using only the config
         mWifiMetrics.startConnectionEvent(TEST_IFACE_NAME, config,
                 "Red", WifiMetricsProto.ConnectionEvent.ROAM_NONE);
@@ -1799,6 +1822,7 @@ public class WifiMetricsTest extends WifiBaseTest {
         //Change configuration to open without randomization
         config.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_NONE;
         scanResult.capabilities = "";
+
         //Create a connection event using the config and a scan detail
         mWifiMetrics.startConnectionEvent(TEST_IFACE_NAME, config,
                 "Green", WifiMetricsProto.ConnectionEvent.ROAM_NONE);
@@ -1844,6 +1868,9 @@ public class WifiMetricsTest extends WifiBaseTest {
                 mDecodedProto.connectionEvent[0].connectionNominator);
         assertEquals(1, mDecodedProto.numConnectToNetworkSupportingMbo);
         assertEquals(1, mDecodedProto.numConnectToNetworkSupportingOce);
+        assertEquals(isPasspoint, mDecodedProto.connectionEvent[0].routerFingerprint.passpoint);
+        assertEquals(isPasspointHomeProvider,
+                mDecodedProto.connectionEvent[0].routerFingerprint.isPasspointHomeProvider);
     }
 
     /**
@@ -2132,6 +2159,7 @@ public class WifiMetricsTest extends WifiBaseTest {
     @Test
     public void testConnectionNetworkTypePasspoint() throws Exception {
         WifiConfiguration config = WifiConfigurationTestUtil.createPasspointNetwork();
+        config.carrierMerged = true;
         mWifiMetrics.startConnectionEvent(TEST_IFACE_NAME, config,
                 "RED", WifiMetricsProto.ConnectionEvent.ROAM_NONE);
         mWifiMetrics.endConnectionEvent(TEST_IFACE_NAME,
@@ -2144,6 +2172,7 @@ public class WifiMetricsTest extends WifiBaseTest {
         assertEquals(WifiMetricsProto.ConnectionEvent.TYPE_PASSPOINT,
                 mDecodedProto.connectionEvent[0].networkType);
         assertFalse(mDecodedProto.connectionEvent[0].isOsuProvisioned);
+        assertTrue(mDecodedProto.connectionEvent[0].isCarrierMerged);
     }
 
     /**
@@ -4962,6 +4991,12 @@ public class WifiMetricsTest extends WifiBaseTest {
         mWifiMetrics.incrementNetworkSuggestionUserRevokePermission();
         mWifiMetrics.incrementNetworkSuggestionUserRevokePermission();
 
+        mWifiMetrics.addSuggestionExistsForSavedNetwork("savedNetwork");
+        mWifiMetrics.incrementNetworkSuggestionMoreThanOneSuggestionForSingleScanResult();
+        mWifiMetrics.addNetworkSuggestionPriorityGroup(0);
+        mWifiMetrics.addNetworkSuggestionPriorityGroup(1);
+        mWifiMetrics.addNetworkSuggestionPriorityGroup(1);
+
         dumpProtoAndDeserialize();
 
         assertEquals(4, mDecodedProto.wifiNetworkSuggestionApiLog.numModification);
@@ -4987,6 +5022,10 @@ public class WifiMetricsTest extends WifiBaseTest {
         assertEquals(WifiMetricsProto.WifiNetworkSuggestionApiLog.TYPE_NON_PRIVILEGED,
                 mDecodedProto.wifiNetworkSuggestionApiLog.appCountPerType[2].appType);
         assertEquals(3, mDecodedProto.wifiNetworkSuggestionApiLog.appCountPerType[2].count);
+        assertEquals(1, mDecodedProto.wifiNetworkSuggestionApiLog.numMultipleSuggestions);
+        assertEquals(1, mDecodedProto.wifiNetworkSuggestionApiLog
+                .numSavedNetworksWithConfiguredSuggestion);
+        assertEquals(1, mDecodedProto.wifiNetworkSuggestionApiLog.numPriorityGroups);
     }
 
     /**
