@@ -19,6 +19,7 @@ package com.android.server.wifi.scanner;
 import android.net.wifi.WifiScanner;
 import android.util.ArraySet;
 
+import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.WifiNative;
 
 import java.util.Set;
@@ -137,6 +138,10 @@ public abstract class ChannelHelper {
          * an empty set if an entire Band if specified or if the list is empty.
          */
         public abstract Set<Integer> getChannelSet();
+        /**
+         * Add 6Ghz Preferred Scanning Channels into the current channel collection.
+         */
+        public abstract void add6GhzPscChannels();
 
         /**
          * Add all channels in the ScanSetting to the collection
@@ -147,7 +152,15 @@ public abstract class ChannelHelper {
                     addChannel(scanSettings.channels[j].frequency);
                 }
             } else {
-                addBand(scanSettings.band);
+                if (SdkLevel.isAtLeastS() && scanSettings.is6GhzPscOnlyEnabled()
+                        && is6GhzBandIncluded(scanSettings.band)) {
+                    // Modify the band to exclude 6Ghz since not all 6Ghz channels will be added.
+                    int band = scanSettings.band & (~WifiScanner.WIFI_BAND_6_GHZ);
+                    addBand(band);
+                    add6GhzPscChannels();
+                } else {
+                    addBand(scanSettings.band);
+                }
             }
         }
 
@@ -311,6 +324,13 @@ public abstract class ChannelHelper {
     }
 
     /**
+     * Returns whether WIFI_BAND_6_GHZ is included in the input band.
+     */
+    public static boolean is6GhzBandIncluded(int band) {
+        return (band & WifiScanner.WIFI_BAND_6_GHZ) != 0;
+    }
+
+    /**
      * Converts a WifiScanner.WIFI_BAND_* constant to a meaningful String
      */
     public static String bandToString(int band) {
@@ -340,6 +360,10 @@ public abstract class ChannelHelper {
         }
         band &= ~WifiScanner.WIFI_BAND_6_GHZ;
 
+        if ((band & WifiScanner.WIFI_BAND_60_GHZ) != 0) {
+            sj.add("60Ghz");
+        }
+        band &= ~WifiScanner.WIFI_BAND_60_GHZ;
         if (band != 0) {
             return "Invalid band";
         }
