@@ -1485,15 +1485,17 @@ public class WifiServiceImpl extends BaseWifiService {
                     Log.d(TAG, "ShutDown bridged mode, clear isBridged cache in Service");
                     mIsBridgedMode = false;
                 }
-                mTetheredSoftApConnectedClientsMap = clients;
-                mTetheredSoftApInfoMap = infos;
+                mTetheredSoftApConnectedClientsMap =
+                        ApConfigUtil.deepCopyForWifiClientListMap(clients);
+                mTetheredSoftApInfoMap = ApConfigUtil.deepCopyForSoftApInfoMap(infos);
             }
             int itemCount = mRegisteredSoftApCallbacks.beginBroadcast();
             for (int i = 0; i < itemCount; i++) {
                 try {
                     mRegisteredSoftApCallbacks.getBroadcastItem(i).onConnectedClientsOrInfoChanged(
-                            mTetheredSoftApInfoMap, mTetheredSoftApConnectedClientsMap, isBridged,
-                            false);
+                            ApConfigUtil.deepCopyForSoftApInfoMap(mTetheredSoftApInfoMap),
+                            ApConfigUtil.deepCopyForWifiClientListMap(
+                                    mTetheredSoftApConnectedClientsMap), isBridged, false);
                 } catch (RemoteException e) {
                     Log.e(TAG, "onConnectedClientsOrInfoChanged: remote exception -- " + e);
                 }
@@ -5308,6 +5310,8 @@ public class WifiServiceImpl extends BaseWifiService {
      */
     @Override
     public void flushPasspointAnqpCache(@NonNull String packageName) {
+        mWifiPermissionsUtil.checkPackage(Binder.getCallingUid(), packageName);
+
         if (!isDeviceOrProfileOwner(Binder.getCallingUid(), packageName)) {
             enforceAnyPermissionOf(android.Manifest.permission.NETWORK_SETTINGS,
                     android.Manifest.permission.NETWORK_MANAGED_PROVISIONING,
