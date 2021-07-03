@@ -256,10 +256,13 @@ public class WifiServiceImpl extends BaseWifiService {
 
         @Override
         public void onActiveDataSubscriptionIdChanged(int subId) {
-            Log.d(TAG, "OBSERVED active data subscription change, subId: " + subId);
-
-            mTetheredSoftApTracker.updateSoftApCapabilityWhenCarrierConfigChanged(subId);
-            mActiveModeWarden.updateSoftApCapability(mTetheredSoftApTracker.getSoftApCapability());
+            // post operation to handler thread
+            mWifiThreadRunner.post(() -> {
+                Log.d(TAG, "OBSERVED active data subscription change, subId: " + subId);
+                mTetheredSoftApTracker.updateSoftApCapabilityWhenCarrierConfigChanged(subId);
+                mActiveModeWarden.updateSoftApCapability(
+                        mTetheredSoftApTracker.getSoftApCapability());
+            });
         }
     }
 
@@ -1262,10 +1265,13 @@ public class WifiServiceImpl extends BaseWifiService {
     private final class CountryCodeListenerProxy implements WifiCountryCode.ChangeListener {
         @Override
         public void onDriverCountryCodeChanged(String countryCode) {
-            Log.i(TAG, "onDriverCountryCodeChanged " + countryCode);
-            mTetheredSoftApTracker.updateAvailChannelListInSoftApCapability();
-            mActiveModeWarden.updateSoftApCapability(
-                    mTetheredSoftApTracker.getSoftApCapability());
+            // post operation to handler thread
+            mWifiThreadRunner.post(() -> {
+                Log.i(TAG, "onDriverCountryCodeChanged " + countryCode);
+                mTetheredSoftApTracker.updateAvailChannelListInSoftApCapability();
+                mActiveModeWarden.updateSoftApCapability(
+                        mTetheredSoftApTracker.getSoftApCapability());
+            });
         }
     }
 
@@ -1479,15 +1485,17 @@ public class WifiServiceImpl extends BaseWifiService {
                     Log.d(TAG, "ShutDown bridged mode, clear isBridged cache in Service");
                     mIsBridgedMode = false;
                 }
-                mTetheredSoftApConnectedClientsMap = clients;
-                mTetheredSoftApInfoMap = infos;
+                mTetheredSoftApConnectedClientsMap =
+                        ApConfigUtil.deepCopyForWifiClientListMap(clients);
+                mTetheredSoftApInfoMap = ApConfigUtil.deepCopyForSoftApInfoMap(infos);
             }
             int itemCount = mRegisteredSoftApCallbacks.beginBroadcast();
             for (int i = 0; i < itemCount; i++) {
                 try {
                     mRegisteredSoftApCallbacks.getBroadcastItem(i).onConnectedClientsOrInfoChanged(
-                            mTetheredSoftApInfoMap, mTetheredSoftApConnectedClientsMap, isBridged,
-                            false);
+                            ApConfigUtil.deepCopyForSoftApInfoMap(mTetheredSoftApInfoMap),
+                            ApConfigUtil.deepCopyForWifiClientListMap(
+                                    mTetheredSoftApConnectedClientsMap), isBridged, false);
                 } catch (RemoteException e) {
                     Log.e(TAG, "onConnectedClientsOrInfoChanged: remote exception -- " + e);
                 }
@@ -3736,11 +3744,13 @@ public class WifiServiceImpl extends BaseWifiService {
             @Override
             public void onReceive(Context context, Intent intent) {
                 final int subId = SubscriptionManager.getActiveDataSubscriptionId();
-                Log.d(TAG, "ACTION_CARRIER_CONFIG_CHANGED, active subId: " + subId);
-
-                mTetheredSoftApTracker.updateSoftApCapabilityWhenCarrierConfigChanged(subId);
-                mActiveModeWarden.updateSoftApCapability(
-                        mTetheredSoftApTracker.getSoftApCapability());
+                // post operation to handler thread
+                mWifiThreadRunner.post(() -> {
+                    Log.d(TAG, "ACTION_CARRIER_CONFIG_CHANGED, active subId: " + subId);
+                    mTetheredSoftApTracker.updateSoftApCapabilityWhenCarrierConfigChanged(subId);
+                    mActiveModeWarden.updateSoftApCapability(
+                            mTetheredSoftApTracker.getSoftApCapability());
+                });
             }
         }, filter);
 
@@ -5259,11 +5269,29 @@ public class WifiServiceImpl extends BaseWifiService {
                 () -> mSettingsStore.handleWifiScoringEnabled(enabled), false);
     }
 
+    @VisibleForTesting
+    static boolean isValidBandForGetUsableChannels(@WifiScanner.WifiBand int band) {
+        switch (band) {
+            case WifiScanner.WIFI_BAND_UNSPECIFIED:
+            case WifiScanner.WIFI_BAND_24_GHZ:
+            case WifiScanner.WIFI_BAND_5_GHZ_WITH_DFS:
+            case WifiScanner.WIFI_BAND_BOTH_WITH_DFS:
+            case WifiScanner.WIFI_BAND_6_GHZ:
+            case WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_GHZ:
+            case WifiScanner.WIFI_BAND_60_GHZ:
+            case WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_60_GHZ:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /**
      * See {@link android.net.wifi.WifiManager#getUsableChannels(int, int) and
      * See {@link android.net.wifi.WifiManager#getAllowedChannels(int, int).
      *
      * @throws SecurityException if the caller does not have permission
+     * or IllegalArgumentException if the band is invalid for this method.
      */
     @Override
     public List<WifiAvailableChannel> getUsableChannels(@WifiScanner.WifiBand int band,
@@ -5278,6 +5306,9 @@ public class WifiServiceImpl extends BaseWifiService {
         }
         if (!mWifiPermissionsUtil.checkCallersHardwareLocationPermission(uid)) {
             throw new SecurityException("UID " + uid + " does not have location h/w permission");
+        }
+        if (!isValidBandForGetUsableChannels(band)) {
+            throw new IllegalArgumentException("Unsupported band: " + band);
         }
         List<WifiAvailableChannel> channels = mWifiThreadRunner.call(
                 () -> mWifiNative.getUsableChannels(band, mode, filter), null);
@@ -5300,6 +5331,8 @@ public class WifiServiceImpl extends BaseWifiService {
      */
     @Override
     public void flushPasspointAnqpCache(@NonNull String packageName) {
+        mWifiPermissionsUtil.checkPackage(Binder.getCallingUid(), packageName);
+
         if (!isDeviceOrProfileOwner(Binder.getCallingUid(), packageName)) {
             enforceAnyPermissionOf(android.Manifest.permission.NETWORK_SETTINGS,
                     android.Manifest.permission.NETWORK_MANAGED_PROVISIONING,
