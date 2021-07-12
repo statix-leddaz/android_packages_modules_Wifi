@@ -566,6 +566,7 @@ public class WifiNative {
 
     /** Helper method invoked to teardown iface and perform necessary cleanup */
     private void onInterfaceDestroyed(@NonNull Iface iface) {
+        Iface tempIface = null;
         synchronized (mLock) {
             if (iface.type == Iface.IFACE_TYPE_STA_FOR_CONNECTIVITY) {
                 onClientInterfaceForConnectivityDestroyed(iface);
@@ -574,9 +575,13 @@ public class WifiNative {
             } else if (iface.type == Iface.IFACE_TYPE_AP) {
                 onSoftApInterfaceDestroyed(iface);
             }
-            // Invoke the external callback.
-            iface.externalListener.onDestroyed(iface.name);
+
+            tempIface = new Iface(iface.id, iface.type);
+            tempIface.externalListener = iface.externalListener;
+            tempIface.name = iface.name;
         }
+        // Invoke the external callback. Don't call this in mLock to avoid deadlock with WifiMetics.
+        tempIface.externalListener.onDestroyed(tempIface.name);
     }
 
     /**
