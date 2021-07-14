@@ -87,8 +87,7 @@ public class PasspointNetworkNominateHelper {
                 // If scanDetail is not Passpoint network, ignore.
                 continue;
             }
-            if (!scanDetail.getNetworkDetail().isInternet()
-                    || isApWanLinkStatusDown(scanDetail)) {
+            if (isApWanLinkStatusDown(scanDetail)) {
                 // If scanDetail has no internet connection, ignore.
                 mLocalLog.log("Ignoring no internet connection Passpoint AP: "
                         + WifiNetworkSelector.toScanId(scanDetail.getScanResult()));
@@ -119,14 +118,11 @@ public class PasspointNetworkNominateHelper {
         }
 
         // Check if the WAN Metrics ANQP element is initialized with values other than 0's
-        if (wm.getStatus() == HSWanMetricsElement.LINK_STATUS_RESERVED
-                && !wm.isCapped() && !wm.isSymmetric() && wm.getDownlinkLoad() == 0
-                && wm.getDownlinkSpeed() == 0 && wm.getUplinkLoad() == 0 && wm.getUplinkSpeed() == 0
-                && wm.getLMD() == 0) {
+        if (!wm.isElementInitialized()) {
             // WAN Metrics ANQP element is not initialized in this network. Ignore it.
             return false;
         }
-        return wm.getStatus() != HSWanMetricsElement.LINK_STATUS_UP || wm.isCapped();
+        return wm.getStatus() != HSWanMetricsElement.LINK_STATUS_UP || wm.isAtCapacity();
     }
 
     /**
@@ -169,6 +165,10 @@ public class PasspointNetworkNominateHelper {
                 if (config == null) {
                     continue;
                 }
+                if (mWifiConfigManager.isNonCarrierMergedNetworkTemporarilyDisabled(config)) {
+                    mLocalLog.log("Ignoring non-carrier-merged SSID: " + config.FQDN);
+                    continue;
+                }
                 if (mWifiConfigManager.isNetworkTemporarilyDisabledByUser(config.FQDN)) {
                     mLocalLog.log("Ignoring user disabled FQDN: " + config.FQDN);
                     continue;
@@ -195,7 +195,7 @@ public class PasspointNetworkNominateHelper {
             config.meteredHint = true;
         }
         WifiConfiguration existingNetwork = mWifiConfigManager.getConfiguredNetwork(
-                config.getKey());
+                config.getProfileKey());
         if (existingNetwork != null) {
             WifiConfiguration.NetworkSelectionStatus status =
                     existingNetwork.getNetworkSelectionStatus();
@@ -220,7 +220,7 @@ public class PasspointNetworkNominateHelper {
         mWifiConfigManager.allowAutojoin(result.getNetworkId(), config.allowAutojoin);
         mWifiConfigManager.enableNetwork(result.getNetworkId(), false, Process.WIFI_UID, null);
         mWifiConfigManager.setNetworkCandidateScanResult(result.getNetworkId(),
-                candidate.mScanDetail.getScanResult(), 0);
+                candidate.mScanDetail.getScanResult(), 0, null);
         mWifiConfigManager.updateScanDetailForNetwork(
                 result.getNetworkId(), candidate.mScanDetail);
         return mWifiConfigManager.getConfiguredNetwork(result.getNetworkId());
