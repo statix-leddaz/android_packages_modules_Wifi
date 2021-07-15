@@ -15,10 +15,17 @@
 // Make test APK
 // ============================================================
 
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 android_test {
     name: "FrameworksWifiApiTests",
 
     defaults: ["framework-wifi-test-defaults"],
+
+    min_sdk_version: "30",
+    target_sdk_version: "30",
 
     srcs: ["**/*.java"],
 
@@ -31,11 +38,12 @@ android_test {
     static_libs: [
         "androidx.test.rules",
         "core-test-rules",
+        "frameworks-base-testutils",
         "guava",
         "mockito-target-minus-junit4",
+        "modules-utils-build",
         "net-tests-utils",
         "net-utils-framework-common",
-        "frameworks-base-testutils",
         "truth-prebuilt",
     ],
 
@@ -48,4 +56,8 @@ android_test {
         "general-tests",
         "mts-wifi",
     ],
+
+    // static libs used by both framework-wifi & FrameworksWifiApiTests. Need to rename test usage
+    // to a different package name to prevent conflict with the copy in production code.
+    jarjar_rules: "test-jarjar-rules.txt",
 }
