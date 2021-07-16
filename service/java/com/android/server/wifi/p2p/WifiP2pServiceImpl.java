@@ -74,6 +74,7 @@ import android.os.Message;
 import android.os.Messenger;
 import android.os.Process;
 import android.os.RemoteException;
+import android.os.SystemClock;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.WorkSource;
@@ -94,6 +95,7 @@ import com.android.internal.util.AsyncChannel;
 import com.android.internal.util.Protocol;
 import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
+import com.android.internal.util.WakeupMessage;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.FrameworkFacade;
 import com.android.server.wifi.WifiGlobals;
@@ -139,6 +141,9 @@ import java.util.stream.Collectors;
  */
 public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     private static final String TAG = "WifiP2pService";
+    @VisibleForTesting
+    public static final String P2P_IDLE_SHUTDOWN_MESSAGE_TIMEOUT_TAG = TAG
+            + " Idle Shutdown Message Timeout";
     private boolean mVerboseLoggingEnabled = false;
     private static final String NETWORKTYPE = "WIFI_P2P";
     @VisibleForTesting
@@ -155,6 +160,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             DEVICE_NAME_LENGTH_MAX - DEVICE_NAME_POSTFIX_LENGTH_MIN;
     @VisibleForTesting
     static final int DEFAULT_GROUP_OWNER_INTENT = 6;
+
+    @VisibleForTesting
+    // It requires to over "DISCOVER_TIMEOUT_S(120)" or "GROUP_CREATING_WAIT_TIME_MS(120)".
+    // Otherwise it will cause interface down before function timeout.
+    static final long P2P_INTERFACE_IDLE_SHUTDOWN_TIMEOUT_MS = 150_000;
 
     private Context mContext;
 
@@ -254,6 +264,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     public static final int ENABLE_P2P                      =   BASE + 16;
     public static final int DISABLE_P2P                     =   BASE + 17;
     public static final int REMOVE_CLIENT_INFO              =   BASE + 18;
+    // idle shutdown message
+    public static final int CMD_P2P_IDLE_SHUTDOWN           =   BASE + 19;
 
     // Messages for interaction with IpClient.
     private static final int IPC_PRE_DHCP_ACTION            =   BASE + 30;
@@ -320,6 +332,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     // An anonymized device address. This is used instead of the own device MAC to prevent the
     // latter from leaking to apps
     private static final String ANONYMIZED_DEVICE_ADDRESS = "02:00:00:00:00:00";
+
+    // Idle shut down
+    @VisibleForTesting
+    public WakeupMessage mP2pIdleShutdownMessage;
 
     /**
      * Error code definition.
@@ -675,8 +691,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 Log.e(TAG, "Error on linkToDeath: e=" + e);
                 // fall-through here - won't clean up
             }
-            mP2pStateMachine.sendMessage(ENABLE_P2P);
-
+            // If p2p is already on, send ENABLE_P2P to merge the new worksource.
+            // If p2p is off, the first one activates P2P will merge all worksources.
+            if (!mP2pStateMachine.isP2pDisabled()) {
+                mP2pStateMachine.sendMessage(ENABLE_P2P);
+            }
             return messenger;
         }
     }
@@ -879,6 +898,12 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             setLogOnlyTransitions(true);
 
             if (p2pSupported) {
+                // Init p2p idle shutdown message
+                mP2pIdleShutdownMessage = new WakeupMessage(mContext,
+                                  this.getHandler(),
+                                  P2P_IDLE_SHUTDOWN_MESSAGE_TIMEOUT_TAG,
+                                  CMD_P2P_IDLE_SHUTDOWN);
+
                 // Register for wifi on/off broadcasts
                 mContext.registerReceiver(new BroadcastReceiver() {
                     @Override
@@ -939,6 +964,33 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     });
                 }
             }
+        }
+
+        boolean isP2pDisabled() {
+            return getCurrentState() == mP2pDisabledState;
+        }
+
+        void scheduleIdleShutdown() {
+            if (mP2pIdleShutdownMessage != null) {
+                mP2pIdleShutdownMessage.cancel();
+                mP2pIdleShutdownMessage.schedule(SystemClock.elapsedRealtime()
+                        + P2P_INTERFACE_IDLE_SHUTDOWN_TIMEOUT_MS);
+                if (mVerboseLoggingEnabled) {
+                    Log.d(TAG, "IdleShutDown message (re)scheduled in "
+                            + (P2P_INTERFACE_IDLE_SHUTDOWN_TIMEOUT_MS / 1000) + "s");
+                }
+            }
+            mP2pStateMachine.getHandler().removeMessages(CMD_P2P_IDLE_SHUTDOWN);
+        }
+
+        void cancelIdleShutdown() {
+            if (mP2pIdleShutdownMessage != null) {
+                mP2pIdleShutdownMessage.cancel();
+                if (mVerboseLoggingEnabled) {
+                    Log.d(TAG, "IdleShutDown message canceled");
+                }
+            }
+            mP2pStateMachine.getHandler().removeMessages(CMD_P2P_IDLE_SHUTDOWN);
         }
 
         void checkCoexUnsafeChannels() {
@@ -1525,9 +1577,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         }
                         break;
                     default:
-                        // only handle commands from clients.
+                        // only handle commands from clients and only commands
+                        // which require P2P to be active.
                         if (message.what < Protocol.BASE_WIFI_P2P_MANAGER
-                                || Protocol.BASE_WIFI_P2P_SERVICE <= message.what) {
+                                || Protocol.BASE_WIFI_P2P_SERVICE <= message.what
+                                || message.what == WifiP2pManager.UPDATE_CHANNEL_INFO) {
                             return NOT_HANDLED;
                         }
                         // If P2P is not ready, it might be disabled due
@@ -1925,11 +1979,23 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 if (mVerboseLoggingEnabled) logd(getName());
                 mSavedPeerConfig.invalidate();
                 mDetailedState = NetworkInfo.DetailedState.IDLE;
+                scheduleIdleShutdown();
+            }
+
+            @Override
+            public void exit() {
+                cancelIdleShutdown();
             }
 
             @Override
             public boolean processMessage(Message message) {
                 if (mVerboseLoggingEnabled) logd(getName() + message.toString());
+                // Re-schedule the shutdown timer since we got the new operation.
+                // only handle commands from clients.
+                if (message.what > Protocol.BASE_WIFI_P2P_MANAGER
+                        && message.what < Protocol.BASE_WIFI_P2P_SERVICE) {
+                    scheduleIdleShutdown();
+                }
                 switch (message.what) {
                     case WifiP2pManager.CONNECT:
                         if (!mWifiPermissionsUtil.checkCanAccessWifiDirect(
@@ -1998,6 +2064,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             replyToMessage(message, WifiP2pManager.STOP_DISCOVERY_FAILED,
                                     WifiP2pManager.ERROR);
                         }
+                        break;
+                    case CMD_P2P_IDLE_SHUTDOWN:
+                        Log.d(TAG, "IdleShutDown message received");
+                        sendMessage(DISABLE_P2P);
                         break;
                     case WifiP2pMonitor.P2P_GO_NEGOTIATION_REQUEST_EVENT:
                         config = (WifiP2pConfig) message.obj;
