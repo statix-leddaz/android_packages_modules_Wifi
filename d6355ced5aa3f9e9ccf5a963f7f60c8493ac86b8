@@ -16,6 +16,23 @@
       "message": "Clean cherry pick from sc-dev.",
       "revId": "d6355ced5aa3f9e9ccf5a963f7f60c8493ac86b8",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "feb08cd9_5b4513d9",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1038443
+      },
+      "writtenOn": "2021-07-17T08:34:29Z",
+      "side": 1,
+      "message": "Global approval for cherry-pick.",
+      "revId": "d6355ced5aa3f9e9ccf5a963f7f60c8493ac86b8",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
