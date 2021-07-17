@@ -33,6 +33,23 @@
       "message": "Global approval for cherry-pick.",
       "revId": "d6355ced5aa3f9e9ccf5a963f7f60c8493ac86b8",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "cc840869_b1846e90",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1423861
+      },
+      "writtenOn": "2021-07-17T17:19:40Z",
+      "side": 1,
+      "message": "Adding Nate as I no longer work on Wifi.",
+      "revId": "d6355ced5aa3f9e9ccf5a963f7f60c8493ac86b8",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
