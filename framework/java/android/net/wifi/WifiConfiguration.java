@@ -1423,7 +1423,7 @@ public class WifiConfiguration implements Parcelable {
                     new DisableReasonInfo(
                             "NETWORK_SELECTION_DISABLED_NO_INTERNET_TEMPORARY",
                             1,
-                            10 * 60 * 1000));
+                            1 * 1000));
 
             reasons.append(DISABLED_AUTHENTICATION_NO_CREDENTIALS,
                     new DisableReasonInfo(

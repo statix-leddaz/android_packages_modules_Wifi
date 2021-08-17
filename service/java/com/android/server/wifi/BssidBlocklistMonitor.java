@@ -232,7 +232,8 @@ public class BssidBlocklistMonitor {
             @FailureReason int reasonCode) {
         if (bssid == null || ssid == null || WifiManager.UNKNOWN_SSID.equals(ssid)
                 || bssid.equals(ClientModeImpl.SUPPLICANT_BSSID_ANY)
-                || reasonCode < 0 || reasonCode >= NUMBER_REASON_CODES) {
+                || reasonCode < 0 || reasonCode >= NUMBER_REASON_CODES
+                || reasonCode == REASON_NETWORK_VALIDATION_FAILURE) {
             Log.e(TAG, "Invalid input: BSSID=" + bssid + ", SSID=" + ssid
                     + ", reasonCode=" + reasonCode);
             return false;
