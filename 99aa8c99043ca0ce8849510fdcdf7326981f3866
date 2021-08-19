@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "82902d13_b1062bbb",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1308504
+      },
+      "writtenOn": "2021-08-19T08:03:02Z",
+      "side": 1,
+      "message": "The change LGTM but I would like to have wifi owner to take a look.\nEtan, could you help to review this change ?",
+      "revId": "99aa8c99043ca0ce8849510fdcdf7326981f3866",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
