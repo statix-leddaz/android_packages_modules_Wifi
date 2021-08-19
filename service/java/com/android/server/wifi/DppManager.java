@@ -25,6 +25,8 @@ import android.net.wifi.IDppCallback;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
+// MIUI ADD:
+import android.net.wifi.util.HexEncoding;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -46,8 +48,10 @@ import com.android.server.wifi.SupplicantStaIfaceHal.DppNetRole;
 import com.android.server.wifi.SupplicantStaIfaceHal.DppProgressCode;
 import com.android.server.wifi.WifiNative.DppEventCallback;
 import com.android.server.wifi.util.ApConfigUtil;
+import com.android.server.wifi.util.NativeUtil;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -74,6 +78,10 @@ public class DppManager {
     public static final int DPP_AUTH_ROLE_INACTIVE = -1;
     public static final int DPP_AUTH_ROLE_INITIATOR = 0;
     public static final int DPP_AUTH_ROLE_RESPONDER = 1;
+    // Max SSID Length
+    public static final int MAX_SSID_LENGTH = 32;
+    // Max UTF-8 SSID length: GBK SSID 32 bytes equals to UTF SSID 48 bytes
+    public static final int MAX_SSID_UTF_LENGTH = 48;
     private final DppMetrics mDppMetrics;
     private final ScanRequestProxy mScanRequestProxy;
     private final WifiPermissionsUtil mWifiPermissionsUtil;
@@ -133,6 +141,42 @@ public class DppManager {
                 DPP_TIMEOUT_TAG, () -> {
             timeoutDppRequest();
         });
+    }
+
+    private static String encodeSsidStringToHex(String str) {
+        if ((str.length() > 1) && (str.charAt(0) == '"') && (str.charAt(str.length() - 1) == '"')) {
+            // Remove the surrounding quotes
+            str = str.substring(1, str.length() - 1);
+
+            // Convert to Hex
+            byte[] ssidByte = getSsidBytes(str, "UTF-8");
+            return HexEncoding.encodeToString(ssidByte);
+        }
+        return str;
+    }
+
+    /**
+     * Helper method - get ssid bytes from Quoted String.
+     */
+    public static byte[] getSsidBytes(String ssid, String charsetName) {
+        if (ssid == null) {
+            return null;
+        }
+
+        String bareSsid = NativeUtil.removeEnclosingQuotes(ssid);
+        byte ssidBytes[] = null;
+        try {
+            ssidBytes = bareSsid.getBytes(charsetName);
+        } catch (UnsupportedEncodingException cce) {
+            // Unsupported
+        }
+
+        int maxlen = "UTF-8".equals(charsetName) ?
+                MAX_SSID_UTF_LENGTH : MAX_SSID_LENGTH;
+        if (ssidBytes.length > maxlen) {
+            ssidBytes = null;
+        }
+        return ssidBytes;
     }
 
     private static String encodeStringToHex(String str) {
@@ -353,7 +397,7 @@ public class DppManager {
         // Auth init
         logd("Authenticating");
 
-        String ssidEncoded = encodeStringToHex(selectedNetwork.SSID);
+        String ssidEncoded = encodeSsidStringToHex(selectedNetwork.SSID);
         String passwordEncoded = null;
 
         if (password != null) {
