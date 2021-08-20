@@ -284,6 +284,7 @@ public class WifiMetrics {
     private WifiSettingsStore mWifiSettingsStore;
     private IntCounter mPasspointDeauthImminentScope = new IntCounter();
     private IntCounter mRecentFailureAssociationStatus = new IntCounter();
+    private boolean mFirstConnectionAfterBoot = true;
 
     /**
      * Metrics are stored within an instance of the WifiLog proto during runtime,
@@ -1303,6 +1304,8 @@ public class WifiMetrics {
                 sb.append(" interfaceName=").append(mConnectionEvent.interfaceName);
                 sb.append(" interfaceRole=").append(
                         clientRoleEnumToString(mConnectionEvent.interfaceRole));
+                sb.append(", isFirstConnectionAfterBoot="
+                        + mConnectionEvent.isFirstConnectionAfterBoot);
                 return sb.toString();
             }
         }
@@ -1816,6 +1819,9 @@ public class WifiMetrics {
             currentConnectionEvent.mConfigBssid = "any";
             currentConnectionEvent.mWifiState = mWifiState;
             currentConnectionEvent.mScreenOn = mScreenOn;
+            currentConnectionEvent.mConnectionEvent.isFirstConnectionAfterBoot =
+                    mFirstConnectionAfterBoot;
+            mFirstConnectionAfterBoot = false;
             mConnectionEventList.add(currentConnectionEvent);
             mScanResultRssiTimestampMillis = -1;
             if (config != null) {
@@ -7912,7 +7918,7 @@ public class WifiMetrics {
     public enum PnoScanState { STARTED, FAILED_TO_START, COMPLETED_NETWORK_FOUND, FAILED }
 
     /**
-     * This class reports Scan metrics to Westworld and holds intermediate scan request state.
+     * This class reports Scan metrics to statsd and holds intermediate scan request state.
      */
     public static class ScanMetrics {
         private static final String TAG_SCANS = "ScanMetrics";
@@ -7952,7 +7958,7 @@ public class WifiMetrics {
         private State mNextScanState = new State();
         // mActiveScanState is an immutable copy of mNextScanState during the scan process,
         // i.e. between logScanStarted and logScanSucceeded/Failed. Since the state is pushed to
-        // Westworld only when a scan ends, it's important to keep the immutable copy
+        // statsd only when a scan ends, it's important to keep the immutable copy
         // for the duration of the scan.
         private State[] mActiveScanStates = new State[SCAN_TYPE_MAX_VALUE + 1];
 
