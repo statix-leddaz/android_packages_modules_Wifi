@@ -3680,6 +3680,8 @@ public class ClientModeImpl extends StateMachine {
             // Block to make sure IpClient has really shut down, lest cleanup
             // race with, say, bringup code over in tethering.
             mIpClientCallbacks.awaitShutdown();
+            mIpClientCallbacks = null;
+            mIpClient = null;
         }
         mCountryCode.setReadyForChange(false);
         mInterfaceName = null;
