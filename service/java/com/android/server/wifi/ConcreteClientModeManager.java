@@ -137,6 +137,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
     private RoleChangeInfo mTargetRoleChangeInfo;
     private boolean mVerboseLoggingEnabled = false;
     private int mActiveSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+    private boolean mWifiStateChangeBroadcastEnabled = true;
     /**
      * mClientModeImpl is only non-null when in {@link ClientModeStateMachine.ConnectModeState} -
      * it will be null in all other states
@@ -192,6 +193,14 @@ public class ConcreteClientModeManager implements ClientModeManager {
     }
 
     /**
+     * Sets whether to send WIFI_STATE_CHANGED broadcast for this ClientModeManager.
+     * @param enabled
+     */
+    public void setWifiStateChangeBroadcastEnabled(boolean enabled) {
+        mWifiStateChangeBroadcastEnabled = enabled;
+    }
+
+    /**
      * Disconnect from any currently connected networks and stop client mode.
      */
     @Override
@@ -239,7 +248,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
                     }
                 };
 
-        private final NetworkCallback mImsNetworkCallback = new NetworkCallback() {
+        private final class ImsNetworkCallback extends NetworkCallback {
             private int mRegisteredImsNetworkCount = 0;
 
             @Override
@@ -264,7 +273,9 @@ public class ConcreteClientModeManager implements ClientModeManager {
                     }
                 }
             }
-        };
+        }
+
+        private NetworkCallback mImsNetworkCallback = null;
 
         DeferStopHandler(Looper looper) {
             super(TAG, looper);
@@ -310,6 +321,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
             mConnectivityManager =
                     (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
 
+            mImsNetworkCallback = new ImsNetworkCallback();
             mConnectivityManager.registerNetworkCallback(imsRequest, mImsNetworkCallback,
                     new Handler(mLooper));
         }
@@ -363,8 +375,9 @@ public class ConcreteClientModeManager implements ClientModeManager {
                 }
             }
 
-            if (mConnectivityManager != null) {
+            if (mConnectivityManager != null && mImsNetworkCallback != null) {
                 mConnectivityManager.unregisterNetworkCallback(mImsNetworkCallback);
+                mImsNetworkCallback = null;
             }
 
             mIsDeferring = false;
@@ -588,7 +601,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
             // do not need to broadcast failure to system
             return;
         }
-        if (role != ROLE_CLIENT_PRIMARY) {
+        if (role != ROLE_CLIENT_PRIMARY || !mWifiStateChangeBroadcastEnabled) {
             // do not raise public broadcast unless this is the primary client mode manager
             return;
         }

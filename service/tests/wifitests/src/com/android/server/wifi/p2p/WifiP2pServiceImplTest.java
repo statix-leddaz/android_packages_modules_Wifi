@@ -698,13 +698,18 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
             Binder clientBinder, WorkSource expectedRequestorWs)
             throws Exception {
         mWifiP2pServiceImpl.getMessenger(clientBinder, TEST_PACKAGE_NAME);
+        if (expectInit) {
+            // send a command to force P2P enabled.
+            sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_P2P_STATE);
+        }
         mLooper.dispatchAll();
+        reset(mClientHandler);
         if (expectInit) {
             verify(mWifiNative).setupInterface(any(), any(), eq(expectedRequestorWs));
             verify(mNetdWrapper).setInterfaceUp(anyString());
             verify(mWifiMonitor, atLeastOnce()).registerHandler(anyString(), anyInt(), any());
             // Verify timer is scheduled
-            verify(mAlarmManager).setExact(anyInt(), anyLong(),
+            verify(mAlarmManager, times(2)).setExact(anyInt(), anyLong(),
                     eq(mWifiP2pServiceImpl.P2P_IDLE_SHUTDOWN_MESSAGE_TIMEOUT_TAG), any(), any());
         } else if (expectReplace) {
             verify(mWifiNative).replaceRequestorWs(expectedRequestorWs);
@@ -981,7 +986,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      * with wifi disabled
      */
     @Test
-    public void testP2pDoesntInitWhenClientConnectWithWifiDisabledEnabled()
+    public void testP2pDoesntInitWhenClientConnectWithWifiDisabled()
             throws Exception {
         simulateWifiStateChange(false);
         checkIsP2pInitWhenClientConnected(false, false, mClient1,
@@ -1079,13 +1084,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                 anyInt(), eq(false));
     }
 
-    /**
-     * Verify the caller with proper permission sends WifiP2pManager.ADD_LOCAL_SERVICE.
-     */
-    @Test
-    public void testAddLocalServiceSuccess() throws Exception {
-        forceP2pEnabled(mClient1);
-        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
+    private void verifyAddLocalService() throws Exception {
         doNothing().when(mWifiPermissionsUtil).checkPackage(anyInt(), anyString());
         when(mWifiNative.p2pServiceAdd(any())).thenReturn(true);
         sendAddLocalServiceMsg(mClientMessenger);
@@ -1093,6 +1092,16 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
                 anyInt(), eq(false));
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.ADD_LOCAL_SERVICE_SUCCEEDED));
+    }
+
+    /**
+     * Verify the caller with proper permission sends WifiP2pManager.ADD_LOCAL_SERVICE.
+     */
+    @Test
+    public void testAddLocalServiceSuccess() throws Exception {
+        forceP2pEnabled(mClient1);
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
+        verifyAddLocalService();
     }
 
     /**
@@ -2419,6 +2428,15 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verifyCustomizeDefaultDeviceName(prefix, true);
     }
 
+    /** Verify that the default device name is customized by overlay
+     * when saved one is an empty string. */
+    @Test
+    public void testCustomizeDefaultDeviceNameWithEmptySavedName() throws Exception {
+        setupDefaultDeviceNameCustomization("Niceboat-", -1);
+        when(mWifiSettingsConfigStore.get(eq(WIFI_P2P_DEVICE_NAME))).thenReturn("");
+        verifyCustomizeDefaultDeviceName("Niceboat-" + TEST_ANDROID_ID.substring(0, 4), false);
+    }
+
     /**
      * Verify the caller sends WifiP2pManager.STOP_DISCOVERY.
      */
@@ -2962,6 +2980,27 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mClientHandler).sendMessage(mMessageCaptor.capture());
         Message message = mMessageCaptor.getValue();
         assertEquals(WifiP2pManager.SET_DEVICE_NAME_SUCCEEDED, message.what);
+    }
+
+    /**
+     * Verify the caller sends WifiP2pManager.SET_DEVICE_NAME with an empty name.
+     */
+    @Test
+    public void testSetDeviceNameFailureWithEmptyName() throws Exception {
+        // Move to enabled state
+        forceP2pEnabled(mClient1);
+        mTestThisDevice.status = mTestThisDevice.AVAILABLE;
+
+        mTestThisDevice.deviceName = "";
+        when(mWifiNative.setDeviceName(anyString())).thenReturn(true);
+        sendSetDeviceNameMsg(mClientMessenger, mTestThisDevice);
+        verify(mWifiNative, never()).setDeviceName(any());
+        verify(mWifiSettingsConfigStore, never()).put(any(), any());
+
+        verify(mClientHandler).sendMessage(mMessageCaptor.capture());
+        Message message = mMessageCaptor.getValue();
+        assertEquals(WifiP2pManager.SET_DEVICE_NAME_FAILED, message.what);
+        assertEquals(WifiP2pManager.ERROR, message.arg1);
     }
 
     /**
@@ -3792,7 +3831,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Test
     public void testRemoveLocalServiceSuccess() throws Exception {
         forceP2pEnabled(mClient1);
-        testAddLocalServiceSuccess();
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
+        verifyAddLocalService();
 
         sendRemoveLocalServiceMsg(mClientMessenger, mTestWifiP2pServiceInfo);
         verify(mWifiNative).p2pServiceDel(any(WifiP2pServiceInfo.class));
@@ -3819,7 +3859,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Test
     public void testRemoveLocalServiceSuccessWithNullServiceInfo() throws Exception {
         forceP2pEnabled(mClient1);
-        testAddLocalServiceSuccess();
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
+        verifyAddLocalService();
 
         sendRemoveLocalServiceMsg(mClientMessenger, null);
         verify(mWifiNative, never()).p2pServiceDel(any(WifiP2pServiceInfo.class));
@@ -3865,7 +3906,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Test
     public void testClearLocalServiceSuccess() throws Exception {
         forceP2pEnabled(mClient1);
-        testAddLocalServiceSuccess();
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
+        verifyAddLocalService();
 
         sendSimpleMsg(mClientMessenger, WifiP2pManager.CLEAR_LOCAL_SERVICES);
         verify(mWifiNative, atLeastOnce()).p2pServiceDel(any(WifiP2pServiceInfo.class));
@@ -3935,6 +3977,11 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         }
     }
 
+    private void verifyAddServiceRequest() throws Exception {
+        sendAddServiceRequestMsg(mClientMessenger);
+        assertTrue(mClientHandler.hasMessages(WifiP2pManager.ADD_SERVICE_REQUEST_SUCCEEDED));
+    }
+
     /**
      * Verify the caller sends WifiP2pManager.ADD_SERVICE_REQUEST without services discover.
      */
@@ -3942,10 +3989,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     public void testAddServiceRequestSuccessWithoutServiceDiscover() throws Exception {
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
-
-        sendAddServiceRequestMsg(mClientMessenger);
-
-        assertTrue(mClientHandler.hasMessages(WifiP2pManager.ADD_SERVICE_REQUEST_SUCCEEDED));
+        verifyAddServiceRequest();
     }
 
     /**
@@ -4021,7 +4065,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Test
     public void testRemoveServiceRequestSuccess() throws Exception {
         forceP2pEnabled(mClient1);
-        testAddServiceRequestSuccessWithoutServiceDiscover();
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
+        verifyAddServiceRequest();
 
         sendRemoveServiceRequestMsg(mClientMessenger, mTestWifiP2pServiceRequest);
 
@@ -4046,7 +4091,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Test
     public void testRemoveServiceRequestSuccessWithNullServiceInfo() throws Exception {
         forceP2pEnabled(mClient1);
-        testAddLocalServiceSuccess();
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
+        verifyAddLocalService();
 
         sendRemoveServiceRequestMsg(mClientMessenger, null);
 
@@ -4089,7 +4135,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Test
     public void testClearServiceRequestsSuccess() throws Exception {
         forceP2pEnabled(mClient1);
-        testAddServiceRequestSuccessWithoutServiceDiscover();
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
+        verifyAddServiceRequest();
 
         sendSimpleMsg(mClientMessenger, WifiP2pManager.CLEAR_SERVICE_REQUESTS);
 
@@ -4461,11 +4508,14 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                 configCaptor.capture());
         assertEquals(mTestWifiP2pPeerConfig.toString(), configCaptor.getValue().toString());
         // Verify timer is cannelled
-        // Includes re-schedule 2 times(1. update channel info and 2. connect) and final one which
-        // leave the inactive state
-        verify(mAlarmManager, times(3)).setExact(anyInt(), anyLong(),
+        // Includes re-schedule 4 times:
+        // 1. forceP2pEnabled(): enter InactiveState
+        // 2. forceP2pEnabled: REQUEST_P2P_STATE
+        // 3. CONNECT
+        // 4. leave InactiveState
+        verify(mAlarmManager, times(4)).setExact(anyInt(), anyLong(),
                 eq(mWifiP2pServiceImpl.P2P_IDLE_SHUTDOWN_MESSAGE_TIMEOUT_TAG), any(), any());
-        verify(mAlarmManager, times(3)).cancel(eq(mWifiP2pServiceImpl.mP2pIdleShutdownMessage));
+        verify(mAlarmManager, times(4)).cancel(eq(mWifiP2pServiceImpl.mP2pIdleShutdownMessage));
     }
 
     /**
@@ -4478,5 +4528,83 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
         verify(mWifiNative).teardownInterface();
         verify(mWifiMonitor).stopMonitoring(anyString());
+    }
+
+    /**
+     * Verify the WFD info is set again on going back to P2pEnabledState
+     * for the IdleShutdown case.
+     */
+    @Test
+    public void testWfdInfoIsSetAtP2pEnabledStateForIdleShutdown() throws Exception {
+        // Move to enabled state
+        forceP2pEnabled(mClient1);
+        mTestThisDevice.status = mTestThisDevice.AVAILABLE;
+
+        mTestThisDevice.wfdInfo = new WifiP2pWfdInfo();
+        mTestThisDevice.wfdInfo.setEnabled(true);
+        when(mWifiInjector.getWifiPermissionsWrapper()).thenReturn(mWifiPermissionsWrapper);
+        when(mWifiPermissionsWrapper.getUidPermission(anyString(), anyInt()))
+                .thenReturn(PackageManager.PERMISSION_GRANTED);
+        when(mWifiNative.setWfdEnable(anyBoolean())).thenReturn(true);
+        when(mWifiNative.setWfdDeviceInfo(anyString())).thenReturn(true);
+        sendSetWfdInfoMsg(mClientMessenger, mTestThisDevice.wfdInfo);
+
+        // P2P is off due to IDLE and data should be kept for the resume.
+        mWifiP2pServiceImpl.mP2pIdleShutdownMessage.onAlarm();
+        mLooper.dispatchAll();
+        verify(mWifiNative).teardownInterface();
+        verify(mWifiMonitor).stopMonitoring(anyString());
+        sendSimpleMsg(null, WifiP2pMonitor.SUP_DISCONNECTION_EVENT);
+
+        reset(mWifiNative);
+        when(mWifiNative.setupInterface(any(), any(), any())).thenReturn(IFACE_NAME_P2P);
+        when(mWifiNative.setWfdEnable(anyBoolean())).thenReturn(true);
+        when(mWifiNative.setWfdDeviceInfo(anyString())).thenReturn(true);
+
+        // send a command to resume P2P
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_P2P_STATE);
+
+        // Restore data for resuming from idle shutdown.
+        verify(mWifiNative).setWfdEnable(eq(true));
+        verify(mWifiNative).setWfdDeviceInfo(eq(mTestThisDevice.wfdInfo.getDeviceInfoHex()));
+    }
+
+    /**
+     * Verify the WFD info is set again on going back to P2pEnabledState
+     * for the normal shutdown case.
+     */
+    @Test
+    public void testWfdInfoIsSetAtP2pEnabledStateForNormalShutdown() throws Exception {
+        // Move to enabled state
+        forceP2pEnabled(mClient1);
+        mTestThisDevice.status = mTestThisDevice.AVAILABLE;
+
+        mTestThisDevice.wfdInfo = new WifiP2pWfdInfo();
+        mTestThisDevice.wfdInfo.setEnabled(true);
+        when(mWifiInjector.getWifiPermissionsWrapper()).thenReturn(mWifiPermissionsWrapper);
+        when(mWifiPermissionsWrapper.getUidPermission(anyString(), anyInt()))
+                .thenReturn(PackageManager.PERMISSION_GRANTED);
+        when(mWifiNative.setWfdEnable(anyBoolean())).thenReturn(true);
+        when(mWifiNative.setWfdDeviceInfo(anyString())).thenReturn(true);
+        sendSetWfdInfoMsg(mClientMessenger, mTestThisDevice.wfdInfo);
+
+        // P2P is really disabled when wifi is off.
+        simulateWifiStateChange(false);
+        mLooper.dispatchAll();
+        verify(mWifiNative).teardownInterface();
+        verify(mWifiMonitor).stopMonitoring(anyString());
+
+        reset(mWifiNative);
+        when(mWifiNative.setupInterface(any(), any(), any())).thenReturn(IFACE_NAME_P2P);
+        when(mWifiNative.setWfdEnable(anyBoolean())).thenReturn(true);
+        when(mWifiNative.setWfdDeviceInfo(anyString())).thenReturn(true);
+
+        // send a command to resume P2P
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_P2P_STATE);
+        mLooper.dispatchAll();
+
+        // In normal case, wfd info is cleared.
+        verify(mWifiNative, never()).setWfdEnable(anyBoolean());
+        verify(mWifiNative, never()).setWfdDeviceInfo(anyString());
     }
 }

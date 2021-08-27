@@ -551,6 +551,10 @@ public class WifiCarrierInfoManager {
         if (mCachedCarrierConfigPerSubId.contains(subId)) {
             return mCachedCarrierConfigPerSubId.get(subId);
         }
+        TelephonyManager specifiedTm = mTelephonyManager.createForSubscriptionId(subId);
+        if (specifiedTm.getSimApplicationState() != TelephonyManager.SIM_STATE_LOADED) {
+            return null;
+        }
         if (mCarrierConfigManager == null) {
             mCarrierConfigManager = mContext.getSystemService(CarrierConfigManager.class);
         }
@@ -695,6 +699,10 @@ public class WifiCarrierInfoManager {
      * @return the best match SubscriptionId
      */
     public int getBestMatchSubscriptionId(@NonNull WifiConfiguration config) {
+        if (config == null) {
+            Log.wtf(TAG, "getBestMatchSubscriptionId: Config must be NonNull!");
+            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        }
         if (config.subscriptionId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
             return config.subscriptionId;
         }
@@ -1924,7 +1932,7 @@ public class WifiCarrierInfoManager {
             return simInfo;
         }
         TelephonyManager specifiedTm = mTelephonyManager.createForSubscriptionId(subId);
-        if (specifiedTm.getSimState() != TelephonyManager.SIM_STATE_READY) {
+        if (specifiedTm.getSimApplicationState() != TelephonyManager.SIM_STATE_LOADED) {
             return null;
         }
         String imsi = specifiedTm.getSubscriberId();
