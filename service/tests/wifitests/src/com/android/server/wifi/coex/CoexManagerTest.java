@@ -814,4 +814,87 @@ public class CoexManagerTest extends WifiBaseTest {
         assertThat(coexManager.getCoexUnsafeChannels()).doesNotContain(
                 new CoexUnsafeChannel(WIFI_BAND_5_GHZ, 36, -50));
     }
+
+    /**
+     * Verifies that calling onPhysicalChannelConfigChanged with the same list more than once will
+     * only notify listeners the first time.
+     */
+    @Test
+    public void testOnPhysicalChannelConfigChanged_sameChannels_doesNotUpdateListeners()
+            throws Exception {
+        when(mMockResources.getString(R.string.config_wifiCoexTableFilepath))
+                .thenReturn(createFileFromResource(FILEPATH_LTE_40_NEIGHBORING).getCanonicalPath());
+        final TelephonyManager telephonyManager = setUpSubIdMocks(0);
+        CoexManager coexManager = createCoexManager();
+        verify(mMockSubscriptionManager).addOnSubscriptionsChangedListener(
+                any(), mCoexSubscriptionsListenerCaptor.capture());
+        mCoexSubscriptionsListenerCaptor.getValue().onSubscriptionsChanged();
+        final ArgumentCaptor<CoexManager.CoexTelephonyCallback> telephonyCallbackCaptor =
+                ArgumentCaptor.forClass(CoexManager.CoexTelephonyCallback.class);
+        verify(telephonyManager).registerTelephonyCallback(any(Executor.class),
+                telephonyCallbackCaptor.capture());
+        CoexManager.CoexListener listener = mock(CoexManager.CoexListener.class);
+        coexManager.registerCoexListener(listener);
+        ICoexCallback remoteCallback = mock(ICoexCallback.class);
+        when(remoteCallback.asBinder()).thenReturn(mock(IBinder.class));
+        coexManager.registerRemoteCoexCallback(remoteCallback);
+
+        // Update physical channel configs three times with the same channel
+        telephonyCallbackCaptor.getValue().onPhysicalChannelConfigChanged(Arrays.asList(
+                createMockPhysicalChannelConfig(NETWORK_TYPE_LTE, 40, 2399_900, 10_000, 0, 0)
+        ));
+        telephonyCallbackCaptor.getValue().onPhysicalChannelConfigChanged(Arrays.asList(
+                createMockPhysicalChannelConfig(NETWORK_TYPE_LTE, 40, 2399_900, 10_000, 0, 0)
+        ));
+        telephonyCallbackCaptor.getValue().onPhysicalChannelConfigChanged(Arrays.asList(
+                createMockPhysicalChannelConfig(NETWORK_TYPE_LTE, 40, 2399_900, 10_000, 0, 0)
+        ));
+        // Update physical channel configs with a different channel now
+        telephonyCallbackCaptor.getValue().onPhysicalChannelConfigChanged(Arrays.asList(
+                createMockPhysicalChannelConfig(NETWORK_TYPE_LTE, 41, 2399_900, 10_000, 0, 0)
+        ));
+        // Update physical channel configs back to the first channel
+        telephonyCallbackCaptor.getValue().onPhysicalChannelConfigChanged(Arrays.asList(
+                createMockPhysicalChannelConfig(NETWORK_TYPE_LTE, 40, 2399_900, 10_000, 0, 0)
+        ));
+
+        // Callbacks should be notified three times:
+        //     1) no list -> list 1
+        //     2) list 1 -> list 2
+        //     3) list 2 -> list 1
+        verify(mMockWifiNative, times(3)).setCoexUnsafeChannels(any(), anyInt());
+        verify(listener, times(3)).onCoexUnsafeChannelsChanged();
+        // The remote callback has an extra call since it was notified on registration.
+        verify(remoteCallback, times(4)).onCoexUnsafeChannelsChanged(any(), anyInt());
+    }
+
+    /**
+     * Verify that multiple calls to setCoexUnsafeChannels with the same unsafe channels will only
+     * update the driver the first time.
+     */
+    @Test
+    public void testSetCoexUnsafeChannels_multipleSameChannels_updatesDriverOnce() {
+        CoexManager coexManager = createCoexManager();
+
+        coexManager.setCoexUnsafeChannels(new ArrayList<>(), 0);
+        coexManager.setCoexUnsafeChannels(new ArrayList<>(), 0);
+        coexManager.setCoexUnsafeChannels(new ArrayList<>(), 0);
+        // Default state after initialization is no channels and no restrictions, so no update to
+        // the driver is necessary
+        verify(mMockWifiNative, times(0)).setCoexUnsafeChannels(any(), anyInt());
+
+        coexManager.setCoexUnsafeChannels(
+                Arrays.asList(new CoexUnsafeChannel(WIFI_BAND_24_GHZ, 6)), COEX_RESTRICTION_SOFTAP);
+        coexManager.setCoexUnsafeChannels(
+                Arrays.asList(new CoexUnsafeChannel(WIFI_BAND_24_GHZ, 6)), COEX_RESTRICTION_SOFTAP);
+        coexManager.setCoexUnsafeChannels(
+                Arrays.asList(new CoexUnsafeChannel(WIFI_BAND_24_GHZ, 6)), COEX_RESTRICTION_SOFTAP);
+        // Driver should be updated only once for the same unsafe channels
+        verify(mMockWifiNative, times(1)).setCoexUnsafeChannels(any(), anyInt());
+
+        // Change in restrictions with same unsafe channels should trigger an update
+        coexManager.setCoexUnsafeChannels(
+                Arrays.asList(new CoexUnsafeChannel(WIFI_BAND_24_GHZ, 6)), 0);
+        verify(mMockWifiNative, times(2)).setCoexUnsafeChannels(any(), anyInt());
+    }
 }

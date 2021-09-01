@@ -191,6 +191,10 @@ public class CoexManager {
             for (PhysicalChannelConfig config : configs) {
                 cellChannels.add(new CoexUtils.CoexCellChannel(config, mSubId));
             }
+            if (cellChannels.equals(mCellChannelsPerSubId.get(mSubId))) {
+                // No change to cell channels, so no need to recalculate
+                return;
+            }
             mCellChannelsPerSubId.put(mSubId, cellChannels);
             if (mIsUsingMockCellChannels) {
                 return;
@@ -303,6 +307,11 @@ public class CoexManager {
         if ((~(COEX_RESTRICTION_WIFI_DIRECT | COEX_RESTRICTION_SOFTAP
                 | COEX_RESTRICTION_WIFI_AWARE) & coexRestrictions) != 0) {
             Log.e(TAG, "setCoexUnsafeChannels called with undefined restriction flags");
+            return;
+        }
+        if (new HashSet(mCurrentCoexUnsafeChannels).equals(new HashSet(coexUnsafeChannels))
+                && mCoexRestrictions == coexRestrictions) {
+            // Do not update if the unsafe channels haven't changed since the last time
             return;
         }
         mCurrentCoexUnsafeChannels.clear();
