@@ -33,6 +33,23 @@
       "message": "Xiao, it\u0027s correct to set IpClient and IpClient callbacks to null? I think it\u0027s safe to do so after calling awaitShutdown, right?",
       "revId": "1c5c6187c1069f2161a6ccea60cb0d653e567337",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "4bc7d66f_8540a104",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2021-09-03T17:27:17Z",
+      "side": 1,
+      "message": "Nate: PTAL @ the bug, I think this will need to be cherry-picked to sc-mainline-prod.",
+      "revId": "1c5c6187c1069f2161a6ccea60cb0d653e567337",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
