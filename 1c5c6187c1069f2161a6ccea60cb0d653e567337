@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "58de4833_ff546cfb",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1000835
+      },
+      "writtenOn": "2021-09-03T09:57:02Z",
+      "side": 1,
+      "message": "Etan, can you take a look? This CL fixes a binder leak that Mediatek is observing across wifi and networkstack. See linked bug.",
+      "revId": "1c5c6187c1069f2161a6ccea60cb0d653e567337",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
