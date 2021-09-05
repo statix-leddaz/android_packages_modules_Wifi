@@ -50,6 +50,24 @@
       "message": "Nate: PTAL @ the bug, I think this will need to be cherry-picked to sc-mainline-prod.",
       "revId": "1c5c6187c1069f2161a6ccea60cb0d653e567337",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "28c3eceb_29d21550",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1406251
+      },
+      "writtenOn": "2021-09-05T16:18:30Z",
+      "side": 1,
+      "message": "Yes, go through each place where mIpClient and mIpClientCallbacks is called, before calling IIpClient APIs, code always checks the nullability of mIpClient first, if it\u0027s not null, then calling the IPC. It\u0027s safe to null out the references after awaitShutDown.\n\nJust a quick question, mIpClient will also be GC\u0027d upon ClientModeImpl instance is destroyed? If so, probably we don\u0027t need to make mIpClient as null explicitly. But should be fine to keep it as-is, no possible to throw NPE for mIpClient after having it as null.",
+      "parentUuid": "401d15b4_d69692ed",
+      "revId": "1c5c6187c1069f2161a6ccea60cb0d653e567337",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
