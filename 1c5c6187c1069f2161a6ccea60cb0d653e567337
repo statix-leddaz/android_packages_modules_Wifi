@@ -68,6 +68,23 @@
       "parentUuid": "401d15b4_d69692ed",
       "revId": "1c5c6187c1069f2161a6ccea60cb0d653e567337",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "e2794d02_08116a00",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1352498
+      },
+      "writtenOn": "2021-09-06T03:47:17Z",
+      "side": 1,
+      "message": "@Nate, PTAL the CL. Thanks.",
+      "revId": "1c5c6187c1069f2161a6ccea60cb0d653e567337",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
