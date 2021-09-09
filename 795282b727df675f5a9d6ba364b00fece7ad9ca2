@@ -24,6 +24,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "20cc424b_20ddc3c2",
+        "filename": "framework/Android.bp",
+        "patchSetId": 2
+      },
+      "lineNbr": 80,
+      "author": {
+        "id": 1881060
+      },
+      "writtenOn": "2021-09-09T11:21:45Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "aa41813b_0c759847",
+      "range": {
+        "startLine": 79,
+        "startChar": 30,
+        "endLine": 80,
+        "endChar": 40
+      },
+      "revId": "795282b727df675f5a9d6ba364b00fece7ad9ca2",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "2ec06f50_55ee8aa3",
@@ -37,6 +61,24 @@
       "writtenOn": "2021-09-09T09:58:20Z",
       "side": 1,
       "message": "Looks like this already captures the above",
+      "revId": "795282b727df675f5a9d6ba364b00fece7ad9ca2",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "a0a7d95a_0e3a9cc5",
+        "filename": "framework/jarjar-rules.txt",
+        "patchSetId": 2
+      },
+      "lineNbr": 123,
+      "author": {
+        "id": 1881060
+      },
+      "writtenOn": "2021-09-09T11:21:45Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "2ec06f50_55ee8aa3",
       "revId": "795282b727df675f5a9d6ba364b00fece7ad9ca2",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
