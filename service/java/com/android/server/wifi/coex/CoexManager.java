@@ -107,6 +107,10 @@ public class CoexManager {
     private static final String TAG = "WifiCoexManager";
     private boolean mVerboseLoggingEnabled = false;
 
+    // Delay in millis before updating cell channels to empty in case of a temporary idle.
+    @VisibleForTesting
+    static final int CELL_CHANNEL_IDLE_DELAY_MILLIS = 2_000;
+
     @NonNull
     private final Context mContext;
     @NonNull
@@ -174,6 +178,12 @@ public class CoexManager {
     /* package */ class CoexTelephonyCallback extends TelephonyCallback
             implements TelephonyCallback.PhysicalChannelConfigListener {
         private final int mSubId;
+        private boolean mIsEmpty = true;
+        private boolean mIsPendingEmpty = false;
+        private final Runnable mClearCellChannelsRunnable = () -> {
+            mIsPendingEmpty = false;
+            updateCellChannels(new ArrayList<>());
+        };
 
         private CoexTelephonyCallback(int subId) {
             super();
@@ -191,6 +201,25 @@ public class CoexManager {
             for (PhysicalChannelConfig config : configs) {
                 cellChannels.add(new CoexUtils.CoexCellChannel(config, mSubId));
             }
+            // Delay updating an empty cell channel list in case this is a temporary idle to avoid
+            // recalculating the unsafe channels and sending them to the driver again.
+            if (configs.isEmpty()) {
+                if (!mIsEmpty && !mIsPendingEmpty) {
+                    mIsPendingEmpty = true;
+                    mCallbackHandler.postDelayed(
+                            mClearCellChannelsRunnable, CELL_CHANNEL_IDLE_DELAY_MILLIS);
+                }
+                return;
+            }
+            if (mIsPendingEmpty) {
+                mIsPendingEmpty = false;
+                mCallbackHandler.removeCallbacks(mClearCellChannelsRunnable);
+            }
+            updateCellChannels(cellChannels);
+        }
+
+        private void updateCellChannels(List<CoexUtils.CoexCellChannel> cellChannels) {
+            mIsEmpty = cellChannels.isEmpty();
             if (cellChannels.equals(mCellChannelsPerSubId.get(mSubId))) {
                 // No change to cell channels, so no need to recalculate
                 return;
@@ -307,6 +336,11 @@ public class CoexManager {
         if ((~(COEX_RESTRICTION_WIFI_DIRECT | COEX_RESTRICTION_SOFTAP
                 | COEX_RESTRICTION_WIFI_AWARE) & coexRestrictions) != 0) {
             Log.e(TAG, "setCoexUnsafeChannels called with undefined restriction flags");
+            return;
+        }
+        if (new HashSet(mCurrentCoexUnsafeChannels).equals(new HashSet(coexUnsafeChannels))
+                && mCoexRestrictions == coexRestrictions) {
+            // Do not update if the unsafe channels haven't changed since the last time
             return;
         }
         mCurrentCoexUnsafeChannels.clear();
