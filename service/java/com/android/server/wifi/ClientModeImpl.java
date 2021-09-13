@@ -3271,6 +3271,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // Block to make sure IpClient has really shut down, lest cleanup
             // race with, say, bringup code over in tethering.
             mIpClientCallbacks.awaitShutdown();
+            mIpClientCallbacks = null;
+            mIpClient = null;
         }
         deregisterForWifiMonitorEvents(); // uses mInterfaceName, must call before nulling out
         // TODO: b/79504296 This broadcast has been deprecated and should be removed
@@ -3600,6 +3602,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         boolean isIpClientStarted = startIpClient(config, true);
                         if (isIpClientStarted) {
                             mIpClientWithPreConnection = true;
+                            transitionTo(mL2ConnectingState);
                             break;
                         }
                     }
@@ -6329,6 +6332,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     .withPreconnection()
                     .withApfCapabilities(
                     mWifiNative.getApfCapabilities(mInterfaceName))
+                    .withDisplayName(config.SSID)
                     .withLayer2Information(layer2Info);
             if (isUsingMacRandomization) {
                 // Use EUI64 address generation for link-local IPv6 addresses.

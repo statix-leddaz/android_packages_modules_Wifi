@@ -1180,7 +1180,8 @@ public class WifiServiceImpl extends BaseWifiService {
 
         mLog.info("startTetheredHotspot uid=%").c(Binder.getCallingUid()).flush();
 
-        if (!mTetheredSoftApTracker.setEnablingIfAllowed()) {
+        if (!mWifiThreadRunner.call(
+                () -> mTetheredSoftApTracker.setEnablingIfAllowed(), false)) {
             mLog.err("Tethering is already active.").flush();
             return false;
         }
@@ -2447,6 +2448,24 @@ public class WifiServiceImpl extends BaseWifiService {
             String featureId, boolean callerNetworksOnly) {
         enforceAccessPermission();
         int callingUid = Binder.getCallingUid();
+        // bypass shell: can get various pkg name
+        // also bypass if caller is only retrieving networks added by itself
+        if (callingUid != Process.SHELL_UID && callingUid != Process.ROOT_UID) {
+            mWifiPermissionsUtil.checkPackage(callingUid, packageName);
+            if (!callerNetworksOnly) {
+                long ident = Binder.clearCallingIdentity();
+                try {
+                    mWifiPermissionsUtil.enforceCanAccessScanResults(packageName, featureId,
+                            callingUid, null);
+                } catch (SecurityException e) {
+                    Log.w(TAG, "Permission violation - getConfiguredNetworks not allowed for uid="
+                            + callingUid + ", packageName=" + packageName + ", reason=" + e);
+                    return new ParceledListSlice<>(new ArrayList<>());
+                } finally {
+                    Binder.restoreCallingIdentity(ident);
+                }
+            }
+        }
         boolean isDeviceOrProfileOwner = isDeviceOrProfileOwner(callingUid, packageName);
         boolean isCarrierApp = mWifiInjector.makeTelephonyManager()
                 .checkCarrierPrivilegesForPackageAnyPhone(packageName)
@@ -2457,22 +2476,6 @@ public class WifiServiceImpl extends BaseWifiService {
             if (!isDeviceOrProfileOwner && !isCarrierApp && !isPrivileged) {
                 throw new SecurityException(
                         "Not a DO, PO, carrier or privileged app");
-            }
-        }
-        // bypass shell: can get various pkg name
-        // also bypass if caller is only retrieving networks added by itself
-        if (callingUid != Process.SHELL_UID && callingUid != Process.ROOT_UID
-                && !callerNetworksOnly) {
-            long ident = Binder.clearCallingIdentity();
-            try {
-                mWifiPermissionsUtil.enforceCanAccessScanResults(packageName, featureId,
-                        callingUid, null);
-            } catch (SecurityException e) {
-                Log.w(TAG, "Permission violation - getConfiguredNetworks not allowed for uid="
-                        + callingUid + ", packageName=" + packageName + ", reason=" + e);
-                return new ParceledListSlice<>(new ArrayList<>());
-            } finally {
-                Binder.restoreCallingIdentity(ident);
             }
         }
         boolean isTargetSdkLessThanQOrPrivileged = isTargetSdkLessThanQOrPrivileged(
@@ -4380,8 +4383,7 @@ public class WifiServiceImpl extends BaseWifiService {
                 // It doesn't relate the vendor HAL, set if overlay enables it.
                 supportedFeatureSet |= WifiManager.WIFI_FEATURE_BRIDGED_AP;
             }
-            if (mContext.getResources().getBoolean(
-                    R.bool.config_wifiStaWithBridgedSoftApConcurrencySupported)) {
+            if (ApConfigUtil.isStaWithBridgedModeSupported(mContext)) {
                 // The bridged mode requires the kernel network modules support.
                 // It doesn't relate the vendor HAL, set if overlay enables it.
                 supportedFeatureSet |= WifiManager.WIFI_FEATURE_STA_BRIDGED_AP;
@@ -5068,6 +5070,7 @@ public class WifiServiceImpl extends BaseWifiService {
             throw new IllegalArgumentException("listener must not be null");
         }
         final int uid = Binder.getCallingUid();
+        mWifiPermissionsUtil.checkPackage(uid, packageName);
         enforceAccessPermission();
         enforceLocationPermission(packageName, featureId, uid);
         if (isVerboseLoggingEnabled()) {
