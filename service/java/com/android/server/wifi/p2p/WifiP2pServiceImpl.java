@@ -966,6 +966,18 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             }
         }
 
+        // Clear internal data when P2P is shut down due to wifi off or no client.
+        // For idle shutdown case, there are clients and data should be restored when
+        // P2P goes back P2pEnabledState.
+        // For a real shutdown case which caused by wifi off or no client, those internal
+        // data should be cleared because the caller might not clear them, ex. WFD app
+        // enables WFD, but does not disable it after leaving the app.
+        private void clearP2pInternalDataIfNecessary() {
+            if (mIsWifiEnabled && !mDeathDataByBinder.isEmpty()) return;
+
+            mThisDevice.wfdInfo = null;
+        }
+
         boolean isP2pDisabled() {
             return getCurrentState() == mP2pDisabledState;
         }
@@ -1178,12 +1190,16 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                                 WifiP2pManager.BUSY);
                         break;
                     case WifiP2pManager.SET_WFD_INFO:
+                        WifiP2pWfdInfo d = (WifiP2pWfdInfo) message.obj;
                         if (!getWfdPermission(message.sendingUid)) {
                             replyToMessage(message, WifiP2pManager.SET_WFD_INFO_FAILED,
                                     WifiP2pManager.ERROR);
+                        } else if (d != null) {
+                            mThisDevice.wfdInfo = d;
+                            replyToMessage(message, WifiP2pManager.SET_WFD_INFO_SUCCEEDED);
                         } else {
                             replyToMessage(message, WifiP2pManager.SET_WFD_INFO_FAILED,
-                                    WifiP2pManager.BUSY);
+                                    WifiP2pManager.ERROR);
                         }
                         break;
                     case WifiP2pManager.REQUEST_PEERS:
@@ -1517,6 +1533,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             public void enter() {
                 if (mVerboseLoggingEnabled) logd(getName());
                 mInterfaceName = null; // reset iface name on disable.
+                clearP2pInternalDataIfNecessary();
             }
 
             private void setupInterfaceFeatures(String interfaceName) {
@@ -1581,7 +1598,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         // which require P2P to be active.
                         if (message.what < Protocol.BASE_WIFI_P2P_MANAGER
                                 || Protocol.BASE_WIFI_P2P_SERVICE <= message.what
-                                || message.what == WifiP2pManager.UPDATE_CHANNEL_INFO) {
+                                || message.what == WifiP2pManager.UPDATE_CHANNEL_INFO
+                                || message.what == WifiP2pManager.SET_WFD_INFO) {
                             return NOT_HANDLED;
                         }
                         // If P2P is not ready, it might be disabled due
@@ -3738,11 +3756,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             }
             config.groupOwnerIntent = selectGroupOwnerIntentIfNecessary(config);
             boolean action;
-            if (triggerType == P2P_CONNECT_TRIGGER_GROUP_NEG_REQ) {
-                // If this is called from the GO negotiation path, the sender initiated
-                // a group negotiation.
-                action = FORM_GROUP;
-            } else if (triggerType == P2P_CONNECT_TRIGGER_INVITATION_REQ) {
+            if (triggerType == P2P_CONNECT_TRIGGER_INVITATION_REQ) {
                 // The group owner won't report it is a Group Owner always.
                 // If this is called from the invitation path, the sender should be in
                 // a group, and the target should be a group owner.
@@ -4069,6 +4083,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             mWifiNative.p2pServiceFlush();
             mServiceTransactionId = 0;
             mServiceDiscReqId = null;
+
+            if (null != mThisDevice.wfdInfo) {
+                setWfdInfo(mThisDevice.wfdInfo);
+            }
 
             updatePersistentNetworks(RELOAD);
             enableVerboseLogging(mSettingsConfigStore.get(WIFI_VERBOSE_LOGGING_ENABLED));

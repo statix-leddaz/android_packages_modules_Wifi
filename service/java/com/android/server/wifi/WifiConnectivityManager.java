@@ -457,7 +457,8 @@ public class WifiConnectivityManager {
                 mNetworkSelector.selectNetwork(secondaryCmmCandidates);
         // No oem paid/private selected, fallback to legacy flow (should never happen!).
         if (secondaryCmmCandidate == null
-                || secondaryCmmCandidate.getNetworkSelectionStatus().getCandidate() == null) {
+                || secondaryCmmCandidate.getNetworkSelectionStatus().getCandidate() == null
+                || (!secondaryCmmCandidate.oemPaid && !secondaryCmmCandidate.oemPrivate)) {
             localLog(listenerName + ": No secondary candidate");
             handleCandidatesFromScanResultsForPrimaryCmmUsingMbbIfAvailable(
                     listenerName,
@@ -468,20 +469,15 @@ public class WifiConnectivityManager {
         }
         String secondaryCmmCandidateBssid =
                 secondaryCmmCandidate.getNetworkSelectionStatus().getCandidate().BSSID;
-        WorkSource secondaryRequestorWs = null;
+
+        // At this point secondaryCmmCandidate must be either oemPaid, oemPrivate, or both.
         // OEM_PAID takes precedence over OEM_PRIVATE, so attribute to OEM_PAID requesting app.
-        if (secondaryCmmCandidate.oemPaid
-                && mActiveModeWarden.canRequestMoreClientModeManagersInRole(
-                mOemPaidConnectionRequestorWs, ROLE_CLIENT_SECONDARY_LONG_LIVED)) {
-            secondaryRequestorWs = mOemPaidConnectionRequestorWs;
-        } else if (secondaryCmmCandidate.oemPrivate
-                && mActiveModeWarden.canRequestMoreClientModeManagersInRole(
-                mOemPrivateConnectionRequestorWs, ROLE_CLIENT_SECONDARY_LONG_LIVED)) {
-            secondaryRequestorWs = mOemPrivateConnectionRequestorWs;
-        }
-        // Secondary STA not available, fallback to legacy flow.
+        WorkSource secondaryRequestorWs = secondaryCmmCandidate.oemPaid
+                ? mOemPaidConnectionRequestorWs : mOemPrivateConnectionRequestorWs;
+
         if (secondaryRequestorWs == null) {
-            localLog(listenerName + ": No secondary STA available");
+            localLog(listenerName + ": Requestor worksource is null in long live STA use-case,"
+                    + "  falling back to single client mode manager flow.");
             handleCandidatesFromScanResultsForPrimaryCmmUsingMbbIfAvailable(
                     listenerName,
                     Stream.concat(primaryCmmCandidates.stream(), secondaryCmmCandidates.stream())
@@ -489,6 +485,7 @@ public class WifiConnectivityManager {
                     handleScanResultsListener);
             return;
         }
+
         WifiConfiguration primaryCmmCandidate =
                 mNetworkSelector.selectNetwork(primaryCmmCandidates);
         // Request for a new client mode manager to spin up concurrent connection
@@ -2278,12 +2275,12 @@ public class WifiConnectivityManager {
      * @param bssid the failed network.
      * @param ssid identifies the failed network.
      */
-    public void handleConnectionAttemptEnded(@NonNull ActiveModeManager activeModeManager,
+    public void handleConnectionAttemptEnded(@NonNull ClientModeManager clientModeManager,
             int failureCode, @NonNull String bssid, @NonNull String ssid) {
         List<ClientModeManager> internetConnectivityCmms =
                 mActiveModeWarden.getInternetConnectivityClientModeManagers();
-        if (!(internetConnectivityCmms.contains(activeModeManager))) {
-            Log.w(TAG, "Ignoring call from non primary Mode Manager " + activeModeManager,
+        if (!internetConnectivityCmms.contains(clientModeManager)) {
+            Log.w(TAG, "Ignoring call from non primary Mode Manager " + clientModeManager,
                     new Throwable());
             return;
         }
@@ -2295,11 +2292,16 @@ public class WifiConnectivityManager {
             mOpenNetworkNotifier.handleWifiConnected(ssidUnquoted);
         } else {
             mOpenNetworkNotifier.handleConnectionFailure();
-            retryConnectionOnLatestCandidates(bssid, ssid);
+            // Only attempt to reconnect when connection on the primary CMM fails, since MBB
+            // CMM will be destroyed after the connection failure.
+            if (clientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+                retryConnectionOnLatestCandidates(clientModeManager, bssid, ssid);
+            }
         }
     }
 
-    private void retryConnectionOnLatestCandidates(String bssid, String ssid) {
+    private void retryConnectionOnLatestCandidates(@NonNull ClientModeManager clientModeManager,
+            String bssid, String ssid) {
         try {
             if (mLatestCandidates == null || mLatestCandidates.size() == 0
                     || mClock.getElapsedSinceBootMillis() - mLatestCandidatesTimestampMs
@@ -2333,7 +2335,12 @@ public class WifiConnectivityManager {
                 mWifiBlocklistMonitor.blockBssidForDurationMs(bssid, ssid,
                         TEMP_BSSID_BLOCK_DURATION,
                         WifiBlocklistMonitor.REASON_FRAMEWORK_DISCONNECT_FAST_RECONNECT, 0);
-                connectToNetworkForPrimaryCmmUsingMbbIfAvailable(candidate);
+                triggerConnectToNetworkUsingCmm(clientModeManager, candidate,
+                        ClientModeImpl.SUPPLICANT_BSSID_ANY);
+                // since using primary manager to connect, stop any existing managers in the
+                // secondary transient role since they are no longer needed.
+                mActiveModeWarden.stopAllClientModeManagersInRole(
+                        ROLE_CLIENT_SECONDARY_TRANSIENT);
             }
         } catch (IllegalArgumentException e) {
             localLog("retryConnectionOnLatestCandidates: failed to create MacAddress from bssid="
