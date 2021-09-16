@@ -21,7 +21,7 @@ package {
 android_test {
     name: "FrameworksWifiTests",
 
-    srcs: [ "**/*.java" ],
+    srcs: ["**/*.java"],
 
     dxflags: ["--multi-dex"],
 
