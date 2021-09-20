@@ -16,6 +16,42 @@
       "message": "Please make a habit of sorting lists (fine to ignore this one for now since you\u0027ve got presubmit-verified, but please fix if you touch this .bp again).",
       "revId": "08124f52b883c61f3e17bc57dc28eca4c7f7bb72",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "a0e2c195_61ad66f8",
+        "filename": "framework/Android.bp",
+        "patchSetId": 5
+      },
+      "lineNbr": 75,
+      "author": {
+        "id": 1881060
+      },
+      "writtenOn": "2021-09-20T12:42:43Z",
+      "side": 1,
+      "message": "Ack",
+      "parentUuid": "f2004f36_35bf12ea",
+      "revId": "08124f52b883c61f3e17bc57dc28eca4c7f7bb72",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "50e300a2_c4c36a62",
+        "filename": "framework/Android.bp",
+        "patchSetId": 5
+      },
+      "lineNbr": 75,
+      "author": {
+        "id": 1881060
+      },
+      "writtenOn": "2021-09-20T12:42:43Z",
+      "side": 1,
+      "message": "Ack - Sorry for that.\nWill make care of it for next time",
+      "parentUuid": "f2004f36_35bf12ea",
+      "revId": "08124f52b883c61f3e17bc57dc28eca4c7f7bb72",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
