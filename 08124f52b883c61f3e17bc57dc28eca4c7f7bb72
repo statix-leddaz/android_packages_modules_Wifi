@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "f2004f36_35bf12ea",
+        "filename": "framework/Android.bp",
+        "patchSetId": 5
+      },
+      "lineNbr": 75,
+      "author": {
+        "id": 1060959
+      },
+      "writtenOn": "2021-09-20T11:14:26Z",
+      "side": 1,
+      "message": "Please make a habit of sorting lists (fine to ignore this one for now since you\u0027ve got presubmit-verified, but please fix if you touch this .bp again).",
+      "revId": "08124f52b883c61f3e17bc57dc28eca4c7f7bb72",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
