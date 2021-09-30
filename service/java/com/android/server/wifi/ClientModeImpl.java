@@ -2440,6 +2440,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             Context context, DetailedState networkAgentState, boolean verboseLoggingEnabled) {
         Intent intent = new Intent(WifiManager.NETWORK_STATE_CHANGED_ACTION);
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
+        intent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING);
+        intent.setIdentifier(networkAgentState.toString());
         NetworkInfo networkInfo = makeNetworkInfo(networkAgentState);
         intent.putExtra(WifiManager.EXTRA_NETWORK_INFO, networkInfo);
         if (verboseLoggingEnabled) {
