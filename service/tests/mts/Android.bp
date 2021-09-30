@@ -28,7 +28,7 @@ android_test {
         "android.test.base.stubs",
     ],
 
-    srcs: [ "src/**/*.java" ],
+    srcs: ["src/**/*.java"],
 
     static_libs: [
         // for ShellIdentityUtils, builds against test_current
@@ -48,6 +48,8 @@ android_test {
     // need access to system_current and test_current, so needs to be platform_apis: true
     platform_apis: true,
 
-    test_suites: [ "mts" ],
+    test_suites: ["mts"],
     test_config: "AndroidTest.xml",
+    min_sdk_version: "30",
+    target_sdk_version: "30",
 }
