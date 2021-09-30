@@ -16,6 +16,23 @@
       "message": "Oscar, are you the right person to review this ? If not can you please add the right reviewer ?",
       "revId": "797a0b3358564c0a8214835d41607495754a9c24",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "5a3340d8_e4e62ae1",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1240997
+      },
+      "writtenOn": "2021-09-30T17:53:28Z",
+      "side": 1,
+      "message": "This looks reasonable to me, but typically we merge these changes internally instead of in AOSP. Is there already an upstream request bug filed for this patch?",
+      "revId": "797a0b3358564c0a8214835d41607495754a9c24",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
