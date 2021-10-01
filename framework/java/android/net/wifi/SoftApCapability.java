@@ -19,6 +19,7 @@ package android.net.wifi;
 import android.annotation.LongDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.SuppressLint;
 import android.annotation.SystemApi;
 import android.os.Parcel;
 import android.os.Parcelable;
@@ -171,7 +172,7 @@ public final class SoftApCapability implements Parcelable {
     }
 
     @Override
-    public boolean equals(@NonNull Object o) {
+    public boolean equals(@SuppressLint("InvalidNullability") @NonNull Object o) {
         if (this == o) return true;
         if (!(o instanceof SoftApCapability)) return false;
         SoftApCapability capability = (SoftApCapability) o;
