@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "e11433ff_824102cf",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1467989
+      },
+      "writtenOn": "2021-10-02T02:03:32Z",
+      "side": 1,
+      "message": "I don\u0027t think this is still needed after we push android 12 to the aosp.",
+      "revId": "960958e43f2052b07ce3e09e6b89e629f371e448",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
