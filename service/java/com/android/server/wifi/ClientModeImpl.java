@@ -1405,8 +1405,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      * mark network agent as disconnected and stop the ip client.
      */
     public void handleIfaceDestroyed() {
-        mWifiThreadRunner.post(() -> handleNetworkDisconnect(false,
-                WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__IFACE_DESTROYED));
+        handleNetworkDisconnect(false,
+                WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__IFACE_DESTROYED);
     }
 
     /** Stop this ClientModeImpl. Do not interact with ClientModeImpl after it has been stopped. */
@@ -3205,6 +3205,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiNative.setSupplicantLogLevel(mVerboseLoggingEnabled);
 
         // Initialize data structures
+        mTargetBssid = SUPPLICANT_BSSID_ANY;
+        mTargetNetworkId = WifiConfiguration.INVALID_NETWORK_ID;
         mLastBssid = null;
         mLastNetworkId = WifiConfiguration.INVALID_NETWORK_ID;
         mLastSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
@@ -3271,6 +3273,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // Block to make sure IpClient has really shut down, lest cleanup
             // race with, say, bringup code over in tethering.
             mIpClientCallbacks.awaitShutdown();
+            mIpClientCallbacks = null;
+            mIpClient = null;
         }
         deregisterForWifiMonitorEvents(); // uses mInterfaceName, must call before nulling out
         // TODO: b/79504296 This broadcast has been deprecated and should be removed
@@ -3285,7 +3289,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             WifiConfiguration config = getConnectedWifiConfigurationInternal();
             boolean shouldSetUserConnectChoice = config != null
                     && isRecentlySelectedByTheUser(config)
-                    && config.getNetworkSelectionStatus().hasEverConnected()
+                    && (config.getNetworkSelectionStatus().hasEverConnected()
+                    || config.isEphemeral())
                     && mWifiPermissionsUtil.checkNetworkSettingsPermission(config.lastConnectUid);
             mWifiConfigManager.updateNetworkAfterConnect(mLastNetworkId,
                     shouldSetUserConnectChoice, mWifiInfo.getRssi());
