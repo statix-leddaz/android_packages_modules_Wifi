@@ -3205,6 +3205,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiNative.setSupplicantLogLevel(mVerboseLoggingEnabled);
 
         // Initialize data structures
+        mTargetBssid = SUPPLICANT_BSSID_ANY;
+        mTargetNetworkId = WifiConfiguration.INVALID_NETWORK_ID;
         mLastBssid = null;
         mLastNetworkId = WifiConfiguration.INVALID_NETWORK_ID;
         mLastSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
@@ -3287,7 +3289,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             WifiConfiguration config = getConnectedWifiConfigurationInternal();
             boolean shouldSetUserConnectChoice = config != null
                     && isRecentlySelectedByTheUser(config)
-                    && config.getNetworkSelectionStatus().hasEverConnected()
+                    && (config.getNetworkSelectionStatus().hasEverConnected()
+                    || config.isEphemeral())
                     && mWifiPermissionsUtil.checkNetworkSettingsPermission(config.lastConnectUid);
             mWifiConfigManager.updateNetworkAfterConnect(mLastNetworkId,
                     shouldSetUserConnectChoice, mWifiInfo.getRssi());
