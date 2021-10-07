@@ -13,6 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 java_defaults {
     name: "wifi-service-common",
     defaults: ["wifi-module-sdk-version-defaults"],
@@ -34,6 +38,7 @@ filegroup {
         ":framework-wifi-service-shared-srcs",
         ":net-utils-wifi-service-common-srcs",
         ":statslog-wifi-java-gen",
+        ":coex-table-parser",
     ],
 }
 
@@ -53,6 +58,10 @@ java_library {
     plugins: ["java_api_finder"],
 
     sdk_version: "system_server_current",
+    lint: {
+        baseline_filename: "lint-baseline-pre-jarjar.xml",
+        strict_updatability_linting: true,
+    },
     libs: [
         "error_prone_annotations",
         "jsr305",
@@ -62,6 +71,7 @@ java_library {
         // need pre-jarjar symbols so that wifi-service can reference the original class names at
         // compile time
         "framework-wifi-pre-jarjar",
+        "framework-connectivity.stubs.module_lib",
         "framework-statsd.stubs.module_lib",
         "framework-tethering.stubs.module_lib",
         "unsupportedappusage",
@@ -73,13 +83,16 @@ java_library {
         "android.hardware.wifi-V1.2-java",
         "android.hardware.wifi-V1.3-java",
         "android.hardware.wifi-V1.4-java",
+        "android.hardware.wifi-V1.5-java",
         "android.hardware.wifi.hostapd-V1.0-java",
         "android.hardware.wifi.hostapd-V1.1-java",
         "android.hardware.wifi.hostapd-V1.2-java",
+        "android.hardware.wifi.hostapd-V1.3-java",
         "android.hardware.wifi.supplicant-V1.0-java",
         "android.hardware.wifi.supplicant-V1.1-java",
         "android.hardware.wifi.supplicant-V1.2-java",
         "android.hardware.wifi.supplicant-V1.3-java",
+        "android.hardware.wifi.supplicant-V1.4-java",
         "android.hidl.manager-V1.2-java",
         "androidx.annotation_annotation",
         "bouncycastle-unbundled",
@@ -92,7 +105,7 @@ java_library {
         "libnanohttpd",
         "services.net-module-wifi",
         "wifi-lite-protos",
-        "wifi-nano-protos"
+        "wifi-nano-protos",
     ],
 }
 
@@ -140,7 +153,8 @@ genrule {
     name: "statslog-wifi-java-gen",
     tools: ["stats-log-api-gen"],
     cmd: "$(location stats-log-api-gen) --java $(out) --module wifi " +
-         " --javaPackage com.android.server.wifi.proto --javaClass WifiStatsLog",
+         " --javaPackage com.android.server.wifi.proto --javaClass WifiStatsLog" +
+         " --minApiLevel 30",
     out: ["com/android/server/wifi/proto/WifiStatsLog.java"],
 }
 

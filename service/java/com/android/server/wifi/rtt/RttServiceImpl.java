@@ -39,7 +39,6 @@ import android.net.wifi.rtt.RangingResultCallback;
 import android.net.wifi.rtt.ResponderConfig;
 import android.net.wifi.rtt.ResponderLocation;
 import android.net.wifi.rtt.WifiRttManager;
-import android.os.BasicShellCommandHandler;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
@@ -55,6 +54,7 @@ import android.util.SparseIntArray;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.WakeupMessage;
+import com.android.modules.utils.BasicShellCommandHandler;
 import com.android.server.wifi.Clock;
 import com.android.server.wifi.WifiSettingsConfigStore;
 import com.android.server.wifi.proto.nano.WifiMetricsProto;
@@ -1114,16 +1114,11 @@ public class RttServiceImpl extends IWifiRttManager.Stub {
                     }
 
                     int errorCode = RangingResult.STATUS_FAIL;
-                    if (!isCalledFromPrivilegedContext) {
-                        if (!peer.supports80211mc) {
-                            errorCode = RangingResult.STATUS_RESPONDER_DOES_NOT_SUPPORT_IEEE80211MC;
-                        }
-                    }
 
                     if (peer.peerHandle == null) {
                         finalResults.add(
                                 new RangingResult(errorCode, peer.macAddress, 0, 0, 0, 0, 0, null,
-                                        null, null, 0));
+                                        null, null, 0, false));
                     } else {
                         finalResults.add(
                                 new RangingResult(errorCode, peer.peerHandle, 0, 0, 0, 0, 0, null,
@@ -1148,32 +1143,32 @@ public class RttServiceImpl extends IWifiRttManager.Stub {
                         finalResults.add(new RangingResult(
                                 status,
                                 peer.macAddress,
-                                resultForRequest.getDistanceMm(),
-                                resultForRequest.getDistanceStdDevMm(),
-                                resultForRequest.getRssi(),
-                                resultForRequest.getNumAttemptedMeasurements(),
-                                resultForRequest.getNumSuccessfulMeasurements(),
+                                resultForRequest.mDistanceMm,
+                                resultForRequest.mDistanceStdDevMm,
+                                resultForRequest.mRssi,
+                                resultForRequest.mNumAttemptedMeasurements,
+                                resultForRequest.mNumSuccessfulMeasurements,
                                 lci,
                                 lcr,
                                 responderLocation,
-                                resultForRequest.getRangingTimestampMillis()));
+                                resultForRequest.mTimestamp,
+                                resultForRequest.mIs80211mcMeasurement));
                     } else {
                         finalResults.add(new RangingResult(
                                 status,
                                 peer.peerHandle,
-                                resultForRequest.getDistanceMm(),
-                                resultForRequest.getDistanceStdDevMm(),
-                                resultForRequest.getRssi(),
-                                resultForRequest.getNumAttemptedMeasurements(),
-                                resultForRequest.getNumSuccessfulMeasurements(),
+                                resultForRequest.mDistanceMm,
+                                resultForRequest.mDistanceStdDevMm,
+                                resultForRequest.mRssi,
+                                resultForRequest.mNumAttemptedMeasurements,
+                                resultForRequest.mNumSuccessfulMeasurements,
                                 lci,
                                 lcr,
                                 responderLocation,
-                                resultForRequest.getRangingTimestampMillis()));
+                                resultForRequest.mTimestamp));
                     }
                 }
             }
-
             return finalResults;
         }
 

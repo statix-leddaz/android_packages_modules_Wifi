@@ -35,6 +35,7 @@ import android.util.Xml;
 import androidx.test.filters.SmallTest;
 
 import com.android.internal.util.FastXmlSerializer;
+import com.android.server.wifi.Clock;
 import com.android.server.wifi.WifiBaseTest;
 import com.android.server.wifi.WifiCarrierInfoManager;
 import com.android.server.wifi.WifiConfigStore;
@@ -79,6 +80,7 @@ public class PasspointConfigUserStoreDataTest extends WifiBaseTest {
     @Mock WifiKeyStore mKeyStore;
     @Mock WifiCarrierInfoManager mWifiCarrierInfoManager;
     @Mock PasspointConfigUserStoreData.DataSource mDataSource;
+    @Mock Clock mClock;
     PasspointConfigUserStoreData mConfigStoreData;
 
     /** Sets up test. */
@@ -86,7 +88,7 @@ public class PasspointConfigUserStoreDataTest extends WifiBaseTest {
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
         mConfigStoreData = new PasspointConfigUserStoreData(mKeyStore, mWifiCarrierInfoManager,
-                mDataSource);
+                mDataSource, mClock);
     }
 
     /**
@@ -113,7 +115,7 @@ public class PasspointConfigUserStoreDataTest extends WifiBaseTest {
         // Subscription update.
         UpdateParameter subscriptionUpdate = new UpdateParameter();
         subscriptionUpdate.setUpdateIntervalInMinutes(120);
-        subscriptionUpdate.setUpdateMethod(UpdateParameter.UPDATE_METHOD_SSP);
+        subscriptionUpdate.setUpdateMethod(UpdateParameter.UPDATE_METHOD_SPP);
         subscriptionUpdate.setRestriction(UpdateParameter.UPDATE_RESTRICTION_ROAMING_PARTNER);
         subscriptionUpdate.setServerUri("subscription.update.com");
         subscriptionUpdate.setUsername("subscriptionUser");
@@ -255,13 +257,13 @@ public class PasspointConfigUserStoreDataTest extends WifiBaseTest {
                 mKeyStore, mWifiCarrierInfoManager, TEST_PROVIDER_ID, TEST_CREATOR_UID,
                 TEST_CREATOR_PACKAGE, false, Arrays.asList(TEST_CA_CERTIFICATE_ALIAS),
                 TEST_CLIENT_PRIVATE_KEY_AND_CERT_ALIAS, null,
-                TEST_HAS_EVER_CONNECTED, TEST_SHARED);
+                TEST_HAS_EVER_CONNECTED, TEST_SHARED, mClock);
         PasspointProvider provider2 = new PasspointProvider(createFullPasspointConfiguration(),
                 mKeyStore, mWifiCarrierInfoManager, TEST_PROVIDER_ID_2, TEST_CREATOR_UID,
                 TEST_CREATOR_PACKAGE, true,
                 Arrays.asList(TEST_CA_CERTIFICATE_ALIAS, TEST_CA_CERTIFICATE_ALIAS_2),
                 TEST_CLIENT_PRIVATE_KEY_AND_CERT_ALIAS, TEST_REMEDIATION_CA_CERTIFICATE_ALIAS,
-                TEST_HAS_EVER_CONNECTED, TEST_SHARED);
+                TEST_HAS_EVER_CONNECTED, TEST_SHARED, mClock);
         provider2.setAutojoinEnabled(false);
         provider2.setMacRandomizationEnabled(false);
         provider2.setMeteredOverride(METERED_OVERRIDE_METERED);

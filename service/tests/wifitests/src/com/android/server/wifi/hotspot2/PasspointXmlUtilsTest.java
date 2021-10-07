@@ -17,7 +17,6 @@
 package com.android.server.wifi.hotspot2;
 
 import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
 
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.Credential;
@@ -29,6 +28,7 @@ import android.util.Xml;
 import androidx.test.filters.SmallTest;
 
 import com.android.internal.util.FastXmlSerializer;
+import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.WifiBaseTest;
 
 import org.junit.Test;
@@ -52,6 +52,10 @@ import java.util.Map;
  */
 @SmallTest
 public class PasspointXmlUtilsTest extends WifiBaseTest {
+
+    private static final int TEST_CARRIER_ID = 129;
+    private static final int TEST_SUBSCRIPTION_ID = 1;
+    private static final String TEST_DECORATED_IDENTITY_PREFIX = "androidwifi.dev!";
 
     /**
      * Helper function for generating a {@link PasspointConfiguration} for testing the XML
@@ -77,7 +81,7 @@ public class PasspointXmlUtilsTest extends WifiBaseTest {
         // Subscription update.
         UpdateParameter subscriptionUpdate = new UpdateParameter();
         subscriptionUpdate.setUpdateIntervalInMinutes(120);
-        subscriptionUpdate.setUpdateMethod(UpdateParameter.UPDATE_METHOD_SSP);
+        subscriptionUpdate.setUpdateMethod(UpdateParameter.UPDATE_METHOD_SPP);
         subscriptionUpdate.setRestriction(UpdateParameter.UPDATE_RESTRICTION_ROAMING_PARTNER);
         subscriptionUpdate.setServerUri("subscription.update.com");
         subscriptionUpdate.setUsername("subscriptionUser");
@@ -172,6 +176,18 @@ public class PasspointXmlUtilsTest extends WifiBaseTest {
         policyUpdate.setTrustRootCertSha256Fingerprint(certFingerprint);
         policy.setPolicyUpdate(policyUpdate);
         config.setPolicy(policy);
+
+        //Set suggestion related flag
+        config.setCarrierMerged(true);
+        config.setOemPaid(true);
+        config.setOemPrivate(true);
+        config.setCarrierId(TEST_CARRIER_ID);
+        config.setSubscriptionId(TEST_SUBSCRIPTION_ID);
+
+        // Extensions
+        if (SdkLevel.isAtLeastS()) {
+            config.setDecoratedIdentityPrefix(TEST_DECORATED_IDENTITY_PREFIX);
+        }
         return config;
     }
 
