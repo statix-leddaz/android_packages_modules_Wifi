@@ -477,7 +477,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     private static final int NETWORK_STATUS_UNWANTED_DISCONNECT         = 0;
     private static final int NETWORK_STATUS_UNWANTED_VALIDATION_FAILED  = 1;
-    private static final int NETWORK_STATUS_UNWANTED_DISABLE_AUTOJOIN   = 2;
+    @VisibleForTesting
+    public static final int NETWORK_STATUS_UNWANTED_DISABLE_AUTOJOIN   = 2;
 
     static final int CMD_UNWANTED_NETWORK                               = BASE + 144;
 
@@ -607,6 +608,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private final WifiNetworkSelector mWifiNetworkSelector;
 
     private final WifiInjector mWifiInjector;
+
+    // Permanently disable a network due to no internet if the estimated probability of having
+    // internet is less than this value.
+    @VisibleForTesting
+    public static final int PROBABILITY_WITH_INTERNET_TO_PERMANENTLY_DISABLE_NETWORK = 60;
 
     // Maximum duration to continue to log Wifi usability stats after a data stall is triggered.
     @VisibleForTesting
@@ -970,9 +976,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     }
 
     private void stopIpClient() {
-        // TODO(b/157943924): Adding more log to debug the issue.
-        Log.v(getTag(), "stopIpClient IpClientWithPreConnection: " + mIpClientWithPreConnection,
-                new Throwable());
+        if (mVerboseLoggingEnabled) {
+            Log.v(getTag(), "stopIpClient IpClientWithPreConnection: "
+                    + mIpClientWithPreConnection);
+        }
         if (mIpClient != null) {
             if (mIpClientWithPreConnection) {
                 mIpClient.notifyPreconnectionComplete(false);
@@ -3198,6 +3205,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiNative.setSupplicantLogLevel(mVerboseLoggingEnabled);
 
         // Initialize data structures
+        mTargetBssid = SUPPLICANT_BSSID_ANY;
+        mTargetNetworkId = WifiConfiguration.INVALID_NETWORK_ID;
         mLastBssid = null;
         mLastNetworkId = WifiConfiguration.INVALID_NETWORK_ID;
         mLastSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
@@ -3264,6 +3273,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // Block to make sure IpClient has really shut down, lest cleanup
             // race with, say, bringup code over in tethering.
             mIpClientCallbacks.awaitShutdown();
+            mIpClientCallbacks = null;
+            mIpClient = null;
         }
         deregisterForWifiMonitorEvents(); // uses mInterfaceName, must call before nulling out
         // TODO: b/79504296 This broadcast has been deprecated and should be removed
@@ -3278,7 +3289,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             WifiConfiguration config = getConnectedWifiConfigurationInternal();
             boolean shouldSetUserConnectChoice = config != null
                     && isRecentlySelectedByTheUser(config)
-                    && config.getNetworkSelectionStatus().hasEverConnected()
+                    && (config.getNetworkSelectionStatus().hasEverConnected()
+                    || config.isEphemeral())
                     && mWifiPermissionsUtil.checkNetworkSettingsPermission(config.lastConnectUid);
             mWifiConfigManager.updateNetworkAfterConnect(mLastNetworkId,
                     shouldSetUserConnectChoice, mWifiInfo.getRssi());
@@ -3413,6 +3425,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      *******************************************************/
 
     class ConnectableState extends State {
+        private boolean mIsScreenStateChangeReceiverRegistered = false;
         BroadcastReceiver mScreenStateChangeReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -3445,7 +3458,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             IntentFilter filter = new IntentFilter();
             filter.addAction(Intent.ACTION_SCREEN_ON);
             filter.addAction(Intent.ACTION_SCREEN_OFF);
-            mContext.registerReceiver(mScreenStateChangeReceiver, filter);
+            if (!mIsScreenStateChangeReceiverRegistered) {
+                mContext.registerReceiver(mScreenStateChangeReceiver, filter);
+                mIsScreenStateChangeReceiverRegistered = true;
+            }
             // Learn the initial state of whether the screen is on.
             // We update this field when we receive broadcasts from the system.
             handleScreenStateChanged(mContext.getSystemService(PowerManager.class).isInteractive());
@@ -3473,7 +3489,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             if (!mWifiNative.removeAllNetworks(mInterfaceName)) {
                 loge("Failed to remove networks on exiting connect mode");
             }
-            mContext.unregisterReceiver(mScreenStateChangeReceiver);
+            if (mIsScreenStateChangeReceiverRegistered) {
+                mContext.unregisterReceiver(mScreenStateChangeReceiver);
+                mIsScreenStateChangeReceiverRegistered = false;
+            }
 
             stopClientMode();
             mWifiScoreCard.doWrites();
@@ -3586,6 +3605,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         boolean isIpClientStarted = startIpClient(config, true);
                         if (isIpClientStarted) {
                             mIpClientWithPreConnection = true;
+                            transitionTo(mL2ConnectingState);
                             break;
                         }
                     }
@@ -4456,6 +4476,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     handleStatus = handleL3MessagesWhenNotConnected(message);
                     break;
                 }
+                case WifiMonitor.TRANSITION_DISABLE_INDICATION: {
+                    log("Received TRANSITION_DISABLE_INDICATION: networkId=" + message.arg1
+                            + ", indication=" + message.arg2);
+                    mWifiConfigManager.updateNetworkTransitionDisable(message.arg1, message.arg2);
+                    break;
+                }
                 default: {
                     handleStatus = NOT_HANDLED;
                     break;
@@ -4519,6 +4545,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 WifiMetrics.ConnectionEvent.FAILURE_NETWORK_NOT_FOUND,
                                 WifiMetricsProto.ConnectionEvent.HLF_NONE,
                                 WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
+                        handleNetworkDisconnect(false,
+                                WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__UNSPECIFIED);
                         transitionTo(mDisconnectedState); // End of connection attempt.
                     }
                     break;
@@ -4570,6 +4598,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
                                 isConnected());
                     }
+                    handleNetworkDisconnect(false,
+                            WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__UNSPECIFIED);
                     transitionTo(mDisconnectedState); // End of connection attempt.
                     break;
                 }
@@ -4649,6 +4679,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
                                 isConnected());
                     }
+                    handleNetworkDisconnect(false,
+                            WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__UNSPECIFIED);
                     transitionTo(mDisconnectedState); // End of connection attempt.
                     break;
                 }
@@ -4746,12 +4778,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__CONNECTING_WATCHDOG_TIMER);
                         transitionTo(mDisconnectedState);
                     }
-                    break;
-                }
-                case WifiMonitor.TRANSITION_DISABLE_INDICATION: {
-                    log("Received TRANSITION_DISABLE_INDICATION: networkId=" + message.arg1
-                            + ", indication=" + message.arg2);
-                    mWifiConfigManager.updateNetworkTransitionDisable(message.arg1, message.arg2);
                     break;
                 }
                 case WifiMonitor.NETWORK_CONNECTION_EVENT: {
@@ -5556,8 +5582,23 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             if (message.arg1 == NETWORK_STATUS_UNWANTED_DISABLE_AUTOJOIN) {
                                 mWifiConfigManager.setNetworkValidatedInternetAccess(
                                         config.networkId, false);
+                                WifiScoreCard.PerBssid perBssid = mWifiScoreCard.lookupBssid(
+                                        mWifiInfo.getSSID(), mWifiInfo.getBSSID());
+                                int probInternet = perBssid.estimatePercentInternetAvailability();
+                                if (mVerboseLoggingEnabled) {
+                                    Log.d(TAG, "Potentially disabling network due to no "
+                                            + "internet. Probability of having internet = "
+                                            + probInternet);
+                                }
+                                // Only permanently disable a network if probability of having
+                                // internet from the currently connected BSSID is less than 60%.
+                                // If there is no historically information of the current BSSID,
+                                // the probability of internet will default to 50%, and the network
+                                // will be permanently disabled.
                                 mWifiConfigManager.updateNetworkSelectionStatus(config.networkId,
-                                        DISABLED_NO_INTERNET_PERMANENT);
+                                        probInternet < PROBABILITY_WITH_INTERNET_TO_PERMANENTLY_DISABLE_NETWORK
+                                                ? DISABLED_NO_INTERNET_PERMANENT
+                                                : DISABLED_NO_INTERNET_TEMPORARY);
                             } else {
                                 // stop collect last-mile stats since validation fail
                                 removeMessages(CMD_DIAGS_CONNECT_TIMEOUT);
@@ -6128,6 +6169,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     /**
      * Helper method to set the allowed key management schemes from
      * scan result.
+     * When the AKM is updated, changes should be propagated to the
+     * actual saved network, and the correct AKM could be retrieved
+     * on selecting the security params.
      */
     private void updateAllowedKeyManagementSchemesFromScanResult(
             WifiConfiguration config, ScanResult scanResult) {
@@ -6136,6 +6180,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 && ScanResultUtil.isScanResultForFilsSha256Network(scanResult),
                 isFilsSha384Supported()
                 && ScanResultUtil.isScanResultForFilsSha384Network(scanResult));
+        mWifiConfigManager.updateFilsAkms(config.networkId,
+                config.isFilsSha256Enabled(), config.isFilsSha384Enabled());
     }
     /**
      * Update wifi configuration based on the matching scan result.
@@ -6289,6 +6335,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     .withPreconnection()
                     .withApfCapabilities(
                     mWifiNative.getApfCapabilities(mInterfaceName))
+                    .withDisplayName(config.SSID)
                     .withLayer2Information(layer2Info);
             if (isUsingMacRandomization) {
                 // Use EUI64 address generation for link-local IPv6 addresses.

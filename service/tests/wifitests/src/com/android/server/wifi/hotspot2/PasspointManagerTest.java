@@ -38,6 +38,8 @@ import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyMap;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -204,6 +206,7 @@ public class PasspointManagerTest extends WifiBaseTest {
     @Mock OsuNetworkConnection mOsuNetworkConnection;
     @Mock OsuServerConnection mOsuServerConnection;
     @Mock PasspointProvisioner mPasspointProvisioner;
+    @Mock PasspointNetworkNominateHelper mPasspointNetworkNominateHelper;
     @Mock IProvisioningCallback mCallback;
     @Mock WfaKeyStore mWfaKeyStore;
     @Mock KeyStore mKeyStore;
@@ -253,7 +256,8 @@ public class PasspointManagerTest extends WifiBaseTest {
         when(mContext.getSystemService(Context.APP_OPS_SERVICE)).thenReturn(mAppOpsManager);
         when(mWifiInjector.getWifiNetworkSuggestionsManager())
                 .thenReturn(mWifiNetworkSuggestionsManager);
-        when(mWifiPermissionsUtil.doesUidBelongToCurrentUser(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.doesUidBelongToCurrentUserOrDeviceOwner(anyInt()))
+                .thenReturn(true);
         mLooper = new TestLooper();
         mHandler = new Handler(mLooper.getLooper());
         mWifiCarrierInfoManager = new WifiCarrierInfoManager(mTelephonyManager,
@@ -265,6 +269,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 mWifiKeyStore, mClock, mObjectFactory, mWifiConfigManager,
                 mWifiConfigStore, mWifiMetrics, mWifiCarrierInfoManager, mMacAddressUtil,
                 mWifiPermissionsUtil);
+        mManager.setPasspointNetworkNominateHelper(mPasspointNetworkNominateHelper);
         mManager.setUseInjectedPKIX(true);
         mManager.injectPKIXParameters(TEST_PKIX_PARAMETERS);
 
@@ -416,6 +421,8 @@ public class PasspointManagerTest extends WifiBaseTest {
         when(provider.getPackageName()).thenReturn(packageName);
         assertTrue(mManager.addOrUpdateProvider(
                 config, TEST_CREATOR_UID, TEST_PACKAGE, isSuggestion, true));
+        verify(mPasspointNetworkNominateHelper, atLeastOnce())
+                .refreshPasspointNetworkCandidates(isSuggestion);
         return provider;
     }
 
@@ -571,7 +578,8 @@ public class PasspointManagerTest extends WifiBaseTest {
      */
     @Test
     public void addProviderWithBackgroundUser() throws Exception {
-        when(mWifiPermissionsUtil.doesUidBelongToCurrentUser(anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.doesUidBelongToCurrentUserOrDeviceOwner(anyInt()))
+                .thenReturn(false);
 
         PasspointConfiguration config = createTestConfigWithUserCredential(TEST_FQDN,
                 TEST_FRIENDLY_NAME);
@@ -808,7 +816,7 @@ public class PasspointManagerTest extends WifiBaseTest {
         TelephonyManager specifiedTm = mock(TelephonyManager.class);
         when(mTelephonyManager.createForSubscriptionId(eq(TEST_SUBID))).thenReturn(specifiedTm);
         when(specifiedTm.getSubscriberId()).thenReturn(FULL_IMSI);
-        when(specifiedTm.getSimState()).thenReturn(TelephonyManager.SIM_STATE_READY);
+        when(specifiedTm.getSimApplicationState()).thenReturn(TelephonyManager.SIM_STATE_LOADED);
         List<SubscriptionInfo> subInfoList = new ArrayList<SubscriptionInfo>() {{
                 add(subInfo);
             }};
@@ -2042,7 +2050,8 @@ public class PasspointManagerTest extends WifiBaseTest {
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();
 
-        when(mWifiPermissionsUtil.doesUidBelongToCurrentUser(anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.doesUidBelongToCurrentUserOrDeviceOwner(anyInt()))
+                .thenReturn(false);
         assertFalse(mManager.removeProvider(TEST_CREATOR_UID, false, null, TEST_FQDN));
     }
 

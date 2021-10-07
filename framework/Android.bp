@@ -19,7 +19,7 @@ package {
 java_defaults {
     name: "wifi-module-sdk-version-defaults",
     min_sdk_version: "30",
-    target_sdk_version: "30",
+    target_sdk_version: "31",
 }
 
 filegroup {
@@ -147,6 +147,9 @@ java_sdk_library {
         // Created by jarjar rules.
         "com.android.wifi.x",
     ],
+    lint: {
+        strict_updatability_linting: true,
+    },
 }
 
 // defaults for tests that need to build against framework-wifi's @hide APIs

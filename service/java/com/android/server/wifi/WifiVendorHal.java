@@ -459,7 +459,7 @@ public class WifiVendorHal {
             @NonNull WorkSource requestorWs) {
         synchronized (sLock) {
             IWifiStaIface iface = mHalDeviceManager.createStaIface(
-                    new StaInterfaceDestroyedListenerInternal(destroyedListener), null,
+                    new StaInterfaceDestroyedListenerInternal(destroyedListener), mHalEventHandler,
                     requestorWs);
             if (iface == null) {
                 mLog.err("Failed to create STA iface").flush();
@@ -573,7 +573,7 @@ public class WifiVendorHal {
         synchronized (sLock) {
             IWifiApIface iface = mHalDeviceManager.createApIface(
                     getNecessaryCapabilitiesForSoftApMode(band),
-                    new ApInterfaceDestroyedListenerInternal(destroyedListener), null,
+                    new ApInterfaceDestroyedListenerInternal(destroyedListener), mHalEventHandler,
                     requestorWs, isBridged);
             if (iface == null) {
                 mLog.err("Failed to create AP iface").flush();
@@ -949,12 +949,19 @@ public class WifiVendorHal {
                 return WifiBand.BAND_24GHZ_5GHZ;
             case WifiScanner.WIFI_BAND_BOTH_WITH_DFS:
                 return WifiBand.BAND_24GHZ_5GHZ_WITH_DFS;
+            case WifiScanner.WIFI_BAND_6_GHZ:
+                return WifiBand.BAND_6GHZ;
+            case WifiScanner.WIFI_BAND_24_5_6_GHZ:
+                return WifiBand.BAND_24GHZ_5GHZ_6GHZ;
+            case WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_GHZ:
+                return WifiBand.BAND_24GHZ_5GHZ_WITH_DFS_6GHZ;
             case WifiScanner.WIFI_BAND_60_GHZ:
                 return WifiBand.BAND_60GHZ;
             case WifiScanner.WIFI_BAND_24_5_6_60_GHZ:
                 return WifiBand.BAND_24GHZ_5GHZ_6GHZ_60GHZ;
             case WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_60_GHZ:
                 return WifiBand.BAND_24GHZ_5GHZ_WITH_DFS_6GHZ_60GHZ;
+            case WifiScanner.WIFI_BAND_24_GHZ_WITH_5GHZ_DFS:
             default:
                 throw new IllegalArgumentException("bad band " + frameworkBand);
         }
@@ -3880,6 +3887,9 @@ public class WifiVendorHal {
                 return answer.value;
             } catch (RemoteException e) {
                 handleRemoteException(e);
+                return null;
+            } catch (IllegalArgumentException e) {
+                mLog.e("Illegal argument for getUsableChannels() " + e);
                 return null;
             }
         }
