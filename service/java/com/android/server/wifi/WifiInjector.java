@@ -411,6 +411,7 @@ public class WifiInjector {
         PasspointNetworkNominateHelper nominateHelper =
                 new PasspointNetworkNominateHelper(mPasspointManager, mWifiConfigManager,
                         mConnectivityLocalLog);
+        mPasspointManager.setPasspointNetworkNominateHelper(nominateHelper);
         mSavedNetworkNominator = new SavedNetworkNominator(
                 mWifiConfigManager, nominateHelper, mConnectivityLocalLog, mWifiCarrierInfoManager,
                 mWifiPermissionsUtil, mWifiNetworkSuggestionsManager);
@@ -608,6 +609,13 @@ public class WifiInjector {
 
     public HandlerThread getWifiHandlerThread() {
         return mWifiHandlerThread;
+    }
+
+    /**
+     * Wrapper method for getting the current native Java Thread ID of the current thread.
+     */
+    public long getCurrentThreadId() {
+        return Thread.currentThread().getId();
     }
 
     public WifiTrafficPoller getWifiTrafficPoller() {
