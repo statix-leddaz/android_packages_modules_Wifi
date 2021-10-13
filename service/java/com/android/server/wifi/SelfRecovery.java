@@ -48,6 +48,7 @@ public class SelfRecovery {
     public static final int REASON_STA_IFACE_DOWN = 2;
     public static final int REASON_API_CALL = 3;
     public static final int REASON_SUBSYSTEM_RESTART = 4;
+    public static final int REASON_IFACE_ADDED = 5;
 
     @Retention(RetentionPolicy.SOURCE)
     @IntDef(prefix = {"REASON_"}, value = {
@@ -82,6 +83,7 @@ public class SelfRecovery {
     // Self recovery state
     private @RecoveryState int mRecoveryState;
     private SubsystemRestartListenerInternal mSubsystemRestartListener;
+    boolean mIsRecoveriesForIfaceAddedEnabled;
 
     /**
      * Return the recovery reason code as string.
@@ -100,6 +102,8 @@ public class SelfRecovery {
                 return "API call (e.g. user)";
             case REASON_SUBSYSTEM_RESTART:
                 return "Subsystem Restart";
+            case REASON_IFACE_ADDED:
+                return "Interface Added";
             default:
                 return "Unknown " + reason;
         }
@@ -160,6 +164,7 @@ public class SelfRecovery {
         mSubsystemRestartListener = new SubsystemRestartListenerInternal();
         mWifiNative.registerSubsystemRestartListener(mSubsystemRestartListener);
         mRecoveryState = STATE_NO_RECOVERY;
+        mIsRecoveriesForIfaceAddedEnabled = false;
     }
 
     /**
@@ -176,11 +181,12 @@ public class SelfRecovery {
      */
     public void trigger(@RecoveryReason int reason) {
         if (!(reason == REASON_LAST_RESORT_WATCHDOG || reason == REASON_WIFINATIVE_FAILURE
-                  || reason == REASON_STA_IFACE_DOWN || reason == REASON_API_CALL)) {
+                  || reason == REASON_STA_IFACE_DOWN || reason == REASON_API_CALL
+                  || reason == REASON_IFACE_ADDED)) {
             Log.e(TAG, "Invalid trigger reason. Ignoring...");
             return;
         }
-        if (reason == REASON_STA_IFACE_DOWN) {
+        if (reason == REASON_STA_IFACE_DOWN && !mIsRecoveriesForIfaceAddedEnabled) {
             Log.e(TAG, "STA interface down, disable wifi");
             mActiveModeWarden.recoveryDisableWifi();
             mRecoveryState = STATE_DISABLE_WIFI;
@@ -188,6 +194,15 @@ public class SelfRecovery {
         }
 
         Log.e(TAG, "Triggering recovery for reason: " + getRecoveryReasonAsString(reason));
+        if (reason == REASON_IFACE_ADDED) {
+            mIsRecoveriesForIfaceAddedEnabled = mContext.getResources().getBoolean(
+                    R.bool.config_wifiInterfaceAddedSelfRecoveryEnabled);
+            if (!mIsRecoveriesForIfaceAddedEnabled) {
+                Log.e(TAG, "Recovery disabled. Disabling wifi");
+                mActiveModeWarden.recoveryDisableWifi();
+                return;
+            }
+        }
         if (reason == REASON_WIFINATIVE_FAILURE) {
             int maxRecoveriesPerHour = mContext.getResources().getInteger(
                     R.integer.config_wifiMaxNativeFailureSelfRecoveryPerHour);
