@@ -103,6 +103,10 @@ public class WifiNative {
     private CountryCodeChangeListenerInternal mCountryCodeChangeListener;
     private boolean mUseFakeScanDetails;
     private final ArrayList<ScanDetail> mFakeScanDetails = new ArrayList<>();
+    
+    private InterfaceObserverInternal interfaceObserver;
+    private InterfaceEventCallback interfaceListener;
+    
 
     public WifiNative(WifiVendorHal vendorHal,
                       SupplicantStaIfaceHal staIfaceHal, HostapdHal hostapdHal,
@@ -804,6 +808,57 @@ public class WifiNative {
         }
     }
 
+    //for dongle hot plug B
+    public interface InterfaceEventCallback{
+        
+        void onInterfaceLinkStateChanged(String ifaceName, boolean unusedIsLinkUp);
+        
+        void onInterfaceStatusChanged(String ifaceName, boolean unusedIsLinkUp);
+        
+        void onInterfaceAdded(String ifaceName);
+    }
+    
+    public void setWifiNativeInterfaceEventCallback(InterfaceEventCallback ifaceEventCallback){
+        interfaceListener = ifaceEventCallback;
+        Log.d(TAG,"setWifiNativeInterfaceEventCallback");
+    }
+    
+    private class InterfaceObserverInternal implements NetdEventObserver {
+
+         @Override
+        public void interfaceLinkStateChanged(String ifaceName, boolean unusedIsLinkUp) {
+            if(!ifaceName.equals("wlan0")){
+                return;
+            }
+            Log.d("InterfaceObserverInternal","Received interfaceLinkStateChanged,iface=" +ifaceName + " up="+unusedIsLinkUp);
+            if(interfaceListener != null){
+                interfaceListener.onInterfaceLinkStateChanged(ifaceName, unusedIsLinkUp);
+            } else {
+                Log.e("InterfaceObserverInternal","Received interfaceLinkStateChanged, interfaceListener=null");
+            }
+        }
+        
+        @Override
+        public void interfaceStatusChanged(String ifaceName, boolean unusedIsLinkUp) {
+            // unused currently. Look at note above.
+        }
+        
+        @Override
+        public void interfaceAdded(String ifaceName) {
+            if(!ifaceName.equals("wlan0")){
+                return;
+            }
+            Log.d("InterfaceObserverInternal","Received interfaceAdded,iface= " +ifaceName);
+            if(interfaceListener != null){
+                interfaceListener.onInterfaceAdded(ifaceName);
+            } else {
+                Log.e("InterfaceObserverInternal","Received interfaceAdded,interfaceListener=null");
+            }
+        }
+        
+    }
+    //for dongle hot plug E
+    
     /**
      * Network observer to use for all interface up/down notifications.
      */
@@ -853,6 +908,11 @@ public class WifiNative {
         @Override
         public void interfaceStatusChanged(String ifaceName, boolean unusedIsLinkUp) {
             // unused currently. Look at note above.
+        }
+        
+        @Override
+        public void interfaceAdded(String iface){
+            // unused currently.
         }
     }
 
@@ -1231,6 +1291,19 @@ public class WifiNative {
                 mWifiMetrics.incrementNumSetupClientInterfaceFailureDueToWificond();
                 return null;
             }
+            //for dongle hot plug B
+            if (interfaceObserver == null) {
+                interfaceObserver = new InterfaceObserverInternal();
+                if (interfaceObserver != null){
+                    Log.d(TAG,"registerObserver(interfaceObserver)");
+                    mNetdWrapper.registerObserver(interfaceObserver);
+                } else {
+                    Log.e(TAG,"registerObserver(interfaceObserver) failed");
+                }
+            } else {
+                Log.d(TAG,"interfaceObserver has been registed");
+            }
+            //for dongle hot plug E
             iface.networkObserver = new NetworkObserverInternal(iface.id);
             if (!registerNetworkObserver(iface.networkObserver)) {
                 Log.e(TAG, "Failed to register network observer for iface=" + iface.name);
