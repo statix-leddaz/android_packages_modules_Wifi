@@ -1662,7 +1662,8 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
                 destroyedListenerCaptor.capture(), eq(TEST_WORKSOURCE));
         mInOrder.verify(mWificondControl).setupInterfaceForClientMode(eq(ifaceName), any(), any(),
                 any());
-        mInOrder.verify(mNetdWrapper).registerObserver(networkObserverCaptor.capture());
+        mInOrder.verify(mNetdWrapper, atLeastOnce()).registerObserver(
+                networkObserverCaptor.capture());
         mInOrder.verify(mWifiMonitor).startMonitoring(ifaceName);
         mInOrder.verify(mNetdWrapper).isInterfaceUp(ifaceName);
         mInOrder.verify(mWifiVendorHal).enableLinkLayerStats(ifaceName);
