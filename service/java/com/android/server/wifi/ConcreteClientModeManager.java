@@ -65,6 +65,7 @@ import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
 import com.android.modules.utils.HandlerExecutor;
 import com.android.server.wifi.WifiNative.InterfaceCallback;
+import com.android.server.wifi.WifiNative.InterfaceEventCallback;
 import com.android.server.wifi.WifiNative.RxFateReport;
 import com.android.server.wifi.WifiNative.TxFateReport;
 import com.android.server.wifi.util.ActionListenerWrapper;
@@ -674,6 +675,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
         public static final int CMD_INTERFACE_DESTROYED = 4;
         public static final int CMD_INTERFACE_DOWN = 5;
         public static final int CMD_SWITCH_TO_SCAN_ONLY_MODE_CONTINUE = 6;
+        public static final int CMD_INTERFACE_ADDED = 9;
         private final State mIdleState = new IdleState();
         private final State mStartedState = new StartedState();
         private final State mScanOnlyModeState = new ScanOnlyModeState();
@@ -685,6 +687,44 @@ public class ConcreteClientModeManager implements ClientModeManager {
 
         @Nullable
         private StateMachineObituary mObituary = null;
+
+//for dongle hot plug B
+        
+        private final InterfaceEventCallback mWifiNativeInterfaceEventCallback = new InterfaceEventCallback(){
+            
+            boolean enabling = false;
+            
+            @Override
+            public void onInterfaceLinkStateChanged(String ifaceName, boolean unusedIsLinkUp){
+                Log.d("InterfaceEventCallback","onInterfaceLinkStateChanged, ifaceName= " + ifaceName + " up= " + unusedIsLinkUp
+                + " CurrentState= " + getCurrentStateName());
+                if(unusedIsLinkUp){
+                    enabling = false;
+                }
+            }
+            
+            @Override
+            public void onInterfaceStatusChanged(String ifaceName, boolean unusedIsLinkUp){
+                //unused
+            }
+            
+            @Override
+            public void onInterfaceAdded(String ifaceName){
+                String currentSta = getCurrentStateName();
+                Log.d("InterfaceEventCallback","onInterfaceAdded, ifaceName= " + ifaceName + " CurrentState= " + currentSta);
+                if(currentSta.equals("StateMachine not active")){
+                    Log.d(TAG,"StateMachine not active,triggle ifaceAddedDetected");
+                    mSelfRecovery.trigger(SelfRecovery.REASON_IFACE_ADD);
+                } else if (!enabling){
+                    Log.d("InterfaceEventCallback","send CMD_INTERFACE_ADDED");
+                    mStateMachine.sendMessage(CMD_INTERFACE_ADDED);
+                    enabling = true;
+                } else {
+                    Log.d("InterfaceEventCallback", "wifi already in the start");
+                }
+            }
+        };
+        //for dongle hot plug E
 
         private final InterfaceCallback mWifiNativeInterfaceCallback = new InterfaceCallback() {
             @Override
@@ -823,6 +863,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
                         RoleChangeInfo roleChangeInfo = (RoleChangeInfo) message.obj;
                         mClientInterfaceName = mWifiNative.setupInterfaceForClientInScanMode(
                                 mWifiNativeInterfaceCallback, roleChangeInfo.requestorWs);
+                        mWifiNative.setWifiNativeInterfaceEventCallback(mWifiNativeInterfaceEventCallback);
                         if (TextUtils.isEmpty(mClientInterfaceName)) {
                             Log.e(getTag(), "Failed to create ClientInterface. Sit in Idle");
                             mModeListener.onStartFailure(ConcreteClientModeManager.this);
@@ -835,6 +876,10 @@ public class ConcreteClientModeManager implements ClientModeManager {
                             mScanRoleChangeInfoToSetOnTransition = roleChangeInfo;
                             transitionTo(mScanOnlyModeState);
                         }
+                        break;
+                    case CMD_INTERFACE_ADDED:
+                        Log.d(getTag(),"IdleState received CMD_MTK_INTERFACEADDED");
+                        mSelfRecovery.trigger(SelfRecovery.REASON_IFACE_ADD);
                         break;
                     default:
                         Log.d(getTag(), "received an invalid message: " + message);
