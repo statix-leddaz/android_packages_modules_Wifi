@@ -116,6 +116,8 @@ public class WifiNative {
     private boolean mUseFakeScanDetails;
     private final ArrayList<ScanDetail> mFakeScanDetails = new ArrayList<>();
     private long mCachedFeatureSet;
+    private InterfaceObserverInternal mInterfaceObserver;
+    private InterfaceEventCallback mInterfaceListener;
 
     public WifiNative(WifiVendorHal vendorHal,
                       SupplicantStaIfaceHal staIfaceHal, HostapdHal hostapdHal,
@@ -845,6 +847,74 @@ public class WifiNative {
     }
 
     /**
+     * Listener for wifi interface events.
+     */
+    public interface InterfaceEventCallback {
+
+        /**
+         * Interface physical-layer link state has changed.
+         *
+         * @param ifaceName The interface.
+         * @param isLinkUp True if the physical link-layer connection signal is valid.
+         */
+        void onInterfaceLinkStateChanged(String ifaceName, boolean isLinkUp);
+
+        /**
+         * Interface has been added.
+         *
+         * @param ifaceName Name of the interface.
+         */
+        void onInterfaceAdded(String ifaceName);
+    }
+
+    /**
+     * Register a listener for wifi interface events.
+     *
+     * @param ifaceEventCallback Listener object.
+     */
+    public void setWifiNativeInterfaceEventCallback(InterfaceEventCallback ifaceEventCallback) {
+        mInterfaceListener = ifaceEventCallback;
+        Log.d(TAG, "setWifiNativeInterfaceEventCallback");
+    }
+
+    private class InterfaceObserverInternal implements NetdEventObserver {
+        private static final String TAG = "InterfaceObserverInternal";
+
+        @Override
+        public void interfaceLinkStateChanged(String ifaceName, boolean isLinkUp) {
+            if (!ifaceName.equals("wlan0")) {
+                return;
+            }
+            Log.d(TAG, "Received interfaceLinkStateChanged,iface=" + ifaceName + " up="
+                    + isLinkUp);
+            if (mInterfaceListener != null) {
+                mInterfaceListener.onInterfaceLinkStateChanged(ifaceName, isLinkUp);
+            } else {
+                Log.e(TAG, "Received interfaceLinkStateChanged, interfaceListener=null");
+            }
+        }
+
+        @Override
+        public void interfaceStatusChanged(String iface, boolean up) {
+            // unused.
+        }
+
+        @Override
+        public void interfaceAdded(String ifaceName) {
+            if (!ifaceName.equals("wlan0")) {
+                return;
+            }
+            Log.d(TAG, "Received interfaceAdded, iface=" + ifaceName);
+            if (mInterfaceListener != null) {
+                mInterfaceListener.onInterfaceAdded(ifaceName);
+            } else {
+                Log.e(TAG, "Received interfaceAdded, interfaceListener=null");
+            }
+        }
+
+    }
+
+    /**
      * Network observer to use for all interface up/down notifications.
      */
     private class NetworkObserverInternal implements NetdEventObserver {
@@ -898,6 +968,11 @@ public class WifiNative {
         @Override
         public void interfaceStatusChanged(String ifaceName, boolean unusedIsLinkUp) {
             // unused currently. Look at note above.
+        }
+
+        @Override
+        public void interfaceAdded(String iface){
+            // unused currently.
         }
     }
 
@@ -1288,6 +1363,13 @@ public class WifiNative {
                 teardownInterface(iface.name);
                 mWifiMetrics.incrementNumSetupClientInterfaceFailureDueToWificond();
                 return null;
+            }
+            if (mInterfaceObserver == null) {
+                mInterfaceObserver = new InterfaceObserverInternal();
+                Log.d(TAG, "registerObserver(interfaceObserver)");
+                mNetdWrapper.registerObserver(mInterfaceObserver);
+            } else {
+                Log.d(TAG, "interfaceObserver has been registered");
             }
             iface.networkObserver = new NetworkObserverInternal(iface.id);
             if (!registerNetworkObserver(iface.networkObserver)) {
