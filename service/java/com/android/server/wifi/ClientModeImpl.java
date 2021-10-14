@@ -1419,10 +1419,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiConfigManager.removeOnNetworkUpdateListener(mOnNetworkUpdateListener);
         mWifiCarrierInfoManager
                 .removeOnCarrierOffloadDisabledListener(mOnCarrierOffloadDisabledListener);
-        if (mVcnPolicyChangeListener != null) {
-            mVcnManager.removeVcnNetworkPolicyChangeListener(mVcnPolicyChangeListener);
-            mVcnPolicyChangeListener = null;
-        }
     }
 
     private void checkAbnormalConnectionFailureAndTakeBugReport(String ssid) {
@@ -4915,6 +4911,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // Inform WifiLockManager
             mWifiLockManager.updateWifiClientConnected(mClientModeManager, false);
             mLastConnectionCapabilities = null;
+
+            if (mVcnPolicyChangeListener != null) {
+                mVcnManager.removeVcnNetworkPolicyChangeListener(mVcnPolicyChangeListener);
+                mVcnPolicyChangeListener = null;
+            }
         }
 
         @Override
