@@ -1,0 +1,628 @@
+{
+  "comments": [
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "0b3577f7_7cfcb510",
+        "filename": "service/java/com/android/server/wifi/ConcreteClientModeManager.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 692,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 692,
+        "startChar": 0,
+        "endLine": 692,
+        "endChar": 8
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "6cdab548_79d30ff7",
+        "filename": "service/java/com/android/server/wifi/ConcreteClientModeManager.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 693,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Lines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details.",
+      "range": {
+        "startLine": 693,
+        "startChar": 0,
+        "endLine": 693,
+        "endChar": 110
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "10f0d4ed_265d1263",
+        "filename": "service/java/com/android/server/wifi/ConcreteClientModeManager.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 694,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 694,
+        "startChar": 0,
+        "endLine": 694,
+        "endChar": 12
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "0c600093_dcfb2154",
+        "filename": "service/java/com/android/server/wifi/ConcreteClientModeManager.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 696,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 696,
+        "startChar": 0,
+        "endLine": 696,
+        "endChar": 12
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "b413b124_5cf0af6a",
+        "filename": "service/java/com/android/server/wifi/ConcreteClientModeManager.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 699,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Lines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details.",
+      "range": {
+        "startLine": 699,
+        "startChar": 0,
+        "endLine": 699,
+        "endChar": 128
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "50ed1bdf_5ff084b7",
+        "filename": "service/java/com/android/server/wifi/ConcreteClientModeManager.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 705,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 705,
+        "startChar": 0,
+        "endLine": 705,
+        "endChar": 12
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "2dfa325c_df97c05b",
+        "filename": "service/java/com/android/server/wifi/ConcreteClientModeManager.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 710,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 710,
+        "startChar": 0,
+        "endLine": 710,
+        "endChar": 12
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "fea42db1_4bfda5b6",
+        "filename": "service/java/com/android/server/wifi/ConcreteClientModeManager.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 714,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Lines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details.",
+      "range": {
+        "startLine": 714,
+        "startChar": 0,
+        "endLine": 714,
+        "endChar": 125
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "ef632fa2_6647e8e5",
+        "filename": "service/java/com/android/server/wifi/ConcreteClientModeManager.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 866,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Lines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details.",
+      "range": {
+        "startLine": 866,
+        "startChar": 0,
+        "endLine": 866,
+        "endChar": 107
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "bc002679_38ce41af",
+        "filename": "service/java/com/android/server/wifi/SelfRecovery.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 132,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Lines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details.",
+      "range": {
+        "startLine": 132,
+        "startChar": 0,
+        "endLine": 132,
+        "endChar": 115
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "55ef85bd_14375387",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 106,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 106,
+        "startChar": 0,
+        "endLine": 106,
+        "endChar": 4
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "506d640c_14a641fc",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 109,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 109,
+        "startChar": 0,
+        "endLine": 109,
+        "endChar": 4
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "11d77c42_eac9e623",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 813,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 813,
+        "startChar": 0,
+        "endLine": 813,
+        "endChar": 8
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "f18d1e0e_70ad98a6",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 815,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 815,
+        "startChar": 0,
+        "endLine": 815,
+        "endChar": 8
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "641f5e10_2a0ce2eb",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 817,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 817,
+        "startChar": 0,
+        "endLine": 817,
+        "endChar": 8
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "892c9df8_ccf84a42",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 820,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 820,
+        "startChar": 0,
+        "endLine": 820,
+        "endChar": 4
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "82a2d37d_4e78a9e5",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 825,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 825,
+        "startChar": 0,
+        "endLine": 825,
+        "endChar": 4
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "fadf0eae_66027441",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 833,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Lines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details.",
+      "range": {
+        "startLine": 833,
+        "startChar": 0,
+        "endLine": 833,
+        "endChar": 126
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "a7afaafb_1274774c",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 837,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Lines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details.",
+      "range": {
+        "startLine": 837,
+        "startChar": 0,
+        "endLine": 837,
+        "endChar": 112
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "b8fb8eb2_59b0679b",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 840,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 840,
+        "startChar": 0,
+        "endLine": 840,
+        "endChar": 8
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "f0a4e1d0_8831e0c4",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 845,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 845,
+        "startChar": 0,
+        "endLine": 845,
+        "endChar": 8
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "3e2cfd52_aaa6a8a7",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 858,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 858,
+        "startChar": 0,
+        "endLine": 858,
+        "endChar": 8
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "6edffc2f_ceccff34",
+        "filename": "service/java/com/android/server/wifi/util/NetdWrapper.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 75,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 75,
+        "startChar": 0,
+        "endLine": 75,
+        "endChar": 8
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016445719",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1864817?revision\u003d2",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "7f9d35f5_f65b1ccc",
+        "filename": "service/java/com/android/server/wifi/util/NetdWrapper.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 498,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-10-21T06:23:51Z",
+      "side": 1,
+      "message": "Please remove the trailing whitespace.",
+      "range": {
+        "startLine": 498,
+        "startChar": 0,
+        "endLine": 498,
+        "endChar": 4
+      },
+      "revId": "4e3b4de91106678a744e6cd6069bee02da1133c6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
