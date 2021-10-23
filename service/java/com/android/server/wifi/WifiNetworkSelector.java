@@ -978,6 +978,22 @@ public class WifiNetworkSelector {
                 mScanRequestProxy.isWpa2EnterpriseOnlyNetworkInRange(config.SSID),
                 mScanRequestProxy.isWpa3EnterpriseOnlyNetworkInRange(config.SSID),
                 true);
+        // When using WPA3 (SAE), all passwords in all lengths are strings, but when using WPA2,
+        // there is a distinction between 8-63 octets that go through BDKDF2 function, and
+        // 64-octets that are assumed to be the output of it. BDKDF2 is not applicable to SAE
+        // and to prevent interop issues with APs when 64-octet Hex PSK is configured, update
+        // the configuration to use WPA2 only.
+        WifiConfiguration configWithPassword = mWifiConfigManager
+                .getConfiguredNetworkWithPassword(config.networkId);
+        if (configWithPassword.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)
+                && configWithPassword.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE)
+                && !configWithPassword.preSharedKey.startsWith("\"")
+                && configWithPassword.preSharedKey.length() == 64
+                && configWithPassword.preSharedKey.matches(String.format("[0-9A-Fa-f]{%d}", 64))) {
+            localLog("Remove SAE type for " + configWithPassword.SSID + " with 64-octet Hex PSK.");
+            scanResultParamsList
+                    .removeIf(p -> p.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE));
+        }
     }
 
     /**
