@@ -16,6 +16,23 @@
       "message": "doh, didn\u0027t realize I needed this in AOSP. Sorry for the noise",
       "revId": "326408e36109897cc658e8e9615a0a023c4a0f60",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "46bc6281_2144ab68",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1060959
+      },
+      "writtenOn": "2021-10-27T09:44:12Z",
+      "side": 1,
+      "message": "Nikita, could you please help stamp this CP?",
+      "revId": "326408e36109897cc658e8e9615a0a023c4a0f60",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
