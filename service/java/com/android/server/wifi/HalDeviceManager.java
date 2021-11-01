@@ -39,6 +39,7 @@ import android.os.Handler;
 import android.os.IHwBinder.DeathRecipient;
 import android.os.RemoteException;
 import android.os.WorkSource;
+import android.text.TextUtils;
 import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
@@ -83,6 +84,7 @@ public class HalDeviceManager {
     private final Handler mEventHandler;
     private WifiDeathRecipient mIWifiDeathRecipient;
     private ServiceManagerDeathRecipient mServiceManagerDeathRecipient;
+    private String mPrimaryIfaceName;
 
     // cache the value for supporting vendor HAL or not
     private boolean mIsVendorHalSupported = false;
@@ -122,6 +124,7 @@ public class HalDeviceManager {
         mEventHandler = handler;
         mIWifiDeathRecipient = new WifiDeathRecipient();
         mServiceManagerDeathRecipient = new ServiceManagerDeathRecipient();
+        mPrimaryIfaceName = null;
     }
 
     /* package */ void enableVerboseLogging(int verbose) {
@@ -1980,7 +1983,8 @@ public class HalDeviceManager {
      */
     private static boolean allowedToDelete(
             int requestedIfaceType, @RequestorWsPriority int newRequestorWsPriority,
-            int existingIfaceType, @RequestorWsPriority int existingRequestorWsPriority) {
+            int existingIfaceType, @RequestorWsPriority int existingRequestorWsPriority,
+            boolean existingIsPrimary) {
         if (!SdkLevel.isAtLeastS()) {
             return allowedToDeleteForR(requestedIfaceType, existingIfaceType);
         }
@@ -1998,6 +2002,17 @@ public class HalDeviceManager {
             }
             // If both the requests are privileged, the new requestor wins.
             if (newRequestorWsPriority == PRIORITY_PRIVILEGED) {
+                // Exception:
+                //  Disallow P2P to remove Primary STA becuase it will kick down both Primary STA
+                //  and P2P with current framework design.
+                if (requestedIfaceType == IfaceType.P2P &&
+                    existingIfaceType == IfaceType.STA &&
+                    existingIsPrimary) {
+                    if (VDBG) {
+                        Log.d(TAG, "P2P can't beat primary STA with same priority!");
+                    }
+                    return false;
+                }
                 return true;
             }
         }
@@ -2078,15 +2093,19 @@ public class HalDeviceManager {
         for (WifiIfaceInfo ifaceInfo : ifaceInfosForExistingIfaceType) {
             int newRequestorWsPriority = getRequestorWsPriority(newRequestorWsHelper);
             int existingRequestorWsPriority = getRequestorWsPriority(ifaceInfo.requestorWsHelper);
+            boolean existingIsPrimary = getType(ifaceInfo.iface) == IfaceType.STA &&
+                                            !TextUtils.isEmpty(mPrimaryIfaceName) &&
+                                            mPrimaryIfaceName.equals(ifaceInfo.name);
             if (allowedToDelete(
                     requestedIfaceType, newRequestorWsPriority, existingIfaceType,
-                    existingRequestorWsPriority)) {
+                    existingRequestorWsPriority, existingIsPrimary)) {
                 if (mDbg) {
                     Log.d(TAG, "allowedToDeleteIfaceTypeForRequestedType: Allowed to delete "
                             + "requestedIfaceType=" + requestedIfaceType
                             + "existingIfaceType=" + existingIfaceType
                             + ", newRequestorWsPriority=" + newRequestorWsHelper
-                            + ", existingRequestorWsPriority" + existingRequestorWsPriority);
+                            + ", existingRequestorWsPriority=" + existingRequestorWsPriority
+                            + ", existingIsPrimary=" + existingIsPrimary);
                 }
                 return true;
             }
@@ -2105,6 +2124,7 @@ public class HalDeviceManager {
      *  - Delete ifaces based on the descending requestor priority
      *    (i.e bg app requests are deleted first, privileged app requests are deleted last)
      *  - If there are > 1 ifaces within the same priority group to delete, select them randomly.
+     *      - Exception is primary STA has higher priority than secondary STAs.
      *
      * @param excessInterfaces Number of interfaces which need to be selected.
      * @param requestedIfaceType Requested iface type.
@@ -2140,8 +2160,11 @@ public class HalDeviceManager {
             }
             int newRequestorWsPriority = getRequestorWsPriority(newRequestorWsHelper);
             int existingRequestorWsPriority = getRequestorWsPriority(cacheEntry.requestorWsHelper);
+            boolean existingIsPrimary = getType(info.iface) == IfaceType.STA &&
+                                            !TextUtils.isEmpty(mPrimaryIfaceName) &&
+                                            mPrimaryIfaceName.equals(info.name);
             if (allowedToDelete(requestedIfaceType, newRequestorWsPriority, existingIfaceType,
-                    existingRequestorWsPriority)) {
+                    existingRequestorWsPriority, existingIsPrimary)) {
                 ifacesToDeleteMap.computeIfAbsent(
                         existingRequestorWsPriority, v -> new ArrayList<>()).add(info);
             }
@@ -2729,6 +2752,10 @@ public class HalDeviceManager {
             return 0;
         }
         return featureSet;
+    }
+
+    public void setMultiStaPrimaryConnection(@NonNull String ifaceName) {
+        mPrimaryIfaceName = ifaceName;
     }
 
     /**

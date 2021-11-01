@@ -3250,6 +3250,7 @@ public class WifiVendorHal {
                 if (iWifiChipV15 == null) return boolResult(false);
                 WifiStatus status = iWifiChipV15.setMultiStaPrimaryConnection(ifaceName);
                 if (!ok(status)) return false;
+                mHalDeviceManager.setMultiStaPrimaryConnection(ifaceName);
                 return true;
             } catch (RemoteException e) {
                 handleRemoteException(e);
