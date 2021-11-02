@@ -1,0 +1,47 @@
+{
+  "comments": [
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000016788976",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1878136?revision\u003d1",
+      "fixSuggestions": [
+        {
+          "fixId": "2240a559_6ecbec00",
+          "description": "Change to \"service/java/com/android/server/wifi/HalDeviceManager.java\"",
+          "replacements": [
+            {
+              "path": "service/java/com/android/server/wifi/HalDeviceManager.java",
+              "range": {
+                "startLine": 2006,
+                "startChar": 55,
+                "endLine": 2006,
+                "endChar": 62
+              },
+              "replacement": "because"
+            }
+          ]
+        }
+      ],
+      "key": {
+        "uuid": "1968d85e_8179953b",
+        "filename": "service/java/com/android/server/wifi/HalDeviceManager.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 2006,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-11-02T03:00:07Z",
+      "side": 1,
+      "message": "Common typo found: \"becuase\" -- should it be \"because\"?\nNote: a line containing \"common_typos_disable\" or \"common_typos_enable\" will turn off or on (respectively) the linter for subsequent lines in the file. Alternatively include the token \"NOTYPO\" within a line to skip typo linting that line or include \u0027No-Typo-Check: \u003creason\u003e\u0027in the commit message.",
+      "range": {
+        "startLine": 2006,
+        "startChar": 55,
+        "endLine": 2006,
+        "endChar": 62
+      },
+      "revId": "a8d6e495e9ddb811806b66c585c98c2fe2dd8843",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
