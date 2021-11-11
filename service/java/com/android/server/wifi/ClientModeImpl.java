@@ -4476,6 +4476,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     handleStatus = handleL3MessagesWhenNotConnected(message);
                     break;
                 }
+                case WifiMonitor.TRANSITION_DISABLE_INDICATION: {
+                    log("Received TRANSITION_DISABLE_INDICATION: networkId=" + message.arg1
+                            + ", indication=" + message.arg2);
+                    mWifiConfigManager.updateNetworkTransitionDisable(message.arg1, message.arg2);
+                    break;
+                }
                 default: {
                     handleStatus = NOT_HANDLED;
                     break;
@@ -4774,12 +4780,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     }
                     break;
                 }
-                case WifiMonitor.TRANSITION_DISABLE_INDICATION: {
-                    log("Received TRANSITION_DISABLE_INDICATION: networkId=" + message.arg1
-                            + ", indication=" + message.arg2);
-                    mWifiConfigManager.updateNetworkTransitionDisable(message.arg1, message.arg2);
-                    break;
-                }
                 case WifiMonitor.NETWORK_CONNECTION_EVENT: {
                     NetworkConnectionEventInfo connectionInfo =
                             (NetworkConnectionEventInfo) message.obj;
@@ -4882,7 +4882,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             if (mVcnManager == null && SdkLevel.isAtLeastS()) {
                 mVcnManager = mContext.getSystemService(VcnManager.class);
             }
-            if (mVcnManager != null) {
+            if (mVcnManager != null && mVcnPolicyChangeListener == null) {
                 mVcnPolicyChangeListener = new WifiVcnNetworkPolicyChangeListener();
                 mVcnManager.addVcnNetworkPolicyChangeListener(new HandlerExecutor(getHandler()),
                         mVcnPolicyChangeListener);

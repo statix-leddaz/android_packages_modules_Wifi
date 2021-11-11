@@ -1771,9 +1771,12 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
         List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
         WifiConfiguration[] configs = scanDetailsAndConfigs.getWifiConfigs();
         WifiConfiguration existingConfig = WifiConfigurationTestUtil.createPasspointNetwork();
+        existingConfig.networkId = configs[0].networkId;
         existingConfig.SSID = ssids[1];
         // Matched wifiConfig is an passpoint network with SSID from last scan.
         when(mWifiConfigManager.getConfiguredNetwork(configs[0].networkId))
+                .thenReturn(existingConfig);
+        when(mWifiConfigManager.getConfiguredNetworkWithPassword(configs[0].networkId))
                 .thenReturn(existingConfig);
         mWifiNetworkSelector.registerNetworkNominator(
                 new PlaceholderNominator(0, PLACEHOLDER_NOMINATOR_ID_2));
@@ -2146,6 +2149,44 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
     }
 
     /**
+     * Verify that SAE type is selected for a transition network.
+     * - SAE is supported.
+     * - auto-upgrade is enabled.
+     * - offload is not supported.
+     * - PSK networks exists.
+     * - PSK type is disabled.
+     */
+    @Test
+    public void testSaeAutoUpgradeWithPskNetworkWhenPskTypeIsDisabled() {
+        when(mClientModeManager.getSupportedFeatures()).thenReturn(WIFI_FEATURE_WPA3_SAE);
+        when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(true);
+        when(mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()).thenReturn(false);
+
+        when(mScanRequestProxy.isWpa2PersonalOnlyNetworkInRange(eq(TEST_AUTO_UPGRADE_SSID)))
+                .thenReturn(true);
+        ScanDetailsAndWifiConfigs scanDetailsAndConfigs = setupAutoUpgradeNetworks(
+                WifiConfigurationTestUtil.createPskSaeNetwork(TEST_AUTO_UPGRADE_SSID),
+                new String[] {"[RSN-PSK+SAE-CCMP]", "[WPA2-PSK][ESS]"});
+        List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
+        WifiConfiguration[] savedConfigs = scanDetailsAndConfigs.getWifiConfigs();
+        WifiConfiguration networkSelectorChoice = savedConfigs[0];
+        networkSelectorChoice.setSecurityParamsEnabled(WifiConfiguration.SECURITY_TYPE_PSK, false);
+
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
+                scanDetails, new HashSet<>(),
+                Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
+                false, true, true);
+        // PSK type is disabled, PSK network is not matched.
+        assertEquals(1, candidates.size());
+
+        // Verify that SAE network is selected.
+        WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
+        WifiConfigurationTestUtil.assertConfigurationEqual(networkSelectorChoice, candidate);
+        assertTrue(networkSelectorChoice.getNetworkSelectionStatus().getCandidateSecurityParams()
+                .isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE));
+    }
+
+    /**
      * Verify that SAE type is not selected for a transition network
      * if auto-upgrade is disabled.
      */
@@ -2246,6 +2287,42 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
         when(mScanRequestProxy.isOpenOnlyNetworkInRange(eq(networkSelectorChoice.SSID)))
                 .thenReturn(false);
         candidate = mWifiNetworkSelector.selectNetwork(candidates);
+        WifiConfigurationTestUtil.assertConfigurationEqual(networkSelectorChoice, candidate);
+        assertTrue(networkSelectorChoice.getNetworkSelectionStatus().getCandidateSecurityParams()
+                .isSecurityType(WifiConfiguration.SECURITY_TYPE_OWE));
+    }
+
+    /**
+     * Verify that OWE type is selected.
+     * - auto-upgrade is enabled.
+     * - legacy networks exist.
+     * - OPEN type is disabled.
+     */
+    @Test
+    public void testOweAutoUpgradeWithOpenNetworkWhenOpenTypeIsDisabled() {
+        when(mClientModeManager.getSupportedFeatures()).thenReturn(WIFI_FEATURE_OWE);
+        when(mWifiGlobals.isOweUpgradeEnabled()).thenReturn(true);
+
+        when(mScanRequestProxy.isOpenOnlyNetworkInRange(eq(TEST_AUTO_UPGRADE_SSID)))
+                .thenReturn(true);
+        ScanDetailsAndWifiConfigs scanDetailsAndConfigs = setupAutoUpgradeNetworks(
+                WifiConfigurationTestUtil.createOpenOweNetwork(TEST_AUTO_UPGRADE_SSID),
+                new String[] {"[RSN-OWE_TRANSITION-CCMP][ESS]", "[ESS]"});
+        List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
+        WifiConfiguration[] savedConfigs = scanDetailsAndConfigs.getWifiConfigs();
+        WifiConfiguration networkSelectorChoice = savedConfigs[0];
+        networkSelectorChoice.setSecurityParamsEnabled(
+                WifiConfiguration.SECURITY_TYPE_OPEN, false);
+
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
+                scanDetails, new HashSet<>(),
+                Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
+                false, true, true);
+        // OPEN type is disabled, OPEN network is not matched.
+        assertEquals(1, candidates.size());
+
+        // Verify that OWE network is selected (assume offload is not supported.).
+        WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
         WifiConfigurationTestUtil.assertConfigurationEqual(networkSelectorChoice, candidate);
         assertTrue(networkSelectorChoice.getNetworkSelectionStatus().getCandidateSecurityParams()
                 .isSecurityType(WifiConfiguration.SECURITY_TYPE_OWE));
@@ -2356,6 +2433,42 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
                 .isRequirePmf());
     }
 
+    /**
+     * Verify that WPA3 Enterprise type is selected.
+     * - auto-upgrade is enabled.
+     * - legacy networks exist.
+     * - WPA2 Enteprirse type is disabled.
+     */
+    @Test
+    public void testWpa3EnterpriseAutoUpgradeWithWpa2EntNetworkWhenWpa2EntTypeIsDisabled() {
+        when(mScanRequestProxy.isWpa2EnterpriseOnlyNetworkInRange(eq(TEST_AUTO_UPGRADE_SSID)))
+                .thenReturn(true);
+        ScanDetailsAndWifiConfigs scanDetailsAndConfigs = setupAutoUpgradeNetworks(
+                WifiConfigurationTestUtil.createWpa2Wpa3EnterpriseNetwork(TEST_AUTO_UPGRADE_SSID),
+                new String[] {"[RSN-EAP/SHA1-CCMP][RSN-EAP/SHA256-CCMP][ESS][MFPC]",
+                        "[RSN-EAP/SHA1-TKIP+CCMP][ESS]"});
+        List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
+        WifiConfiguration[] savedConfigs = scanDetailsAndConfigs.getWifiConfigs();
+        WifiConfiguration networkSelectorChoice = savedConfigs[0];
+        networkSelectorChoice.setSecurityParamsEnabled(
+                WifiConfiguration.SECURITY_TYPE_EAP, false);
+
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
+                scanDetails, new HashSet<>(),
+                Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
+                false, true, true);
+        // WPA2 Enterprise type is disabled, WPA2 Enterprise network is not matched.
+        assertEquals(1, candidates.size());
+
+        // Verify that WPA3 Enterprise network is selected (assume offload is not supported.).
+        WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
+        WifiConfigurationTestUtil.assertConfigurationEqual(networkSelectorChoice, candidate);
+        assertTrue(networkSelectorChoice.getNetworkSelectionStatus().getCandidateSecurityParams()
+                .isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE));
+        assertFalse(networkSelectorChoice.getNetworkSelectionStatus().getCandidateSecurityParams()
+                .isRequirePmf());
+    }
+
     @Test
     public void verifySecurityParamsSelectionForPskSaeConfigAndSaeScan() {
         when(mClientModeManager.getSupportedFeatures()).thenReturn(WIFI_FEATURE_WPA3_SAE);
@@ -2426,5 +2539,42 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
             assertEquals(network.getSecurityParams(expectedSecurityParamType),
                     network.getNetworkSelectionStatus().getCandidateSecurityParams());
         }
+    }
+
+    /**
+     * Verify that PSK type is selected for a transition network
+     * when only 64-octet Hex PSK is set.
+     */
+    @Test
+    public void testPskWithPskOnlyForPskSaeTransitionNetworks() {
+        when(mClientModeManager.getSupportedFeatures()).thenReturn(WIFI_FEATURE_WPA3_SAE);
+        when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(true);
+        when(mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()).thenReturn(true);
+
+        when(mScanRequestProxy.isWpa2PersonalOnlyNetworkInRange(eq(TEST_AUTO_UPGRADE_SSID)))
+                .thenReturn(true);
+        ScanDetailsAndWifiConfigs scanDetailsAndConfigs = setupAutoUpgradeNetworks(
+                WifiConfigurationTestUtil.createPskSaeNetwork(TEST_AUTO_UPGRADE_SSID),
+                new String[] {"[RSN-PSK+SAE-CCMP][ESS]", "[WPA2-PSK][ESS]"});
+        List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
+        WifiConfiguration[] savedConfigs = scanDetailsAndConfigs.getWifiConfigs();
+        WifiConfiguration networkSelectorChoice = savedConfigs[0];
+        networkSelectorChoice.preSharedKey =
+                "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF";
+
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
+                scanDetails, new HashSet<>(),
+                Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
+                false, true, true);
+        assertEquals(2, candidates.size());
+
+        // Verify that PSK network is still selected if offload is not supported
+        // and no PSK network is shown.
+        when(mScanRequestProxy.isWpa2PersonalOnlyNetworkInRange(eq(networkSelectorChoice.SSID)))
+                .thenReturn(false);
+        WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
+        WifiConfigurationTestUtil.assertConfigurationEqual(networkSelectorChoice, candidate);
+        assertTrue(networkSelectorChoice.getNetworkSelectionStatus().getCandidateSecurityParams()
+                .isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK));
     }
 }
