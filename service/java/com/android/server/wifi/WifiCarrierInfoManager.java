@@ -17,7 +17,6 @@
 package com.android.server.wifi;
 
 import static android.Manifest.permission.NETWORK_SETTINGS;
-import static android.telephony.TelephonyManager.DATA_ENABLED_REASON_USER;
 
 import android.annotation.IntDef;
 import android.annotation.NonNull;
@@ -262,15 +261,13 @@ public class WifiCarrierInfoManager {
 
         @Override
         public void onDataEnabledChanged(boolean enabled, int reason) {
-            if (reason == DATA_ENABLED_REASON_USER) {
-                Log.d(TAG, "Mobile data change by user to "
-                        + (enabled ? "enabled" : "disabled") + " for subId: " + mSubscriptionId);
-                mUserDataEnabled.put(mSubscriptionId, enabled);
-                if (!enabled) {
-                    for (OnCarrierOffloadDisabledListener listener :
-                            mOnCarrierOffloadDisabledListeners) {
-                        listener.onCarrierOffloadDisabled(mSubscriptionId, true);
-                    }
+            Log.d(TAG, "Mobile data change by reason " + reason + " to "
+                    + (enabled ? "enabled" : "disabled") + " for subId: " + mSubscriptionId);
+            mUserDataEnabled.put(mSubscriptionId, enabled);
+            if (!enabled) {
+                for (OnCarrierOffloadDisabledListener listener :
+                        mOnCarrierOffloadDisabledListeners) {
+                    listener.onCarrierOffloadDisabled(mSubscriptionId, true);
                 }
             }
         }
@@ -449,6 +446,7 @@ public class WifiCarrierInfoManager {
         @Override
         public void onSubscriptionsChanged() {
             mActiveSubInfos = mSubscriptionManager.getActiveSubscriptionInfoList();
+            mSubIdToSimInfoSparseArray.clear();
             if (mVerboseLogEnabled) {
                 Log.v(TAG, "active subscription changes: " + mActiveSubInfos);
             }
@@ -549,6 +547,10 @@ public class WifiCarrierInfoManager {
     private PersistableBundle getCarrierConfigForSubId(int subId) {
         if (mCachedCarrierConfigPerSubId.contains(subId)) {
             return mCachedCarrierConfigPerSubId.get(subId);
+        }
+        TelephonyManager specifiedTm = mTelephonyManager.createForSubscriptionId(subId);
+        if (specifiedTm.getSimApplicationState() != TelephonyManager.SIM_STATE_LOADED) {
+            return null;
         }
         if (mCarrierConfigManager == null) {
             mCarrierConfigManager = mContext.getSystemService(CarrierConfigManager.class);
@@ -694,6 +696,10 @@ public class WifiCarrierInfoManager {
      * @return the best match SubscriptionId
      */
     public int getBestMatchSubscriptionId(@NonNull WifiConfiguration config) {
+        if (config == null) {
+            Log.wtf(TAG, "getBestMatchSubscriptionId: Config must be NonNull!");
+            return SubscriptionManager.INVALID_SUBSCRIPTION_ID;
+        }
         if (config.subscriptionId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
             return config.subscriptionId;
         }
@@ -1900,8 +1906,6 @@ public class WifiCarrierInfoManager {
         mImsiPrivacyProtectionExemptionMap.clear();
         mMergedCarrierNetworkOffloadMap.clear();
         mUnmergedCarrierNetworkOffloadMap.clear();
-        mSubIdToSimInfoSparseArray.clear();
-        mActiveSubInfos.clear();
         mUserDataEnabled.clear();
         if (SdkLevel.isAtLeastS()) {
             for (UserDataEnabledChangedListener listener : mUserDataEnabledListenerList) {
@@ -1925,7 +1929,7 @@ public class WifiCarrierInfoManager {
             return simInfo;
         }
         TelephonyManager specifiedTm = mTelephonyManager.createForSubscriptionId(subId);
-        if (specifiedTm.getSimState() != TelephonyManager.SIM_STATE_READY) {
+        if (specifiedTm.getSimApplicationState() != TelephonyManager.SIM_STATE_LOADED) {
             return null;
         }
         String imsi = specifiedTm.getSubscriberId();
