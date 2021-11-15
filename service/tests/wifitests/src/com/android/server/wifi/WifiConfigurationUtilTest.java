@@ -31,6 +31,7 @@ import android.content.pm.UserInfo;
 import android.net.IpConfiguration;
 import android.net.MacAddress;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiInfo;
@@ -62,8 +63,8 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
     static final int OTHER_USER_ID = 11;
     static final int TEST_UID = 10000;
     static final String TEST_PACKAGE = "com.test";
-    static final String TEST_SSID = "test_ssid";
-    static final String TEST_SSID_1 = "test_ssid_1";
+    static final String TEST_SSID = "\"test_ssid\"";
+    static final String TEST_SSID_1 = "\"test_ssid_1\"";
     static final String TEST_BSSID = "aa:aa:11:22:cc:dd";
     static final String TEST_BSSID_1 = "11:22:11:22:cc:dd";
     static final List<UserInfo> PROFILES = Arrays.asList(
@@ -904,6 +905,40 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
     }
 
     /**
+     * Verify that WifiConfigurationUtil.isSameNetwork returns true when two WifiConfiguration
+     * objects have the same candidate security params.
+     */
+    @Test
+    public void testIsSameNetworkReturnsTrueOnSameNetworkWithSameCandidateSecurityParams() {
+        WifiConfiguration network = WifiConfigurationTestUtil.createPskNetwork(TEST_SSID);
+        network.getNetworkSelectionStatus().setCandidateSecurityParams(
+                SecurityParams.createSecurityParamsBySecurityType(
+                        WifiConfiguration.SECURITY_TYPE_PSK));
+        WifiConfiguration network1 = WifiConfigurationTestUtil.createPskNetwork(TEST_SSID);
+        network1.getNetworkSelectionStatus().setCandidateSecurityParams(
+                SecurityParams.createSecurityParamsBySecurityType(
+                        WifiConfiguration.SECURITY_TYPE_PSK));
+        assertTrue(WifiConfigurationUtil.isSameNetwork(network, network1));
+    }
+
+    /**
+     * Verify that WifiConfigurationUtil.isSameNetwork returns false when two WifiConfiguration
+     * objects have the different candidate security params.
+     */
+    @Test
+    public void testIsSameNetworkReturnsTrueOnSameNetworkWithDifferentCandidateSecurityParams() {
+        WifiConfiguration network = WifiConfigurationTestUtil.createPskNetwork(TEST_SSID);
+        network.getNetworkSelectionStatus().setCandidateSecurityParams(
+                SecurityParams.createSecurityParamsBySecurityType(
+                        WifiConfiguration.SECURITY_TYPE_PSK));
+        WifiConfiguration network1 = WifiConfigurationTestUtil.createPskNetwork(TEST_SSID);
+        network1.getNetworkSelectionStatus().setCandidateSecurityParams(
+                SecurityParams.createSecurityParamsBySecurityType(
+                        WifiConfiguration.SECURITY_TYPE_SAE));
+        assertFalse(WifiConfigurationUtil.isSameNetwork(network, network1));
+    }
+
+    /**
      * Verify the instance of {@link android.net.wifi.WifiScanner.PnoSettings.PnoNetwork} created
      * for a EAP network using {@link WifiConfigurationUtil#createPnoNetwork(WifiConfiguration)
      * }.
@@ -1176,6 +1211,19 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
         assertFalse(WifiConfigurationUtil.isConfigForOpenNetwork(wapiCertConfig));
     }
 
+    /**
+     * Verify that a Passpoint config is not considered an OPEN config.
+     */
+    @Test
+    public void testPasspointConfigNotOpenConfig() {
+        WifiConfiguration passpointR1R2Config = new WifiConfiguration();
+        passpointR1R2Config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PASSPOINT_R1_R2);
+        assertFalse(WifiConfigurationUtil.isConfigForOpenNetwork(passpointR1R2Config));
+
+        WifiConfiguration passpointR3Config = new WifiConfiguration();
+        passpointR3Config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PASSPOINT_R3);
+        assertFalse(WifiConfigurationUtil.isConfigForOpenNetwork(passpointR3Config));
+    }
 
     /**
      * Verify that the validate method fails to validate WifiConfiguration with malformed
@@ -1205,18 +1253,26 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
         WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
         config.enterpriseConfig.setIdentity(null);
         assertFalse(WifiConfigurationUtil.validate(config, WifiConfigurationUtil.VALIDATE_FOR_ADD));
+        assertFalse(WifiConfigurationUtil.validate(config,
+                WifiConfigurationUtil.VALIDATE_FOR_UPDATE));
 
-        WifiConfigurationTestUtil.createEapNetwork();
+        config = WifiConfigurationTestUtil.createEapNetwork();
         config.enterpriseConfig.setPassword(null);
         assertFalse(WifiConfigurationUtil.validate(config, WifiConfigurationUtil.VALIDATE_FOR_ADD));
+        assertTrue(WifiConfigurationUtil.validate(config,
+                WifiConfigurationUtil.VALIDATE_FOR_UPDATE));
 
         config = WifiConfigurationTestUtil.createWpa3EnterpriseNetwork(TEST_SSID);
         config.enterpriseConfig.setIdentity(null);
         assertFalse(WifiConfigurationUtil.validate(config, WifiConfigurationUtil.VALIDATE_FOR_ADD));
+        assertFalse(WifiConfigurationUtil.validate(config,
+                WifiConfigurationUtil.VALIDATE_FOR_UPDATE));
 
-        WifiConfigurationTestUtil.createWpa3EnterpriseNetwork(TEST_SSID);
+        config = WifiConfigurationTestUtil.createWpa3EnterpriseNetwork(TEST_SSID);
         config.enterpriseConfig.setPassword(null);
         assertFalse(WifiConfigurationUtil.validate(config, WifiConfigurationUtil.VALIDATE_FOR_ADD));
+        assertTrue(WifiConfigurationUtil.validate(config,
+                WifiConfigurationUtil.VALIDATE_FOR_UPDATE));
     }
 
     /**
@@ -1264,7 +1320,7 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
      */
     @Test
     public void testAddAndRemoveSecurityTypeForNetworkId() {
-        List<Integer> securityList = Arrays.asList(
+        List<Integer> securityListNoPasspoint = Arrays.asList(
                 WifiConfiguration.SECURITY_TYPE_OPEN,
                 WifiConfiguration.SECURITY_TYPE_WEP,
                 WifiConfiguration.SECURITY_TYPE_PSK,
@@ -1275,10 +1331,17 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
                 WifiConfiguration.SECURITY_TYPE_WAPI_PSK,
                 WifiConfiguration.SECURITY_TYPE_WAPI_CERT,
                 WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE,
-                WifiConfiguration.SECURITY_TYPE_OSEN,
+                WifiConfiguration.SECURITY_TYPE_OSEN
+        );
+
+        List<Integer> securityListPasspoint = Arrays.asList(
                 WifiConfiguration.SECURITY_TYPE_PASSPOINT_R1_R2,
                 WifiConfiguration.SECURITY_TYPE_PASSPOINT_R3
         );
+
+        List<Integer> securityList = new ArrayList<>();
+        securityList.addAll(securityListPasspoint);
+        securityList.addAll(securityListNoPasspoint);
 
         final int netId = 1;
         if (!SdkLevel.isAtLeastS()) {
@@ -1301,11 +1364,17 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
                                         WifiConfigurationUtil.addSecurityTypeToNetworkId(
                                                 netId, securityType))));
             }
-            // A unique net id should be created for each security type added
-            assertEquals(securityList.size(), securityList.stream()
+            // A unique net id should be created for each non-passpoint security type added
+            assertEquals(securityListNoPasspoint.size(), securityListNoPasspoint.stream()
                     .map(security -> addSecurityTypeToNetworkId(netId, security))
                     .distinct()
                     .count());
+
+            // Passpoint should keep its security type for R WifiTrackerLib
+            for (@WifiConfiguration.SecurityType int securityType : securityListPasspoint) {
+                assertEquals(netId, WifiConfigurationUtil.addSecurityTypeToNetworkId(
+                                netId, securityType));
+            }
         } else {
             // Add should do nothing for SDK level S and above.
             for (@WifiConfiguration.SecurityType int securityType : securityList) {

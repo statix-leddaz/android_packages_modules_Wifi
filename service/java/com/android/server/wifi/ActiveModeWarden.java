@@ -1016,6 +1016,12 @@ public class ActiveModeWarden {
         }
     }
 
+    private void stopSecondaryClientModeManagers() {
+        stopAllClientModeManagersInRole(ROLE_CLIENT_LOCAL_ONLY);
+        stopAllClientModeManagersInRole(ROLE_CLIENT_SECONDARY_TRANSIENT);
+        stopAllClientModeManagersInRole(ROLE_CLIENT_SECONDARY_LONG_LIVED);
+    }
+
     /**
      * Method to switch all client mode manager mode of operation (from ScanOnly To Connect &
      * vice-versa) based on the toggle state.
@@ -1762,6 +1768,14 @@ public class ActiveModeWarden {
         private void handleStaToggleChangeInEnabledState(WorkSource requestorWs) {
             if (shouldEnableSta()) {
                 if (hasAnyClientModeManager()) {
+                    if (!mSettingsStore.isWifiToggleEnabled()) {
+                        // Wifi is turned off, so we should stop all the secondary CMMs which are
+                        // currently all for connectivity purpose. It's important to stops the
+                        // secondary CMMs before switch state of the primary CMM so features using
+                        // those secondary CMMs knows to abort properly, and won't react in strange
+                        // ways to the primary switching to scan only mode later.
+                        stopSecondaryClientModeManagers();
+                    }
                     switchAllPrimaryOrScanOnlyClientModeManagers();
                 } else {
                     startPrimaryOrScanOnlyClientModeManager(requestorWs);
@@ -1932,6 +1946,13 @@ public class ActiveModeWarden {
                             + " on ClientModeManager=" + cmmForSameBssid);
                     if (cmmForSameBssid.getRole() == ROLE_CLIENT_PRIMARY) {
                         // fallback to single STA behavior.
+                        requestInfo.listener.onAnswer(cmmForSameBssid);
+                        return;
+                    }
+                    // The CMM having BSSID conflict is exactly the one being requested.
+                    // Simply return the CMM in this case. The requestor will be responsible to
+                    // make sure it does not trigger the connection again when already connected.
+                    if (cmmForSameBssid.getRole() == requestInfo.clientRole) {
                         requestInfo.listener.onAnswer(cmmForSameBssid);
                         return;
                     }

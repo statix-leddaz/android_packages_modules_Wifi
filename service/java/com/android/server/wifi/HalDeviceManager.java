@@ -256,9 +256,10 @@ public class HalDeviceManager {
      * @param destroyedListener Optional (nullable) listener to call when the allocated interface
      *                          is removed. Will only be registered and used if an interface is
      *                          created successfully.
-     * @param handler Handler on which to dispatch listener. Null implies the listener will be
-     *                invoked synchronously from the context of the client which triggered the
-     *                iface destruction.
+     * @param handler Handler on which to dispatch listener. Must be non Null if destroyedListener
+     *                is set. If the this handler is running on the same thread as the client which
+     *                triggered the iface destruction, the listener will be invoked synchronously
+     *                from that context of the client.
      * @param requestorWs Requestor worksource. This will be used to determine priority of this
      *                    interface using rules based on the requestor app's context.
      * @return A newly created interface - or null if the interface could not be created.
@@ -278,9 +279,10 @@ public class HalDeviceManager {
      * @param destroyedListener Optional (nullable) listener to call when the allocated interface
      *                          is removed. Will only be registered and used if an interface is
      *                          created successfully.
-     * @param handler Handler on which to dispatch listener. Null implies the listener will be
-     *                invoked synchronously from the context of the client which triggered the
-     *                iface destruction.
+     * @param handler Handler on which to dispatch listener. Must be non Null if destroyedListener
+     *                is set. If the handler is running on the same thread as the client which
+     *                triggered the iface destruction, the listener will be invoked synchronously
+     *                from that context of the client.
      * @param requestorWs Requestor worksource. This will be used to determine priority of this
      *                    interface using rules based on the requestor app's context.
      * @return A newly created interface - or null if the interface could not be created.
@@ -348,7 +350,7 @@ public class HalDeviceManager {
      * InterfaceDestroyedListeners.
      */
     public boolean removeIface(IWifiIface iface) {
-        boolean success = removeIfaceInternal(iface);
+        boolean success = removeIfaceInternal(iface, /* validateRttController */true);
         return success;
     }
 
@@ -425,37 +427,6 @@ public class HalDeviceManager {
         }
         if (!mSubsystemRestartListener.add(new SubsystemRestartListenerProxy(listener, handler))) {
             Log.w(TAG, "registerSubsystemRestartListener: duplicate registration ignored");
-        }
-    }
-
-    /**
-     * Register an InterfaceDestroyedListener to the specified iface - returns true on success
-     * and false on failure. This listener is in addition to the one registered when the interface
-     * was created - allowing non-creators to monitor interface status.
-     *
-     * @param destroyedListener Listener to call when the allocated interface is removed.
-     *                          Will only be registered and used if an interface is created
-     *                          successfully.
-     * @param handler Handler on which to dispatch listener. Null implies the listener will be
-     *                invoked synchronously from the context of the client which triggered the
-     *                iface destruction.
-     */
-    public boolean registerDestroyedListener(IWifiIface iface,
-            @NonNull InterfaceDestroyedListener destroyedListener,
-            @Nullable Handler handler) {
-        String name = getName(iface);
-        int type = getType(iface);
-        if (VDBG) Log.d(TAG, "registerDestroyedListener: iface(name)=" + name);
-
-        synchronized (mLock) {
-            InterfaceCacheEntry cacheEntry = mInterfaceInfoCache.get(Pair.create(name, type));
-            if (cacheEntry == null) {
-                Log.e(TAG, "registerDestroyedListener: no entry for iface(name)=" + name);
-                return false;
-            }
-
-            return cacheEntry.destroyedListeners.add(
-                    new InterfaceDestroyedListenerProxy(name, destroyedListener, handler));
         }
     }
 
@@ -986,7 +957,14 @@ public class HalDeviceManager {
 
                 // get all chip IDs
                 mWifi.getChipIds((WifiStatus status, ArrayList<Integer> chipIds) -> {
-                    statusOk.value = status.code == WifiStatusCode.SUCCESS;
+                    statusOk.value = false;
+                    if (status.code == WifiStatusCode.SUCCESS) {
+                        if (chipIds == null) {
+                            Log.wtf(TAG, "getChipIds failed, chipIds is null");
+                            return;
+                        }
+                        statusOk.value = true;
+                    }
                     if (statusOk.value) {
                         chipIdsResp.value = chipIds;
                     } else {
@@ -1007,7 +985,13 @@ public class HalDeviceManager {
                 Mutable<IWifiChip> chipResp = new Mutable<>();
                 for (Integer chipId: chipIdsResp.value) {
                     mWifi.getChip(chipId, (WifiStatus status, IWifiChip chip) -> {
-                        statusOk.value = status.code == WifiStatusCode.SUCCESS;
+                        statusOk.value = false;
+                        if (status.code == WifiStatusCode.SUCCESS) {
+                            if (chip == null) {
+                                Log.wtf(TAG, "getChip failed, chip " + chipId + " is null");
+                            }
+                            statusOk.value = true;
+                        }
                         if (statusOk.value) {
                             chipResp.value = chip;
                         } else {
@@ -1028,7 +1012,7 @@ public class HalDeviceManager {
                                 @Override
                                 public void onChipReconfigureFailure(WifiStatus status)
                                         throws RemoteException {
-                                    Log.d(TAG, "onChipReconfigureFailure: status=" + statusString(
+                                    Log.e(TAG, "onChipReconfigureFailure: status=" + statusString(
                                             status));
                                 }
 
@@ -1611,6 +1595,11 @@ public class HalDeviceManager {
                     + ", requiredChipCapabilities=" + requiredChipCapabilities
                     + ", requestorWs=" + requestorWs);
         }
+        if (destroyedListener != null && handler == null) {
+            Log.wtf(TAG, "createIface: createIfaceType=" + createIfaceType
+                    + "with NonNull destroyedListener but Null handler");
+            return null;
+        }
 
         synchronized (mLock) {
             WifiChipInfo[] chipInfos = getAllChipInfo();
@@ -1686,7 +1675,13 @@ public class HalDeviceManager {
             if (bestIfaceCreationProposal != null) {
                 IWifiIface iface = executeChipReconfiguration(bestIfaceCreationProposal,
                         createIfaceType);
-                if (iface != null) {
+                if (iface == null) {
+                    // If the chip reconfiguration failed, we'll need to clean up internal state.
+                    Log.e(TAG, "Teardown Wifi internal state");
+                    mWifi = null;
+                    mIsReady = false;
+                    teardownInternal();
+                } else {
                     InterfaceCacheEntry cacheEntry = new InterfaceCacheEntry();
 
                     cacheEntry.chip = bestIfaceCreationProposal.chipInfo.chip;
@@ -1709,7 +1704,7 @@ public class HalDeviceManager {
             }
         }
 
-        Log.d(TAG, "createIfaceIfPossible: Failed to create iface for ifaceType=" + createIfaceType
+        Log.e(TAG, "createIfaceIfPossible: Failed to create iface for ifaceType=" + createIfaceType
                 + ", requestorWs=" + requestorWs);
         return null;
     }
@@ -2251,13 +2246,13 @@ public class HalDeviceManager {
                     // this does
                     for (WifiIfaceInfo[] ifaceInfos: ifaceCreationData.chipInfo.ifaces) {
                         for (WifiIfaceInfo ifaceInfo: ifaceInfos) {
-                            removeIfaceInternal(ifaceInfo.iface); // ignore return value
+                            removeIfaceInternal(ifaceInfo.iface,
+                                    /* validateRttController */false); // ignore return value
                         }
                     }
 
                     WifiStatus status = ifaceCreationData.chipInfo.chip.configureChip(
                             ifaceCreationData.chipModeId);
-                    updateRttControllerOnModeChange();
                     if (status.code != WifiStatusCode.SUCCESS) {
                         Log.e(TAG, "executeChipReconfiguration: configureChip error: "
                                 + statusString(status));
@@ -2266,7 +2261,8 @@ public class HalDeviceManager {
                 } else {
                     // remove all interfaces on the delete list
                     for (WifiIfaceInfo ifaceInfo: ifaceCreationData.interfacesToBeRemovedFirst) {
-                        removeIfaceInternal(ifaceInfo.iface); // ignore return value
+                        removeIfaceInternal(ifaceInfo.iface,
+                                /* validateRttController */false); // ignore return value
                     }
                 }
 
@@ -2319,6 +2315,8 @@ public class HalDeviceManager {
                         break;
                 }
 
+                updateRttControllerWhenInterfaceChanges();
+
                 if (statusResp.value.code != WifiStatusCode.SUCCESS) {
                     Log.e(TAG, "executeChipReconfiguration: failed to create interface"
                             + " createIfaceType=" + createIfaceType + ": "
@@ -2334,7 +2332,15 @@ public class HalDeviceManager {
         }
     }
 
-    private boolean removeIfaceInternal(IWifiIface iface) {
+    /**
+     * Remove a Iface from IWifiChip.
+     * @param iface the interface need to be removed
+     * @param validateRttController if RttController validation is required. If any iface creation
+     *                              is guaranteed after removing iface, this can be false. Otherwise
+     *                              this must be true.
+     * @return True if removal succeed, otherwise false.
+     */
+    private boolean removeIfaceInternal(IWifiIface iface, boolean validateRttController) {
         String name = getName(iface);
         int type = getType(iface);
         if (mDbg) Log.d(TAG, "removeIfaceInternal: iface(name)=" + name + ", type=" + type);
@@ -2386,6 +2392,10 @@ public class HalDeviceManager {
 
             // dispatch listeners no matter what status
             dispatchDestroyedListeners(name, type);
+            if (validateRttController) {
+                // Try to update the RttController
+                updateRttControllerWhenInterfaceChanges();
+            }
 
             if (status != null && status.code == WifiStatusCode.SUCCESS) {
                 return true;
@@ -2454,9 +2464,25 @@ public class HalDeviceManager {
 
         void trigger() {
             if (mHandler != null) {
-                mHandler.post(() -> {
+                // TODO(b/199792691): The thread check is needed to preserve the existing
+                //  assumptions of synchronous execution of the "onDestroyed" callback as much as
+                //  possible. This is needed to prevent regressions caused by posting to the handler
+                //  thread changing the code execution order.
+                //  When all wifi services (ie. WifiAware, WifiP2p) get moved to the wifi handler
+                //  thread, remove this thread check and the Handler#post() and simply always
+                //  invoke the callback directly.
+                long currentTid = mWifiInjector.getCurrentThreadId();
+                long handlerTid = mHandler.getLooper().getThread().getId();
+                if (currentTid == handlerTid) {
+                    // Already running on the same handler thread. Trigger listener synchronously.
                     action();
-                });
+                } else {
+                    // Current thread is not the thread the listener should be invoked on.
+                    // Post action to the intended thread.
+                    mHandler.post(() -> {
+                        action();
+                    });
+                }
             } else {
                 action();
             }
@@ -2498,8 +2524,8 @@ public class HalDeviceManager {
             ListenerProxy<InterfaceDestroyedListener> {
         private final String mIfaceName;
         InterfaceDestroyedListenerProxy(@NonNull String ifaceName,
-                                        InterfaceDestroyedListener destroyedListener,
-                                        Handler handler) {
+                                        @NonNull InterfaceDestroyedListener destroyedListener,
+                                        @NonNull Handler handler) {
             super(destroyedListener, handler, "InterfaceDestroyedListenerProxy");
             mIfaceName = ifaceName;
         }
@@ -2562,12 +2588,18 @@ public class HalDeviceManager {
 
 
     /**
-     * Updates the RttController when the chip mode is changed:
+     * Updates the RttController when the interface changes:
      * - Handles callbacks to registered listeners
      * - Handles creation of new RttController
      */
-    private void updateRttControllerOnModeChange() {
+    private void updateRttControllerWhenInterfaceChanges() {
         synchronized (mLock) {
+            if (validateRttController()) {
+                if (mDbg) {
+                    Log.d(TAG, "Current RttController is valid, Don't try to create a new one");
+                }
+                return;
+            }
             boolean controllerDestroyed = mIWifiRttController != null;
             mIWifiRttController = null;
             if (mRttControllerLifecycleCallbacks.size() == 0) {
@@ -2585,6 +2617,24 @@ public class HalDeviceManager {
                 dispatchRttControllerLifecycleOnNew();
             }
         }
+    }
+
+    private boolean validateRttController() {
+        if (mIWifiRttController == null) {
+            return false;
+        }
+        Mutable<Boolean> isRttControllerValid = new Mutable<>(false);
+        try {
+            mIWifiRttController.getBoundIface(
+                    (status, iface) -> {
+                        if (status.code == WifiStatusCode.SUCCESS) {
+                            isRttControllerValid.value = true;
+                        }
+                    });
+        } catch (RemoteException e) {
+            Log.e(TAG, "RttController: exception getBoundIface" + e);
+        }
+        return isRttControllerValid.value;
     }
 
     /**

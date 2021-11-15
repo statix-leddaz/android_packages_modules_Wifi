@@ -164,6 +164,14 @@ public class WifiConfigurationUtil {
     }
 
     /**
+     * Helper method to check if the provided |config| corresponds to a Passpoint network or not.
+     */
+    public static boolean isConfigForPasspoint(WifiConfiguration config) {
+        return config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PASSPOINT_R1_R2)
+                || config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PASSPOINT_R3);
+    }
+
+    /**
      * Helper method to check if the provided |config| corresponds to an open or enhanced
      * open network, or not.
      */
@@ -171,7 +179,8 @@ public class WifiConfigurationUtil {
         return (!(isConfigForWepNetwork(config) || isConfigForPskNetwork(config)
                 || isConfigForWapiPskNetwork(config) || isConfigForWapiCertNetwork(config)
                 || isConfigForEapNetwork(config) || isConfigForSaeNetwork(config)
-                || isConfigForWpa3Enterprise192BitNetwork(config)));
+                || isConfigForWpa3Enterprise192BitNetwork(config)
+                || isConfigForPasspoint(config)));
     }
 
     /**
@@ -696,7 +705,7 @@ public class WifiConfigurationUtil {
             return false;
         }
 
-        if (!validateEnterpriseConfig(config)) {
+        if (!validateEnterpriseConfig(config, isAdd)) {
             return false;
         }
 
@@ -874,6 +883,10 @@ public class WifiConfigurationUtil {
             return false;
         }
         if (!Objects.equals(config.SSID, config1.SSID)) {
+            return false;
+        }
+        if (!Objects.equals(config.getNetworkSelectionStatus().getCandidateSecurityParams(),
+                config1.getNetworkSelectionStatus().getCandidateSecurityParams())) {
             return false;
         }
         if (WifiConfigurationUtil.hasCredentialChanged(config, config1)) {
@@ -1140,7 +1153,14 @@ public class WifiConfigurationUtil {
      */
     public static int addSecurityTypeToNetworkId(
             int netId, @WifiConfiguration.SecurityType int securityType) {
-        if (netId == INVALID_NETWORK_ID || SdkLevel.isAtLeastS()) {
+        // Do not add Passpoint security types since R WifiTrackerLib will map both R1/R2 and R3 to
+        // EAP, which means one of the configs will clobber the other when WifiTrackerLib caches
+        // them by SSID + security type. This may cause a mismatch between a WifiInfo with an
+        // R1/R2-encoded networkId and a cached WifiConfiguration with an R3-encoded networkId,
+        // resulting in a connected Passpoint network not showing in the Wifi picker.
+        if (netId == INVALID_NETWORK_ID || SdkLevel.isAtLeastS()
+                || securityType == WifiConfiguration.SECURITY_TYPE_PASSPOINT_R1_R2
+                || securityType == WifiConfiguration.SECURITY_TYPE_PASSPOINT_R3) {
             return netId;
         }
         return removeSecurityTypeFromNetworkId(netId)
@@ -1164,7 +1184,7 @@ public class WifiConfigurationUtil {
         return netId & ~(NETWORK_ID_SECURITY_MASK << NETWORK_ID_SECURITY_OFFSET);
     }
 
-    private static boolean validateEnterpriseConfig(WifiConfiguration config) {
+    private static boolean validateEnterpriseConfig(WifiConfiguration config, boolean isAdd) {
         if ((config.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP)
                 || config.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE))
                 && !config.isEnterprise()) {
@@ -1175,7 +1195,6 @@ public class WifiConfigurationUtil {
                 || config.enterpriseConfig.getEapMethod() != WifiEnterpriseConfig.Eap.TLS)) {
             return false;
         }
-
         if (config.isEnterprise()) {
             if (config.enterpriseConfig.getEapMethod() == WifiEnterpriseConfig.Eap.PEAP
                     || config.enterpriseConfig.getEapMethod() == WifiEnterpriseConfig.Eap.TTLS) {
@@ -1185,7 +1204,9 @@ public class WifiConfigurationUtil {
                         || phase2Method == WifiEnterpriseConfig.Phase2.MSCHAPV2
                         || phase2Method == WifiEnterpriseConfig.Phase2.PAP
                         || phase2Method == WifiEnterpriseConfig.Phase2.GTC) {
-                    if (TextUtils.isEmpty(config.enterpriseConfig.getPassword())
+                    // Check the password on add only. When updating, the password may not be
+                    // available and it appears as "(Unchanged)" in Settings
+                    if ((isAdd && TextUtils.isEmpty(config.enterpriseConfig.getPassword()))
                             || TextUtils.isEmpty(config.enterpriseConfig.getIdentity())) {
                         Log.e(TAG, "Enterprise network without an identity or a password set");
                         return false;
