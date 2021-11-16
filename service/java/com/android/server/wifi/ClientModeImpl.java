@@ -6190,6 +6190,17 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             return;
         }
 
+        WifiConfiguration network = mWifiConfigManager.
+                getConfiguredNetworkWithoutMasking(config.networkId);
+        if (null != network) {
+            SecurityParams params = network.getNetworkSelectionStatus()
+                    .getCandidateSecurityParams();
+            if (null != params) {
+                config.getNetworkSelectionStatus().setCandidateSecurityParams(params);
+                return;
+            }
+        }
+
         // When a connecting request comes from network request or adding a network via
         // API directly, there might be no scan result to know the proper security params.
         // In this case, we use the first available security params to have a try first.
