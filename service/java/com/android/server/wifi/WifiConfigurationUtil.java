@@ -164,6 +164,14 @@ public class WifiConfigurationUtil {
     }
 
     /**
+     * Helper method to check if the provided |config| corresponds to a Passpoint network or not.
+     */
+    public static boolean isConfigForPasspoint(WifiConfiguration config) {
+        return config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PASSPOINT_R1_R2)
+                || config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PASSPOINT_R3);
+    }
+
+    /**
      * Helper method to check if the provided |config| corresponds to an open or enhanced
      * open network, or not.
      */
@@ -171,7 +179,8 @@ public class WifiConfigurationUtil {
         return (!(isConfigForWepNetwork(config) || isConfigForPskNetwork(config)
                 || isConfigForWapiPskNetwork(config) || isConfigForWapiCertNetwork(config)
                 || isConfigForEapNetwork(config) || isConfigForSaeNetwork(config)
-                || isConfigForWpa3Enterprise192BitNetwork(config)));
+                || isConfigForWpa3Enterprise192BitNetwork(config)
+                || isConfigForPasspoint(config)));
     }
 
     /**
@@ -1144,7 +1153,14 @@ public class WifiConfigurationUtil {
      */
     public static int addSecurityTypeToNetworkId(
             int netId, @WifiConfiguration.SecurityType int securityType) {
-        if (netId == INVALID_NETWORK_ID || SdkLevel.isAtLeastS()) {
+        // Do not add Passpoint security types since R WifiTrackerLib will map both R1/R2 and R3 to
+        // EAP, which means one of the configs will clobber the other when WifiTrackerLib caches
+        // them by SSID + security type. This may cause a mismatch between a WifiInfo with an
+        // R1/R2-encoded networkId and a cached WifiConfiguration with an R3-encoded networkId,
+        // resulting in a connected Passpoint network not showing in the Wifi picker.
+        if (netId == INVALID_NETWORK_ID || SdkLevel.isAtLeastS()
+                || securityType == WifiConfiguration.SECURITY_TYPE_PASSPOINT_R1_R2
+                || securityType == WifiConfiguration.SECURITY_TYPE_PASSPOINT_R3) {
             return netId;
         }
         return removeSecurityTypeFromNetworkId(netId)
