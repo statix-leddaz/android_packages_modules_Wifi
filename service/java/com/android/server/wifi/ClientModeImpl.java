@@ -4882,7 +4882,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             if (mVcnManager == null && SdkLevel.isAtLeastS()) {
                 mVcnManager = mContext.getSystemService(VcnManager.class);
             }
-            if (mVcnManager != null) {
+            if (mVcnManager != null && mVcnPolicyChangeListener == null) {
                 mVcnPolicyChangeListener = new WifiVcnNetworkPolicyChangeListener();
                 mVcnManager.addVcnNetworkPolicyChangeListener(new HandlerExecutor(getHandler()),
                         mVcnPolicyChangeListener);
@@ -5154,7 +5154,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             mWifiNative.removeNetworkCachedData(mLastNetworkId);
                             // remove network so that supplicant's PMKSA cache is cleared
                             mWifiNative.removeAllNetworks(mInterfaceName);
-                            if (isPrimary()) {
+                            if (isPrimary() && !mWifiCarrierInfoManager.isSimReady(mLastSubId)) {
                                 mSimRequiredNotifier.showSimRequiredNotification(
                                         config, mLastSimBasedConnectionCarrierName);
                             }
