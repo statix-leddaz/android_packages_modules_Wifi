@@ -1,0 +1,30 @@
+{
+  "comments": [
+    {
+      "robotId": "ayeaye",
+      "robotRunId": "AR00000000000017417754",
+      "url": "https://android-build.googleplex.com/builds/treetop/android-review/1894995?revision\u003d4",
+      "fixSuggestions": [],
+      "key": {
+        "uuid": "a066400d_ddfda318",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 4
+      },
+      "lineNbr": 6196,
+      "author": {
+        "id": 1757831
+      },
+      "writtenOn": "2021-11-18T06:42:43Z",
+      "side": 1,
+      "message": "Lines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details.",
+      "range": {
+        "startLine": 6196,
+        "startChar": 0,
+        "endLine": 6196,
+        "endChar": 101
+      },
+      "revId": "395f76fbd9fdb1cd0e91ac22340913f465f0ba59",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
