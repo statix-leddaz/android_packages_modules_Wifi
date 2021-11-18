@@ -920,11 +920,14 @@ public class WifiNetworkSelector {
     private void removeAutoUpgradeSecurityParamsIfNecessary(
             WifiConfiguration config,
             List<SecurityParams> scanResultParamsList,
+            @WifiConfiguration.SecurityType int baseSecurityType,
             @WifiConfiguration.SecurityType int upgradableSecurityType,
             boolean isLegacyNetworkInRange,
             boolean isUpgradableTypeOnlyInRange,
             boolean isAutoUpgradeEnabled) {
         localLog("removeAutoUpgradeSecurityParamsIfNecessary:"
+                + " SSID: " + config.SSID
+                + " baseSecurityType: " + baseSecurityType
                 + " upgradableSecurityType: " + upgradableSecurityType
                 + " isLegacyNetworkInRange: " + isLegacyNetworkInRange
                 + " isUpgradableTypeOnlyInRange: " + isUpgradableTypeOnlyInRange
@@ -932,6 +935,9 @@ public class WifiNetworkSelector {
         if (isAutoUpgradeEnabled) {
             // Consider removing the auto-upgraded type if legacy networks are in range.
             if (!isLegacyNetworkInRange) return;
+            // If base params is disabled or removed, keep the auto-upgrade params.
+            SecurityParams baseParams = config.getSecurityParams(baseSecurityType);
+            if (null == baseParams || !baseParams.isEnabled()) return;
             // If there are APs with standalone-upgradeable security type is in range,
             // do not consider removing the auto-upgraded type.
             if (isUpgradableTypeOnlyInRange) return;
@@ -952,6 +958,7 @@ public class WifiNetworkSelector {
         if (!mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()) {
             removeAutoUpgradeSecurityParamsIfNecessary(
                     config, scanResultParamsList,
+                    WifiConfiguration.SECURITY_TYPE_PSK,
                     WifiConfiguration.SECURITY_TYPE_SAE,
                     mScanRequestProxy.isWpa2PersonalOnlyNetworkInRange(config.SSID),
                     mScanRequestProxy.isWpa3PersonalOnlyNetworkInRange(config.SSID),
@@ -959,16 +966,34 @@ public class WifiNetworkSelector {
         }
         removeAutoUpgradeSecurityParamsIfNecessary(
                 config, scanResultParamsList,
+                WifiConfiguration.SECURITY_TYPE_OPEN,
                 WifiConfiguration.SECURITY_TYPE_OWE,
                 mScanRequestProxy.isOpenOnlyNetworkInRange(config.SSID),
                 mScanRequestProxy.isOweOnlyNetworkInRange(config.SSID),
                 mWifiGlobals.isOweUpgradeEnabled());
         removeAutoUpgradeSecurityParamsIfNecessary(
                 config, scanResultParamsList,
+                WifiConfiguration.SECURITY_TYPE_EAP,
                 WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE,
                 mScanRequestProxy.isWpa2EnterpriseOnlyNetworkInRange(config.SSID),
                 mScanRequestProxy.isWpa3EnterpriseOnlyNetworkInRange(config.SSID),
                 true);
+        // When using WPA3 (SAE), all passwords in all lengths are strings, but when using WPA2,
+        // there is a distinction between 8-63 octets that go through BDKDF2 function, and
+        // 64-octets that are assumed to be the output of it. BDKDF2 is not applicable to SAE
+        // and to prevent interop issues with APs when 64-octet Hex PSK is configured, update
+        // the configuration to use WPA2 only.
+        WifiConfiguration configWithPassword = mWifiConfigManager
+                .getConfiguredNetworkWithPassword(config.networkId);
+        if (configWithPassword.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)
+                && configWithPassword.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE)
+                && !configWithPassword.preSharedKey.startsWith("\"")
+                && configWithPassword.preSharedKey.length() == 64
+                && configWithPassword.preSharedKey.matches(String.format("[0-9A-Fa-f]{%d}", 64))) {
+            localLog("Remove SAE type for " + configWithPassword.SSID + " with 64-octet Hex PSK.");
+            scanResultParamsList
+                    .removeIf(p -> p.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE));
+        }
     }
 
     /**
