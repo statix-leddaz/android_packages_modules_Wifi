@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "39d42890_12b75a1e",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 5
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1240997
+      },
+      "writtenOn": "2021-11-22T19:19:44Z",
+      "side": 1,
+      "message": "Thanks for proposing the CL. We will consider it in Android T but we are not sure simply always scanning when MBB is enabled is the right thing to do. It will drain battery and hinder wifi performance if we keep scanning while already connected to a good network.",
+      "revId": "2e3ae42d90f9e515b16e88dffafaf642d1cf9fd1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
