@@ -1648,10 +1648,14 @@ public class WifiConnectivityManager {
         // 2) link is good, internet status is acceptable
         //    and it is a short time since last network selection
         // 3) There is active stream such that scan will be likely disruptive
+        // 4) if support dual STA,don't stop scan
         if (mWifiState == WIFI_STATE_CONNECTED
                 && (mNetworkSelector.isNetworkSufficient(wifiInfo)
                 || isGoodLinkAndAcceptableInternetAndShortTimeSinceLastNetworkSelection
-                || mNetworkSelector.hasActiveStream(wifiInfo))) {
+                || mNetworkSelector.hasActiveStream(wifiInfo))
+                && !(mActiveModeWarden.isStaStaConcurrencySupportedForLocalOnlyConnections()
+                || mActiveModeWarden.isStaStaConcurrencySupportedForMbb()
+                || mActiveModeWarden.isStaStaConcurrencySupportedForRestrictedConnections())) {
             // If only partial scan is proposed and firmware roaming control is supported,
             // we will not issue any scan because firmware roaming will take care of
             // intra-SSID roam.
