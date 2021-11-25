@@ -4416,6 +4416,21 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     transitionTo(mL3ProvisioningState);
                     break;
                 }
+                case WifiMonitor.SUP_REQUEST_SIM_AUTH: {
+                    logd("Received SUP_REQUEST_SIM_AUTH");
+                    SimAuthRequestData requestData = (SimAuthRequestData) message.obj;
+                    if (requestData != null) {
+                        if (requestData.protocol == WifiEnterpriseConfig.Eap.SIM) {
+                            handleGsmAuthRequest(requestData);
+                        } else if (requestData.protocol == WifiEnterpriseConfig.Eap.AKA
+                                || requestData.protocol == WifiEnterpriseConfig.Eap.AKA_PRIME) {
+                            handle3GAuthRequest(requestData);
+                        }
+                    } else {
+                        loge("Invalid SIM auth request");
+                    }
+                    break;
+                }
                 case WifiMonitor.NETWORK_DISCONNECTION_EVENT: {
                     DisconnectEventInfo eventInfo = (DisconnectEventInfo) message.obj;
                     if (mVerboseLoggingEnabled) {
@@ -4753,21 +4768,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         mWifiMetrics.logStaEvent(mInterfaceName, StaEvent.TYPE_FRAMEWORK_DISCONNECT,
                                 StaEvent.DISCONNECT_GENERIC);
                         mWifiNative.disconnect(mInterfaceName);
-                    }
-                    break;
-                }
-                case WifiMonitor.SUP_REQUEST_SIM_AUTH: {
-                    logd("Received SUP_REQUEST_SIM_AUTH");
-                    SimAuthRequestData requestData = (SimAuthRequestData) message.obj;
-                    if (requestData != null) {
-                        if (requestData.protocol == WifiEnterpriseConfig.Eap.SIM) {
-                            handleGsmAuthRequest(requestData);
-                        } else if (requestData.protocol == WifiEnterpriseConfig.Eap.AKA
-                                || requestData.protocol == WifiEnterpriseConfig.Eap.AKA_PRIME) {
-                            handle3GAuthRequest(requestData);
-                        }
-                    } else {
-                        loge("Invalid SIM auth request");
                     }
                     break;
                 }
@@ -6211,15 +6211,17 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 .collect(Collectors.toList());
         List<WifiNetworkSelector.ClientModeManagerState> cmmState = new ArrayList<>();
         cmmState.add(new WifiNetworkSelector.ClientModeManagerState(mClientModeManager));
-        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
-                scanDetailsList,
-                new HashSet<String>(),
-                cmmState,
+        // getCandidatesFromScan updates candidate security params to configurations
+        // match these scanDetails.
+        mWifiNetworkSelector.getCandidatesFromScan(
+                scanDetailsList, new HashSet<String>(), cmmState,
                 true, true, true);
-        WifiConfiguration selectedConfig = mWifiNetworkSelector.selectNetwork(candidates);
-        if (null != selectedConfig && selectedConfig.networkId == config.networkId) {
+        // Get the fresh copy again to retrieve the candidate security params.
+        WifiConfiguration freshConfig = mWifiConfigManager.getConfiguredNetwork(config.networkId);
+        if (null != freshConfig
+                && null != freshConfig.getNetworkSelectionStatus().getCandidateSecurityParams()) {
             config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                    selectedConfig.getNetworkSelectionStatus().getCandidateSecurityParams());
+                    freshConfig.getNetworkSelectionStatus().getCandidateSecurityParams());
             return;
         }
 
