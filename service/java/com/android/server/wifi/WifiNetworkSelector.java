@@ -79,6 +79,10 @@ public class WifiNetworkSelector {
     @VisibleForTesting
     public static final int WIFI_POOR_SCORE = ConnectedScore.WIFI_TRANSITION_SCORE - 10;
 
+    //add MBB trigger condition to check network quality
+    public static final int WIFI_MBB_TRIGGER_SCORE = ConnectedScore.WIFI_MAX_SCORE - 3;
+    private boolean mCheckMBBTrigger=false;
+
     /**
      * The identifier string of the CandidateScorer to use (in the absence of overrides).
      */
@@ -291,12 +295,40 @@ public class WifiNetworkSelector {
             return false;
         }
 
-        if (!hasSufficientLinkQuality(wifiInfo) && !hasActiveStream(wifiInfo)) {
+        //add MBB trigger condition to check network quality
+        if ((!hasSufficientLinkQuality(wifiInfo) && !hasActiveStream(wifiInfo)) || checkMBBTriggerContidtion()) {
             localLog("Current network link quality is not sufficient and has low ongoing traffic");
             return false;
         }
 
         return true;
+    }
+
+
+    //add MBB trigger condition to check network quality
+    private boolean checkMBBTriggerContidtion(){
+        localLog("Check MBB Trigger:"+mCheckMBBTrigger);
+        return mCheckMBBTrigger;
+    }
+
+    //MBB will work in the follow conditions
+    //when RX/TX packages more than 10, it only based on the low score(55) or Sufficient RSSI
+    public boolean TriggerMBBScan(WifiInfo wifiInfo){
+        if(wifiInfo ==  null){
+            return false;
+        }
+        if((wifiInfo.getScore() <= WIFI_POOR_SCORE)){
+            localLog("poor score trigger MBB");
+            return true;
+        }
+        if(hasActiveStream(wifiInfo) &&  !hasSufficientLinkQuality(wifiInfo) && (wifiInfo.getScore() < WIFI_MBB_TRIGGER_SCORE)){
+            localLog("ongoing traffic condition to trigger MBB");
+            mCheckMBBTrigger = true;
+            return true;
+        }
+        localLog("Insufficient condition to trigger MBB");
+        mCheckMBBTrigger = false;
+        return false;
     }
 
     private boolean isNetworkSelectionNeededForCmm(@NonNull ClientModeManagerState cmmState) {

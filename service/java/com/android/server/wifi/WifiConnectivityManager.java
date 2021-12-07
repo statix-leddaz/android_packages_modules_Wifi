@@ -1652,10 +1652,15 @@ public class WifiConnectivityManager {
                 && (mNetworkSelector.isNetworkSufficient(wifiInfo)
                 || isGoodLinkAndAcceptableInternetAndShortTimeSinceLastNetworkSelection
                 || mNetworkSelector.hasActiveStream(wifiInfo))) {
+
+            // if support MBB and the score is poor,Need to start scan
             // If only partial scan is proposed and firmware roaming control is supported,
-            // we will not issue any scan because firmware roaming will take care of
-            // intra-SSID roam.
-            if (mConnectivityHelper.isFirmwareRoamingSupported()) {
+            // we will not issue any scan because firmware roaming will take care of intra-SSID roam.
+            if(mActiveModeWarden.canRequestMoreClientModeManagersInRole(ActiveModeWarden.INTERNAL_REQUESTOR_WS,ROLE_CLIENT_SECONDARY_TRANSIENT)
+                    && mNetworkSelector.TriggerMBBScan(wifiInfo)){
+                localLog("Allow partial scan because MBB is supported.");
+                isScanNeeded = true;
+            } else if(mConnectivityHelper.isFirmwareRoamingSupported()) {
                 localLog("No partial scan because firmware roaming is supported.");
                 isScanNeeded = false;
             } else {
