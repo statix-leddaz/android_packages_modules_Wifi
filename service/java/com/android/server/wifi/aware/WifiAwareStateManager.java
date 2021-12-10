@@ -122,7 +122,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     private static final int COMMAND_TYPE_ENABLE_USAGE = 108;
     private static final int COMMAND_TYPE_DISABLE_USAGE = 109;
     private static final int COMMAND_TYPE_GET_CAPABILITIES = 111;
-    private static final int COMMAND_TYPE_CREATE_ALL_DATA_PATH_INTERFACES = 112;
     private static final int COMMAND_TYPE_DELETE_ALL_DATA_PATH_INTERFACES = 113;
     private static final int COMMAND_TYPE_CREATE_DATA_PATH_INTERFACE = 114;
     private static final int COMMAND_TYPE_DELETE_DATA_PATH_INTERFACE = 115;
@@ -882,15 +881,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     public void queryCapabilities() {
         Message msg = mSm.obtainMessage(MESSAGE_TYPE_COMMAND);
         msg.arg1 = COMMAND_TYPE_GET_CAPABILITIES;
-        mSm.sendMessage(msg);
-    }
-
-    /**
-     * Create all Aware data path interfaces which are supported by the firmware capabilities.
-     */
-    public void createAllDataPathInterfaces() {
-        Message msg = mSm.obtainMessage(MESSAGE_TYPE_COMMAND);
-        msg.arg1 = COMMAND_TYPE_CREATE_ALL_DATA_PATH_INTERFACES;
         mSm.sendMessage(msg);
     }
 
@@ -1893,10 +1883,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                         waitForResponse = false;
                     }
                     break;
-                case COMMAND_TYPE_CREATE_ALL_DATA_PATH_INTERFACES:
-                    mDataPathMgr.createAllInterfaces();
-                    waitForResponse = false;
-                    break;
                 case COMMAND_TYPE_DELETE_ALL_DATA_PATH_INTERFACES:
                     mDataPathMgr.deleteAllInterfaces();
                     waitForResponse = false;
@@ -2178,11 +2164,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                             "processTimeout: GET_CAPABILITIES timed-out - strange, will try again"
                                     + " when next enabled!?");
                     break;
-                case COMMAND_TYPE_CREATE_ALL_DATA_PATH_INTERFACES:
-                    Log.wtf(TAG,
-                            "processTimeout: CREATE_ALL_DATA_PATH_INTERFACES - shouldn't be "
-                                    + "waiting!");
-                    break;
                 case COMMAND_TYPE_DELETE_ALL_DATA_PATH_INTERFACES:
                     Log.wtf(TAG,
                             "processTimeout: DELETE_ALL_DATA_PATH_INTERFACES - shouldn't be "
@@ -2421,6 +2402,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         }
         boolean notificationRequired =
                 doesAnyClientNeedIdentityChangeNotifications() || notifyIdentityChange;
+        boolean rangingRequired = doesAnyClientNeedRanging();
 
         if (mCurrentAwareConfiguration == null) {
             mWifiAwareNativeManager.tryToGetAware(new WorkSource(uid, callingPackage));
@@ -2429,7 +2411,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         boolean success = mWifiAwareNativeApi.enableAndConfigure(transactionId, merged,
                 notificationRequired, mCurrentAwareConfiguration == null,
                 mPowerManager.isInteractive(), mPowerManager.isDeviceIdleMode(),
-                mCurrentRangingEnabled, mIsInstantCommunicationModeEnabled);
+                rangingRequired, mIsInstantCommunicationModeEnabled);
         if (!success) {
             try {
                 callback.onConnectFail(NanStatusType.INTERNAL_FAILURE);
@@ -2465,6 +2447,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         if (mClients.size() == 0) {
             mCurrentAwareConfiguration = null;
             mDataPathMgr.deleteAllInterfaces();
+            mCurrentRangingEnabled = false;
+            mCurrentIdentityNotification = false;
             deferDisableAware();
             return false;
         }
@@ -2702,6 +2686,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         onAwareDownLocal();
 
         mUsageEnabled = markAsAvailable;
+        mCurrentRangingEnabled = false;
+        mCurrentIdentityNotification = false;
         deferDisableAware();
         sendAwareStateChangedBroadcast(markAsAvailable);
         mAwareMetrics.recordDisableUsage();
@@ -2773,7 +2759,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         if (completedCommand.arg1 == COMMAND_TYPE_CONNECT) {
             if (mCurrentAwareConfiguration == null) { // enabled (as opposed to re-configured)
                 queryCapabilities();
-                createAllDataPathInterfaces();
+                mDataPathMgr.createAllInterfaces();
             }
 
             Bundle data = completedCommand.getData();
@@ -3498,6 +3484,14 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Just a proxy to call {@link WifiAwareDataPathStateManager#createAllInterfaces()} for test.
+     */
+    @VisibleForTesting
+    public void createAllDataPathInterfaces() {
+        mDataPathMgr.createAllInterfaces();
     }
 
     /**

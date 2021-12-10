@@ -76,6 +76,7 @@ import android.hidl.manager.V1_0.IServiceManager;
 import android.hidl.manager.V1_0.IServiceNotification;
 import android.net.MacAddress;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SecurityParams;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
@@ -1266,6 +1267,42 @@ public class SupplicantStaIfaceHalTest extends WifiBaseTest {
     }
 
     /**
+     * Tests the handling of association rejection for WPA3-Personal networks
+     */
+    @Test
+    public void testWpa3AuthRejectionEverConnected() throws Exception {
+        executeAndValidateInitializationSequence();
+        assertNotNull(mISupplicantStaIfaceCallback);
+
+        WifiConfiguration config = executeAndValidateConnectSequenceWithKeyMgmt(
+                SUPPLICANT_NETWORK_ID, false,
+                WifiConfiguration.SECURITY_TYPE_SAE, null, true);
+        mISupplicantStaIfaceCallback.onStateChanged(
+                ISupplicantStaIfaceCallback.State.ASSOCIATING,
+                NativeUtil.macAddressToByteArray(BSSID),
+                SUPPLICANT_NETWORK_ID,
+                NativeUtil.decodeSsid(SUPPLICANT_SSID));
+        int statusCode = ISupplicantStaIfaceCallback.StatusCode.UNSPECIFIED_FAILURE;
+        mISupplicantStaIfaceCallback.onAssociationRejected(
+                NativeUtil.macAddressToByteArray(BSSID), statusCode, false);
+        verify(mWifiMonitor, never()).broadcastAuthenticationFailureEvent(eq(WLAN0_IFACE_NAME),
+                anyInt(), anyInt());
+        ArgumentCaptor<AssocRejectEventInfo> assocRejectEventInfoCaptor =
+                ArgumentCaptor.forClass(AssocRejectEventInfo.class);
+        verify(mWifiMonitor).broadcastAssociationRejectionEvent(
+                eq(WLAN0_IFACE_NAME), assocRejectEventInfoCaptor.capture());
+        AssocRejectEventInfo assocRejectEventInfo =
+                (AssocRejectEventInfo) assocRejectEventInfoCaptor.getValue();
+        assertNotNull(assocRejectEventInfo);
+        assertEquals(SUPPLICANT_SSID, assocRejectEventInfo.ssid);
+        assertEquals(BSSID, assocRejectEventInfo.bssid);
+        assertEquals(statusCode, assocRejectEventInfo.statusCode);
+        assertFalse(assocRejectEventInfo.timedOut);
+        assertNull(assocRejectEventInfo.oceRssiBasedAssocRejectInfo);
+        assertNull(assocRejectEventInfo.mboAssocDisallowedInfo);
+    }
+
+    /**
      * Tests the handling of incorrect network passwords for WEP networks.
      */
     @Test
@@ -2074,6 +2111,9 @@ public class SupplicantStaIfaceHalTest extends WifiBaseTest {
         WifiConfiguration config = new WifiConfiguration();
         config.networkId = testFrameworkNetworkId;
         config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_EAP);
+        config.getNetworkSelectionStatus().setCandidateSecurityParams(
+                SecurityParams.createSecurityParamsBySecurityType(
+                        WifiConfiguration.SECURITY_TYPE_EAP));
         PmkCacheStoreData pmkCacheData =
                 new PmkCacheStoreData(PMK_CACHE_EXPIRATION_IN_SEC, new ArrayList<Byte>(),
                         MacAddress.fromBytes(CONNECTED_MAC_ADDRESS_BYTES));
@@ -2096,6 +2136,105 @@ public class SupplicantStaIfaceHalTest extends WifiBaseTest {
                 /* private listener */ any(),
                 eq(SupplicantStaIfaceHal.PMK_CACHE_EXPIRATION_ALARM_TAG),
                 eq((PMK_CACHE_EXPIRATION_IN_SEC - testStartSeconds) * 1000));
+    }
+
+    /**
+     * Test adding PMK cache entry to the supplicant when SAE is selected
+     * for a PSK/SAE configuration.
+     */
+    @Test
+    public void testSetPmkWhenSaeIsSelected() throws Exception {
+        int testFrameworkNetworkId = 9;
+        long testStartSeconds = PMK_CACHE_EXPIRATION_IN_SEC / 2;
+        WifiConfiguration config = WifiConfigurationTestUtil.createPskSaeNetwork();
+        config.networkId = testFrameworkNetworkId;
+        config.getNetworkSelectionStatus().setCandidateSecurityParams(
+                SecurityParams.createSecurityParamsBySecurityType(
+                        WifiConfiguration.SECURITY_TYPE_SAE));
+        PmkCacheStoreData pmkCacheData =
+                new PmkCacheStoreData(PMK_CACHE_EXPIRATION_IN_SEC, new ArrayList<Byte>(),
+                        MacAddress.fromBytes(CONNECTED_MAC_ADDRESS_BYTES));
+        mDut.mPmkCacheEntries.put(testFrameworkNetworkId, pmkCacheData);
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(testStartSeconds * 1000L);
+
+        setupMocksForHalV1_3();
+        setupMocksForPmkCache();
+        setupMocksForConnectSequence(false);
+
+        executeAndValidateInitializationSequenceV1_3();
+        assertTrue(mDut.connectToNetwork(WLAN0_IFACE_NAME, config));
+
+        verify(mSupplicantStaNetworkMock).setPmkCache(eq(pmkCacheData.data));
+        verify(mISupplicantStaIfaceCallbackV13)
+                .onPmkCacheAdded(eq(PMK_CACHE_EXPIRATION_IN_SEC), eq(pmkCacheData.data));
+        // there is only one cache entry, the next expiration alarm should be the same as
+        // its expiration time.
+        verify(mHandler).postDelayed(
+                /* private listener */ any(),
+                eq(SupplicantStaIfaceHal.PMK_CACHE_EXPIRATION_ALARM_TAG),
+                eq((PMK_CACHE_EXPIRATION_IN_SEC - testStartSeconds) * 1000));
+    }
+
+    /**
+     * Test PMK cache entry is not added to the supplicant when PSK is selected
+     * for a PSK/SAE configuration.
+     */
+    @Test
+    public void testAddPmkEntryNotCalledIfPskIsSelected() throws Exception {
+        int testFrameworkNetworkId = 9;
+        long testStartSeconds = PMK_CACHE_EXPIRATION_IN_SEC / 2;
+
+        WifiConfiguration config = WifiConfigurationTestUtil.createPskSaeNetwork();
+        config.networkId = testFrameworkNetworkId;
+        config.getNetworkSelectionStatus().setCandidateSecurityParams(
+                SecurityParams.createSecurityParamsBySecurityType(
+                        WifiConfiguration.SECURITY_TYPE_PSK));
+        PmkCacheStoreData pmkCacheData =
+                new PmkCacheStoreData(PMK_CACHE_EXPIRATION_IN_SEC, new ArrayList<Byte>(),
+                        MacAddress.fromBytes(CONNECTED_MAC_ADDRESS_BYTES));
+        mDut.mPmkCacheEntries.put(testFrameworkNetworkId, pmkCacheData);
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(testStartSeconds * 1000L);
+
+        setupMocksForHalV1_3();
+        setupMocksForPmkCache();
+        setupMocksForConnectSequence(false);
+
+        executeAndValidateInitializationSequenceV1_3();
+        assertTrue(mDut.connectToNetwork(WLAN0_IFACE_NAME, config));
+
+        verify(mSupplicantStaNetworkMock, never()).setPmkCache(any());
+        verify(mISupplicantStaIfaceCallbackV13, never())
+                .onPmkCacheAdded(anyLong(), any());
+    }
+
+    /**
+     * Test PMK cache entry is not added to the supplicant if no security
+     * params is selected.
+     */
+    @Test
+    public void testAddPmkEntryNotCalledIfNoSecurityParamsIsSelected() throws Exception {
+        int testFrameworkNetworkId = 9;
+        long testStartSeconds = PMK_CACHE_EXPIRATION_IN_SEC / 2;
+
+        WifiConfiguration config = WifiConfigurationTestUtil.createPskSaeNetwork();
+        config.networkId = testFrameworkNetworkId;
+        config.getNetworkSelectionStatus().setCandidateSecurityParams(null);
+        PmkCacheStoreData pmkCacheData =
+                new PmkCacheStoreData(PMK_CACHE_EXPIRATION_IN_SEC, new ArrayList<Byte>(),
+                        MacAddress.fromBytes(CONNECTED_MAC_ADDRESS_BYTES));
+        mDut.mPmkCacheEntries.put(testFrameworkNetworkId, pmkCacheData);
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(testStartSeconds * 1000L);
+
+        setupMocksForHalV1_3();
+        setupMocksForPmkCache();
+        setupMocksForConnectSequence(false);
+
+        executeAndValidateInitializationSequenceV1_3();
+        assertTrue(mDut.connectToNetwork(WLAN0_IFACE_NAME, config));
+
+        verify(mSupplicantStaNetworkMock, never()).setPmkCache(any());
+        verify(mISupplicantStaIfaceCallbackV13, never())
+                .onPmkCacheAdded(anyLong(), any());
     }
 
     /**
@@ -2167,6 +2306,9 @@ public class SupplicantStaIfaceHalTest extends WifiBaseTest {
         WifiConfiguration config = new WifiConfiguration();
         config.networkId = testFrameworkNetworkId;
         config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_EAP);
+        config.getNetworkSelectionStatus().setCandidateSecurityParams(
+                SecurityParams.createSecurityParamsBySecurityType(
+                        WifiConfiguration.SECURITY_TYPE_EAP));
         PmkCacheStoreData pmkCacheData =
                 new PmkCacheStoreData(PMK_CACHE_EXPIRATION_IN_SEC, new ArrayList<Byte>(),
                         MacAddress.fromBytes(CONNECTED_MAC_ADDRESS_BYTES));
@@ -2926,11 +3068,12 @@ public class SupplicantStaIfaceHalTest extends WifiBaseTest {
      * @param haveExistingNetwork Removes the existing network.
      * @param securityType The security type.
      * @param wepKey if configurations are for a WEP network else null.
+     * @param hasEverConnected indicate that this configuration is ever connected or not.
      * @return the WifiConfiguration object of the new network to connect.
      */
     private WifiConfiguration executeAndValidateConnectSequenceWithKeyMgmt(
             final int newFrameworkNetworkId, final boolean haveExistingNetwork,
-            int securityType, String wepKey) throws Exception {
+            int securityType, String wepKey, boolean hasEverConnected) throws Exception {
         setupMocksForConnectSequence(haveExistingNetwork);
         WifiConfiguration config = new WifiConfiguration();
         config.setSecurityParams(securityType);
@@ -2940,10 +3083,28 @@ public class SupplicantStaIfaceHalTest extends WifiBaseTest {
         WifiConfiguration.NetworkSelectionStatus networkSelectionStatus =
                 new WifiConfiguration.NetworkSelectionStatus();
         networkSelectionStatus.setCandidateSecurityParams(config.getSecurityParams(securityType));
+        networkSelectionStatus.setHasEverConnected(hasEverConnected);
         config.setNetworkSelectionStatus(networkSelectionStatus);
         assertTrue(mDut.connectToNetwork(WLAN0_IFACE_NAME, config));
         validateConnectSequence(haveExistingNetwork, 1);
         return config;
+    }
+
+    /**
+     * Helper function to execute all the actions to perform connection to the network.
+     *
+     * @param newFrameworkNetworkId Framework Network Id of the new network to connect.
+     * @param haveExistingNetwork Removes the existing network.
+     * @param securityType The security type.
+     * @param wepKey if configurations are for a WEP network else null.
+     * @return the WifiConfiguration object of the new network to connect.
+     */
+    private WifiConfiguration executeAndValidateConnectSequenceWithKeyMgmt(
+            final int newFrameworkNetworkId, final boolean haveExistingNetwork,
+            int securityType, String wepKey) throws Exception {
+        return executeAndValidateConnectSequenceWithKeyMgmt(
+                newFrameworkNetworkId, haveExistingNetwork,
+                securityType, wepKey, false);
     }
 
     /**

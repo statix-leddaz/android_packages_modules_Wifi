@@ -104,6 +104,7 @@ import android.net.vcn.VcnManager;
 import android.net.vcn.VcnNetworkPolicyResult;
 import android.net.wifi.IActionListener;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SecurityParams;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiConfiguration.KeyMgmt;
@@ -186,6 +187,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -875,6 +877,41 @@ public class ClientModeImplTest extends WifiBaseTest {
      * {@link WifiNative#connectToNetwork(WifiConfiguration)}.
      */
     @Test
+    public void triggerConnectWithUpgradeType() throws Exception {
+        WifiConfiguration config = spy(WifiConfigurationTestUtil.createOpenOweNetwork());
+        doAnswer(new AnswerWithArguments() {
+            public List<WifiCandidates.Candidate> answer(
+                    List<ScanDetail> scanDetails, Set<String> bssidBlocklist,
+                    List<WifiNetworkSelector.ClientModeManagerState> cmmStates,
+                    boolean untrustedNetworkAllowed,
+                    boolean oemPaidNetworkAllowed, boolean oemPrivateNetworkAllowed) {
+                config.getNetworkSelectionStatus().setCandidateSecurityParams(
+                        SecurityParams.createSecurityParamsBySecurityType(
+                                WifiConfiguration.SECURITY_TYPE_OWE));
+                return null;
+            }
+        }).when(mWifiNetworkSelector).getCandidatesFromScan(any(), any(), any(),
+                anyBoolean(), anyBoolean(), anyBoolean());
+        config.networkId = FRAMEWORK_NETWORK_ID;
+        config.setRandomizedMacAddress(TEST_LOCAL_MAC_ADDRESS);
+        config.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_AUTO;
+        config.getNetworkSelectionStatus().setHasEverConnected(mTestNetworkParams.hasEverConnected);
+        assertEquals(null, config.getNetworkSelectionStatus().getCandidateSecurityParams());
+
+        setupAndStartConnectSequence(config);
+        validateSuccessfulConnectSequence(config);
+        assertTrue(config.getNetworkSelectionStatus().getCandidateSecurityParams()
+                .isSecurityType(WifiConfiguration.SECURITY_TYPE_OWE));
+    }
+
+    /**
+     * Tests the network connection initiation sequence with the default network request pending
+     * from WifiNetworkFactory.
+     * This simulates the connect sequence using the public
+     * {@link WifiManager#enableNetwork(int, boolean)} and ensures that we invoke
+     * {@link WifiNative#connectToNetwork(WifiConfiguration)}.
+     */
+    @Test
     public void triggerConnectFromNonSettingsApp() throws Exception {
         WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
         config.networkId = FRAMEWORK_NETWORK_ID;
@@ -1120,6 +1157,42 @@ public class ClientModeImplTest extends WifiBaseTest {
         assertEquals("L3ProvisioningState", getCurrentState().getName());
     }
 
+    @Test
+    public void testSimAuthRequestIsHandledWhileAlreadyConnectedSuccess() throws Exception {
+        connect();
+
+        WifiCarrierInfoManager.SimAuthRequestData requestData =
+                new WifiCarrierInfoManager.SimAuthRequestData();
+        requestData.protocol = WifiEnterpriseConfig.Eap.SIM;
+        requestData.networkId = FRAMEWORK_NETWORK_ID;
+        String testSimAuthResponse = "TEST_SIM_AUTH_RESPONSE";
+        when(mWifiCarrierInfoManager.getGsmSimAuthResponse(any(), any()))
+                .thenReturn(testSimAuthResponse);
+        mCmi.sendMessage(WifiMonitor.SUP_REQUEST_SIM_AUTH, requestData);
+        mLooper.dispatchAll();
+
+        // Expect success
+        verify(mWifiNative).simAuthResponse(WIFI_IFACE_NAME, WifiNative.SIM_AUTH_RESP_TYPE_GSM_AUTH,
+                testSimAuthResponse);
+    }
+
+    @Test
+    public void testSimAuthRequestIsHandledWhileAlreadyConnectedFail() throws Exception {
+        connect();
+
+        WifiCarrierInfoManager.SimAuthRequestData requestData =
+                new WifiCarrierInfoManager.SimAuthRequestData();
+        requestData.protocol = WifiEnterpriseConfig.Eap.SIM;
+        requestData.networkId = FRAMEWORK_NETWORK_ID;
+        // Mock WifiCarrierInfoManager to return null so that sim auth fails.
+        when(mWifiCarrierInfoManager.getGsmSimAuthResponse(any(), any())).thenReturn(null);
+        mCmi.sendMessage(WifiMonitor.SUP_REQUEST_SIM_AUTH, requestData);
+        mLooper.dispatchAll();
+
+        // Expect failure
+        verify(mWifiNative).simAuthFailedResponse(WIFI_IFACE_NAME);
+    }
+
     /**
      * When the SIM card was removed, if the current wifi connection is not using it, the connection
      * should be kept.
@@ -1183,6 +1256,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         verify(mWifiNative, times(2)).removeAllNetworks(WIFI_IFACE_NAME);
         verify(mWifiMetrics).logStaEvent(anyString(), eq(StaEvent.TYPE_FRAMEWORK_DISCONNECT),
                 eq(StaEvent.DISCONNECT_RESET_SIM_NETWORKS));
+        verify(mSimRequiredNotifier, never()).showSimRequiredNotification(any(), anyString());
     }
 
     /**
@@ -4223,7 +4297,8 @@ public class ClientModeImplTest extends WifiBaseTest {
     }
 
     /**
-     * Verify that we do not set the user connect choice after connecting to a newly added network.
+     * Verify that we do not set the user connect choice after connecting to a newly added saved
+     * network.
      */
     @Test
     public void testNoSetUserConnectChoiceOnFirstConnection() throws Exception {
@@ -4235,12 +4310,27 @@ public class ClientModeImplTest extends WifiBaseTest {
     }
 
     /**
-     * Verify that on the second successful connection to a network we set the user connect choice.
+     * Verify that on the second successful connection to a saved network we set the user connect
+     * choice.
      */
     @Test
     public void testConnectionSetUserConnectChoiceOnSecondConnection() throws Exception {
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
         mTestNetworkParams.hasEverConnected = true;
+        connect();
+        verify(mWifiBlocklistMonitor).handleBssidConnectionSuccess(TEST_BSSID_STR, TEST_SSID);
+        verify(mWifiConfigManager).updateNetworkAfterConnect(eq(FRAMEWORK_NETWORK_ID), eq(true),
+                anyInt());
+    }
+
+    /**
+     * Verify that on the first successful connection to an ephemeral network we set the user
+     * connect choice.
+     */
+    @Test
+    public void testConnectionSetUserConnectChoiceOnEphemeralConfig() throws Exception {
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+        mConnectedNetwork.ephemeral = true;
         connect();
         verify(mWifiBlocklistMonitor).handleBssidConnectionSuccess(TEST_BSSID_STR, TEST_SSID);
         verify(mWifiConfigManager).updateNetworkAfterConnect(eq(FRAMEWORK_NETWORK_ID), eq(true),
@@ -5171,6 +5261,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         mCmi.sendMessage(ClientModeImpl.CMD_START_FILS_CONNECTION, 0, 0,
                 Collections.singletonList(l2Packet));
         mLooper.dispatchAll();
+        assertEquals("L2ConnectingState", mCmi.getCurrentState().getName());
     }
 
     /**
@@ -5278,6 +5369,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         mCmi.sendMessage(ClientModeImpl.CMD_START_CONNECT, 0, 0, TEST_BSSID_STR);
         mLooper.dispatchAll();
+        assertEquals("L2ConnectingState", mCmi.getCurrentState().getName());
 
         prepareFilsHlpPktAndSendStartConnect();
 
@@ -6324,7 +6416,7 @@ public class ClientModeImplTest extends WifiBaseTest {
             });
 
         // Verify VCN policy listener is registered
-        verify(vcnManager, atLeastOnce()).addVcnNetworkPolicyChangeListener(any(),
+        verify(vcnManager).addVcnNetworkPolicyChangeListener(any(),
                 policyChangeListenerCaptor.capture());
         assertNotNull(policyChangeListenerCaptor.getValue());
 
