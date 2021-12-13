@@ -746,6 +746,15 @@ public class ActiveModeWarden {
     }
 
     /**
+     * Checks whether there exists a primary or scan only mode manager.
+     * @return
+     */
+    private boolean hasPrimaryOrScanOnlyModeManager() {
+        return getClientModeManagerInRole(ROLE_CLIENT_PRIMARY) != null
+                || getClientModeManagerInRole(ROLE_CLIENT_SCAN_ONLY) != null;
+    }
+
+    /**
      * Returns primary client mode manager if any, else returns null
      * This mode manager can be the default route on the device & will handle all external API
      * calls.
@@ -1014,6 +1023,12 @@ public class ActiveModeWarden {
             }
             clientModeManager.setRole(ROLE_CLIENT_SCAN_ONLY, requestorWs);
         }
+    }
+
+    private void stopSecondaryClientModeManagers() {
+        stopAllClientModeManagersInRole(ROLE_CLIENT_LOCAL_ONLY);
+        stopAllClientModeManagersInRole(ROLE_CLIENT_SECONDARY_TRANSIENT);
+        stopAllClientModeManagersInRole(ROLE_CLIENT_SECONDARY_LONG_LIVED);
     }
 
     /**
@@ -1761,7 +1776,15 @@ public class ActiveModeWarden {
 
         private void handleStaToggleChangeInEnabledState(WorkSource requestorWs) {
             if (shouldEnableSta()) {
-                if (hasAnyClientModeManager()) {
+                if (hasPrimaryOrScanOnlyModeManager()) {
+                    if (!mSettingsStore.isWifiToggleEnabled()) {
+                        // Wifi is turned off, so we should stop all the secondary CMMs which are
+                        // currently all for connectivity purpose. It's important to stops the
+                        // secondary CMMs before switch state of the primary CMM so features using
+                        // those secondary CMMs knows to abort properly, and won't react in strange
+                        // ways to the primary switching to scan only mode later.
+                        stopSecondaryClientModeManagers();
+                    }
                     switchAllPrimaryOrScanOnlyClientModeManagers();
                 } else {
                     startPrimaryOrScanOnlyClientModeManager(requestorWs);

@@ -278,6 +278,11 @@ public class WifiNetworkSelector {
             return true;
         }
 
+        // Current network is set as unusable by the external scorer.
+        if (!wifiInfo.isUsable()) {
+            return false;
+        }
+
         // OEM paid/private networks are only available to system apps, so this is never sufficient.
         if (network.oemPaid || network.oemPrivate) {
             localLog("Current network is oem paid/private");
@@ -920,11 +925,14 @@ public class WifiNetworkSelector {
     private void removeAutoUpgradeSecurityParamsIfNecessary(
             WifiConfiguration config,
             List<SecurityParams> scanResultParamsList,
+            @WifiConfiguration.SecurityType int baseSecurityType,
             @WifiConfiguration.SecurityType int upgradableSecurityType,
             boolean isLegacyNetworkInRange,
             boolean isUpgradableTypeOnlyInRange,
             boolean isAutoUpgradeEnabled) {
         localLog("removeAutoUpgradeSecurityParamsIfNecessary:"
+                + " SSID: " + config.SSID
+                + " baseSecurityType: " + baseSecurityType
                 + " upgradableSecurityType: " + upgradableSecurityType
                 + " isLegacyNetworkInRange: " + isLegacyNetworkInRange
                 + " isUpgradableTypeOnlyInRange: " + isUpgradableTypeOnlyInRange
@@ -932,6 +940,9 @@ public class WifiNetworkSelector {
         if (isAutoUpgradeEnabled) {
             // Consider removing the auto-upgraded type if legacy networks are in range.
             if (!isLegacyNetworkInRange) return;
+            // If base params is disabled or removed, keep the auto-upgrade params.
+            SecurityParams baseParams = config.getSecurityParams(baseSecurityType);
+            if (null == baseParams || !baseParams.isEnabled()) return;
             // If there are APs with standalone-upgradeable security type is in range,
             // do not consider removing the auto-upgraded type.
             if (isUpgradableTypeOnlyInRange) return;
@@ -952,6 +963,7 @@ public class WifiNetworkSelector {
         if (!mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()) {
             removeAutoUpgradeSecurityParamsIfNecessary(
                     config, scanResultParamsList,
+                    WifiConfiguration.SECURITY_TYPE_PSK,
                     WifiConfiguration.SECURITY_TYPE_SAE,
                     mScanRequestProxy.isWpa2PersonalOnlyNetworkInRange(config.SSID),
                     mScanRequestProxy.isWpa3PersonalOnlyNetworkInRange(config.SSID),
@@ -959,16 +971,34 @@ public class WifiNetworkSelector {
         }
         removeAutoUpgradeSecurityParamsIfNecessary(
                 config, scanResultParamsList,
+                WifiConfiguration.SECURITY_TYPE_OPEN,
                 WifiConfiguration.SECURITY_TYPE_OWE,
                 mScanRequestProxy.isOpenOnlyNetworkInRange(config.SSID),
                 mScanRequestProxy.isOweOnlyNetworkInRange(config.SSID),
                 mWifiGlobals.isOweUpgradeEnabled());
         removeAutoUpgradeSecurityParamsIfNecessary(
                 config, scanResultParamsList,
+                WifiConfiguration.SECURITY_TYPE_EAP,
                 WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE,
                 mScanRequestProxy.isWpa2EnterpriseOnlyNetworkInRange(config.SSID),
                 mScanRequestProxy.isWpa3EnterpriseOnlyNetworkInRange(config.SSID),
                 true);
+        // When using WPA3 (SAE), all passwords in all lengths are strings, but when using WPA2,
+        // there is a distinction between 8-63 octets that go through BDKDF2 function, and
+        // 64-octets that are assumed to be the output of it. BDKDF2 is not applicable to SAE
+        // and to prevent interop issues with APs when 64-octet Hex PSK is configured, update
+        // the configuration to use WPA2 only.
+        WifiConfiguration configWithPassword = mWifiConfigManager
+                .getConfiguredNetworkWithPassword(config.networkId);
+        if (configWithPassword.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)
+                && configWithPassword.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE)
+                && !configWithPassword.preSharedKey.startsWith("\"")
+                && configWithPassword.preSharedKey.length() == 64
+                && configWithPassword.preSharedKey.matches(String.format("[0-9A-Fa-f]{%d}", 64))) {
+            localLog("Remove SAE type for " + configWithPassword.SSID + " with 64-octet Hex PSK.");
+            scanResultParamsList
+                    .removeIf(p -> p.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE));
+        }
     }
 
     /**
@@ -984,6 +1014,33 @@ public class WifiNetworkSelector {
                 && ScanResultUtil.isScanResultForWpa3EnterpriseTransitionNetwork(scanResult)) {
             params.setRequirePmf(false);
         }
+    }
+
+    /**
+     * Update the candidate security params against a scan detail.
+     *
+     * @param network the target network.
+     * @param scanDetail the target scan detail.
+     */
+    public void updateNetworkCandidateSecurityParams(
+            WifiConfiguration network, ScanDetail scanDetail) {
+        if (network == null) return;
+        if (scanDetail == null) return;
+
+        ScanResult scanResult = scanDetail.getScanResult();
+        List<SecurityParams> scanResultParamsList = ScanResultUtil
+                .generateSecurityParamsListFromScanResult(scanResult);
+        if (scanResultParamsList == null) return;
+        // Under some conditions, the legacy type is preferred to have better
+        // connectivity behaviors, and the auto-upgrade type should be removed.
+        removeSecurityParamsIfNecessary(network, scanResultParamsList);
+        SecurityParams params = ScanResultMatchInfo.getBestMatchingSecurityParams(
+                network,
+                scanResultParamsList);
+        if (params == null) return;
+        updateSecurityParamsForTransitionModeIfNecessary(scanResult, params);
+        mWifiConfigManager.setNetworkCandidateScanResult(
+                network.networkId, scanResult, 0, params);
     }
 
     /**
@@ -1011,19 +1068,7 @@ public class WifiNetworkSelector {
             WifiConfiguration config = mWifiConfigManager
                     .getConfiguredNetwork(choice.candidateKey.networkId);
             if (config == null) continue;
-            List<SecurityParams> scanResultParamsList = ScanResultUtil
-                    .generateSecurityParamsListFromScanResult(scanDetail.getScanResult());
-            if (scanResultParamsList == null) continue;
-            // Under some conditions, the legacy type is preferred to have better
-            // connectivity behaviors, and the auto-upgrade type should be removed.
-            removeSecurityParamsIfNecessary(config, scanResultParamsList);
-            SecurityParams params = ScanResultMatchInfo.getBestMatchingSecurityParams(
-                    config,
-                    scanResultParamsList);
-            if (params == null) continue;
-            updateSecurityParamsForTransitionModeIfNecessary(scanDetail.getScanResult(), params);
-            mWifiConfigManager.setNetworkCandidateScanResult(choice.candidateKey.networkId,
-                    scanDetail.getScanResult(), 0, params);
+            updateNetworkCandidateSecurityParams(config, scanDetail);
         }
 
         for (Collection<WifiCandidates.Candidate> group : groupedCandidates) {
@@ -1289,17 +1334,7 @@ public class WifiNetworkSelector {
         for (ScanDetail scanDetail : scanDetails) {
             WifiConfiguration network =
                     mWifiConfigManager.getSavedNetworkForScanDetail(scanDetail);
-            if (network == null || network.getSecurityParamsList().size() < 2) continue;
-
-            List<SecurityParams> scanResultParamsList = ScanResultUtil
-                    .generateSecurityParamsListFromScanResult(scanDetail.getScanResult());
-            if (scanResultParamsList == null) continue;
-
-            SecurityParams params = ScanResultMatchInfo.getBestMatchingSecurityParams(network,
-                    scanResultParamsList);
-            if (params == null) continue;
-
-            network.getNetworkSelectionStatus().setCandidateSecurityParams(params);
+            updateNetworkCandidateSecurityParams(network, scanDetail);
         }
     }
 }

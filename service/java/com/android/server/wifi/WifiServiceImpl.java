@@ -33,9 +33,6 @@ import static com.android.server.wifi.ClientModeImpl.RESET_SIM_REASON_DEFAULT_DA
 import static com.android.server.wifi.ClientModeImpl.RESET_SIM_REASON_SIM_INSERTED;
 import static com.android.server.wifi.ClientModeImpl.RESET_SIM_REASON_SIM_REMOVED;
 import static com.android.server.wifi.SelfRecovery.REASON_API_CALL;
-import static com.android.server.wifi.WifiConfigurationUtil.addSecurityTypeToNetworkId;
-import static com.android.server.wifi.WifiConfigurationUtil.convertWifiInfoSecurityTypeToWifiConfiguration;
-import static com.android.server.wifi.WifiConfigurationUtil.removeSecurityTypeFromNetworkId;
 import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_VERBOSE_LOGGING_ENABLED;
 
 import android.Manifest;
@@ -486,13 +483,11 @@ public class WifiServiceImpl extends BaseWifiService {
 
     private void resetCarrierNetworks(@ClientModeImpl.ResetSimReason int resetReason) {
         Log.d(TAG, "resetting carrier networks since SIM was changed");
-        if (resetReason == RESET_SIM_REASON_SIM_INSERTED
-                || resetReason == RESET_SIM_REASON_DEFAULT_DATA_SIM_CHANGED) {
+        if (resetReason == RESET_SIM_REASON_SIM_INSERTED) {
             // clear all SIM related notifications since some action was taken to address
             // "missing" SIM issue
             mSimRequiredNotifier.dismissSimRequiredNotification();
-        }
-        if (resetReason != RESET_SIM_REASON_SIM_INSERTED) {
+        } else {
             mWifiConfigManager.resetSimNetworks();
             mWifiNetworkSuggestionsManager.resetSimNetworkSuggestions();
             mPasspointManager.resetSimPasspointNetwork();
@@ -503,7 +498,7 @@ public class WifiServiceImpl extends BaseWifiService {
         for (ClientModeManager cmm : mActiveModeWarden.getClientModeManagers()) {
             cmm.resetSimAuthNetworks(resetReason);
         }
-        mWifiNetworkSuggestionsManager.resetCarrierPrivilegedApps();
+        mWifiThreadRunner.post(mWifiNetworkSuggestionsManager::resetCarrierPrivilegedApps);
         if (resetReason == RESET_SIM_REASON_SIM_INSERTED) {
             // clear the blocklists in case any SIM based network were disabled due to the SIM
             // not being available.
@@ -511,7 +506,7 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiConnectivityManager.forceConnectivityScan(ClientModeImpl.WIFI_WORK_SOURCE);
         } else {
             // Remove all ephemeral carrier networks keep subscriptionId update with SIM changes
-            mWifiConfigManager.removeEphemeralCarrierNetworks();
+            mWifiThreadRunner.post(mWifiConfigManager::removeEphemeralCarrierNetworks);
         }
     }
 
@@ -2723,9 +2718,6 @@ public class WifiServiceImpl extends BaseWifiService {
             throw new SecurityException("Caller is not a device owner, profile owner, system app,"
                     + " or privileged app");
         }
-        if (config != null) {
-            config.networkId = removeSecurityTypeFromNetworkId(config.networkId);
-        }
         return addOrUpdateNetworkInternal(config, packageName, uid);
     }
 
@@ -2745,9 +2737,6 @@ public class WifiServiceImpl extends BaseWifiService {
             mLog.info("addOrUpdateNetwork not allowed for uid=%")
                     .c(Binder.getCallingUid()).flush();
             return -1;
-        }
-        if (config != null) {
-            config.networkId = removeSecurityTypeFromNetworkId(config.networkId);
         }
         mLog.info("addOrUpdateNetwork uid=%").c(Binder.getCallingUid()).flush();
         return addOrUpdateNetworkInternal(config, packageName, callingUid).networkId;
@@ -2817,8 +2806,7 @@ public class WifiServiceImpl extends BaseWifiService {
                         .getNetworkId(),
                 WifiConfiguration.INVALID_NETWORK_ID);
         if (networkId >= 0) {
-            return new AddNetworkResult(AddNetworkResult.STATUS_SUCCESS, addSecurityTypeToNetworkId(
-                    networkId, config.getDefaultSecurityParams().getSecurityType()));
+            return new AddNetworkResult(AddNetworkResult.STATUS_SUCCESS, networkId);
         }
         return new AddNetworkResult(
                 AddNetworkResult.STATUS_ADD_WIFI_CONFIG_FAILURE, -1);
@@ -2855,12 +2843,10 @@ public class WifiServiceImpl extends BaseWifiService {
                     .c(Binder.getCallingUid()).flush();
             return false;
         }
-        final int internalNetId = removeSecurityTypeFromNetworkId(netId);
         int callingUid = Binder.getCallingUid();
         mLog.info("removeNetwork uid=%").c(callingUid).flush();
         return mWifiThreadRunner.call(
-                () -> mWifiConfigManager.removeNetwork(internalNetId, callingUid, packageName),
-                false);
+                () -> mWifiConfigManager.removeNetwork(netId, callingUid, packageName), false);
     }
 
     @Override
@@ -2932,7 +2918,6 @@ public class WifiServiceImpl extends BaseWifiService {
                     .c(Binder.getCallingUid()).flush();
             return false;
         }
-        final int internalNetId = removeSecurityTypeFromNetworkId(netId);
         int callingUid = Binder.getCallingUid();
         // TODO b/33807876 Log netId
         mLog.info("enableNetwork uid=% disableOthers=%")
@@ -2941,11 +2926,10 @@ public class WifiServiceImpl extends BaseWifiService {
 
         mWifiMetrics.incrementNumEnableNetworkCalls();
         if (disableOthers) {
-            return triggerConnectAndReturnStatus(internalNetId, callingUid);
+            return triggerConnectAndReturnStatus(netId, callingUid);
         } else {
             return mWifiThreadRunner.call(
-                    () -> mWifiConfigManager.enableNetwork(
-                            internalNetId, false, callingUid, packageName),
+                    () -> mWifiConfigManager.enableNetwork(netId, false, callingUid, packageName),
                     false);
         }
     }
@@ -2967,12 +2951,10 @@ public class WifiServiceImpl extends BaseWifiService {
                     .c(Binder.getCallingUid()).flush();
             return false;
         }
-        final int internalNetId = removeSecurityTypeFromNetworkId(netId);
         int callingUid = Binder.getCallingUid();
         mLog.info("disableNetwork uid=%").c(callingUid).flush();
         return mWifiThreadRunner.call(
-                () -> mWifiConfigManager.disableNetwork(
-                        internalNetId, callingUid, packageName), false);
+                () -> mWifiConfigManager.disableNetwork(netId, callingUid, packageName), false);
     }
 
     /**
@@ -3047,11 +3029,10 @@ public class WifiServiceImpl extends BaseWifiService {
     public void allowAutojoin(int netId, boolean choice) {
         enforceNetworkSettingsPermission();
 
-        final int internalNetId = removeSecurityTypeFromNetworkId(netId);
         int callingUid = Binder.getCallingUid();
         mLog.info("allowAutojoin=% uid=%").c(choice).c(callingUid).flush();
         mWifiThreadRunner.post(() -> {
-            WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(internalNetId);
+            WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(netId);
             if (config == null) {
                 return;
             }
@@ -3078,13 +3059,13 @@ public class WifiServiceImpl extends BaseWifiService {
             // even for Suggestion, modify the current ephemeral configuration so that
             // existing configuration auto-connection is updated correctly
             if (choice != config.allowAutojoin) {
-                mWifiConfigManager.allowAutojoin(internalNetId, choice);
+                mWifiConfigManager.allowAutojoin(netId, choice);
                 // do not log this metrics for passpoint networks again here since it's already
                 // logged in PasspointManager.
                 if (!config.isPasspoint()) {
                     mWifiMetrics.logUserActionEvent(choice
                             ? UserActionEvent.EVENT_CONFIGURE_AUTO_CONNECT_ON
-                            : UserActionEvent.EVENT_CONFIGURE_AUTO_CONNECT_OFF, internalNetId);
+                            : UserActionEvent.EVENT_CONFIGURE_AUTO_CONNECT_OFF, netId);
                 }
             }
         });
@@ -3216,11 +3197,7 @@ public class WifiServiceImpl extends BaseWifiService {
                     Log.v(TAG, "Keeping REDACT_FOR_ACCESS_FINE_LOCATION:" + ignored);
                 }
             }
-            WifiInfo wifiInfoCopy = wifiInfo.makeCopy(redactions);
-            wifiInfoCopy.setNetworkId(addSecurityTypeToNetworkId(wifiInfoCopy.getNetworkId(),
-                    convertWifiInfoSecurityTypeToWifiConfiguration(
-                            wifiInfoCopy.getCurrentSecurityType())));
-            return wifiInfoCopy;
+            return wifiInfo.makeCopy(redactions);
         } finally {
             Binder.restoreCallingIdentity(ident);
         }
@@ -4661,9 +4638,7 @@ public class WifiServiceImpl extends BaseWifiService {
                         mDppManager.startDppAsConfiguratorInitiator(
                                 uid, packageName,
                                 mActiveModeWarden.getPrimaryClientModeManager().getInterfaceName(),
-                                binder, enrolleeUri,
-                                removeSecurityTypeFromNetworkId(selectedNetworkId), netRole,
-                                callback)));
+                                binder, enrolleeUri, selectedNetworkId, netRole, callback)));
     }
 
     /**
@@ -4934,10 +4909,6 @@ public class WifiServiceImpl extends BaseWifiService {
         if (!isPrivileged(Binder.getCallingPid(), uid)) {
             throw new SecurityException(TAG + ": Permission denied");
         }
-        if (config != null) {
-            config.networkId = removeSecurityTypeFromNetworkId(config.networkId);
-        }
-        final int netIdArg = removeSecurityTypeFromNetworkId(netId);
         mLog.info("connect uid=%").c(uid).flush();
         mWifiThreadRunner.post(() -> {
             ActionListenerWrapper wrapper = new ActionListenerWrapper(callback);
@@ -4957,15 +4928,14 @@ public class WifiServiceImpl extends BaseWifiService {
                 broadcastWifiCredentialChanged(WifiManager.WIFI_CREDENTIAL_SAVED, config);
             } else {
                 if (mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)) {
-                    mWifiMetrics.logUserActionEvent(
-                            UserActionEvent.EVENT_MANUAL_CONNECT, netIdArg);
+                    mWifiMetrics.logUserActionEvent(UserActionEvent.EVENT_MANUAL_CONNECT, netId);
                 }
-                result = new NetworkUpdateResult(netIdArg);
+                result = new NetworkUpdateResult(netId);
             }
             WifiConfiguration configuration = mWifiConfigManager
                     .getConfiguredNetwork(result.getNetworkId());
             if (configuration == null) {
-                Log.e(TAG, "connect to Invalid network Id=" + netIdArg);
+                Log.e(TAG, "connect to Invalid network Id=" + netId);
                 wrapper.sendFailure(WifiManager.ERROR);
                 return;
             }
@@ -4986,6 +4956,34 @@ public class WifiServiceImpl extends BaseWifiService {
                     return;
                 }
             }
+
+            // Tear down secondary CMMs that are already connected to the same network to make
+            // sure the user's manual connection succeeds.
+            ScanResultMatchInfo targetMatchInfo =
+                    ScanResultMatchInfo.fromWifiConfiguration(configuration);
+            for (ClientModeManager cmm : mActiveModeWarden.getClientModeManagers()) {
+                if (!cmm.isConnected()) {
+                    continue;
+                }
+                ActiveModeManager.ClientRole role = cmm.getRole();
+                if (role == ROLE_CLIENT_LOCAL_ONLY || role == ROLE_CLIENT_SECONDARY_LONG_LIVED) {
+                    WifiConfiguration connectedConfig = cmm.getConnectedWifiConfiguration();
+                    if (connectedConfig == null) {
+                        continue;
+                    }
+                    ScanResultMatchInfo connectedMatchInfo =
+                            ScanResultMatchInfo.fromWifiConfiguration(connectedConfig);
+                    if (targetMatchInfo.matchForNetworkSelection(connectedMatchInfo) == null) {
+                        continue;
+                    }
+                    if (isVerboseLoggingEnabled()) {
+                        Log.v(TAG, "Shutting down client mode manager to satisfy user "
+                                + "connection: " + cmm);
+                    }
+                    cmm.stop();
+                }
+            }
+
             mMakeBeforeBreakManager.stopAllSecondaryTransientClientModeManagers(() ->
                     mConnectHelper.connectToNetwork(result, wrapper, uid));
         });
@@ -5000,9 +4998,6 @@ public class WifiServiceImpl extends BaseWifiService {
         int uid = Binder.getCallingUid();
         if (!isPrivileged(Binder.getCallingPid(), uid)) {
             throw new SecurityException(TAG + ": Permission denied");
-        }
-        if (config != null) {
-            config.networkId = removeSecurityTypeFromNetworkId(config.networkId);
         }
         mLog.info("save uid=%").c(uid).flush();
         mWifiThreadRunner.post(() -> {
@@ -5033,16 +5028,15 @@ public class WifiServiceImpl extends BaseWifiService {
         if (!isPrivileged(Binder.getCallingPid(), uid)) {
             throw new SecurityException(TAG + ": Permission denied");
         }
-        final int internalNetId = removeSecurityTypeFromNetworkId(netId);
         mLog.info("forget uid=%").c(Binder.getCallingUid()).flush();
         if (mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)) {
             // It's important to log this metric before the actual forget executes because
             // the netId becomes invalid after the forget operation.
-            mWifiMetrics.logUserActionEvent(UserActionEvent.EVENT_FORGET_WIFI, internalNetId);
+            mWifiMetrics.logUserActionEvent(UserActionEvent.EVENT_FORGET_WIFI, netId);
         }
         mWifiThreadRunner.post(() -> {
-            WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(internalNetId);
-            boolean success = mWifiConfigManager.removeNetwork(internalNetId, uid, null);
+            WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(netId);
+            boolean success = mWifiConfigManager.removeNetwork(netId, uid, null);
             ActionListenerWrapper wrapper = new ActionListenerWrapper(callback);
             if (success) {
                 wrapper.sendSuccess();
