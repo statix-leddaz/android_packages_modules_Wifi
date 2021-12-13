@@ -104,6 +104,7 @@ import android.net.vcn.VcnManager;
 import android.net.vcn.VcnNetworkPolicyResult;
 import android.net.wifi.IActionListener;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SecurityParams;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiConfiguration.KeyMgmt;
@@ -875,6 +876,47 @@ public class ClientModeImplTest extends WifiBaseTest {
      * {@link WifiNative#connectToNetwork(WifiConfiguration)}.
      */
     @Test
+    public void triggerConnectWithUpgradeType() throws Exception {
+        String ssid = "TestOpenOweSsid";
+        WifiConfiguration config = spy(WifiConfigurationTestUtil.createOpenOweNetwork(
+                ScanResultUtil.createQuotedSSID(ssid)));
+        doAnswer(new AnswerWithArguments() {
+            public void answer(
+                    WifiConfiguration network, ScanDetail scanDetail) {
+                if (!config.SSID.equals(network.SSID)) return;
+                config.getNetworkSelectionStatus().setCandidateSecurityParams(
+                        SecurityParams.createSecurityParamsBySecurityType(
+                                WifiConfiguration.SECURITY_TYPE_OWE));
+            }
+        }).when(mWifiNetworkSelector).updateNetworkCandidateSecurityParams(any(), any());
+        String caps = "[RSN-OWE_TRANSITION]";
+        ScanResult scanResult = new ScanResult(WifiSsid.createFromAsciiEncoded(ssid),
+                ssid, TEST_BSSID_STR, 1245, 0, caps, -78, 2412, 1025, 22, 33, 20, 0, 0, true);
+        ScanResult.InformationElement ie = createIE(ScanResult.InformationElement.EID_SSID,
+                ssid.getBytes(StandardCharsets.UTF_8));
+        scanResult.informationElements = new ScanResult.InformationElement[]{ie};
+        when(mScanRequestProxy.getScanResults()).thenReturn(Arrays.asList(scanResult));
+
+        config.networkId = FRAMEWORK_NETWORK_ID;
+        config.setRandomizedMacAddress(TEST_LOCAL_MAC_ADDRESS);
+        config.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_AUTO;
+        config.getNetworkSelectionStatus().setHasEverConnected(mTestNetworkParams.hasEverConnected);
+        assertEquals(null, config.getNetworkSelectionStatus().getCandidateSecurityParams());
+
+        setupAndStartConnectSequence(config);
+        validateSuccessfulConnectSequence(config);
+        assertTrue(config.getNetworkSelectionStatus().getCandidateSecurityParams()
+                .isSecurityType(WifiConfiguration.SECURITY_TYPE_OWE));
+    }
+
+    /**
+     * Tests the network connection initiation sequence with the default network request pending
+     * from WifiNetworkFactory.
+     * This simulates the connect sequence using the public
+     * {@link WifiManager#enableNetwork(int, boolean)} and ensures that we invoke
+     * {@link WifiNative#connectToNetwork(WifiConfiguration)}.
+     */
+    @Test
     public void triggerConnectFromNonSettingsApp() throws Exception {
         WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
         config.networkId = FRAMEWORK_NETWORK_ID;
@@ -1118,6 +1160,42 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         // then move to next state
         assertEquals("L3ProvisioningState", getCurrentState().getName());
+    }
+
+    @Test
+    public void testSimAuthRequestIsHandledWhileAlreadyConnectedSuccess() throws Exception {
+        connect();
+
+        WifiCarrierInfoManager.SimAuthRequestData requestData =
+                new WifiCarrierInfoManager.SimAuthRequestData();
+        requestData.protocol = WifiEnterpriseConfig.Eap.SIM;
+        requestData.networkId = FRAMEWORK_NETWORK_ID;
+        String testSimAuthResponse = "TEST_SIM_AUTH_RESPONSE";
+        when(mWifiCarrierInfoManager.getGsmSimAuthResponse(any(), any()))
+                .thenReturn(testSimAuthResponse);
+        mCmi.sendMessage(WifiMonitor.SUP_REQUEST_SIM_AUTH, requestData);
+        mLooper.dispatchAll();
+
+        // Expect success
+        verify(mWifiNative).simAuthResponse(WIFI_IFACE_NAME, WifiNative.SIM_AUTH_RESP_TYPE_GSM_AUTH,
+                testSimAuthResponse);
+    }
+
+    @Test
+    public void testSimAuthRequestIsHandledWhileAlreadyConnectedFail() throws Exception {
+        connect();
+
+        WifiCarrierInfoManager.SimAuthRequestData requestData =
+                new WifiCarrierInfoManager.SimAuthRequestData();
+        requestData.protocol = WifiEnterpriseConfig.Eap.SIM;
+        requestData.networkId = FRAMEWORK_NETWORK_ID;
+        // Mock WifiCarrierInfoManager to return null so that sim auth fails.
+        when(mWifiCarrierInfoManager.getGsmSimAuthResponse(any(), any())).thenReturn(null);
+        mCmi.sendMessage(WifiMonitor.SUP_REQUEST_SIM_AUTH, requestData);
+        mLooper.dispatchAll();
+
+        // Expect failure
+        verify(mWifiNative).simAuthFailedResponse(WIFI_IFACE_NAME);
     }
 
     /**

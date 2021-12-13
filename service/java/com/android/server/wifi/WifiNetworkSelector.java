@@ -278,6 +278,11 @@ public class WifiNetworkSelector {
             return true;
         }
 
+        // Current network is set as unusable by the external scorer.
+        if (!wifiInfo.isUsable()) {
+            return false;
+        }
+
         // OEM paid/private networks are only available to system apps, so this is never sufficient.
         if (network.oemPaid || network.oemPrivate) {
             localLog("Current network is oem paid/private");
@@ -1012,6 +1017,33 @@ public class WifiNetworkSelector {
     }
 
     /**
+     * Update the candidate security params against a scan detail.
+     *
+     * @param network the target network.
+     * @param scanDetail the target scan detail.
+     */
+    public void updateNetworkCandidateSecurityParams(
+            WifiConfiguration network, ScanDetail scanDetail) {
+        if (network == null) return;
+        if (scanDetail == null) return;
+
+        ScanResult scanResult = scanDetail.getScanResult();
+        List<SecurityParams> scanResultParamsList = ScanResultUtil
+                .generateSecurityParamsListFromScanResult(scanResult);
+        if (scanResultParamsList == null) return;
+        // Under some conditions, the legacy type is preferred to have better
+        // connectivity behaviors, and the auto-upgrade type should be removed.
+        removeSecurityParamsIfNecessary(network, scanResultParamsList);
+        SecurityParams params = ScanResultMatchInfo.getBestMatchingSecurityParams(
+                network,
+                scanResultParamsList);
+        if (params == null) return;
+        updateSecurityParamsForTransitionModeIfNecessary(scanResult, params);
+        mWifiConfigManager.setNetworkCandidateScanResult(
+                network.networkId, scanResult, 0, params);
+    }
+
+    /**
      * Using the registered Scorers, choose the best network from the list of Candidate(s).
      * The ScanDetailCache is also updated here.
      * @param candidates - Candidates to perferm network selection on.
@@ -1036,19 +1068,7 @@ public class WifiNetworkSelector {
             WifiConfiguration config = mWifiConfigManager
                     .getConfiguredNetwork(choice.candidateKey.networkId);
             if (config == null) continue;
-            List<SecurityParams> scanResultParamsList = ScanResultUtil
-                    .generateSecurityParamsListFromScanResult(scanDetail.getScanResult());
-            if (scanResultParamsList == null) continue;
-            // Under some conditions, the legacy type is preferred to have better
-            // connectivity behaviors, and the auto-upgrade type should be removed.
-            removeSecurityParamsIfNecessary(config, scanResultParamsList);
-            SecurityParams params = ScanResultMatchInfo.getBestMatchingSecurityParams(
-                    config,
-                    scanResultParamsList);
-            if (params == null) continue;
-            updateSecurityParamsForTransitionModeIfNecessary(scanDetail.getScanResult(), params);
-            mWifiConfigManager.setNetworkCandidateScanResult(choice.candidateKey.networkId,
-                    scanDetail.getScanResult(), 0, params);
+            updateNetworkCandidateSecurityParams(config, scanDetail);
         }
 
         for (Collection<WifiCandidates.Candidate> group : groupedCandidates) {
@@ -1314,17 +1334,7 @@ public class WifiNetworkSelector {
         for (ScanDetail scanDetail : scanDetails) {
             WifiConfiguration network =
                     mWifiConfigManager.getSavedNetworkForScanDetail(scanDetail);
-            if (network == null || network.getSecurityParamsList().size() < 2) continue;
-
-            List<SecurityParams> scanResultParamsList = ScanResultUtil
-                    .generateSecurityParamsListFromScanResult(scanDetail.getScanResult());
-            if (scanResultParamsList == null) continue;
-
-            SecurityParams params = ScanResultMatchInfo.getBestMatchingSecurityParams(network,
-                    scanResultParamsList);
-            if (params == null) continue;
-
-            network.getNetworkSelectionStatus().setCandidateSecurityParams(params);
+            updateNetworkCandidateSecurityParams(network, scanDetail);
         }
     }
 }

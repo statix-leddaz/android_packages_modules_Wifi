@@ -156,7 +156,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -4416,6 +4415,21 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     transitionTo(mL3ProvisioningState);
                     break;
                 }
+                case WifiMonitor.SUP_REQUEST_SIM_AUTH: {
+                    logd("Received SUP_REQUEST_SIM_AUTH");
+                    SimAuthRequestData requestData = (SimAuthRequestData) message.obj;
+                    if (requestData != null) {
+                        if (requestData.protocol == WifiEnterpriseConfig.Eap.SIM) {
+                            handleGsmAuthRequest(requestData);
+                        } else if (requestData.protocol == WifiEnterpriseConfig.Eap.AKA
+                                || requestData.protocol == WifiEnterpriseConfig.Eap.AKA_PRIME) {
+                            handle3GAuthRequest(requestData);
+                        }
+                    } else {
+                        loge("Invalid SIM auth request");
+                    }
+                    break;
+                }
                 case WifiMonitor.NETWORK_DISCONNECTION_EVENT: {
                     DisconnectEventInfo eventInfo = (DisconnectEventInfo) message.obj;
                     if (mVerboseLoggingEnabled) {
@@ -4753,21 +4767,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         mWifiMetrics.logStaEvent(mInterfaceName, StaEvent.TYPE_FRAMEWORK_DISCONNECT,
                                 StaEvent.DISCONNECT_GENERIC);
                         mWifiNative.disconnect(mInterfaceName);
-                    }
-                    break;
-                }
-                case WifiMonitor.SUP_REQUEST_SIM_AUTH: {
-                    logd("Received SUP_REQUEST_SIM_AUTH");
-                    SimAuthRequestData requestData = (SimAuthRequestData) message.obj;
-                    if (requestData != null) {
-                        if (requestData.protocol == WifiEnterpriseConfig.Eap.SIM) {
-                            handleGsmAuthRequest(requestData);
-                        } else if (requestData.protocol == WifiEnterpriseConfig.Eap.AKA
-                                || requestData.protocol == WifiEnterpriseConfig.Eap.AKA_PRIME) {
-                            handle3GAuthRequest(requestData);
-                        }
-                    } else {
-                        loge("Invalid SIM auth request");
                     }
                     break;
                 }
@@ -6204,22 +6203,18 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         // This comes from wifi picker directly so there is no candidate security params.
         // Run network selection against this SSID.
-        List<ScanDetail> scanDetailsList = scanResults.stream()
+        scanResults.stream()
                 .filter(scanResult -> config.SSID.equals(
                         ScanResultUtil.createQuotedSSID(scanResult.SSID)))
                 .map(ScanResultUtil::toScanDetail)
-                .collect(Collectors.toList());
-        List<WifiNetworkSelector.ClientModeManagerState> cmmState = new ArrayList<>();
-        cmmState.add(new WifiNetworkSelector.ClientModeManagerState(mClientModeManager));
-        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
-                scanDetailsList,
-                new HashSet<String>(),
-                cmmState,
-                true, true, true);
-        WifiConfiguration selectedConfig = mWifiNetworkSelector.selectNetwork(candidates);
-        if (null != selectedConfig && selectedConfig.networkId == config.networkId) {
+                .forEach(scanDetail -> mWifiNetworkSelector
+                        .updateNetworkCandidateSecurityParams(config, scanDetail));
+        // Get the fresh copy again to retrieve the candidate security params.
+        WifiConfiguration freshConfig = mWifiConfigManager.getConfiguredNetwork(config.networkId);
+        if (null != freshConfig
+                && null != freshConfig.getNetworkSelectionStatus().getCandidateSecurityParams()) {
             config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                    selectedConfig.getNetworkSelectionStatus().getCandidateSecurityParams());
+                    freshConfig.getNetworkSelectionStatus().getCandidateSecurityParams());
             return;
         }
 
