@@ -751,12 +751,17 @@ public class SupplicantStaIfaceHal {
         synchronized (mLock) {
             // Register for a new death listener to block until supplicant is dead.
             final long waitForDeathCookie = new Random().nextLong();
+            final long currentDeathRecipientCookie = mDeathRecipientCookie;
             final CountDownLatch waitForDeathLatch = new CountDownLatch(1);
             linkToSupplicantDeath((cookie) -> {
-                Log.d(TAG, "ISupplicant died: cookie=" + cookie);
-                if (cookie != waitForDeathCookie) return;
-                supplicantServiceDiedHandler(mDeathRecipientCookie);
-                waitForDeathLatch.countDown();
+                mEventHandler.post(() -> {
+                    synchronized (mLock) {
+                        Log.w(TAG, "ISupplicant died: cookie=" + cookie);
+                        if (cookie != waitForDeathCookie) return;
+                        supplicantServiceDiedHandler(currentDeathRecipientCookie);
+                        waitForDeathLatch.countDown();
+                    }
+                });
             }, waitForDeathCookie);
 
             if (isV1_1()) {
