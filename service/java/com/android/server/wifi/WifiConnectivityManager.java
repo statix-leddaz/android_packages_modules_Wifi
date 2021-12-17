@@ -1686,9 +1686,10 @@ public class WifiConnectivityManager {
             // Set up the next scan interval in an exponential backoff fashion.
             mCurrentSingleScanScheduleIndex++;
         } else {
-            // Since we already skipped this scan, keep the same scan interval for next scan.
+            // Since the network is good enough, we can increase the scan interval for next scan.
             schedulePeriodicScanTimer(
                     getScheduledSingleScanIntervalMs(mCurrentSingleScanScheduleIndex));
+            mCurrentSingleScanScheduleIndex++;
         }
     }
 
