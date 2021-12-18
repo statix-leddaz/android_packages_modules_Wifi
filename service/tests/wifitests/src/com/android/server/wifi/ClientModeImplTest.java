@@ -44,6 +44,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -187,7 +188,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -878,20 +878,26 @@ public class ClientModeImplTest extends WifiBaseTest {
      */
     @Test
     public void triggerConnectWithUpgradeType() throws Exception {
-        WifiConfiguration config = spy(WifiConfigurationTestUtil.createOpenOweNetwork());
+        String ssid = "TestOpenOweSsid";
+        WifiConfiguration config = spy(WifiConfigurationTestUtil.createOpenOweNetwork(
+                ScanResultUtil.createQuotedSSID(ssid)));
         doAnswer(new AnswerWithArguments() {
-            public List<WifiCandidates.Candidate> answer(
-                    List<ScanDetail> scanDetails, Set<String> bssidBlocklist,
-                    List<WifiNetworkSelector.ClientModeManagerState> cmmStates,
-                    boolean untrustedNetworkAllowed,
-                    boolean oemPaidNetworkAllowed, boolean oemPrivateNetworkAllowed) {
+            public void answer(
+                    WifiConfiguration network, ScanDetail scanDetail) {
+                if (!config.SSID.equals(network.SSID)) return;
                 config.getNetworkSelectionStatus().setCandidateSecurityParams(
                         SecurityParams.createSecurityParamsBySecurityType(
                                 WifiConfiguration.SECURITY_TYPE_OWE));
-                return null;
             }
-        }).when(mWifiNetworkSelector).getCandidatesFromScan(any(), any(), any(),
-                anyBoolean(), anyBoolean(), anyBoolean());
+        }).when(mWifiNetworkSelector).updateNetworkCandidateSecurityParams(any(), any());
+        String caps = "[RSN-OWE_TRANSITION]";
+        ScanResult scanResult = new ScanResult(WifiSsid.createFromAsciiEncoded(ssid),
+                ssid, TEST_BSSID_STR, 1245, 0, caps, -78, 2412, 1025, 22, 33, 20, 0, 0, true);
+        ScanResult.InformationElement ie = createIE(ScanResult.InformationElement.EID_SSID,
+                ssid.getBytes(StandardCharsets.UTF_8));
+        scanResult.informationElements = new ScanResult.InformationElement[]{ie};
+        when(mScanRequestProxy.getScanResults()).thenReturn(Arrays.asList(scanResult));
+
         config.networkId = FRAMEWORK_NETWORK_ID;
         config.setRandomizedMacAddress(TEST_LOCAL_MAC_ADDRESS);
         config.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_AUTO;
@@ -6742,5 +6748,104 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         triggerConnect();
+    }
+
+    private void verifyUpdateAutoUpgradeFlagForSaeOnR(
+            boolean isWpa3SaeUpgradeEnabled, boolean isWpa2PersonalOnlyNetworkInRange,
+            boolean isWpa2Wpa3PersonalTransitionNetworkInRange,
+            boolean isWpa3PersonalOnlyNetworkInRange, boolean shouldBeUpdated)
+            throws Exception {
+
+        when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(isWpa3SaeUpgradeEnabled);
+        when(mScanRequestProxy.isWpa2PersonalOnlyNetworkInRange(any()))
+                .thenReturn(isWpa2PersonalOnlyNetworkInRange);
+        when(mScanRequestProxy.isWpa2Wpa3PersonalTransitionNetworkInRange(any()))
+                .thenReturn(isWpa2Wpa3PersonalTransitionNetworkInRange);
+        when(mScanRequestProxy.isWpa3PersonalOnlyNetworkInRange(any()))
+                .thenReturn(isWpa3PersonalOnlyNetworkInRange);
+        initializeAndAddNetworkAndVerifySuccess();
+
+        WifiConfiguration config = WifiConfigurationTestUtil.createPskSaeNetwork();
+        config.networkId = TEST_NETWORK_ID;
+        when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(config);
+
+        IActionListener connectActionListener = mock(IActionListener.class);
+        mCmi.connectNetwork(
+                new NetworkUpdateResult(TEST_NETWORK_ID),
+                new ActionListenerWrapper(connectActionListener),
+                Process.SYSTEM_UID);
+        mLooper.dispatchAll();
+        verify(connectActionListener).onSuccess();
+        if (shouldBeUpdated) {
+            verify(mWifiConfigManager).updateIsAddedByAutoUpgradeFlag(
+                    eq(TEST_NETWORK_ID), eq(WifiConfiguration.SECURITY_TYPE_SAE),
+                    eq(false));
+        } else {
+            verify(mWifiConfigManager, never()).updateIsAddedByAutoUpgradeFlag(
+                    anyInt(), anyInt(), anyBoolean());
+        }
+    }
+
+    /**
+     * Tests that manual connection to a network (from settings app) updates
+     * the auto upgrade flag for SAE on R.
+     * - SAE auto-upgrade is disabled.
+     * - No WPA2 PSK network
+     * - No WPA2/WPA3 network
+     * - A WPA3-SAE-only network exists.
+     */
+    @Test
+    public void testManualConnectUpdateAutoUpgradeFlagForSaeOnR() throws Exception {
+        assumeFalse(SdkLevel.isAtLeastS());
+
+        verifyUpdateAutoUpgradeFlagForSaeOnR(false, false, false, true, true);
+    }
+
+    /**
+     * Tests that manual connection to a network (from settings app) does not update
+     * the auto upgrade flag for SAE on R if auto-upgrade is enabled.
+     */
+    @Test
+    public void testManualConnectNotUpdateAutoUpgradeFlagForSaeOnRWhenAutoUpgradeEnabled()
+            throws Exception {
+        assumeFalse(SdkLevel.isAtLeastS());
+
+        verifyUpdateAutoUpgradeFlagForSaeOnR(true, false, false, true, false);
+    }
+
+    /**
+     * Tests that manual connection to a network (from settings app) does not update
+     * the auto upgrade flag for SAE on R if there are psk networks.
+     */
+    @Test
+    public void testManualConnectNotUpdateAutoUpgradeFlagForSaeOnRWithPskNetworks()
+            throws Exception {
+        assumeFalse(SdkLevel.isAtLeastS());
+
+        verifyUpdateAutoUpgradeFlagForSaeOnR(false, true, false, true, false);
+    }
+
+    /**
+     * Tests that manual connection to a network (from settings app) does not update
+     * the auto upgrade flag for SAE on R if there are psk/ase networks.
+     */
+    @Test
+    public void testManualConnectNotUpdateAutoUpgradeFlagForSaeOnRWithPskSaeNetworks()
+            throws Exception {
+        assumeFalse(SdkLevel.isAtLeastS());
+
+        verifyUpdateAutoUpgradeFlagForSaeOnR(false, false, true, true, false);
+    }
+
+    /**
+     * Tests that manual connection to a network (from settings app) does not update
+     * the auto upgrade flag for SAE on R if there is no WPA3 SAE only network..
+     */
+    @Test
+    public void testManualConnectNotUpdateAutoUpgradeFlagForSaeOnRWithoutSaeOnlyNetworks()
+            throws Exception {
+        assumeFalse(SdkLevel.isAtLeastS());
+
+        verifyUpdateAutoUpgradeFlagForSaeOnR(false, false, true, true, false);
     }
 }
