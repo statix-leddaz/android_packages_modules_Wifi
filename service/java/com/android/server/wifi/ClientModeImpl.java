@@ -4014,6 +4014,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             }
             builder.removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED);
         }
+        builder.setTransportInfo(mWifiInfo);
         return builder.build();
     }
 
