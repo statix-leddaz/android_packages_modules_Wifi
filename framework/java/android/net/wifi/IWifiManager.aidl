@@ -46,6 +46,7 @@ import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkSuggestion;
 
+import android.os.Bundle;
 import android.os.Messenger;
 import android.os.ResultReceiver;
 import android.os.WorkSource;
@@ -181,6 +182,10 @@ interface IWifiManager
                               String featureId, in SoftApConfiguration customConfig);
 
     void stopLocalOnlyHotspot();
+
+    void registerLocalOnlyHotspotSoftApCallback(in ISoftApCallback callback, in Bundle extras);
+
+    void unregisterLocalOnlyHotspotSoftApCallback(in ISoftApCallback callback, in Bundle extras);
 
     void startWatchLocalOnlyHotspot(in ILocalOnlyHotspotCallback callback);
 
