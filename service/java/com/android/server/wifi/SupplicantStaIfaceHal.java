@@ -31,6 +31,7 @@ import static android.net.wifi.WifiManager.WIFI_FEATURE_WPA3_SAE;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_WPA3_SUITE_B;
 
 import android.annotation.NonNull;
+import android.apex.IApexService;
 import android.content.Context;
 import android.hardware.wifi.V1_0.WifiChannelWidthInMhz;
 import android.hardware.wifi.supplicant.V1_0.ISupplicant;
@@ -54,6 +55,7 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.WifiAnnotations.WifiStandard;
 import android.net.wifi.WifiConfiguration;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.IHwBinder.DeathRecipient;
 import android.os.RemoteException;
 import android.text.TextUtils;
@@ -111,6 +113,8 @@ public class SupplicantStaIfaceHal {
     // Supplicant HAL interface objects
     private IServiceManager mIServiceManager = null;
     private ISupplicant mISupplicant;
+    private IApexService mIApexService;
+    private long mISupplicantVersion;
     private Map<String, ISupplicantStaIface> mISupplicantStaIfaces = new HashMap<>();
     private Map<String, ISupplicantStaIfaceCallback> mISupplicantStaIfaceCallbacks =
             new HashMap<>();
@@ -461,9 +465,19 @@ public class SupplicantStaIfaceHal {
 
         try {
             ISupplicantStaIface iface = setupStaIface(ifaceName, ifaceHwBinder);
+            mIApexService.certifyHalPackage(
+                    "android.hardware.wifi.supplicant@1.4::ISupplicant/default",
+                    mISupplicantVersion);
             mISupplicantStaIfaces.put(ifaceName, iface);
         } catch (RemoteException e) {
             loge("setup StaIface failed: " + e.toString());
+            try {
+                mIApexService.rollbackHalPackage(
+                        "android.hardware.wifi.supplicant@1.4::ISupplicant/default",
+                        mISupplicantVersion);
+            } catch (RemoteException ee) {
+                Log.e("rebootless ISupplicant", "unable to call mIApexService.rollbackHalPackage");
+            }
             return false;
         }
 
@@ -789,6 +803,22 @@ public class SupplicantStaIfaceHal {
 
     protected ISupplicant getSupplicantMockable() throws RemoteException, NoSuchElementException {
         synchronized (mLock) {
+            try {
+                // Need reflection to call getService inside this wifi client APEX.
+                // See http://ag/15677279
+                mIApexService =
+                        IApexService.Stub.asInterface(
+                                (IBinder)
+                                        android.os.ServiceManager.class
+                                                .getMethod("getService", String.class)
+                                                .invoke(null, "apexservice"));
+            } catch (Exception e) {
+                Log.e("rebootless ISupplicant", "unable to get IApexService");
+                throw new NoSuchElementException("unable to get IApexService");
+            }
+            mISupplicantVersion =
+                    mIApexService.getHalPackageVersion(
+                            "android.hardware.wifi.supplicant@1.4::ISupplicant/default");
             ISupplicant iSupplicant = ISupplicant.getService();
             if (iSupplicant == null) {
                 throw new NoSuchElementException("Cannot get root service.");
