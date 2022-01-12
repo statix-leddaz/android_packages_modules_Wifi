@@ -33,6 +33,23 @@
       "message": "Please help review this patch. Thanks!",
       "revId": "25de30784f223b83972cd0b82308ff2aeeb15e4c",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "8a4b402c_dbbd9072",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1240997
+      },
+      "writtenOn": "2022-01-12T03:37:54Z",
+      "side": 1,
+      "message": "This looks good. I\u0027ll upstream it internally",
+      "revId": "25de30784f223b83972cd0b82308ff2aeeb15e4c",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
