@@ -185,7 +185,7 @@ public class WifiServiceImpl extends BaseWifiService {
     private final ActiveModeWarden mActiveModeWarden;
     private final ScanRequestProxy mScanRequestProxy;
 
-    private final Context mContext;
+    private final WifiContext mContext;
     private final FrameworkFacade mFacade;
     private final Clock mClock;
 
@@ -316,7 +316,7 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
 
-    public WifiServiceImpl(Context context, WifiInjector wifiInjector) {
+    public WifiServiceImpl(WifiContext context, WifiInjector wifiInjector) {
         mContext = context;
         mWifiInjector = wifiInjector;
         mClock = wifiInjector.getClock();
@@ -2978,6 +2978,11 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiThreadRunner.post(() -> {
             mWifiConfigManager
                     .startRestrictingAutoJoinToSubscriptionId(subscriptionId);
+            // Clear all cached candidates to avoid the imminent disconnect connecting back to a
+            // cached candidate that's likely no longer valid after
+            // startRestrictingAutoJoinToSubscriptionId is called. Let the disconnection trigger
+            // a new scan to ensure proper network selection is done.
+            mWifiConnectivityManager.clearCachedCandidates();
             // always disconnect here and rely on auto-join to find the appropriate carrier network
             // to join. Even if we are currently connected to the carrier-merged wifi, it's still
             // better to disconnect here because it's possible that carrier wifi offload is
