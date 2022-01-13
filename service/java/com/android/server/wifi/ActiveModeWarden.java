@@ -731,6 +731,14 @@ public class ActiveModeWarden {
     }
 
     /**
+     * Checks if a CMM can be started for MBB.
+     */
+    public boolean canRequestSecondaryTransientClientModeManager() {
+        return canRequestMoreClientModeManagersInRole(INTERNAL_REQUESTOR_WS,
+                ROLE_CLIENT_SECONDARY_TRANSIENT);
+    }
+
+    /**
      * Remove the provided client manager.
      */
     public void removeClientModeManager(ClientModeManager clientModeManager) {
@@ -743,6 +751,15 @@ public class ActiveModeWarden {
      */
     public boolean hasPrimaryClientModeManager() {
         return getClientModeManagerInRole(ROLE_CLIENT_PRIMARY) != null;
+    }
+
+    /**
+     * Checks whether there exists a primary or scan only mode manager.
+     * @return
+     */
+    private boolean hasPrimaryOrScanOnlyModeManager() {
+        return getClientModeManagerInRole(ROLE_CLIENT_PRIMARY) != null
+                || getClientModeManagerInRole(ROLE_CLIENT_SCAN_ONLY) != null;
     }
 
     /**
@@ -1767,7 +1784,7 @@ public class ActiveModeWarden {
 
         private void handleStaToggleChangeInEnabledState(WorkSource requestorWs) {
             if (shouldEnableSta()) {
-                if (hasAnyClientModeManager()) {
+                if (hasPrimaryOrScanOnlyModeManager()) {
                     if (!mSettingsStore.isWifiToggleEnabled()) {
                         // Wifi is turned off, so we should stop all the secondary CMMs which are
                         // currently all for connectivity purpose. It's important to stops the
