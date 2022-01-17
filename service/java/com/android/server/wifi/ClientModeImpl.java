@@ -1117,6 +1117,32 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     }
 
     /**
+     * If there is only SAE-only networks with this auto-upgrade type,
+     * this auto-upgrade SAE type is considered to be added explicitly.
+     *
+     * For R, Settings/WifiTrackerLib maps WPA3 SAE to WPA2, so there is
+     * no chance to add or update a WPA3 SAE configuration to update
+     * the auto-upgrade flag.
+     */
+    private void updateSaeAutoUpgradeFlagForUserSelectNetwork(int networkId) {
+        if (SdkLevel.isAtLeastS()) return;
+        if (mWifiGlobals.isWpa3SaeUpgradeEnabled()) return;
+
+        WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(networkId);
+        if (null == config) return;
+        SecurityParams params = config.getSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE);
+        if (null == params || !params.isAddedByAutoUpgrade()) return;
+
+        if (!mScanRequestProxy.isWpa3PersonalOnlyNetworkInRange(config.SSID)) return;
+        if (mScanRequestProxy.isWpa2PersonalOnlyNetworkInRange(config.SSID)) return;
+        if (mScanRequestProxy.isWpa2Wpa3PersonalTransitionNetworkInRange(config.SSID)) return;
+
+        logd("update auto-upgrade flag for SAE");
+        mWifiConfigManager.updateIsAddedByAutoUpgradeFlag(
+                config.networkId, WifiConfiguration.SECURITY_TYPE_SAE, false);
+    }
+
+    /**
      * Initiates connection to a network specified by the user/app. This method checks if the
      * requesting app holds the NETWORK_SETTINGS permission.
      *
@@ -1128,6 +1154,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private void connectToUserSelectNetwork(int netId, int uid, boolean forceReconnect) {
         logd("connectToUserSelectNetwork netId " + netId + ", uid " + uid
                 + ", forceReconnect = " + forceReconnect);
+        updateSaeAutoUpgradeFlagForUserSelectNetwork(netId);
         if (!forceReconnect && (mLastNetworkId == netId || mTargetNetworkId == netId)) {
             // We're already connecting/connected to the user specified network, don't trigger a
             // reconnection unless it was forced.
@@ -6328,10 +6355,14 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     new ProvisioningConfiguration.Builder()
                     .withPreDhcpAction()
                     .withPreconnection()
-                    .withApfCapabilities(
-                    mWifiNative.getApfCapabilities(mInterfaceName))
                     .withDisplayName(config.SSID)
                     .withLayer2Information(layer2Info);
+            if (mContext.getResources().getBoolean(R.bool.config_wifiEnableApfOnNonPrimarySta)
+                    || isPrimary()) {
+                // unclear if the native layer will return the correct non-capabilities if APF is
+                // not supported on secondary interfaces.
+                prov.withApfCapabilities(mWifiNative.getApfCapabilities(mInterfaceName));
+            }
             if (isUsingMacRandomization) {
                 // Use EUI64 address generation for link-local IPv6 addresses.
                 prov.withRandomMacAddress();
@@ -6387,7 +6418,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             if (!isUsingStaticIp) {
                 prov = new ProvisioningConfiguration.Builder()
                     .withPreDhcpAction()
-                    .withApfCapabilities(mWifiNative.getApfCapabilities(mInterfaceName))
                     .withNetwork(getCurrentNetwork())
                     .withDisplayName(config.SSID)
                     .withScanResultInfo(scanResultInfo)
@@ -6396,10 +6426,15 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 StaticIpConfiguration staticIpConfig = config.getStaticIpConfiguration();
                 prov = new ProvisioningConfiguration.Builder()
                         .withStaticConfiguration(staticIpConfig)
-                        .withApfCapabilities(mWifiNative.getApfCapabilities(mInterfaceName))
                         .withNetwork(getCurrentNetwork())
                         .withDisplayName(config.SSID)
                         .withLayer2Information(layer2Info);
+            }
+            if (mContext.getResources().getBoolean(R.bool.config_wifiEnableApfOnNonPrimarySta)
+                    || isPrimary()) {
+                // unclear if the native layer will return the correct non-capabilities if APF is
+                // not supported on secondary interfaces.
+                prov.withApfCapabilities(mWifiNative.getApfCapabilities(mInterfaceName));
             }
             if (isUsingMacRandomization) {
                 // Use EUI64 address generation for link-local IPv6 addresses.
