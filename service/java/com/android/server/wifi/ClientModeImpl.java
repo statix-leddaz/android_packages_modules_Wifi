@@ -156,7 +156,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -1118,6 +1117,32 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     }
 
     /**
+     * If there is only SAE-only networks with this auto-upgrade type,
+     * this auto-upgrade SAE type is considered to be added explicitly.
+     *
+     * For R, Settings/WifiTrackerLib maps WPA3 SAE to WPA2, so there is
+     * no chance to add or update a WPA3 SAE configuration to update
+     * the auto-upgrade flag.
+     */
+    private void updateSaeAutoUpgradeFlagForUserSelectNetwork(int networkId) {
+        if (SdkLevel.isAtLeastS()) return;
+        if (mWifiGlobals.isWpa3SaeUpgradeEnabled()) return;
+
+        WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(networkId);
+        if (null == config) return;
+        SecurityParams params = config.getSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE);
+        if (null == params || !params.isAddedByAutoUpgrade()) return;
+
+        if (!mScanRequestProxy.isWpa3PersonalOnlyNetworkInRange(config.SSID)) return;
+        if (mScanRequestProxy.isWpa2PersonalOnlyNetworkInRange(config.SSID)) return;
+        if (mScanRequestProxy.isWpa2Wpa3PersonalTransitionNetworkInRange(config.SSID)) return;
+
+        logd("update auto-upgrade flag for SAE");
+        mWifiConfigManager.updateIsAddedByAutoUpgradeFlag(
+                config.networkId, WifiConfiguration.SECURITY_TYPE_SAE, false);
+    }
+
+    /**
      * Initiates connection to a network specified by the user/app. This method checks if the
      * requesting app holds the NETWORK_SETTINGS permission.
      *
@@ -1129,6 +1154,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private void connectToUserSelectNetwork(int netId, int uid, boolean forceReconnect) {
         logd("connectToUserSelectNetwork netId " + netId + ", uid " + uid
                 + ", forceReconnect = " + forceReconnect);
+        updateSaeAutoUpgradeFlagForUserSelectNetwork(netId);
         if (!forceReconnect && (mLastNetworkId == netId || mTargetNetworkId == netId)) {
             // We're already connecting/connected to the user specified network, don't trigger a
             // reconnection unless it was forced.
@@ -4416,6 +4442,21 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     transitionTo(mL3ProvisioningState);
                     break;
                 }
+                case WifiMonitor.SUP_REQUEST_SIM_AUTH: {
+                    logd("Received SUP_REQUEST_SIM_AUTH");
+                    SimAuthRequestData requestData = (SimAuthRequestData) message.obj;
+                    if (requestData != null) {
+                        if (requestData.protocol == WifiEnterpriseConfig.Eap.SIM) {
+                            handleGsmAuthRequest(requestData);
+                        } else if (requestData.protocol == WifiEnterpriseConfig.Eap.AKA
+                                || requestData.protocol == WifiEnterpriseConfig.Eap.AKA_PRIME) {
+                            handle3GAuthRequest(requestData);
+                        }
+                    } else {
+                        loge("Invalid SIM auth request");
+                    }
+                    break;
+                }
                 case WifiMonitor.NETWORK_DISCONNECTION_EVENT: {
                     DisconnectEventInfo eventInfo = (DisconnectEventInfo) message.obj;
                     if (mVerboseLoggingEnabled) {
@@ -4753,21 +4794,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         mWifiMetrics.logStaEvent(mInterfaceName, StaEvent.TYPE_FRAMEWORK_DISCONNECT,
                                 StaEvent.DISCONNECT_GENERIC);
                         mWifiNative.disconnect(mInterfaceName);
-                    }
-                    break;
-                }
-                case WifiMonitor.SUP_REQUEST_SIM_AUTH: {
-                    logd("Received SUP_REQUEST_SIM_AUTH");
-                    SimAuthRequestData requestData = (SimAuthRequestData) message.obj;
-                    if (requestData != null) {
-                        if (requestData.protocol == WifiEnterpriseConfig.Eap.SIM) {
-                            handleGsmAuthRequest(requestData);
-                        } else if (requestData.protocol == WifiEnterpriseConfig.Eap.AKA
-                                || requestData.protocol == WifiEnterpriseConfig.Eap.AKA_PRIME) {
-                            handle3GAuthRequest(requestData);
-                        }
-                    } else {
-                        loge("Invalid SIM auth request");
                     }
                     break;
                 }
@@ -6204,22 +6230,18 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         // This comes from wifi picker directly so there is no candidate security params.
         // Run network selection against this SSID.
-        List<ScanDetail> scanDetailsList = scanResults.stream()
+        scanResults.stream()
                 .filter(scanResult -> config.SSID.equals(
                         ScanResultUtil.createQuotedSSID(scanResult.SSID)))
                 .map(ScanResultUtil::toScanDetail)
-                .collect(Collectors.toList());
-        List<WifiNetworkSelector.ClientModeManagerState> cmmState = new ArrayList<>();
-        cmmState.add(new WifiNetworkSelector.ClientModeManagerState(mClientModeManager));
-        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
-                scanDetailsList,
-                new HashSet<String>(),
-                cmmState,
-                true, true, true);
-        WifiConfiguration selectedConfig = mWifiNetworkSelector.selectNetwork(candidates);
-        if (null != selectedConfig && selectedConfig.networkId == config.networkId) {
+                .forEach(scanDetail -> mWifiNetworkSelector
+                        .updateNetworkCandidateSecurityParams(config, scanDetail));
+        // Get the fresh copy again to retrieve the candidate security params.
+        WifiConfiguration freshConfig = mWifiConfigManager.getConfiguredNetwork(config.networkId);
+        if (null != freshConfig
+                && null != freshConfig.getNetworkSelectionStatus().getCandidateSecurityParams()) {
             config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                    selectedConfig.getNetworkSelectionStatus().getCandidateSecurityParams());
+                    freshConfig.getNetworkSelectionStatus().getCandidateSecurityParams());
             return;
         }
 
@@ -6333,10 +6355,14 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     new ProvisioningConfiguration.Builder()
                     .withPreDhcpAction()
                     .withPreconnection()
-                    .withApfCapabilities(
-                    mWifiNative.getApfCapabilities(mInterfaceName))
                     .withDisplayName(config.SSID)
                     .withLayer2Information(layer2Info);
+            if (mContext.getResources().getBoolean(R.bool.config_wifiEnableApfOnNonPrimarySta)
+                    || isPrimary()) {
+                // unclear if the native layer will return the correct non-capabilities if APF is
+                // not supported on secondary interfaces.
+                prov.withApfCapabilities(mWifiNative.getApfCapabilities(mInterfaceName));
+            }
             if (isUsingMacRandomization) {
                 // Use EUI64 address generation for link-local IPv6 addresses.
                 prov.withRandomMacAddress();
@@ -6392,7 +6418,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             if (!isUsingStaticIp) {
                 prov = new ProvisioningConfiguration.Builder()
                     .withPreDhcpAction()
-                    .withApfCapabilities(mWifiNative.getApfCapabilities(mInterfaceName))
                     .withNetwork(getCurrentNetwork())
                     .withDisplayName(config.SSID)
                     .withScanResultInfo(scanResultInfo)
@@ -6401,10 +6426,15 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 StaticIpConfiguration staticIpConfig = config.getStaticIpConfiguration();
                 prov = new ProvisioningConfiguration.Builder()
                         .withStaticConfiguration(staticIpConfig)
-                        .withApfCapabilities(mWifiNative.getApfCapabilities(mInterfaceName))
                         .withNetwork(getCurrentNetwork())
                         .withDisplayName(config.SSID)
                         .withLayer2Information(layer2Info);
+            }
+            if (mContext.getResources().getBoolean(R.bool.config_wifiEnableApfOnNonPrimarySta)
+                    || isPrimary()) {
+                // unclear if the native layer will return the correct non-capabilities if APF is
+                // not supported on secondary interfaces.
+                prov.withApfCapabilities(mWifiNative.getApfCapabilities(mInterfaceName));
             }
             if (isUsingMacRandomization) {
                 // Use EUI64 address generation for link-local IPv6 addresses.
