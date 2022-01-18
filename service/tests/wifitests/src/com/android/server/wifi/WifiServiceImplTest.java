@@ -298,7 +298,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     final ArgumentCaptor<SoftApModeConfiguration> mSoftApModeConfigCaptor =
             ArgumentCaptor.forClass(SoftApModeConfiguration.class);
 
-    @Mock Context mContext;
+    @Mock WifiContext mContext;
     @Mock Context mContextAsUser;
     @Mock WifiInjector mWifiInjector;
     @Mock WifiCountryCode mWifiCountryCode;
@@ -7485,6 +7485,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mWifiServiceImpl.startRestrictingAutoJoinToSubscriptionId(1);
         mLooper.dispatchAll();
         verify(mWifiConfigManager).startRestrictingAutoJoinToSubscriptionId(1);
+        verify(mWifiConnectivityManager).clearCachedCandidates();
         verify(mClientModeManager).disconnect();
     }
 
