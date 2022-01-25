@@ -22,6 +22,30 @@
       },
       "revId": "3cb90141e37cc9f04dbeed2945bc3be1c4e488d8",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "12bbbc13_665d836f",
+        "filename": "framework/Android.bp",
+        "patchSetId": 1
+      },
+      "lineNbr": 100,
+      "author": {
+        "id": 1060959
+      },
+      "writtenOn": "2022-01-25T17:48:09Z",
+      "side": 1,
+      "message": "Agreed. Good catch, done.",
+      "parentUuid": "0a58e3db_5e4cfda4",
+      "range": {
+        "startLine": 100,
+        "startChar": 8,
+        "endLine": 100,
+        "endChar": 41
+      },
+      "revId": "3cb90141e37cc9f04dbeed2945bc3be1c4e488d8",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
