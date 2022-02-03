@@ -20,6 +20,7 @@ import static android.content.Intent.ACTION_SCREEN_OFF;
 import static android.content.Intent.ACTION_SCREEN_ON;
 
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
+import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SCAN_ONLY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_LONG_LIVED;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_TRANSIENT;
 import static com.android.server.wifi.ClientModeImpl.WIFI_WORK_SOURCE;
@@ -114,6 +115,7 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -558,6 +560,35 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         mWifiConnectivityManager.handleConnectionStateChanged(
                 mPrimaryClientModeManager,
                 WifiConnectivityManager.WIFI_STATE_CONNECTED);
+    }
+
+    /**
+     * Verify that a primary CMM changing role to secondary transient (MBB) will not trigger cleanup
+     * that's meant to be done when wifi is disabled.
+     */
+    @Test
+    public void testPrimaryToSecondaryTransientDoesNotDisableWifi() {
+        ConcreteClientModeManager cmm = mock(ConcreteClientModeManager.class);
+        when(cmm.getPreviousRole()).thenReturn(ROLE_CLIENT_PRIMARY);
+        when(cmm.getRole()).thenReturn(ROLE_CLIENT_SECONDARY_TRANSIENT);
+        when(mActiveModeWarden.getInternetConnectivityClientModeManagers()).thenReturn(
+                Collections.EMPTY_LIST);
+        mModeChangeCallbackCaptor.getValue().onActiveModeManagerRoleChanged(cmm);
+        verify(mWifiConfigManager, never()).removeAllEphemeralOrPasspointConfiguredNetworks();
+    }
+
+    /**
+     * Verify that the primary CMM switching to scan only mode will trigger cleanup code.
+     */
+    @Test
+    public void testPrimaryToScanOnlyWillDisableWifi() {
+        ConcreteClientModeManager cmm = mock(ConcreteClientModeManager.class);
+        when(cmm.getPreviousRole()).thenReturn(ROLE_CLIENT_PRIMARY);
+        when(cmm.getRole()).thenReturn(ROLE_CLIENT_SCAN_ONLY);
+        when(mActiveModeWarden.getInternetConnectivityClientModeManagers()).thenReturn(
+                Collections.EMPTY_LIST);
+        mModeChangeCallbackCaptor.getValue().onActiveModeManagerRoleChanged(cmm);
+        verify(mWifiConfigManager).removeAllEphemeralOrPasspointConfiguredNetworks();
     }
 
     /**
@@ -1758,6 +1789,47 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
                 WifiMetrics.ConnectionEvent.FAILURE_ASSOCIATION_REJECTION, CANDIDATE_BSSID,
                 CANDIDATE_SSID);
         // verify there are no additional connections.
+        verify(mPrimaryClientModeManager).startConnectToNetwork(anyInt(), anyInt(), any());
+    }
+
+    /**
+     * Verify that when cached candidates get cleared there will no longer be retries after a
+     * connection failure.
+     */
+    @Test
+    public void testNoRetryConnectionOnFailureAfterCacheCleared() {
+        // Setup WifiNetworkSelector to return 2 valid candidates from scan results
+        MacAddress macAddress = MacAddress.fromString(CANDIDATE_BSSID_2);
+        WifiCandidates.Key key = new WifiCandidates.Key(mock(ScanResultMatchInfo.class),
+                macAddress, 0, WifiConfiguration.SECURITY_TYPE_OPEN);
+        WifiCandidates.Candidate otherCandidate = mock(WifiCandidates.Candidate.class);
+        when(otherCandidate.getKey()).thenReturn(key);
+        List<WifiCandidates.Candidate> candidateList = new ArrayList<>();
+        candidateList.add(mCandidate1);
+        candidateList.add(otherCandidate);
+        when(mWifiNS.getCandidatesFromScan(any(), any(), any(), anyBoolean(), anyBoolean(),
+                anyBoolean())).thenReturn(candidateList);
+
+        // Set WiFi to disconnected state to trigger scan
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        mLooper.dispatchAll();
+        // Verify a connection starting
+        verify(mWifiNS).selectNetwork((List<WifiCandidates.Candidate>)
+                argThat(new WifiCandidatesListSizeMatcher(2)));
+        verify(mPrimaryClientModeManager).startConnectToNetwork(anyInt(), anyInt(), any());
+
+        // now clear the cached candidates
+        mWifiConnectivityManager.clearCachedCandidates();
+
+        // Simulate the connection failing
+        mWifiConnectivityManager.handleConnectionAttemptEnded(
+                mPrimaryClientModeManager,
+                WifiMetrics.ConnectionEvent.FAILURE_ASSOCIATION_REJECTION, CANDIDATE_BSSID,
+                CANDIDATE_SSID);
+
+        // Verify there no re-attempt to connect
         verify(mPrimaryClientModeManager).startConnectToNetwork(anyInt(), anyInt(), any());
     }
 
@@ -4035,6 +4107,12 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         pnoNetworks = mWifiConnectivityManager.retrievePnoNetworkList();
         assertEquals(1, pnoNetworks.size());
         assertEquals(network2.SSID, pnoNetworks.get(0).ssid);
+
+        // Now set network2 to be temporarily disabled by the user. This should remove network 2
+        // from the list.
+        when(mWifiConfigManager.isNetworkTemporarilyDisabledByUser(network2.SSID)).thenReturn(true);
+        pnoNetworks = mWifiConnectivityManager.retrievePnoNetworkList();
+        assertEquals(0, pnoNetworks.size());
     }
 
     /**
