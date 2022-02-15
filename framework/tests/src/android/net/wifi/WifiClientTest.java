@@ -17,7 +17,7 @@
 package android.net.wifi;
 
 import static com.android.testutils.MiscAsserts.assertFieldCountEquals;
-import static com.android.testutils.ParcelUtils.assertParcelSane;
+import static com.android.testutils.ParcelUtils.assertParcelingInvariants;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
@@ -44,7 +44,7 @@ public class WifiClientTest {
     public void testWifiClientParcelWriteRead() throws Exception {
         WifiClient writeWifiClient = new WifiClient(MAC_ADDRESS, INTERFACE_NAME);
 
-        assertParcelSane(writeWifiClient, 2);
+        assertParcelingInvariants(writeWifiClient, 2);
     }
 
     /**
