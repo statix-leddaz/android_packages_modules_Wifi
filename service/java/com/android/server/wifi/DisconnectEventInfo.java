@@ -27,9 +27,16 @@ public class DisconnectEventInfo {
     @NonNull public final String bssid;
     public final int reasonCode;
     public final boolean locallyGenerated;
+    public final int networkId;
 
     public DisconnectEventInfo(@NonNull String ssid, @NonNull String bssid, int reasonCode,
             boolean locallyGenerated) {
+        this(ssid, bssid, reasonCode, locallyGenerated, -1);
+    }
+
+    public DisconnectEventInfo(@NonNull String ssid, @NonNull String bssid, int reasonCode,
+            boolean locallyGenerated, int networkId) {
+        this.networkId = networkId;
         this.ssid = Objects.requireNonNull(ssid);
         this.bssid = Objects.requireNonNull(bssid);
         this.reasonCode = reasonCode;
@@ -43,6 +50,7 @@ public class DisconnectEventInfo {
         sb.append(" bssid: ").append(bssid);
         sb.append(" reasonCode: ").append(reasonCode);
         sb.append(" locallyGenerated: ").append(locallyGenerated);
+        sb.append(" networkId: ").append(networkId);
         return sb.toString();
     }
 }

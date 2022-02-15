@@ -293,7 +293,8 @@ abstract class SupplicantStaIfaceCallbackImpl extends ISupplicantStaIfaceCallbac
             }
             mWifiMonitor.broadcastNetworkDisconnectionEvent(
                     mIfaceName, locallyGenerated, reasonCode, mCurrentSsid,
-                    NativeUtil.macAddressFromByteArray(bssid));
+                    NativeUtil.macAddressFromByteArray(bssid),
+                    mStaIfaceHal.getCurrentNetworkId(mIfaceName));
         }
     }
 

@@ -560,6 +560,12 @@ public class WifiMonitor {
                 new DisconnectEventInfo(ssid, bssid, reason, locallyGenerated));
     }
 
+    public void broadcastNetworkDisconnectionEvent(String iface, boolean locallyGenerated,
+            int reason, String ssid, String bssid, int networkId) {
+        sendMessage(iface, NETWORK_DISCONNECTION_EVENT,
+                new DisconnectEventInfo(ssid, bssid, reason, locallyGenerated, networkId));
+    }
+
     /**
      * Broadcast the supplicant state change event to all the handlers registered for this event.
      *
