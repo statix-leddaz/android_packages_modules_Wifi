@@ -16,16 +16,32 @@
 
 package com.android.server.wifi.util;
 
-import android.net.wifi.WifiManager;
-import android.net.wifi.WifiManager.ApiType;
+import android.annotation.IntDef;
 import android.util.SparseArray;
 
 import java.io.PrintWriter;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 
 /**
  * Manage multiple last caller info
  */
 public class LastCallerInfoManager {
+    /** @hide */
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef(value = {
+            SCANNING_ENABLED,
+            WIFI_ENABLED,
+            SOFT_AP,
+            TETHERED_HOTSPOT,
+            AUTOJOIN_GLOBAL})
+    public @interface ApiType {}
+    public static final int SCANNING_ENABLED = 1;
+    public static final int WIFI_ENABLED = 2;
+    public static final int SOFT_AP = 3;
+    public static final int TETHERED_HOTSPOT = 4;
+    public static final int AUTOJOIN_GLOBAL = 5;
+
     private final SparseArray<LastCallerInfo> mLastCallerInfoMap = new SparseArray<>();
 
     /**
@@ -40,33 +56,20 @@ public class LastCallerInfoManager {
     }
 
     /**
-     * Get the LastCallerInfo for a particular api.
-     * @param apiName Name of the API
-     * @return The LastCallerInfo, or null if not available.
-     */
-    public LastCallerInfo get(@ApiType int apiName) {
-        synchronized (mLastCallerInfoMap) {
-            return mLastCallerInfoMap.get(apiName);
-        }
-    }
-
-    /**
      * Convert int constant into API String name
      */
     private String convertApiName(@ApiType int key) {
         switch (key) {
-            case WifiManager.API_SCANNING_ENABLED:
+            case SCANNING_ENABLED:
                 return "ScanningEnabled";
-            case WifiManager.API_WIFI_ENABLED:
+            case WIFI_ENABLED:
                 return "WifiEnabled";
-            case WifiManager.API_SOFT_AP:
+            case SOFT_AP:
                 return "SoftAp";
-            case WifiManager.API_TETHERED_HOTSPOT:
+            case TETHERED_HOTSPOT:
                 return "TetheredHotspot";
-            case WifiManager.API_AUTOJOIN_GLOBAL:
+            case AUTOJOIN_GLOBAL:
                 return "AutojoinGlobal";
-            case WifiManager.API_SET_SCAN_SCHEDULE:
-                return "SetScanScanSchedule";
             default:
                 return "Unknown";
         }
@@ -100,20 +103,6 @@ public class LastCallerInfoManager {
             mPid = pid;
             mPackageName = packageName;
             mToggleState = toggleState;
-        }
-
-        /**
-         * Gets the packageName.
-         */
-        public String getPackageName() {
-            return mPackageName;
-        }
-
-        /**
-         * Gets the toggleState.
-         */
-        public boolean getToggleState() {
-            return mToggleState;
         }
 
         /**

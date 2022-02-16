@@ -19,7 +19,6 @@ package com.android.server.wifi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.content.res.Resources;
 import android.hardware.wifi.V1_0.IWifi;
 import android.hardware.wifi.V1_0.IWifiApIface;
 import android.hardware.wifi.V1_0.IWifiChip;
@@ -34,17 +33,12 @@ import android.hardware.wifi.V1_0.IfaceType;
 import android.hardware.wifi.V1_0.WifiDebugRingBufferStatus;
 import android.hardware.wifi.V1_0.WifiStatus;
 import android.hardware.wifi.V1_0.WifiStatusCode;
-import android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombination;
-import android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombinationLimit;
-import android.hardware.wifi.V1_6.IfaceConcurrencyType;
 import android.hidl.manager.V1_0.IServiceNotification;
 import android.hidl.manager.V1_2.IServiceManager;
-import android.net.wifi.WifiContext;
 import android.os.Handler;
 import android.os.IHwBinder.DeathRecipient;
 import android.os.RemoteException;
 import android.os.WorkSource;
-import android.util.ArraySet;
 import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
@@ -54,7 +48,6 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.util.GeneralUtil.Mutable;
 import com.android.server.wifi.util.WorkSourceHelper;
-import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -62,7 +55,6 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -92,20 +84,19 @@ public class HalDeviceManager {
     private final Handler mEventHandler;
     private WifiDeathRecipient mIWifiDeathRecipient;
     private ServiceManagerDeathRecipient mServiceManagerDeathRecipient;
-    private boolean mIsBridgedSoftApSupported;
-    private boolean mIsStaWithBridgedSoftApConcurrencySupported;
-    private ArraySet<IWifiIface> mBridgedApIfaces = new ArraySet<>();
 
     // cache the value for supporting vendor HAL or not
     private boolean mIsVendorHalSupported = false;
 
-    /**
-     * Public API for querying interfaces from the HalDeviceManager.
-     */
+    @VisibleForTesting
     public static final int HDM_CREATE_IFACE_STA = 0;
+    @VisibleForTesting
     public static final int HDM_CREATE_IFACE_AP = 1;
+    @VisibleForTesting
     public static final int HDM_CREATE_IFACE_AP_BRIDGE = 2;
+    @VisibleForTesting
     public static final int HDM_CREATE_IFACE_P2P = 3;
+    @VisibleForTesting
     public static final int HDM_CREATE_IFACE_NAN = 4;
 
     @IntDef(flag = false, prefix = { "HDM_CREATE_IFACE_TYPE_" }, value = {
@@ -117,45 +108,16 @@ public class HalDeviceManager {
     })
     private @interface HdmIfaceTypeForCreation {};
 
-    public static final SparseIntArray HAL_IFACE_MAP = new SparseIntArray() {{
+    private SparseIntArray mHalIfaceMap = new SparseIntArray() {{
             put(HDM_CREATE_IFACE_STA, IfaceType.STA);
             put(HDM_CREATE_IFACE_AP, IfaceType.AP);
             put(HDM_CREATE_IFACE_AP_BRIDGE, IfaceType.AP);
             put(HDM_CREATE_IFACE_P2P, IfaceType.P2P);
             put(HDM_CREATE_IFACE_NAN, IfaceType.NAN);
-        }};
-
-    public static final SparseIntArray REVERSE_HAL_IFACE_MAP = new SparseIntArray() {{
-            put(IfaceType.STA, HDM_CREATE_IFACE_STA);
-            put(IfaceType.AP, HDM_CREATE_IFACE_AP);
-            put(IfaceType.P2P, HDM_CREATE_IFACE_P2P);
-            put(IfaceType.NAN, HDM_CREATE_IFACE_NAN);
-        }};
-
-    public static final SparseIntArray CONCURRENCY_TYPE_TO_CREATE_TYPE_MAP = new SparseIntArray() {{
-            put(android.hardware.wifi.V1_6.IfaceConcurrencyType.STA, HDM_CREATE_IFACE_STA);
-            put(android.hardware.wifi.V1_6.IfaceConcurrencyType.AP, HDM_CREATE_IFACE_AP);
-            put(android.hardware.wifi.V1_6.IfaceConcurrencyType.AP_BRIDGED,
-                    HDM_CREATE_IFACE_AP_BRIDGE);
-            put(android.hardware.wifi.V1_6.IfaceConcurrencyType.P2P, HDM_CREATE_IFACE_P2P);
-            put(android.hardware.wifi.V1_6.IfaceConcurrencyType.NAN, HDM_CREATE_IFACE_NAN);
-        }};
-
-    public static final SparseIntArray IFACE_TYPE_TO_CONCURRENCY_TYPE_MAP = new SparseIntArray() {{
-            put(IfaceType.STA, android.hardware.wifi.V1_6.IfaceConcurrencyType.STA);
-            put(IfaceType.AP, android.hardware.wifi.V1_6.IfaceConcurrencyType.AP);
-            put(IfaceType.P2P, android.hardware.wifi.V1_6.IfaceConcurrencyType.P2P);
-            put(IfaceType.NAN, android.hardware.wifi.V1_6.IfaceConcurrencyType.NAN);
-        }};
-
+            }};
 
     // public API
-    public HalDeviceManager(WifiContext context, Clock clock, WifiInjector wifiInjector,
-            Handler handler) {
-        Resources res = context.getResources();
-        mIsBridgedSoftApSupported = res.getBoolean(R.bool.config_wifiBridgedSoftApSupported);
-        mIsStaWithBridgedSoftApConcurrencySupported =
-                res.getBoolean(R.bool.config_wifiStaWithBridgedSoftApConcurrencySupported);
+    public HalDeviceManager(Clock clock, WifiInjector wifiInjector, Handler handler) {
         mClock = clock;
         mWifiInjector = wifiInjector;
         mEventHandler = handler;
@@ -163,9 +125,12 @@ public class HalDeviceManager {
         mServiceManagerDeathRecipient = new ServiceManagerDeathRecipient();
     }
 
-    /* package */ void enableVerboseLogging(boolean verboseEnabled) {
-        mDbg = verboseEnabled;
-
+    /* package */ void enableVerboseLogging(int verbose) {
+        if (verbose > 0) {
+            mDbg = true;
+        } else {
+            mDbg = false;
+        }
         if (VDBG) {
             mDbg = true; // just override
         }
@@ -590,195 +555,91 @@ public class HalDeviceManager {
     }
 
     /**
-     * Returns whether the provided @HdmIfaceTypeForCreation combo can be supported by the device.
-     * Note: This only returns an answer based on the create type combination exposed by the HAL.
+     * Returns whether the provided Iface combo can be supported by the device.
+     * Note: This only returns an answer based on the iface combination exposed by the HAL.
      * The actual iface creation/deletion rules depend on the iface priorities set in
      * {@link #allowedToDeleteIfaceTypeForRequestedType(int, WorkSource, int, WifiIfaceInfo[][])}
      *
-     * @param createTypeCombo SparseArray keyed in by @HdmIfaceTypeForCreation to number of ifaces
-     *                         needed.
+     * @param ifaceCombo SparseArray keyed in by the iface type to number of ifaces needed.
      * @param requiredChipCapabilities The bitmask of Capabilities which are required.
      *                                 See IWifiChip.hal for documentation.
      * @return true if the device supports the provided combo, false otherwise.
      */
-    public boolean canSupportCreateTypeCombo(SparseArray<Integer> createTypeCombo,
+    public boolean canSupportIfaceCombo(SparseArray<Integer> ifaceCombo,
             long requiredChipCapabilities) {
         if (VDBG) {
-            Log.d(TAG, "canSupportCreateTypeCombo: createTypeCombo=" + createTypeCombo
+            Log.d(TAG, "canSupportIfaceCombo: ifaceCombo=" + ifaceCombo
                     + ", requiredChipCapabilities=" + requiredChipCapabilities);
         }
 
         synchronized (mLock) {
             if (mWifi == null) return false;
-            int[] createTypeComboArray =
-                    new int[CREATE_TYPES_BY_PRIORITY.length];
-            for (int createType : CREATE_TYPES_BY_PRIORITY) {
-                createTypeComboArray[createType] = createTypeCombo.get(createType, 0);
+            int[] ifaceComboArr = new int[IFACE_TYPES_BY_PRIORITY.length];
+            for (int type : IFACE_TYPES_BY_PRIORITY) {
+                ifaceComboArr[type] = ifaceCombo.get(type, 0);
             }
             WifiChipInfo[] chipInfos = getAllChipInfoCached();
             if (chipInfos == null) return false;
-            return isItPossibleToCreateCreateTypeCombo(
-                    chipInfos, requiredChipCapabilities, createTypeComboArray);
+            return isItPossibleToCreateIfaceCombo(
+                    chipInfos, requiredChipCapabilities, ifaceComboArr);
         }
     }
 
     /**
-     * Returns whether the provided @HdmIfaceTypeForCreation combo can be supported by the device.
-     * Note: This only returns an answer based on the create type combination exposed by the HAL.
+     * Returns whether the provided Iface combo can be supported by the device.
+     * Note: This only returns an answer based on the iface combination exposed by the HAL.
      * The actual iface creation/deletion rules depend on the iface priorities set in
      * {@link #allowedToDeleteIfaceTypeForRequestedType(int, WorkSource, int, WifiIfaceInfo[][])}
      *
-     * @param createTypeCombo SparseArray keyed in by @HdmIfaceTypeForCreation to number of ifaces
-     *                         needed.
+     * @param ifaceCombo SparseArray keyed in by the iface type to number of ifaces needed.
      * @return true if the device supports the provided combo, false otherwise.
      */
-    public boolean canSupportCreateTypeCombo(SparseArray<Integer> createTypeCombo) {
-        return canSupportCreateTypeCombo(createTypeCombo, CHIP_CAPABILITY_ANY);
+    public boolean canSupportIfaceCombo(SparseArray<Integer> ifaceCombo) {
+        return canSupportIfaceCombo(ifaceCombo, CHIP_CAPABILITY_ANY);
     }
 
     /**
      * Returns whether the provided Iface can be requested by specifier requestor.
      *
-     * @param createIfaceType Type of iface requested.
+     * @param ifaceType Type of iface requested.
      * @param requiredChipCapabilities The bitmask of Capabilities which are required.
      *                                 See IWifiChip.hal for documentation.
-     * @param requestorWs Requestor worksource. This will be used to determine priority of this
-     *                    interface using rules based on the requestor app's context.
-     * @return true if the device supports the provided combo, false otherwise.
-     */
-    public boolean isItPossibleToCreateIface(@HdmIfaceTypeForCreation int createIfaceType,
-            long requiredChipCapabilities, WorkSource requestorWs) {
-        if (VDBG) {
-            Log.d(TAG, "isItPossibleToCreateIface: createIfaceType=" + createIfaceType
-                    + ", requiredChipCapabilities=" + requiredChipCapabilities);
-        }
-        return reportImpactToCreateIface(createIfaceType, true, requiredChipCapabilities,
-                requestorWs) != null;
-    }
-
-    /**
-     * Returns whether the provided Iface can be requested by specifier requestor.
-     *
-     * @param createIfaceType Type of iface requested.
      * @param requestorWs Requestor worksource. This will be used to determine priority of this
      *                    interface using rules based on the requestor app's context.
      * @return true if the device supports the provided combo, false otherwise.
      */
     public boolean isItPossibleToCreateIface(
-            @HdmIfaceTypeForCreation int createIfaceType, WorkSource requestorWs) {
-        return isItPossibleToCreateIface(
-                createIfaceType, CHIP_CAPABILITY_ANY, requestorWs);
-    }
-
-    /**
-     * Returns the details of what it would take to create the provided Iface requested by the
-     * specified requestor. The details are the list of other interfaces which would have to be
-     * destroyed.
-     *
-     * Return types imply:
-     * - null: interface cannot be created
-     * - empty list: interface can be crated w/o destroying any other interafces
-     * - otherwise: a list of interfaces to be destroyed
-     *
-     * @param createIfaceType Type of iface requested.
-     * @param queryForNewInterface True: request another interface of the specified type, False: if
-     *                             there's already an interface of the specified type then no need
-     *                             for further operation.
-     * @param requiredChipCapabilities The bitmask of Capabilities which are required.
-     *                                 See IWifiChip.hal for documentation.
-     * @param requestorWs Requestor worksource. This will be used to determine priority of this
-     *                    interface using rules based on the requestor app's context.
-     * @return the list of interfaces that would have to be destroyed and their worksource. The
-     * interface type is described using @HdmIfaceTypeForCreation.
-     */
-    public List<Pair<Integer, WorkSource>> reportImpactToCreateIface(
-            @HdmIfaceTypeForCreation int createIfaceType, boolean queryForNewInterface,
-            long requiredChipCapabilities, WorkSource requestorWs) {
+            int ifaceType, long requiredChipCapabilities, WorkSource requestorWs) {
         if (VDBG) {
-            Log.d(TAG, "reportImpactToCreateIface: ifaceType=" + createIfaceType
-                    + ", requiredChipCapabilities=" + requiredChipCapabilities
-                    + ", requestorWs=" + requestorWs);
+            Log.d(TAG, "isItPossibleToCreateIface: ifaceType=" + ifaceType
+                    + ", requiredChipCapabilities=" + requiredChipCapabilities);
         }
-
-        IfaceCreationData creationData;
         synchronized (mLock) {
+            if (mWifi == null) return false;
             WifiChipInfo[] chipInfos = getAllChipInfo();
-            if (chipInfos == null) {
-                Log.e(TAG, "createIface: no chip info found");
-                stopWifi(); // major error: shutting down
-                return null;
-            }
-
+            if (chipInfos == null) return false;
             if (!validateInterfaceCacheAndRetrieveRequestorWs(chipInfos)) {
-                Log.e(TAG, "createIface: local cache is invalid!");
+                Log.e(TAG, "isItPossibleToCreateIface: local cache is invalid!");
                 stopWifi(); // major error: shutting down
-                return null;
+                return false;
             }
-
-            if (!queryForNewInterface) {
-                int targetHalIfaceType = HAL_IFACE_MAP.get(createIfaceType);
-                for (WifiChipInfo chipInfo: chipInfos) {
-                    if (chipInfo.ifaces[targetHalIfaceType].length != 0) {
-                        return Collections.emptyList(); // approve w/o deleting any interfaces
-                    }
-                }
-            }
-
-            creationData = getBestIfaceCreationProposal(chipInfos, createIfaceType,
-                    requiredChipCapabilities, requestorWs);
+            return isItPossibleToCreateIface(
+                    chipInfos, ifaceType, requiredChipCapabilities, requestorWs);
         }
-
-        if (creationData == null) {
-            return null; // impossible to create requested interface
-        }
-
-        List<Pair<Integer, WorkSource>> details = new ArrayList<>();
-        boolean isModeConfigNeeded = !creationData.chipInfo.currentModeIdValid
-                || creationData.chipInfo.currentModeId != creationData.chipModeId;
-        if (!isModeConfigNeeded && (creationData.interfacesToBeRemovedFirst == null
-                || creationData.interfacesToBeRemovedFirst.isEmpty())) {
-            // can create interface w/o deleting any other interfaces
-            return details;
-        }
-
-        if (isModeConfigNeeded) {
-            if (VDBG) {
-                Log.d(TAG, "isItPossibleToCreateIfaceDetails: mode change from - "
-                        + creationData.chipInfo.currentModeId + ", to - "
-                        + creationData.chipModeId);
-            }
-            for (WifiIfaceInfo[] ifaceInfos: creationData.chipInfo.ifaces) {
-                for (WifiIfaceInfo ifaceInfo : ifaceInfos) {
-                    details.add(Pair.create(REVERSE_HAL_IFACE_MAP.get(getType(ifaceInfo.iface)),
-                            ifaceInfo.requestorWsHelper.getWorkSource()));
-                }
-            }
-        } else {
-            for (WifiIfaceInfo ifaceInfo : creationData.interfacesToBeRemovedFirst) {
-                details.add(Pair.create(REVERSE_HAL_IFACE_MAP.get(getType(ifaceInfo.iface)),
-                        ifaceInfo.requestorWsHelper.getWorkSource()));
-            }
-        }
-
-        return details;
     }
 
     /**
-     * See {@link #reportImpactToCreateIface(int, boolean, long, WorkSource)}.
+     * Returns whether the provided Iface can be requested by specifier requestor.
      *
      * @param ifaceType Type of iface requested.
-     * @param queryForNewInterface True: request another interface of the specified type, False: if
-     *                             there's already an interface of the specified type then no need
-     *                             for further operation.
      * @param requestorWs Requestor worksource. This will be used to determine priority of this
      *                    interface using rules based on the requestor app's context.
-     * @return the list of interfaces that would have to be destroyed and their worksource.
+     * @return true if the device supports the provided combo, false otherwise.
      */
-    public List<Pair<Integer, WorkSource>> reportImpactToCreateIface(
-            @HdmIfaceTypeForCreation int ifaceType, boolean queryForNewInterface,
-            WorkSource requestorWs) {
-        return reportImpactToCreateIface(ifaceType, queryForNewInterface, CHIP_CAPABILITY_ANY,
-                requestorWs);
+    public boolean isItPossibleToCreateIface(
+            int ifaceType, WorkSource requestorWs) {
+        return isItPossibleToCreateIface(
+                ifaceType, CHIP_CAPABILITY_ANY, requestorWs);
     }
 
     // internal state
@@ -790,9 +651,6 @@ public class HalDeviceManager {
      */
     private static final int[] IFACE_TYPES_BY_PRIORITY =
             {IfaceType.AP, IfaceType.STA, IfaceType.P2P, IfaceType.NAN};
-    private static final int[] CREATE_TYPES_BY_PRIORITY =
-            {HDM_CREATE_IFACE_AP, HDM_CREATE_IFACE_AP_BRIDGE, HDM_CREATE_IFACE_STA,
-                    HDM_CREATE_IFACE_P2P, HDM_CREATE_IFACE_NAN};
 
     private final Object mLock = new Object();
 
@@ -851,7 +709,7 @@ public class HalDeviceManager {
     private class WifiChipInfo {
         public IWifiChip chip;
         public int chipId;
-        public ArrayList<android.hardware.wifi.V1_6.IWifiChip.ChipMode> availableModes;
+        public ArrayList<IWifiChip.ChipMode> availableModes;
         public boolean currentModeIdValid;
         public int currentModeId;
         public WifiIfaceInfo[][] ifaces = new WifiIfaceInfo[IFACE_TYPES_BY_PRIORITY.length][];
@@ -901,19 +759,6 @@ public class HalDeviceManager {
     protected android.hardware.wifi.V1_5.IWifiChip getWifiChipForV1_5Mockable(IWifiChip chip) {
         if (null == chip) return null;
         return android.hardware.wifi.V1_5.IWifiChip.castFrom(chip);
-    }
-
-    protected android.hardware.wifi.V1_6.IWifiChip getWifiChipForV1_6Mockable(IWifiChip chip) {
-        if (null == chip) return null;
-        return android.hardware.wifi.V1_6.IWifiChip.castFrom(chip);
-    }
-
-    protected boolean isBridgedSoftApSupportedMockable() {
-        return mIsBridgedSoftApSupported;
-    }
-
-    protected boolean isStaWithBridgedSoftApConcurrencySupportedMockable() {
-        return mIsStaWithBridgedSoftApConcurrencySupported;
     }
 
     // internal implementation
@@ -1284,33 +1129,16 @@ public class HalDeviceManager {
                         return null;
                     }
 
-                    Mutable<ArrayList<android.hardware.wifi.V1_6.IWifiChip.ChipMode>>
-                            availableModesResp = new Mutable<>();
-                    android.hardware.wifi.V1_6.IWifiChip chipV16 =
-                            getWifiChipForV1_6Mockable(chipResp.value);
-                    if (chipV16 != null) {
-                        chipV16.getAvailableModes_1_6((WifiStatus status,
-                                ArrayList<android.hardware.wifi.V1_6.IWifiChip.ChipMode> modes) -> {
-                            statusOk.value = status.code == WifiStatusCode.SUCCESS;
-                            if (statusOk.value) {
-                                availableModesResp.value = modes;
-                            } else {
-                                Log.e(TAG, "getAvailableModes_1_6 failed: "
-                                        + statusString(status));
-                            }
-                        });
-                    } else {
-                        chipResp.value.getAvailableModes((WifiStatus status,
-                                ArrayList<IWifiChip.ChipMode> modes) -> {
-                            statusOk.value = status.code == WifiStatusCode.SUCCESS;
-                            if (statusOk.value) {
-                                availableModesResp.value = upgradeV1_0ChipModesToV1_6(modes);
-                            } else {
-                                Log.e(TAG, "getAvailableModes failed: "
-                                        + statusString(status));
-                            }
-                        });
-                    }
+                    Mutable<ArrayList<IWifiChip.ChipMode>> availableModesResp = new Mutable<>();
+                    chipResp.value.getAvailableModes(
+                            (WifiStatus status, ArrayList<IWifiChip.ChipMode> modes) -> {
+                                statusOk.value = status.code == WifiStatusCode.SUCCESS;
+                                if (statusOk.value) {
+                                    availableModesResp.value = modes;
+                                } else {
+                                    Log.e(TAG, "getAvailableModes failed: " + statusString(status));
+                                }
+                            });
                     if (!statusOk.value) {
                         return null;
                     }
@@ -1492,49 +1320,6 @@ public class HalDeviceManager {
         return null;
     }
 
-    private ArrayList<android.hardware.wifi.V1_6.IWifiChip.ChipMode>
-            upgradeV1_0ChipModesToV1_6(ArrayList<IWifiChip.ChipMode> oldChipModes) {
-        ArrayList<android.hardware.wifi.V1_6.IWifiChip.ChipMode> newChipModes = new ArrayList<>();
-        for (IWifiChip.ChipMode oldChipMode : oldChipModes) {
-            android.hardware.wifi.V1_6.IWifiChip.ChipMode newChipMode =
-                    new android.hardware.wifi.V1_6.IWifiChip.ChipMode();
-            newChipMode.id = oldChipMode.id;
-            newChipMode.availableCombinations = new ArrayList<>();
-            for (IWifiChip.ChipIfaceCombination oldCombo : oldChipMode.availableCombinations) {
-                android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombination newCombo =
-                        new ChipConcurrencyCombination();
-                newCombo.limits = new ArrayList<>();
-                boolean isStaInCombination = false;
-                for (IWifiChip.ChipIfaceCombinationLimit oldLimit : oldCombo.limits) {
-                    if (oldLimit.types.contains(IfaceType.STA)) {
-                        isStaInCombination = true;
-                        break;
-                    }
-                }
-                // Add Bridged AP based on the overlays
-                boolean canAddBridgedAp = isBridgedSoftApSupportedMockable() && !(isStaInCombination
-                        && !isStaWithBridgedSoftApConcurrencySupportedMockable());
-                for (IWifiChip.ChipIfaceCombinationLimit oldLimit : oldCombo.limits) {
-                    ChipConcurrencyCombinationLimit newLimit =
-                            new ChipConcurrencyCombinationLimit();
-                    newLimit.types = new ArrayList<>();
-                    for (int oldType : oldLimit.types) {
-                        int newType = IFACE_TYPE_TO_CONCURRENCY_TYPE_MAP.get(oldType);
-                        newLimit.types.add(newType);
-                        if (oldType == IfaceType.AP && canAddBridgedAp) {
-                            newLimit.types.add(IfaceConcurrencyType.AP_BRIDGED);
-                        }
-                    }
-                    newLimit.maxIfaces = oldLimit.maxIfaces;
-                    newCombo.limits.add(newLimit);
-                }
-                newChipMode.availableCombinations.add(newCombo);
-            }
-            newChipModes.add(newChipMode);
-        }
-        return newChipModes;
-    }
-
     /**
      * Checks the local state of this object (the cached state) against the input 'chipInfos'
      * state (which is a live representation of the Wi-Fi firmware status - read through the HAL).
@@ -1695,7 +1480,6 @@ public class HalDeviceManager {
             mEventHandler.post(() -> {
                 Log.e(TAG, "IWifiEventCallback.onFailure: " + statusString(status));
                 synchronized (mLock) {
-                    mWifi = null;
                     mIsReady = false;
                     teardownInternal();
                 }
@@ -1723,13 +1507,9 @@ public class HalDeviceManager {
 
         @Override
         public void onSubsystemRestart(WifiStatus status) throws RemoteException {
-            Log.i(TAG, "onSubsystemRestart");
             mEventHandler.post(() -> {
-                Log.i(TAG, "IWifiEventCallback.onSubsystemRestart: " + statusString(status));
                 synchronized (mLock) {
-                    Log.i(TAG, "Attempting to invoke mSubsystemRestartListener");
                     for (SubsystemRestartListenerProxy cb : mSubsystemRestartListener) {
-                        Log.i(TAG, "Invoking mSubsystemRestartListener");
                         cb.action();
                     }
                 }
@@ -1793,13 +1573,12 @@ public class HalDeviceManager {
             if (chip != null && wci.chipId != chipIdIfProvided.value) {
                 continue;
             }
-            // Map the V1_6 IfaceConcurrencyTypes to the corresponding IfaceType.
-            for (android.hardware.wifi.V1_6.IWifiChip.ChipMode cm: wci.availableModes) {
-                for (ChipConcurrencyCombination cic : cm.availableCombinations) {
-                    for (ChipConcurrencyCombinationLimit cicl : cic.limits) {
-                        for (int concurrencyType: cicl.types) {
-                            results.add(HAL_IFACE_MAP.get(
-                                    CONCURRENCY_TYPE_TO_CREATE_TYPE_MAP.get(concurrencyType)));
+
+            for (IWifiChip.ChipMode cm: wci.availableModes) {
+                for (IWifiChip.ChipIfaceCombination cic: cm.availableCombinations) {
+                    for (IWifiChip.ChipIfaceCombinationLimit cicl: cic.limits) {
+                        for (int type: cicl.types) {
+                            results.add(type);
                         }
                     }
                 }
@@ -1855,12 +1634,13 @@ public class HalDeviceManager {
                 == requiredChipCapabilities;
     }
 
-    private IfaceCreationData getBestIfaceCreationProposal(
+    private IWifiIface createIfaceIfPossible(
             WifiChipInfo[] chipInfos, @HdmIfaceTypeForCreation int createIfaceType,
-            long requiredChipCapabilities, WorkSource requestorWs) {
-        int targetHalIfaceType = HAL_IFACE_MAP.get(createIfaceType);
+            long requiredChipCapabilities, InterfaceDestroyedListener destroyedListener,
+            Handler handler, WorkSource requestorWs) {
+        int targetHalIfaceType = mHalIfaceMap.get(createIfaceType);
         if (VDBG) {
-            Log.d(TAG, "getBestIfaceCreationProposal: chipInfos=" + Arrays.deepToString(chipInfos)
+            Log.d(TAG, "createIfaceIfPossible: chipInfos=" + Arrays.deepToString(chipInfos)
                     + ", createIfaceType=" + createIfaceType
                     + ", targetHalIfaceType=" + targetHalIfaceType
                     + ", requiredChipCapabilities=" + requiredChipCapabilities
@@ -1868,18 +1648,20 @@ public class HalDeviceManager {
         }
         synchronized (mLock) {
             IfaceCreationData bestIfaceCreationProposal = null;
-            for (WifiChipInfo chipInfo : chipInfos) {
+            for (WifiChipInfo chipInfo: chipInfos) {
                 if (!isChipCapabilitiesSupported(chipInfo, requiredChipCapabilities)) continue;
+                for (IWifiChip.ChipMode chipMode: chipInfo.availableModes) {
+                    for (IWifiChip.ChipIfaceCombination chipIfaceCombo : chipMode
+                            .availableCombinations) {
+                        int[][] expandedIfaceCombos = expandIfaceCombos(chipIfaceCombo);
+                        if (VDBG) {
+                            Log.d(TAG, chipIfaceCombo + " expands to "
+                                    + Arrays.deepToString(expandedIfaceCombos));
+                        }
 
-                SparseArray<List<int[][]>> expandedCreateTypeCombosPerChipModeId =
-                        getExpandedCreateTypeCombosPerChipModeId(chipInfo);
-                for (int i = 0; i < expandedCreateTypeCombosPerChipModeId.size(); i++) {
-                    int chipModeId = expandedCreateTypeCombosPerChipModeId.keyAt(i);
-                    for (int[][] expandedCreateTypeCombo :
-                            expandedCreateTypeCombosPerChipModeId.get(chipModeId)) {
-                        for (int[] createTypeCombo : expandedCreateTypeCombo) {
-                            IfaceCreationData currentProposal = canCreateTypeComboSupportRequest(
-                                    chipInfo, chipModeId, createTypeCombo, createIfaceType,
+                        for (int[] expandedIfaceCombo: expandedIfaceCombos) {
+                            IfaceCreationData currentProposal = canIfaceComboSupportRequest(
+                                    chipInfo, chipMode, expandedIfaceCombo, targetHalIfaceType,
                                     requestorWs);
                             if (compareIfaceCreationData(currentProposal,
                                     bestIfaceCreationProposal)) {
@@ -1890,45 +1672,6 @@ public class HalDeviceManager {
                     }
                 }
             }
-            return bestIfaceCreationProposal;
-        }
-    }
-
-    /**
-     * Returns a SparseArray indexed by ChipModeId, containing Lists of I
-     * @param chipInfo
-     * @return
-     */
-    private SparseArray<List<int[][]>> getExpandedCreateTypeCombosPerChipModeId(
-            WifiChipInfo chipInfo) {
-        SparseArray<List<int[][]>> combosPerChipModeId = new SparseArray<>();
-        for (android.hardware.wifi.V1_6.IWifiChip.ChipMode chipMode
-                : chipInfo.availableModes) {
-            List<int[][]> expandedCreateTypeCombos = new ArrayList<>();
-            for (ChipConcurrencyCombination chipConcurrencyCombo
-                    : chipMode.availableCombinations) {
-                expandedCreateTypeCombos.add(expandCreateTypeCombo(chipConcurrencyCombo));
-            }
-            combosPerChipModeId.put(chipMode.id, expandedCreateTypeCombos);
-        }
-        return combosPerChipModeId;
-    }
-
-    private IWifiIface createIfaceIfPossible(
-            WifiChipInfo[] chipInfos, @HdmIfaceTypeForCreation int createIfaceType,
-            long requiredChipCapabilities, InterfaceDestroyedListener destroyedListener,
-            Handler handler, WorkSource requestorWs) {
-        int targetHalIfaceType = HAL_IFACE_MAP.get(createIfaceType);
-        if (VDBG) {
-            Log.d(TAG, "createIfaceIfPossible: chipInfos=" + Arrays.deepToString(chipInfos)
-                    + ", createIfaceType=" + createIfaceType
-                    + ", targetHalIfaceType=" + targetHalIfaceType
-                    + ", requiredChipCapabilities=" + requiredChipCapabilities
-                    + ", requestorWs=" + requestorWs);
-        }
-        synchronized (mLock) {
-            IfaceCreationData bestIfaceCreationProposal = getBestIfaceCreationProposal(chipInfos,
-                    createIfaceType, requiredChipCapabilities, requestorWs);
 
             if (bestIfaceCreationProposal != null) {
                 IWifiIface iface = executeChipReconfiguration(bestIfaceCreationProposal,
@@ -1967,43 +1710,72 @@ public class HalDeviceManager {
         return null;
     }
 
+    // similar to createIfaceIfPossible - but simpler code: not looking for best option just
+    // for any option (so terminates on first one).
+    private boolean isItPossibleToCreateIface(WifiChipInfo[] chipInfos,
+            int ifaceType, long requiredChipCapabilities,
+            WorkSource requestorWs) {
+        if (VDBG) {
+            Log.d(TAG, "isItPossibleToCreateIface: chipInfos=" + Arrays.deepToString(chipInfos)
+                    + ", ifaceType=" + ifaceType
+                    + ", requiredChipCapabilities=" + requiredChipCapabilities);
+        }
+
+        for (WifiChipInfo chipInfo: chipInfos) {
+            if (!isChipCapabilitiesSupported(chipInfo, requiredChipCapabilities)) continue;
+            for (IWifiChip.ChipMode chipMode: chipInfo.availableModes) {
+                for (IWifiChip.ChipIfaceCombination chipIfaceCombo : chipMode
+                        .availableCombinations) {
+                    int[][] expandedIfaceCombos = expandIfaceCombos(chipIfaceCombo);
+                    if (VDBG) {
+                        Log.d(TAG, chipIfaceCombo + " expands to "
+                                + Arrays.deepToString(expandedIfaceCombos));
+                    }
+
+                    for (int[] expandedIfaceCombo: expandedIfaceCombos) {
+                        if (canIfaceComboSupportRequest(chipInfo, chipMode, expandedIfaceCombo,
+                                ifaceType, requestorWs) != null) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
     /**
-     * Expands (or provides an alternative representation) of the ChipConcurrencyCombination as all
-     * possible combinations of @HdmIfaceTypeForCreation.
+     * Expands (or provides an alternative representation) of the ChipIfaceCombination as all
+     * possible combinations of interface.
      *
-     * Returns [# of combinations][4 (@HdmIfaceTypeForCreation)]
+     * Returns [# of combinations][4 (IfaceType)]
      *
      * Note: there could be duplicates - allow (inefficient but ...).
      * TODO: optimize by using a Set as opposed to a []: will remove duplicates. Will need to
      * provide correct hashes.
      */
-    private int[][] expandCreateTypeCombo(ChipConcurrencyCombination chipConcurrencyCombo) {
+    private int[][] expandIfaceCombos(IWifiChip.ChipIfaceCombination chipIfaceCombo) {
         int numOfCombos = 1;
-        for (ChipConcurrencyCombinationLimit limit : chipConcurrencyCombo.limits) {
+        for (IWifiChip.ChipIfaceCombinationLimit limit: chipIfaceCombo.limits) {
             for (int i = 0; i < limit.maxIfaces; ++i) {
                 numOfCombos *= limit.types.size();
             }
         }
 
-        int[][] expandedCreateTypeCombo =
-                new int[numOfCombos][CREATE_TYPES_BY_PRIORITY.length];
+        int[][] expandedIfaceCombos = new int[numOfCombos][IFACE_TYPES_BY_PRIORITY.length];
 
         int span = numOfCombos; // span of an individual type (or sub-tree size)
-        for (ChipConcurrencyCombinationLimit limit : chipConcurrencyCombo.limits) {
+        for (IWifiChip.ChipIfaceCombinationLimit limit: chipIfaceCombo.limits) {
             for (int i = 0; i < limit.maxIfaces; ++i) {
                 span /= limit.types.size();
                 for (int k = 0; k < numOfCombos; ++k) {
-                    expandedCreateTypeCombo[k][CONCURRENCY_TYPE_TO_CREATE_TYPE_MAP.get(
-                            limit.types.get((k / span) % limit.types.size()))]++;
+                    expandedIfaceCombos[k][limit.types.get((k / span) % limit.types.size())]++;
                 }
             }
         }
-        if (VDBG) {
-            Log.d(TAG, "ChipConcurrencyCombo " + chipConcurrencyCombo
-                    + " expands to HdmIfaceTypeForCreation combo "
-                    + Arrays.deepToString(expandedCreateTypeCombo));
-        }
-        return expandedCreateTypeCombo;
+
+        return expandedIfaceCombos;
     }
 
     private class IfaceCreationData {
@@ -2022,10 +1794,9 @@ public class HalDeviceManager {
     }
 
     /**
-     * Checks whether the input chip-create-type-combo can support the requested create type:
-     * if not then returns null, if yes then returns information containing the list of interfaces
-     * which would have to be removed first before an interface of the given create type can be
-     * created.
+     * Checks whether the input chip-iface-combo can support the requested interface type: if not
+     * then returns null, if yes then returns information containing the list of interfaces which
+     * would have to be removed first before the requested interface can be created.
      *
      * Note: the list of interfaces to be removed is EMPTY if a chip mode change is required - in
      * that case ALL the interfaces on the current chip have to be removed first.
@@ -2033,29 +1804,23 @@ public class HalDeviceManager {
      * Response determined based on:
      * - Mode configuration: i.e. could the mode support the interface type in principle
      */
-    private IfaceCreationData canCreateTypeComboSupportRequest(
-            WifiChipInfo chipInfo,
-            int chipModeId,
-            int[] chipCreateTypeCombo,
-            @HdmIfaceTypeForCreation int requestedCreateType,
+    private IfaceCreationData canIfaceComboSupportRequest(WifiChipInfo chipInfo,
+            IWifiChip.ChipMode chipMode, int[] chipIfaceCombo, int ifaceType,
             WorkSource requestorWs) {
-        int ifaceTypeOfRequest = HAL_IFACE_MAP.get(requestedCreateType);
         if (VDBG) {
-            Log.d(TAG, "canCreateTypeComboSupportRequest: chipInfo=" + chipInfo
-                    + ", chipModeId=" + chipModeId
-                    + ", chipCreateTypeCombo=" + Arrays.toString(chipCreateTypeCombo)
-                    + ", requestedCreateType=" + requestedCreateType
-                    + ", requestorWs=" + requestorWs);
+            Log.d(TAG, "canIfaceComboSupportRequest: chipInfo=" + chipInfo + ", chipMode="
+                    + chipMode + ", chipIfaceCombo=" + Arrays.toString(chipIfaceCombo)
+                    + ", ifaceType=" + ifaceType + ", requestorWs=" + requestorWs);
         }
 
-        // short-circuit: does the combo even support the requested type?
-        if (chipCreateTypeCombo[requestedCreateType] == 0) {
-            if (VDBG) Log.d(TAG, "Requested create type not supported by combo");
+        // short-circuit: does the chipIfaceCombo even support the requested type?
+        if (chipIfaceCombo[ifaceType] == 0) {
+            if (VDBG) Log.d(TAG, "Requested type not supported by combo");
             return null;
         }
 
         boolean isChipModeChangeProposed =
-                chipInfo.currentModeIdValid && chipInfo.currentModeId != chipModeId;
+                chipInfo.currentModeIdValid && chipInfo.currentModeId != chipMode.id;
 
         // short-circuit: can't change chip-mode if an existing interface on this chip has a higher
         // priority than the requested interface
@@ -2063,7 +1828,7 @@ public class HalDeviceManager {
             for (int type: IFACE_TYPES_BY_PRIORITY) {
                 if (chipInfo.ifaces[type].length != 0) {
                     if (!allowedToDeleteIfaceTypeForRequestedType(
-                            ifaceTypeOfRequest, requestorWs, type, chipInfo.ifaces)) {
+                            ifaceType, requestorWs, type, chipInfo.ifaces)) {
                         if (VDBG) {
                             Log.d(TAG, "Couldn't delete existing type " + type
                                     + " interfaces for requested type");
@@ -2076,35 +1841,25 @@ public class HalDeviceManager {
             // but if priority allows the mode change then we're good to go
             IfaceCreationData ifaceCreationData = new IfaceCreationData();
             ifaceCreationData.chipInfo = chipInfo;
-            ifaceCreationData.chipModeId = chipModeId;
+            ifaceCreationData.chipModeId = chipMode.id;
 
             return ifaceCreationData;
         }
 
         // possibly supported
         List<WifiIfaceInfo> interfacesToBeRemovedFirst = new ArrayList<>();
-        for (int existingCreateType : CREATE_TYPES_BY_PRIORITY) {
-            int existingIfaceType = HAL_IFACE_MAP.get(existingCreateType);
-            int tooManyInterfaces = chipInfo.ifaces[existingIfaceType].length;
-            // Count the existing create types from the existing IfaceTypes.
-            // AP and AP_BRIDGED are counted separately for the chip combinations, but are treated
-            // the same for priority calculations.
-            // TODO: Possibly make priority comparisons using the create type instead.
-            if (existingCreateType == HDM_CREATE_IFACE_AP) {
-                tooManyInterfaces -= mBridgedApIfaces.size();
-            } else if (existingCreateType == HDM_CREATE_IFACE_AP_BRIDGE) {
-                tooManyInterfaces = mBridgedApIfaces.size();
-            }
-            tooManyInterfaces -= chipCreateTypeCombo[existingCreateType];
 
-            // need to count the requested create type as well
-            if (existingCreateType == requestedCreateType) {
+        for (int type: IFACE_TYPES_BY_PRIORITY) {
+            int tooManyInterfaces = chipInfo.ifaces[type].length - chipIfaceCombo[type];
+
+            // need to count the requested interface as well
+            if (type == ifaceType) {
                 tooManyInterfaces += 1;
             }
 
             if (tooManyInterfaces > 0) { // may need to delete some
                 if (!allowedToDeleteIfaceTypeForRequestedType(
-                        ifaceTypeOfRequest, requestorWs, existingIfaceType, chipInfo.ifaces)) {
+                        ifaceType, requestorWs, type, chipInfo.ifaces)) {
                     if (VDBG) {
                         Log.d(TAG, "Would need to delete some higher priority interfaces");
                     }
@@ -2112,15 +1867,14 @@ public class HalDeviceManager {
                 }
 
                 // delete the most recently created interfaces
-                interfacesToBeRemovedFirst.addAll(selectInterfacesToDelete(
-                        tooManyInterfaces, ifaceTypeOfRequest, requestorWs, existingIfaceType,
-                        chipInfo.ifaces[existingIfaceType]));
+                interfacesToBeRemovedFirst.addAll(selectInterfacesToDelete(tooManyInterfaces,
+                        ifaceType, requestorWs, type, chipInfo.ifaces[type]));
             }
         }
 
         IfaceCreationData ifaceCreationData = new IfaceCreationData();
         ifaceCreationData.chipInfo = chipInfo;
-        ifaceCreationData.chipModeId = chipModeId;
+        ifaceCreationData.chipModeId = chipMode.id;
         ifaceCreationData.interfacesToBeRemovedFirst = interfacesToBeRemovedFirst;
 
         return ifaceCreationData;
@@ -2320,16 +2074,18 @@ public class HalDeviceManager {
         for (WifiIfaceInfo ifaceInfo : ifaceInfosForExistingIfaceType) {
             int newRequestorWsPriority = getRequestorWsPriority(newRequestorWsHelper);
             int existingRequestorWsPriority = getRequestorWsPriority(ifaceInfo.requestorWsHelper);
-            boolean isAllowedToDelete = allowedToDelete(requestedIfaceType, newRequestorWsPriority,
-                    existingIfaceType, existingRequestorWsPriority);
-            if (mDbg) {
-                Log.d(TAG, "allowedToDeleteIfaceTypeForRequestedType = " + isAllowedToDelete
-                        + " requestedIfaceType=" + requestedIfaceType
-                        + " existingIfaceType=" + existingIfaceType
-                        + ", newRequestorWsPriority=" + newRequestorWsPriority
-                        + ", existingRequestorWsPriority=" + existingRequestorWsPriority);
+            if (allowedToDelete(
+                    requestedIfaceType, newRequestorWsPriority, existingIfaceType,
+                    existingRequestorWsPriority)) {
+                if (mDbg) {
+                    Log.d(TAG, "allowedToDeleteIfaceTypeForRequestedType: Allowed to delete "
+                            + "requestedIfaceType=" + requestedIfaceType
+                            + "existingIfaceType=" + existingIfaceType
+                            + ", newRequestorWsPriority=" + newRequestorWsHelper
+                            + ", existingRequestorWsPriority" + existingRequestorWsPriority);
+                }
+                return true;
             }
-            if (isAllowedToDelete) return true;
         }
         return false;
     }
@@ -2344,8 +2100,7 @@ public class HalDeviceManager {
      *      - Else, not allowed to delete.
      *  - Delete ifaces based on the descending requestor priority
      *    (i.e bg app requests are deleted first, privileged app requests are deleted last)
-     *  - If there are > 1 ifaces within the same priority group to delete, later created iface
-     *    is deleted first.
+     *  - If there are > 1 ifaces within the same priority group to delete, select them randomly.
      *
      * @param excessInterfaces Number of interfaces which need to be selected.
      * @param requestedIfaceType Requested iface type.
@@ -2368,9 +2123,7 @@ public class HalDeviceManager {
         boolean lookupError = false;
         // Map of priority levels to ifaces to delete.
         Map<Integer, List<WifiIfaceInfo>> ifacesToDeleteMap = new HashMap<>();
-        // Reverse order to make sure later created interfaces deleted firstly
-        for (int i = interfaces.length - 1; i >= 0; i--) {
-            WifiIfaceInfo info = interfaces[i];
+        for (WifiIfaceInfo info : interfaces) {
             InterfaceCacheEntry cacheEntry;
             synchronized (mLock) {
                 cacheEntry = mInterfaceInfoCache.get(Pair.create(info.name, getType(info.iface)));
@@ -2383,15 +2136,8 @@ public class HalDeviceManager {
             }
             int newRequestorWsPriority = getRequestorWsPriority(newRequestorWsHelper);
             int existingRequestorWsPriority = getRequestorWsPriority(cacheEntry.requestorWsHelper);
-            boolean isAllowedToDelete = allowedToDelete(requestedIfaceType, newRequestorWsPriority,
-                    existingIfaceType, existingRequestorWsPriority);
-            if (VDBG) {
-                Log.d(TAG, "info=" + info + ":  allowedToDelete=" + isAllowedToDelete
-                        + " (requestedIfaceType=" + requestedIfaceType + ", newRequestorWsPriority="
-                        + newRequestorWsPriority + ", existingIfaceType=" + existingIfaceType
-                        + ", existingRequestorWsPriority=" + existingRequestorWsPriority + ")");
-            }
-            if (isAllowedToDelete) {
+            if (allowedToDelete(requestedIfaceType, newRequestorWsPriority, existingIfaceType,
+                    existingRequestorWsPriority)) {
                 ifacesToDeleteMap.computeIfAbsent(
                         existingRequestorWsPriority, v -> new ArrayList<>()).add(info);
             }
@@ -2423,18 +2169,16 @@ public class HalDeviceManager {
     }
 
     /**
-     * Checks whether the expanded @HdmIfaceTypeForCreation combo can support the requested combo.
+     * Checks whether the input chip-iface-combo can support the requested interface type.
      */
-    private boolean canCreateTypeComboSupportRequestedCreateTypeCombo(
-            int[] chipCombo, int[] requestedCombo) {
+    private boolean canIfaceComboSupportRequestedIfaceCombo(
+            int[] chipIfaceCombo, int[] requestedIfaceCombo) {
         if (VDBG) {
-            Log.d(TAG, "canCreateTypeComboSupportRequestedCreateTypeCombo: "
-                    + "chipCombo=" + Arrays.toString(chipCombo)
-                    + ", requestedCombo=" + Arrays.toString(requestedCombo));
+            Log.d(TAG, "canIfaceComboSupportRequest: chipIfaceCombo=" + chipIfaceCombo
+                    + ", requestedIfaceCombo=" + requestedIfaceCombo);
         }
-        for (int createType : CREATE_TYPES_BY_PRIORITY) {
-            if (chipCombo[createType]
-                    < requestedCombo[createType]) {
+        for (int ifaceType : IFACE_TYPES_BY_PRIORITY) {
+            if (chipIfaceCombo[ifaceType] < requestedIfaceCombo[ifaceType]) {
                 if (VDBG) Log.d(TAG, "Requested type not supported by combo");
                 return false;
             }
@@ -2442,28 +2186,29 @@ public class HalDeviceManager {
         return true;
     }
 
-    // Is it possible to create a @HdmIfaceTypeForCreation combo just looking at the device
-    // capabilities.
-    private boolean isItPossibleToCreateCreateTypeCombo(WifiChipInfo[] chipInfos,
-            long requiredChipCapabilities, int[] requestedCombo) {
+    // Is it possible to create iface combo just looking at the device capabilities.
+    private boolean isItPossibleToCreateIfaceCombo(WifiChipInfo[] chipInfos,
+            long requiredChipCapabilities, int[] ifaceCombo) {
         if (VDBG) {
-            Log.d(TAG, "isItPossibleToCreateCreateTypeCombo: chipInfos="
-                    + Arrays.deepToString(chipInfos)
-                    + ", requestedCombo=" + Arrays.toString(requestedCombo)
+            Log.d(TAG, "isItPossibleToCreateIfaceCombo: chipInfos=" + Arrays.deepToString(chipInfos)
+                    + ", ifaceType=" + ifaceCombo
                     + ", requiredChipCapabilities=" + requiredChipCapabilities);
         }
 
         for (WifiChipInfo chipInfo: chipInfos) {
             if (!isChipCapabilitiesSupported(chipInfo, requiredChipCapabilities)) continue;
-            SparseArray<List<int[][]>> expandedCreateTypeCombosPerChipModeId =
-                    getExpandedCreateTypeCombosPerChipModeId(chipInfo);
-            for (int i = 0; i < expandedCreateTypeCombosPerChipModeId.size(); i++) {
-                int chipModeId = expandedCreateTypeCombosPerChipModeId.keyAt(i);
-                for (int[][] expandedCreateTypeCombo
-                        : expandedCreateTypeCombosPerChipModeId.get(chipModeId)) {
-                    for (int[] createTypeCombo : expandedCreateTypeCombo) {
-                        if (canCreateTypeComboSupportRequestedCreateTypeCombo(
-                                createTypeCombo, requestedCombo)) {
+            for (IWifiChip.ChipMode chipMode: chipInfo.availableModes) {
+                for (IWifiChip.ChipIfaceCombination chipIfaceCombo
+                        : chipMode.availableCombinations) {
+                    int[][] expandedIfaceCombos = expandIfaceCombos(chipIfaceCombo);
+                    if (VDBG) {
+                        Log.d(TAG, chipIfaceCombo + " expands to "
+                                + Arrays.deepToString(expandedIfaceCombos));
+                    }
+
+                    for (int[] expandedIfaceCombo: expandedIfaceCombos) {
+                        if (canIfaceComboSupportRequestedIfaceCombo(
+                                expandedIfaceCombo, ifaceCombo)) {
                             return true;
                         }
                     }
@@ -2580,9 +2325,6 @@ public class HalDeviceManager {
                     return null;
                 }
 
-                if (createIfaceType == HDM_CREATE_IFACE_AP_BRIDGE) {
-                    mBridgedApIfaces.add(ifaceResp.value);
-                }
                 return ifaceResp.value;
             } catch (RemoteException e) {
                 Log.e(TAG, "executeChipReconfiguration exception: " + e);
@@ -2662,7 +2404,6 @@ public class HalDeviceManager {
             }
 
             if (status != null && status.code == WifiStatusCode.SUCCESS) {
-                mBridgedApIfaces.remove(iface);
                 return true;
             } else {
                 Log.e(TAG, "IWifiChip.removeXxxIface failed: " + statusString(status));
@@ -2936,23 +2677,9 @@ public class HalDeviceManager {
 
                 Mutable<IWifiRttController> rttResp = new Mutable<>();
                 try {
-                    android.hardware.wifi.V1_6.IWifiChip chip16 =
-                            android.hardware.wifi.V1_6.IWifiChip.castFrom(chipInfo.chip);
                     android.hardware.wifi.V1_4.IWifiChip chip14 =
                             android.hardware.wifi.V1_4.IWifiChip.castFrom(chipInfo.chip);
-
-                    if (chip16 != null) {
-                        chip16.createRttController_1_6(null,
-                                (WifiStatus status,
-                                 android.hardware.wifi.V1_6.IWifiRttController rtt) -> {
-                                    if (status.code == WifiStatusCode.SUCCESS) {
-                                        rttResp.value = rtt;
-                                    } else {
-                                        Log.e(TAG, "IWifiChip.createRttController_1_6 failed: "
-                                                + statusString(status));
-                                    }
-                                });
-                    } else if (chip14 != null) {
+                    if (chip14 != null) {
                         chip14.createRttController_1_4(null,
                                 (WifiStatus status,
                                  android.hardware.wifi.V1_4.IWifiRttController rtt) -> {

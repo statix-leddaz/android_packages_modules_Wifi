@@ -27,6 +27,4 @@ interface IWifiScanner
     Messenger getMessenger();
 
     Bundle getAvailableChannels(int band, String packageName, String featureId);
-
-    boolean isScanning();
 }
