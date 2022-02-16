@@ -497,7 +497,7 @@ public class ANQPParserTest extends WifiBaseTest {
         byte[] data = getHSOsuProvidersPayload(osuSsidBytes);
 
         HSOsuProvidersElement expected = new HSOsuProvidersElement(
-                WifiSsid.fromBytes(osuSsidBytes),
+                WifiSsid.createFromByteArray(osuSsidBytes),
                 Arrays.asList(OsuProviderInfoTestUtil.TEST_OSU_PROVIDER_INFO));
 
         ByteBuffer buffer = ByteBuffer.wrap(data);

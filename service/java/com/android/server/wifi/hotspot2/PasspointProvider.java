@@ -26,7 +26,6 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiEnterpriseConfig;
-import android.net.wifi.WifiSsid;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.Credential;
 import android.net.wifi.hotspot2.pps.Credential.SimCredential;
@@ -64,7 +63,6 @@ import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -85,7 +83,6 @@ public class PasspointProvider {
     private static final String ALIAS_ALIAS_REMEDIATION_TYPE = "REMEDIATION_";
 
     private static final String SYSTEM_CA_STORE_PATH = "/system/etc/security/cacerts";
-    private static final long MAX_RCOI_ENTRY_LIFETIME_MS = 600_000; // 10 minutes
 
     private final PasspointConfiguration mConfig;
     private final WifiKeyStore mKeyStore;
@@ -123,10 +120,6 @@ public class PasspointProvider {
     private String mAnonymousIdentity = null;
     private String mConnectChoice = null;
     private int mConnectChoiceRssi = 0;
-
-    // A map that maps SSIDs (String) to a pair of RCOI and a timestamp (both are Long) to be
-    // used later when connecting to an RCOI-based Passpoint network.
-    private final Map<String, Pair<Long, Long>> mRcoiMatchForNetwork = new HashMap<>();
 
     public PasspointProvider(PasspointConfiguration config, WifiKeyStore keyStore,
             WifiCarrierInfoManager wifiCarrierInfoManager, long providerId, int creatorUid,
@@ -325,7 +318,7 @@ public class PasspointProvider {
                 return false;
             }
             if (!mKeyStore.putUserPrivKeyAndCertsInKeyStore(
-                    keyName, clientKey, new Certificate[]{clientCert})) {
+                    keyName, clientKey, new Certificate[] {clientCert})) {
                 Log.e(TAG, "Failed to install client private key or certificate");
                 uninstallCertsAndKeys();
                 return false;
@@ -419,14 +412,13 @@ public class PasspointProvider {
     /**
      * Return the matching status with the given AP, based on the ANQP elements from the AP.
      *
-     * @param anqpElements            ANQP elements from the AP
+     * @param anqpElements ANQP elements from the AP
      * @param roamingConsortiumFromAp Roaming Consortium information element from the AP
-     * @param scanResult              Latest Scan result
+     * @param scanResult Latest Scan result
      * @return {@link PasspointMatch}
      */
     public PasspointMatch match(Map<ANQPElementType, ANQPElement> anqpElements,
             RoamingConsortium roamingConsortiumFromAp, ScanResult scanResult) {
-        sweepMatchedRcoiMap();
         if (isProviderBlocked(scanResult)) {
             if (mVerboseLoggingEnabled) {
                 Log.d(TAG, "Provider " + mConfig.getServiceFriendlyName()
@@ -453,7 +445,7 @@ public class PasspointProvider {
         // Match FQDN for Home provider or RCOI(s) for Roaming provider
         // For SIM credential, the FQDN is in the format of wlan.mnc*.mcc*.3gppnetwork.org
         PasspointMatch providerMatch = matchFqdnAndRcoi(anqpElements, roamingConsortiumFromAp,
-                matchingSimImsi, scanResult);
+                matchingSimImsi);
 
         // 3GPP Network matching
         if (providerMatch == PasspointMatch.None && ANQPMatcher.matchThreeGPPNetwork(
@@ -534,17 +526,10 @@ public class PasspointProvider {
             carrierId = mBestGuessCarrierId;
         }
         wifiConfig.carrierId = carrierId;
-        if (mConfig.getSubscriptionGroup() != null) {
-            wifiConfig.setSubscriptionGroup(mConfig.getSubscriptionGroup());
-            wifiConfig.subscriptionId = mWifiCarrierInfoManager
-                    .getActiveSubscriptionIdInGroup(wifiConfig.getSubscriptionGroup());
-        } else {
-            wifiConfig.subscriptionId =
-                    mConfig.getSubscriptionId() == SubscriptionManager.INVALID_SUBSCRIPTION_ID
-                            ? mWifiCarrierInfoManager.getMatchingSubId(carrierId)
-                            : mConfig.getSubscriptionId();
-        }
-
+        wifiConfig.subscriptionId =
+                mConfig.getSubscriptionId() == SubscriptionManager.INVALID_SUBSCRIPTION_ID
+                        ? mWifiCarrierInfoManager.getMatchingSubId(carrierId)
+                        : mConfig.getSubscriptionId();
         wifiConfig.carrierMerged = mConfig.isCarrierMerged();
         wifiConfig.oemPaid = mConfig.isOemPaid();
         wifiConfig.oemPrivate = mConfig.isOemPrivate();
@@ -590,7 +575,7 @@ public class PasspointProvider {
         wifiConfig.creatorUid = mCreatorUid;
         wifiConfig.trusted = mIsTrusted;
         if (mConfig.isMacRandomizationEnabled()) {
-            if (mConfig.isNonPersistentMacRandomizationEnabled()) {
+            if (mConfig.isEnhancedMacRandomizationEnabled()) {
                 wifiConfig.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_NON_PERSISTENT;
             } else {
                 wifiConfig.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_PERSISTENT;
@@ -601,6 +586,7 @@ public class PasspointProvider {
         wifiConfig.meteredOverride = mConfig.getMeteredOverride();
         wifiConfig.getNetworkSelectionStatus().setConnectChoice(mConnectChoice);
         wifiConfig.getNetworkSelectionStatus().setConnectChoiceRssi(mConnectChoiceRssi);
+
         return wifiConfig;
     }
 
@@ -745,7 +731,7 @@ public class PasspointProvider {
      * Retrieve the client certificate from the certificates chain.  The certificate
      * with the matching SHA256 digest is the client certificate.
      *
-     * @param certChain                 The client certificates chain
+     * @param certChain The client certificates chain
      * @param expectedSha256Fingerprint The expected SHA256 digest of the client certificate
      * @return {@link java.security.cert.X509Certificate}
      */
@@ -776,7 +762,6 @@ public class PasspointProvider {
      * Expiration date -> non-metered
      * Data limit -> metered
      * Time usage limit -> metered
-     *
      * @param passpointConfig instance of {@link PasspointConfiguration}
      * @return {@code true} if the network is a metered network, {@code false} otherwise.
      */
@@ -792,69 +777,64 @@ public class PasspointProvider {
     /**
      * Match given OIs to the Roaming Consortium OIs
      *
-     * @param providerOis              Provider OIs to match against
+     * @param providerOis Provider OIs to match against
      * @param roamingConsortiumElement RCOIs in the ANQP element
-     * @param roamingConsortiumFromAp  RCOIs in the AP scan results
-     * @param matchAll                 Indicates if all providerOis must match the RCOIs elements
-     * @return OI value if there is a match, 0 otherwise. If matachAll is true, then this method
-     * returns the first matched OI.
+     * @param roamingConsortiumFromAp RCOIs in the AP scan results
+     * @param matchAll Indicates if all providerOis must match the RCOIs elements
+     * @return {@code true} if there is a match, {@code false} otherwise.
      */
-    private long matchOis(long[] providerOis,
+    private boolean matchOis(long[] providerOis,
             RoamingConsortiumElement roamingConsortiumElement,
             RoamingConsortium roamingConsortiumFromAp,
             boolean matchAll) {
+
+
         // ANQP Roaming Consortium OI matching.
-        long matchedRcoi = ANQPMatcher.matchRoamingConsortium(roamingConsortiumElement, providerOis,
-                matchAll);
-        if (matchedRcoi != 0) {
+        if (ANQPMatcher.matchRoamingConsortium(roamingConsortiumElement, providerOis, matchAll)) {
             if (mVerboseLoggingEnabled) {
-                Log.d(TAG, String.format("ANQP RCOI match: 0x%x", matchedRcoi));
+                Log.e(TAG, "ANQP RCOI match " + roamingConsortiumElement);
             }
-            return matchedRcoi;
+            return true;
         }
 
         // AP Roaming Consortium OI matching.
         long[] apRoamingConsortiums = roamingConsortiumFromAp.getRoamingConsortiums();
         if (apRoamingConsortiums == null || providerOis == null) {
-            return 0;
+            return false;
         }
         // Roaming Consortium OI information element matching.
-        for (long apOi : apRoamingConsortiums) {
+        for (long apOi: apRoamingConsortiums) {
             boolean matched = false;
-            for (long providerOi : providerOis) {
+            for (long providerOi: providerOis) {
                 if (apOi == providerOi) {
                     if (mVerboseLoggingEnabled) {
-                        Log.d(TAG, String.format("AP RCOI match: 0x%x", apOi));
+                        Log.e(TAG, "AP RCOI match: " + apOi);
                     }
                     if (!matchAll) {
-                        return apOi;
+                        return true;
                     } else {
                         matched = true;
-                        if (matchedRcoi == 0) matchedRcoi = apOi;
                         break;
                     }
                 }
             }
             if (matchAll && !matched) {
-                return 0;
+                return false;
             }
         }
-        return matchedRcoi;
+        return matchAll;
     }
 
     /**
      * Perform a provider match based on the given ANQP elements for FQDN and RCOI
      *
-     * @param anqpElements            List of ANQP elements
+     * @param anqpElements List of ANQP elements
      * @param roamingConsortiumFromAp Roaming Consortium information element from the AP
-     * @param matchingSIMImsi         Installed SIM IMSI that matches the SIM credential ANQP
-     *                                element
-     * @param scanResult              The relevant scan result
+     * @param matchingSIMImsi Installed SIM IMSI that matches the SIM credential ANQP element
      * @return {@link PasspointMatch}
      */
     private PasspointMatch matchFqdnAndRcoi(Map<ANQPElementType, ANQPElement> anqpElements,
-            RoamingConsortium roamingConsortiumFromAp, String matchingSIMImsi,
-            ScanResult scanResult) {
+            RoamingConsortium roamingConsortiumFromAp, String matchingSIMImsi) {
         // Domain name matching.
         if (ANQPMatcher.matchDomainName(
                 (DomainNameElement) anqpElements.get(ANQPElementType.ANQPDomName),
@@ -885,44 +865,38 @@ public class PasspointProvider {
         if (mConfig.getHomeSp().getMatchAllOis() != null) {
             // Ensure that every HomeOI whose corresponding HomeOIRequired value is true shall match
             // an OI in the Roaming Consortium advertised by the hotspot operator.
-            if (matchOis(mConfig.getHomeSp().getMatchAllOis(),
-                    (RoamingConsortiumElement) anqpElements.get(
-                            ANQPElementType.ANQPRoamingConsortium),
-                    roamingConsortiumFromAp, true) != 0) {
+            if (matchOis(mConfig.getHomeSp().getMatchAllOis(), (RoamingConsortiumElement)
+                            anqpElements.get(ANQPElementType.ANQPRoamingConsortium),
+                    roamingConsortiumFromAp, true)) {
                 if (mVerboseLoggingEnabled) {
-                    Log.d(TAG, "All HomeOI RCOI match: HomeProvider");
+                    Log.e(TAG, "All HomeOI RCOI match: HomeProvider");
                 }
                 return PasspointMatch.HomeProvider;
             }
         } else if (mConfig.getHomeSp().getMatchAnyOis() != null) {
             // Ensure that any HomeOI whose corresponding HomeOIRequired value is false shall match
             // an OI in the Roaming Consortium advertised by the hotspot operator.
-            if (matchOis(mConfig.getHomeSp().getMatchAnyOis(),
-                    (RoamingConsortiumElement) anqpElements.get(
-                            ANQPElementType.ANQPRoamingConsortium),
-                    roamingConsortiumFromAp, false) != 0) {
+            if (matchOis(mConfig.getHomeSp().getMatchAnyOis(), (RoamingConsortiumElement)
+                            anqpElements.get(ANQPElementType.ANQPRoamingConsortium),
+                    roamingConsortiumFromAp, false)) {
                 if (mVerboseLoggingEnabled) {
-                    Log.d(TAG, "Any HomeOI RCOI match: HomeProvider");
+                    Log.e(TAG, "Any HomeOI RCOI match: HomeProvider");
                 }
                 return PasspointMatch.HomeProvider;
             }
         }
 
         // Roaming Consortium OI matching.
-        long matchedRcoi = matchOis(mConfig.getHomeSp().getRoamingConsortiumOis(),
-                (RoamingConsortiumElement) anqpElements.get(ANQPElementType.ANQPRoamingConsortium),
-                roamingConsortiumFromAp, false);
-        if (matchedRcoi != 0) {
+        if (matchOis(mConfig.getHomeSp().getRoamingConsortiumOis(), (RoamingConsortiumElement)
+                anqpElements.get(ANQPElementType.ANQPRoamingConsortium),
+                roamingConsortiumFromAp, false)) {
             if (mVerboseLoggingEnabled) {
-                Log.d(TAG, String.format("RCOI match: RoamingProvider, selected RCOI = 0x%x",
-                        matchedRcoi));
+                Log.e(TAG, "ANQP RCOI match: RoamingProvider");
             }
-            addMatchedRcoi(scanResult, matchedRcoi);
             return PasspointMatch.RoamingProvider;
         }
-
         if (mVerboseLoggingEnabled) {
-            Log.d(TAG, "No domain name or RCOI match");
+            Log.e(TAG, "No domain name or RCOI match");
         }
         return PasspointMatch.None;
     }
@@ -930,7 +904,7 @@ public class PasspointProvider {
     /**
      * Fill in WifiEnterpriseConfig with information from an user credential.
      *
-     * @param config     Instance of {@link WifiEnterpriseConfig}
+     * @param config Instance of {@link WifiEnterpriseConfig}
      * @param credential Instance of {@link UserCredential}
      */
     private void buildEnterpriseConfigForUserCredential(WifiEnterpriseConfig config,
@@ -989,13 +963,13 @@ public class PasspointProvider {
     /**
      * Fill in WifiEnterpriseConfig with information from a SIM credential.
      *
-     * @param config     Instance of {@link WifiEnterpriseConfig}
+     * @param config Instance of {@link WifiEnterpriseConfig}
      * @param credential Instance of {@link SimCredential}
      */
     private void buildEnterpriseConfigForSimCredential(WifiEnterpriseConfig config,
             Credential.SimCredential credential) {
         int eapMethod = WifiEnterpriseConfig.Eap.NONE;
-        switch (credential.getEapType()) {
+        switch(credential.getEapType()) {
             case EAPConstants.EAP_SIM:
                 eapMethod = WifiEnterpriseConfig.Eap.SIM;
                 break;
@@ -1063,7 +1037,7 @@ public class PasspointProvider {
                         Base64.DEFAULT), StandardCharsets.UTF_8);
         userCredential.setPassword(encodedPassword);
 
-        switch (config.getPhase2Method()) {
+        switch(config.getPhase2Method()) {
             case WifiEnterpriseConfig.Phase2.PAP:
                 userCredential.setNonEapInnerMethod(Credential.UserCredential.AUTH_METHOD_PAP);
                 break;
@@ -1086,7 +1060,7 @@ public class PasspointProvider {
      * {@link WifiEnterpriseConfig}
      *
      * @param eapType The EAP type of the SIM credential
-     * @param config  The enterprise configuration containing the credential
+     * @param config The enterprise configuration containing the credential
      * @return {@link android.net.wifi.hotspot2.pps.Credential.SimCredential}
      */
     private static Credential.SimCredential buildSimCredentialFromEnterpriseConfig(
@@ -1103,7 +1077,6 @@ public class PasspointProvider {
 
     /**
      * Enable verbose logging
-     *
      * @param verbose enables verbose logging
      */
     public void enableVerboseLogging(boolean verbose) {
@@ -1113,8 +1086,8 @@ public class PasspointProvider {
     /**
      * Block a BSS or ESS following a Deauthentication-Imminent WNM-Notification
      *
-     * @param bssid          BSSID of the source AP
-     * @param isEss          true: Block ESS, false: Block BSS
+     * @param bssid BSSID of the source AP
+     * @param isEss true: Block ESS, false: Block BSS
      * @param delayInSeconds Delay duration in seconds
      */
     public void blockBssOrEss(long bssid, boolean isEss, int delayInSeconds) {
@@ -1178,10 +1151,9 @@ public class PasspointProvider {
 
     /**
      * Set the user connect choice on the passpoint network.
-     *
      * @param choice The {@link WifiConfiguration#getProfileKey()} of the user connect
      *               network.
-     * @param rssi   The signal strength of the network.
+     * @param rssi The signal strength of the network.
      */
     public void setUserConnectChoice(String choice, int rssi) {
         mConnectChoice = choice;
@@ -1194,44 +1166,5 @@ public class PasspointProvider {
 
     public int getConnectChoiceRssi() {
         return mConnectChoiceRssi;
-    }
-
-    /**
-     * Add a potential RCOI match of the Passpoint provider to a network in the environment
-     * @param scanResult Scan result
-     * @param matchedRcoi Matched RCOI
-     */
-    private void addMatchedRcoi(ScanResult scanResult, long matchedRcoi) {
-        WifiSsid wifiSsid = scanResult.getWifiSsid();
-        if (wifiSsid != null && wifiSsid.getUtf8Text() != null) {
-            String ssid = wifiSsid.toString();
-            mRcoiMatchForNetwork.put(ssid, new Pair<>(matchedRcoi,
-                    mClock.getElapsedSinceBootMillis()));
-        }
-    }
-
-    /**
-     * Get the matched (selected) RCOI for a particular Passpoint network, and remove it from the
-     * internal map.
-     * @param ssid The SSID of the network
-     * @return An RCOI that the provider has matched with the network
-     */
-    public long getAndRemoveMatchedRcoi(String ssid) {
-        if (ssid == null) return 0;
-        if (mRcoiMatchForNetwork.isEmpty()) return 0;
-        Pair<Long, Long> rcoiMatchEntry = mRcoiMatchForNetwork.get(ssid);
-        if (rcoiMatchEntry == null) return 0;
-        mRcoiMatchForNetwork.remove(ssid);
-        return rcoiMatchEntry.first;
-    }
-
-    /**
-     * Sweep the match RCOI map and free up old entries
-     */
-    private void sweepMatchedRcoiMap() {
-        if (mRcoiMatchForNetwork.isEmpty()) return;
-        mRcoiMatchForNetwork.entrySet().removeIf(
-                entry -> (entry.getValue().second + MAX_RCOI_ENTRY_LIFETIME_MS
-                        < mClock.getElapsedSinceBootMillis()));
     }
 }

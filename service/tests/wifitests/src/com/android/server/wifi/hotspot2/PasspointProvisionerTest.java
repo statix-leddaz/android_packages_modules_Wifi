@@ -138,9 +138,9 @@ public class PasspointProvisionerTest extends WifiBaseTest {
     private static final byte[] TEST_OSU_SSID_BYTES = "OSU_SSID".getBytes(StandardCharsets.UTF_8);
     private static final byte[] TEST_OSU_SSID3_BYTES = "OSU_SSID3".getBytes(StandardCharsets.UTF_8);
     private static final WifiSsid TEST_OSU_SSID =
-            WifiSsid.fromBytes(TEST_OSU_SSID_BYTES);
+            WifiSsid.createFromByteArray(TEST_OSU_SSID_BYTES);
     private static final WifiSsid TEST_OSU_SSID3 =
-            WifiSsid.fromBytes(TEST_OSU_SSID3_BYTES);
+            WifiSsid.createFromByteArray(TEST_OSU_SSID3_BYTES);
     private static final List<OsuProviderInfo> TEST_PROVIDER_LIST =
             Arrays.asList(OsuProviderInfoTestUtil.TEST_OSU_PROVIDER_INFO);
     private static final HSOsuProvidersElement TEST_OSU_PROVIDERS_ELEMENT =

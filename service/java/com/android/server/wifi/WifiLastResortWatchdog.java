@@ -759,8 +759,8 @@ public class WifiLastResortWatchdog {
     }
 
     /** Enable/disable verbose logging. */
-    public void enableVerboseLogging(boolean verboseEnabled) {
-        mVerboseLoggingEnabled = verboseEnabled;
+    public void enableVerboseLogging(int verbose) {
+        mVerboseLoggingEnabled = verbose > 0;
     }
 
     @VisibleForTesting
