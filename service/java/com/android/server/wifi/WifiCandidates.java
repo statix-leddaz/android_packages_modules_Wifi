@@ -99,10 +99,6 @@ public class WifiCandidates {
          */
         boolean isOemPrivate();
         /**
-         * Returns true for a secondary network with internet.
-         */
-        boolean isSecondaryInternet();
-        /**
          * Returns true if suggestion came from a carrier or privileged app.
          */
         boolean isCarrierOrPrivileged();
@@ -164,11 +160,6 @@ public class WifiCandidates {
          * Gets statistics from the scorecard.
          */
         @Nullable WifiScoreCardProto.Signal getEventStatistics(WifiScoreCardProto.Event event);
-
-        /**
-         * Returns true for a restricted network.
-         */
-        boolean isRestricted();
     }
 
     /**
@@ -190,10 +181,8 @@ public class WifiCandidates {
         private final boolean mPasspoint;
         private final boolean mEphemeral;
         private final boolean mTrusted;
-        private final boolean mRestricted;
         private final boolean mOemPaid;
         private final boolean mOemPrivate;
-        private final boolean mSecondaryInternet;
         private final boolean mCarrierOrPrivileged;
         private final int mPredictedThroughputMbps;
         private final int mEstimatedPercentInternetAvailability;
@@ -226,12 +215,10 @@ public class WifiCandidates {
             this.mTrusted = config.trusted;
             this.mOemPaid = config.oemPaid;
             this.mOemPrivate = config.oemPrivate;
-            this.mSecondaryInternet = config.dbsSecondaryInternet;
             this.mCarrierOrPrivileged = isCarrierOrPrivileged;
             this.mPredictedThroughputMbps = predictedThroughputMbps;
             this.mEstimatedPercentInternetAvailability = perBssid == null ? 50 :
                     perBssid.estimatePercentInternetAvailability();
-            this.mRestricted = config.restricted;
         }
 
         @Override
@@ -265,11 +252,6 @@ public class WifiCandidates {
         }
 
         @Override
-        public boolean isRestricted() {
-            return mRestricted;
-        }
-
-        @Override
         public boolean isOemPaid() {
             return mOemPaid;
         }
@@ -277,11 +259,6 @@ public class WifiCandidates {
         @Override
         public boolean isOemPrivate() {
             return mOemPrivate;
-        }
-
-        @Override
-        public boolean isSecondaryInternet() {
-            return mSecondaryInternet;
         }
 
         @Override
@@ -378,10 +355,8 @@ public class WifiCandidates {
                     + (isCurrentNetwork() ? "current, " : "")
                     + (isEphemeral() ? "ephemeral" : "saved") + ", "
                     + (isTrusted() ? "trusted, " : "")
-                    + (isRestricted() ? "restricted, " : "")
                     + (isOemPaid() ? "oemPaid, " : "")
                     + (isOemPrivate() ? "oemPrivate, " : "")
-                    + (isSecondaryInternet() ? "secondaryInternet, " : "")
                     + (isCarrierOrPrivileged() ? "priv, " : "")
                     + (isMetered() ? "metered, " : "")
                     + (hasNoInternetAccess() ? "noInternet, " : "")
