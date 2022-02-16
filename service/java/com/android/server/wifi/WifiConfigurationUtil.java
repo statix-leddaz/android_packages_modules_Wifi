@@ -760,12 +760,7 @@ public class WifiConfigurationUtil {
         return false;
     }
 
-    /**
-     * Check if the network specifier matches all networks.
-     * @param specifier The network specifier
-     * @return true if it matches all networks.
-     */
-    public static boolean isMatchAllNetworkSpecifier(WifiNetworkSpecifier specifier) {
+    private static boolean isMatchAllNetworkSpecifier(WifiNetworkSpecifier specifier) {
         PatternMatcher ssidPatternMatcher = specifier.ssidPatternMatcher;
         Pair<MacAddress, MacAddress> bssidPatternMatcher = specifier.bssidPatternMatcher;
         if (ssidPatternMatcher.match(MATCH_EMPTY_SSID_PATTERN_PATH)
