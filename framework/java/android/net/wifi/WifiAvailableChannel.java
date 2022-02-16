@@ -101,12 +101,6 @@ public final class WifiAvailableChannel implements Parcelable {
     public static final int FILTER_CONCURRENCY = 1 << 1;
 
     /**
-     * Filter channel for the Wi-Fi Aware instant communication mode.
-     * @hide
-     */
-    public static final int FILTER_NAN_INSTANT_MODE = 1 << 2;
-
-    /**
      * @hide
      */
     @Retention(RetentionPolicy.SOURCE)
@@ -114,7 +108,6 @@ public final class WifiAvailableChannel implements Parcelable {
             FILTER_REGULATORY,
             FILTER_CELLULAR_COEXISTENCE,
             FILTER_CONCURRENCY,
-            FILTER_NAN_INSTANT_MODE,
     })
     public @interface Filter {}
 
