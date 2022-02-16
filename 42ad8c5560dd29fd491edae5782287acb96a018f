@@ -16,6 +16,24 @@
       "message": "ag/16887045 is changing the name of this lib, should we wait after that finished?",
       "revId": "42ad8c5560dd29fd491edae5782287acb96a018f",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "07bbba7e_c72f09f6",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1306837
+      },
+      "writtenOn": "2022-02-16T06:44:34Z",
+      "side": 1,
+      "message": "IIUC No.\nThis is a pure cherry-pick from master.\nAnd it won\u0027t merge back to master.\nag/16887045 will be CP to aosp when done, and it will be later to this patch.",
+      "parentUuid": "131f2b81_ffd9443f",
+      "revId": "42ad8c5560dd29fd491edae5782287acb96a018f",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
