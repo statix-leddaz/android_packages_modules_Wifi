@@ -417,7 +417,8 @@ public class WifiAwareMetrics {
             }
 
             boolean sameApp = (anri.uid == uid) && TextUtils.equals(anri.packageName, packageName);
-            boolean isSecure = anri.networkSpecifier.getWifiAwareDataPathSecurityConfig() != null;
+            boolean isSecure = !TextUtils.isEmpty(anri.networkSpecifier.passphrase) || (
+                    anri.networkSpecifier.pmk != null && anri.networkSpecifier.pmk.length != 0);
 
             // in-app stats
             if (sameApp) {

@@ -21,20 +21,15 @@ import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 
 import android.net.DhcpInfo;
-import android.net.DhcpOption;
 import android.net.Network;
 import android.net.wifi.CoexUnsafeChannel;
 import android.net.wifi.IActionListener;
 import android.net.wifi.ICoexCallback;
 import android.net.wifi.IDppCallback;
-import android.net.wifi.IInterfaceCreationInfoCallback;
-import android.net.wifi.ILastCallerListener;
 import android.net.wifi.ILocalOnlyHotspotCallback;
 import android.net.wifi.INetworkRequestMatchCallback;
 import android.net.wifi.IOnWifiActivityEnergyInfoListener;
-import android.net.wifi.IOnWifiDriverCountryCodeChangedListener;
 import android.net.wifi.IOnWifiUsabilityStatsListener;
-import android.net.wifi.IPnoScanResultsCallback;
 import android.net.wifi.IScanResultsCallback;
 import android.net.wifi.ISoftApCallback;
 import android.net.wifi.ISubsystemRestartCallback;
@@ -50,9 +45,7 @@ import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkSuggestion;
-import android.net.wifi.WifiSsid;
 
-import android.os.Bundle;
 import android.os.Messenger;
 import android.os.ResultReceiver;
 import android.os.WorkSource;
@@ -70,25 +63,17 @@ interface IWifiManager
 
     oneway void getWifiActivityEnergyInfoAsync(in IOnWifiActivityEnergyInfoListener listener);
 
-    void setScreenOnScanSchedule(in int[] scanSchedule, in int[] scanType);
-
     ParceledListSlice getConfiguredNetworks(String packageName, String featureId, boolean callerNetworksOnly);
 
-    ParceledListSlice getPrivilegedConfiguredNetworks(String packageName, String featureId, in Bundle extras);
-
-    WifiConfiguration getPrivilegedConnectedNetwork(String packageName, String featureId, in Bundle extras);
+    ParceledListSlice getPrivilegedConfiguredNetworks(String packageName, String featureId);
 
     Map getAllMatchingFqdnsForScanResults(in List<ScanResult> scanResult);
-
-    void setSsidsAllowlist(String packageName, in List<WifiSsid> ssids);
-
-    List getSsidsAllowlist(String packageName);
 
     Map getMatchingOsuProviders(in List<ScanResult> scanResult);
 
     Map getMatchingPasspointConfigsForOsuProviders(in List<OsuProvider> osuProviders);
 
-    int addOrUpdateNetwork(in WifiConfiguration config, String packageName, in Bundle extras);
+    int addOrUpdateNetwork(in WifiConfiguration config, String packageName);
 
     WifiManager.AddNetworkResult addOrUpdateNetworkPrivileged(in WifiConfiguration config, String packageName);
 
@@ -138,14 +123,7 @@ interface IWifiManager
 
     int getWifiEnabledState();
 
-    void registerDriverCountryCodeChangedListener(
-            in IOnWifiDriverCountryCodeChangedListener listener, String packageName,
-            String featureId);
-
-    void unregisterDriverCountryCodeChangedListener(
-            in IOnWifiDriverCountryCodeChangedListener listener);
-
-    String getCountryCode(in String packageName, in String featureId);
+    String getCountryCode();
 
     void setOverrideCountryCode(String country);
 
@@ -200,13 +178,9 @@ interface IWifiManager
     boolean stopSoftAp();
 
     int startLocalOnlyHotspot(in ILocalOnlyHotspotCallback callback, String packageName,
-                              String featureId, in SoftApConfiguration customConfig, in Bundle extras);
+                              String featureId, in SoftApConfiguration customConfig);
 
     void stopLocalOnlyHotspot();
-
-    void registerLocalOnlyHotspotSoftApCallback(in ISoftApCallback callback, in Bundle extras);
-
-    void unregisterLocalOnlyHotspotSoftApCallback(in ISoftApCallback callback, in Bundle extras);
 
     void startWatchLocalOnlyHotspot(in ILocalOnlyHotspotCallback callback);
 
@@ -278,7 +252,7 @@ interface IWifiManager
     int addNetworkSuggestions(in List<WifiNetworkSuggestion> networkSuggestions, in String packageName,
         in String featureId);
 
-    int removeNetworkSuggestions(in List<WifiNetworkSuggestion> networkSuggestions, in String packageName, int action);
+    int removeNetworkSuggestions(in List<WifiNetworkSuggestion> networkSuggestions, in String packageName);
 
     List<WifiNetworkSuggestion> getNetworkSuggestions(in String packageName);
 
@@ -320,12 +294,6 @@ interface IWifiManager
     boolean setWifiConnectedNetworkScorer(in IBinder binder, in IWifiConnectedNetworkScorer scorer);
 
     void clearWifiConnectedNetworkScorer();
-
-    void setExternalPnoScanRequest(in IBinder binder, in IPnoScanResultsCallback callback, in List<WifiSsid> ssids, in int[] frequencies, String packageName, String featureId);
-
-    void clearExternalPnoScanRequest();
-
-    void getLastCallerInfoForApi(int api, in ILastCallerListener listener);
 
     /**
      * Return the Map of {@link WifiNetworkSuggestion} and the list of <ScanResult>
@@ -369,24 +337,4 @@ interface IWifiManager
     void flushPasspointAnqpCache(String packageName);
 
     List<WifiAvailableChannel> getUsableChannels(int band, int mode, int filter);
-
-    boolean isWifiPasspointEnabled();
-
-    void setWifiPasspointEnabled(boolean enabled);
-
-    int getStaConcurrencyForMultiInternetMode();
-
-    boolean setStaConcurrencyForMultiInternetMode(int mode);
-
-    void validateCurrentWifiMeetsAdminRequirements();
-
-    String[] getOemPrivilegedAdmins();
-
-    void replyToP2pInvitationReceivedDialog(int dialogId, boolean accepted, String optionalPin);
-
-    void addCustomDhcpOptions(in WifiSsid ssid, in byte[] oui, in List<DhcpOption> options);
-
-    void removeCustomDhcpOptions(in WifiSsid ssid, in byte[] oui);
-
-    void reportImpactToCreateIfaceRequest(String packageName, int interfaceType, boolean queryForNewInterface, in IInterfaceCreationInfoCallback callback);
 }
