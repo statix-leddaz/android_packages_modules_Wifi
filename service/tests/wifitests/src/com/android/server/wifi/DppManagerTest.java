@@ -180,11 +180,11 @@ public class DppManagerTest extends WifiBaseTest {
     }
 
     private DppManager createDppManager() {
-        DppManager dppManager = new DppManager(new Handler(mLooper.getLooper()), mWifiNative,
+        DppManager dppManger = new DppManager(new Handler(mLooper.getLooper()), mWifiNative,
                 mWifiConfigManager, mContext, mDppMetrics, mScanRequestProxy, mWifiPermissionsUtil);
-        dppManager.mDppTimeoutMessage = mWakeupMessage;
-        dppManager.enableVerboseLogging(true);
-        return dppManager;
+        dppManger.mDppTimeoutMessage = mWakeupMessage;
+        dppManger.enableVerboseLogging(1);
+        return dppManger;
     }
 
     /**
@@ -821,7 +821,7 @@ public class DppManagerTest extends WifiBaseTest {
      */
     private void addTestNetworkInScanResult(int frequency) {
         String caps = "[WPA2-FT/SAE+SAE][ESS][WPS]";
-        ScanResult scanResult = new ScanResult(WifiSsid.fromUtf8Text(TEST_SSID_NO_QUOTE),
+        ScanResult scanResult = new ScanResult(WifiSsid.createFromAsciiEncoded(TEST_SSID_NO_QUOTE),
                 TEST_SSID_NO_QUOTE, TEST_BSSID, 1245, 0, caps, -78, frequency,
                 1025, 22, 33, 20, 0, 0, true);
         List<ScanResult> scanResults = new ArrayList<>();

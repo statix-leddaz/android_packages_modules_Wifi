@@ -22,8 +22,9 @@ apex_defaults {
     name: "com.android.wifi-defaults",
     androidManifest: ":com.android.wifi-androidManifest",
     bootclasspath_fragments: ["com.android.wifi-bootclasspath-fragment"],
-    systemserverclasspath_fragments: ["com.android.wifi-systemserverclasspath-fragment"],
-    compat_configs: ["wifi-compat-config"],
+    java_libs: [
+        "service-wifi",
+    ],
     // from build rule `cacerts_wfa`
     prebuilts: [
         "target-cacert-wifi-674b5f5b.0",
@@ -35,7 +36,6 @@ apex_defaults {
     apps: [
         "OsuLogin",
         "ServiceWifiResources",
-        "WifiDialog",
     ],
     min_sdk_version: "30",
     updatable: true,
@@ -70,7 +70,6 @@ android_app_certificate {
 sdk {
     name: "wifi-module-sdk",
     bootclasspath_fragments: ["com.android.wifi-bootclasspath-fragment"],
-    systemserverclasspath_fragments: ["com.android.wifi-systemserverclasspath-fragment"],
 }
 
 // Encapsulate the contributions made by the com.android.wifi to the bootclasspath.
@@ -100,10 +99,4 @@ bootclasspath_fragment {
         max_target_r_low_priority: ["hiddenapi/hiddenapi-max-target-r-low-priority.txt"],
         unsupported: ["hiddenapi/hiddenapi-unsupported.txt"],
     },
-}
-
-systemserverclasspath_fragment {
-    name: "com.android.wifi-systemserverclasspath-fragment",
-    standalone_contents: ["service-wifi"],
-    apex_available: ["com.android.wifi"],
 }

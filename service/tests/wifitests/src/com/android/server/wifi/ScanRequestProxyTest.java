@@ -127,9 +127,8 @@ public class ScanRequestProxyTest extends WifiBaseTest {
         when(mWifiInjector.getWifiScanner()).thenReturn(mWifiScanner);
         when(mWifiInjector.getWifiNetworkSuggestionsManager())
                 .thenReturn(mWifiNetworkSuggestionsManager);
-        when(mWifiConfigManager.retrieveHiddenNetworkList(false /* autoJoinOnly */))
-                .thenReturn(TEST_HIDDEN_NETWORKS_LIST);
-        when(mWifiNetworkSuggestionsManager.retrieveHiddenNetworkList(false /* autoJoinOnly */))
+        when(mWifiConfigManager.retrieveHiddenNetworkList()).thenReturn(TEST_HIDDEN_NETWORKS_LIST);
+        when(mWifiNetworkSuggestionsManager.retrieveHiddenNetworkList())
                 .thenReturn(TEST_HIDDEN_NETWORKS_LIST_NS);
         when(mWifiMetrics.getScanMetrics()).thenReturn(mScanMetrics);
         doNothing().when(mWifiScanner).registerScanListener(
@@ -290,10 +289,8 @@ public class ScanRequestProxyTest extends WifiBaseTest {
         validateScanAvailableBroadcastSent(true);
 
         assertTrue(mScanRequestProxy.startScan(TEST_UID, TEST_PACKAGE_NAME_1));
-        mInOrder.verify(mWifiConfigManager, never())
-                .retrieveHiddenNetworkList(false /* autoJoinOnly */);
-        mInOrder.verify(mWifiNetworkSuggestionsManager, never())
-                .retrieveHiddenNetworkList(false /* autoJoinOnly */);
+        mInOrder.verify(mWifiConfigManager, never()).retrieveHiddenNetworkList();
+        mInOrder.verify(mWifiNetworkSuggestionsManager, never()).retrieveHiddenNetworkList();
         mInOrder.verify(mWifiScanner).startScan(any(), any(), any(), any());
 
         assertEquals(mWorkSourceArgumentCaptor.getValue(),
@@ -315,10 +312,8 @@ public class ScanRequestProxyTest extends WifiBaseTest {
 
         assertTrue(mScanRequestProxy.startScan(TEST_UID, TEST_PACKAGE_NAME_1));
 
-        mInOrder.verify(mWifiConfigManager)
-                .retrieveHiddenNetworkList(false /* autoJoinOnly */);
-        mInOrder.verify(mWifiNetworkSuggestionsManager)
-                .retrieveHiddenNetworkList(false /* autoJoinOnly */);
+        mInOrder.verify(mWifiConfigManager).retrieveHiddenNetworkList();
+        mInOrder.verify(mWifiNetworkSuggestionsManager).retrieveHiddenNetworkList();
         mInOrder.verify(mWifiScanner).startScan(any(), any(), any(), any());
 
         assertEquals(mWorkSourceArgumentCaptor.getValue(),
