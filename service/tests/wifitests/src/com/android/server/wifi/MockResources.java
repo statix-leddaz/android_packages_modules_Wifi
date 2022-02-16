@@ -90,11 +90,6 @@ public class MockResources extends android.test.mock.MockResources {
         }
     }
 
-    @Override
-    public int getColor(int id) {
-        return 0;
-    }
-
     public void setBoolean(int id, boolean value) {
         mBooleanValues.put(id, value);
     }
