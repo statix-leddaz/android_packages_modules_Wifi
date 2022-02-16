@@ -26,10 +26,7 @@ import android.annotation.SystemApi;
 import android.annotation.SystemService;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.content.Context;
-import android.net.MacAddress;
 import android.net.NetworkInfo;
-import android.net.wifi.ScanResult;
-import android.net.wifi.WifiManager;
 import android.net.wifi.WpsInfo;
 import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceInfo;
 import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceResponse;
@@ -49,18 +46,13 @@ import android.os.RemoteException;
 import android.text.TextUtils;
 import android.util.CloseGuard;
 import android.util.Log;
-import android.view.Display;
-
-import androidx.annotation.RequiresApi;
 
 import com.android.internal.util.AsyncChannel;
 import com.android.internal.util.Protocol;
-import com.android.modules.utils.build.SdkLevel;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.ref.Reference;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -154,58 +146,6 @@ import java.util.Map;
 public class WifiP2pManager {
     private static final String TAG = "WifiP2pManager";
     /**
-     * Extra for transporting a WifiP2pConfig
-     * @hide
-     */
-    public static final String EXTRA_PARAM_KEY_CONFIG =
-            "android.net.wifi.p2p.EXTRA_PARAM_KEY_CONFIG";
-    /**
-     * Extra for transporting a WifiP2pServiceInfo
-     * @hide
-     */
-    public static final String EXTRA_PARAM_KEY_SERVICE_INFO =
-            "android.net.wifi.p2p.EXTRA_PARAM_KEY_SERVICE_INFO";
-    /**
-     * Extra for transporting a peer MAC address.
-     * @hide
-     */
-    public static final String EXTRA_PARAM_KEY_PEER_ADDRESS =
-            "android.net.wifi.p2p.EXTRA_PARAM_KEY_PEER_ADDRESS";
-    /**
-     * Extra used to indicate that a message is sent from Wifi internally
-     * @hide
-     */
-    public static final String EXTRA_PARAM_KEY_INTERNAL_MESSAGE =
-            "android.net.wifi.p2p.EXTRA_PARAM_KEY_INTERNAL_MESSAGE";
-
-    /**
-     * Used to communicate the Display ID for multi display devices.
-     * @hide
-     **/
-    public static final String EXTRA_PARAM_KEY_DISPLAY_ID =
-            "android.net.wifi.p2p.EXTRA_PARAM_KEY_DISPLAY_ID";
-
-    /**
-     * Extra for transporting a WifiP2pDevice.
-     * @hide
-     */
-    public static final String EXTRA_PARAM_KEY_DEVICE =
-            "android.net.wifi.p2p.EXTRA_PARAM_KEY_DEVICE";
-    /**
-     * Extra for transporting a WPS PIN.
-     * @hide
-     */
-    public static final String EXTRA_PARAM_KEY_WPS_PIN =
-            "android.net.wifi.p2p.EXTRA_PARAM_KEY_WPS_PIN";
-
-    /**
-     * Extra for transporting vendor-specific information element list
-     * @hide
-     */
-    public static final String EXTRA_PARAM_KEY_INFORMATION_ELEMENT_LIST =
-            "android.net.wifi.p2p.EXTRA_PARAM_KEY_INFORMATION_ELEMENT_LIST";
-
-    /**
      * Broadcast intent action to indicate whether Wi-Fi p2p is enabled or disabled. An
      * extra {@link #EXTRA_WIFI_STATE} provides the state information as int.
      *
@@ -254,9 +194,8 @@ public class WifiP2pManager {
      * the details of the group and may contain a {@code null}.
      *
      * All of these permissions are required to receive this broadcast:
-     * {@link android.Manifest.permission#ACCESS_WIFI_STATE} and either
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION} or
-     * {@link android.Manifest.permission#NEARBY_WIFI_DEVICES}
+     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION} and
+     * {@link android.Manifest.permission#ACCESS_WIFI_STATE}
      *
      * @see #EXTRA_WIFI_P2P_INFO
      * @see #EXTRA_NETWORK_INFO
@@ -291,9 +230,8 @@ public class WifiP2pManager {
      * can be sent as a result of peers being found, lost or updated.
      *
      * All of these permissions are required to receive this broadcast:
-     * {@link android.Manifest.permission#ACCESS_WIFI_STATE} and either
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION} or
-     * {@link android.Manifest.permission#NEARBY_WIFI_DEVICES}
+     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION} and
+     * {@link android.Manifest.permission#ACCESS_WIFI_STATE}
      *
      * <p> An extra {@link #EXTRA_P2P_DEVICE_LIST} provides the full list of
      * current peers. The full list of peers can also be obtained any time with
@@ -371,9 +309,8 @@ public class WifiP2pManager {
      * device.
      *
      * All of these permissions are required to receive this broadcast:
-     * {@link android.Manifest.permission#ACCESS_WIFI_STATE} and either
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION} or
-     * {@link android.Manifest.permission#NEARBY_WIFI_DEVICES}
+     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION} and
+     * {@link android.Manifest.permission#ACCESS_WIFI_STATE}
      *
      * @see #EXTRA_WIFI_P2P_DEVICE
      */
@@ -428,32 +365,6 @@ public class WifiP2pManager {
      */
     public static final String CALLING_BINDER =
             "android.net.wifi.p2p.CALLING_BINDER";
-
-    /**
-     * Run P2P scan on all channels.
-     * @hide
-     */
-    public static final int WIFI_P2P_SCAN_FULL = 0;
-
-    /**
-     * Run P2P scan only on social channels.
-     * @hide
-     */
-    public static final int WIFI_P2P_SCAN_SOCIAL = -1;
-
-    /** @hide */
-    @IntDef(prefix = {"WIFI_P2P_SCAN_"}, value = {
-            WIFI_P2P_SCAN_FULL,
-            WIFI_P2P_SCAN_SOCIAL})
-    @Retention(RetentionPolicy.SOURCE)
-    public @interface WifiP2pScanType {
-    }
-
-    /**
-     * Maximum length in bytes of all vendor specific information elements (IEs) allowed to
-     * set during Wi-Fi Direct (P2P) discovery.
-     */
-    private static final int WIFI_P2P_VENDOR_ELEMENTS_MAXIMUM_LENGTH = 512;
 
     IWifiP2pManager mService;
 
@@ -681,45 +592,6 @@ public class WifiP2pManager {
     public static final int REQUEST_DEVICE_INFO                     = BASE + 97;
     /** @hide */
     public static final int RESPONSE_DEVICE_INFO                    = BASE + 98;
-
-    /** @hide */
-    public static final int REMOVE_CLIENT                           = BASE + 99;
-    /** @hide */
-    public static final int REMOVE_CLIENT_FAILED                    = BASE + 100;
-    /** @hide */
-    public static final int REMOVE_CLIENT_SUCCEEDED                 = BASE + 101;
-
-    /** @hide */
-    public static final int ADD_EXTERNAL_APPROVER                   = BASE + 102;
-    /** @hide */
-    public static final int EXTERNAL_APPROVER_ATTACH                = BASE + 103;
-    /** @hide */
-    public static final int EXTERNAL_APPROVER_DETACH                = BASE + 104;
-    /** @hide */
-    public static final int EXTERNAL_APPROVER_CONNECTION_REQUESTED  = BASE + 105;
-    /** @hide */
-    public static final int EXTERNAL_APPROVER_PIN_GENERATED         = BASE + 106;
-
-    /** @hide */
-    public static final int REMOVE_EXTERNAL_APPROVER                = BASE + 107;
-    /** @hide */
-    public static final int REMOVE_EXTERNAL_APPROVER_FAILED         = BASE + 108;
-    /** @hide */
-    public static final int REMOVE_EXTERNAL_APPROVER_SUCCEEDED      = BASE + 109;
-
-    /** @hide */
-    public static final int SET_CONNECTION_REQUEST_RESULT           = BASE + 110;
-    /** @hide */
-    public static final int SET_CONNECTION_REQUEST_RESULT_FAILED    = BASE + 111;
-    /** @hide */
-    public static final int SET_CONNECTION_REQUEST_RESULT_SUCCEEDED = BASE + 112;
-
-    /** @hide */
-    public static final int SET_VENDOR_ELEMENTS                       = BASE + 113;
-    /** @hide */
-    public static final int SET_VENDOR_ELEMENTS_FAILED                = BASE + 114;
-    /** @hide */
-    public static final int SET_VENDOR_ELEMENTS_SUCCEEDED             = BASE + 115;
 
     /**
      * Create a new WifiP2pManager instance. Applications use
@@ -975,126 +847,6 @@ public class WifiP2pManager {
     }
 
     /**
-     * Interface for callback invocation when an incoming request is received.
-     *
-     * This callback is registered by
-     * {@link #addExternalApprover(Channel, MacAddress, ExternalApproverRequestListener)}.
-     */
-    public interface ExternalApproverRequestListener {
-        /**
-         * This device received a negotiation request from another peer.
-         *
-         * Used in {@link #onConnectionRequested(int, WifiP2pConfig, WifiP2pDevice)}.
-         */
-        int REQUEST_TYPE_NEGOTIATION = 0;
-        /**
-         * This device received an invitation request from GO to join the group.
-         *
-         * Used in {@link #onConnectionRequested(int, WifiP2pConfig, WifiP2pDevice)}.
-         */
-        int REQUEST_TYPE_INVITATION = 1;
-        /**
-         * This GO device received a request from a peer to join the group.
-         *
-         * Used in {@link #onConnectionRequested(int, WifiP2pConfig, WifiP2pDevice)}.
-         */
-        int REQUEST_TYPE_JOIN = 2;
-        /** @hide */
-        @IntDef(prefix = {"REQUEST_TYPE__"}, value = {
-            REQUEST_TYPE_NEGOTIATION,
-            REQUEST_TYPE_INVITATION,
-            REQUEST_TYPE_JOIN})
-        @Retention(RetentionPolicy.SOURCE)
-        public @interface RequestType {
-        }
-
-        /**
-         * Detached by a call to
-         * {@link #removeExternalApprover(Channel, MacAddress, ActionListener)}.
-         *
-         * Used in {@link #onDetached(MacAddress, int)}.
-         */
-        int APPROVER_DETACH_REASON_REMOVE = 0;
-        /**
-         * Detached due to a framework failure.
-         *
-         * Used in {@link #onDetached(MacAddress, int)}.
-         */
-        int APPROVER_DETACH_REASON_FAILURE = 1;
-        /**
-         * Detached when a new approver replaces an old one.
-         *
-         * Used in {@link #onDetached(MacAddress, int)}.
-         */
-        int APPROVER_DETACH_REASON_REPLACE = 2;
-        /**
-         * Detached since the {@link WifiP2pManager} channel was closed, e.g.
-         * by using {@link Channel#close()} method.
-         *
-         * Used in {@link #onDetached(MacAddress, int)}.
-         */
-        int APPROVER_DETACH_REASON_CLOSE = 3;
-        /** @hide */
-        @IntDef(prefix = {"APPROVER_DETACH_REASON_"}, value = {
-            APPROVER_DETACH_REASON_REMOVE,
-            APPROVER_DETACH_REASON_FAILURE,
-            APPROVER_DETACH_REASON_REPLACE,
-            APPROVER_DETACH_REASON_CLOSE})
-        @Retention(RetentionPolicy.SOURCE)
-        public @interface ApproverDetachReason {
-        }
-
-        /**
-         * Called when an approver registration via
-         * {@link #addExternalApprover(Channel, MacAddress, ExternalApproverRequestListener)}
-         * is successful.
-         *
-         * @param deviceAddress is the peer MAC address used in the registration.
-         */
-        void onAttached(@NonNull MacAddress deviceAddress);
-        /**
-         * Called when an approver registration via
-         * {@link #addExternalApprover(Channel, MacAddress, ExternalApproverRequestListener)}
-         * has failed.
-         *
-         * @param deviceAddress is the peer MAC address used in the registration.
-         * @param reason is the failure reason.
-         */
-        void onDetached(@NonNull MacAddress deviceAddress, @ApproverDetachReason int reason);
-        /**
-         * Called when there is an incoming connection request
-         * which matches a peer (identified by its {@link MacAddress}) registered by the external
-         * approver through
-         * {@link #addExternalApprover(Channel, MacAddress, ExternalApproverRequestListener)}.
-         * The external approver is expected to follow up with a connection decision using the
-         * {@link #setConnectionRequestResult(Channel, MacAddress, int, ActionListener)} with
-         * {@link #CONNECTION_REQUEST_ACCEPT}, {@link #CONNECTION_REQUEST_REJECT}, or
-         * {@link #CONNECTION_REQUEST_DEFER_TO_SERVICE}.
-         *
-         * @param requestType is one of {@link #REQUEST_TYPE_NEGOTIATION},
-         *        {@link #REQUEST_TYPE_INVITATION}, and {@link #REQUEST_TYPE_JOIN}.
-         * @param config is the peer configuration.
-         * @param device is the peer information.
-         */
-        void onConnectionRequested(
-                @RequestType int requestType, @NonNull WifiP2pConfig config,
-                @NonNull WifiP2pDevice device);
-        /**
-         * Called when a PIN is generated by the WiFi service.
-         *
-         * The external approver can display the PIN, exchange the PIN via Out-Of-Band way
-         * or ask the wifi service to show the PIN as usual using the
-         * {@link #setConnectionRequestResult(Channel, MacAddress, int, ActionListener)}
-         * with {@link #CONNECTION_REQUEST_DEFER_SHOW_PIN_TO_SERVICE}.
-         *
-         * @param deviceAddress is the peer MAC address used in the registration.
-         * @param pin is the WPS PIN.
-         */
-        void onPinGenerated(@NonNull MacAddress deviceAddress, @NonNull String pin);
-    }
-
-
-    /**
      * A channel that connects the application to the Wifi p2p framework.
      * Most p2p operations require a Channel as an argument. An instance of Channel is obtained
      * by doing a call on {@link #initialize}
@@ -1124,14 +876,6 @@ public class WifiP2pManager {
         private int mListenerKey = 0;
 
         private final CloseGuard mCloseGuard = new CloseGuard();
-
-        /**
-         * Return the binder object.
-         * @hide
-         */
-        public @NonNull Binder getBinder() {
-            return mBinder;
-        }
 
         /**
          * Close the current P2P connection and indicate to the P2P service that connections
@@ -1180,19 +924,7 @@ public class WifiP2pManager {
 
             @Override
             public void handleMessage(Message message) {
-                Object listener = null;
-                // The listener for an external approver should be
-                // removed after detaching from the service.
-                switch (message.what) {
-                    case EXTERNAL_APPROVER_ATTACH:
-                    case EXTERNAL_APPROVER_CONNECTION_REQUESTED:
-                    case EXTERNAL_APPROVER_PIN_GENERATED:
-                        listener = getListener(message.arg2);
-                        break;
-                    default:
-                        listener = removeListener(message.arg2);
-                        break;
-                }
+                Object listener = getListener(message.arg2);
                 switch (message.what) {
                     case AsyncChannel.CMD_CHANNEL_DISCONNECTED:
                         if (mChannelListener != null) {
@@ -1224,10 +956,6 @@ public class WifiP2pManager {
                     case REPORT_NFC_HANDOVER_FAILED:
                     case FACTORY_RESET_FAILED:
                     case SET_ONGOING_PEER_CONFIG_FAILED:
-                    case REMOVE_CLIENT_FAILED:
-                    case REMOVE_EXTERNAL_APPROVER_FAILED:
-                    case SET_CONNECTION_REQUEST_RESULT_FAILED:
-                    case SET_VENDOR_ELEMENTS_FAILED:
                         if (listener != null) {
                             ((ActionListener) listener).onFailure(message.arg1);
                         }
@@ -1256,10 +984,6 @@ public class WifiP2pManager {
                     case REPORT_NFC_HANDOVER_SUCCEEDED:
                     case FACTORY_RESET_SUCCEEDED:
                     case SET_ONGOING_PEER_CONFIG_SUCCEEDED:
-                    case REMOVE_CLIENT_SUCCEEDED:
-                    case REMOVE_EXTERNAL_APPROVER_SUCCEEDED:
-                    case SET_CONNECTION_REQUEST_RESULT_SUCCEEDED:
-                    case SET_VENDOR_ELEMENTS_SUCCEEDED:
                         if (listener != null) {
                             ((ActionListener) listener).onSuccess();
                         }
@@ -1334,38 +1058,6 @@ public class WifiP2pManager {
                                     .onDeviceInfoAvailable((WifiP2pDevice) message.obj);
                         }
                         break;
-                    case EXTERNAL_APPROVER_ATTACH:
-                        if (listener != null) {
-                            ((ExternalApproverRequestListener) listener)
-                                    .onAttached((MacAddress) message.obj);
-                        }
-                        break;
-                    case EXTERNAL_APPROVER_DETACH:
-                        if (listener != null) {
-                            ((ExternalApproverRequestListener) listener)
-                                    .onDetached((MacAddress) message.obj, message.arg1);
-                        }
-                        break;
-                    case EXTERNAL_APPROVER_CONNECTION_REQUESTED:
-                        if (listener != null) {
-                            int requestType = message.arg1;
-                            Bundle bundle = (Bundle) message.obj;
-                            WifiP2pDevice device = bundle.getParcelable(EXTRA_PARAM_KEY_DEVICE);
-                            WifiP2pConfig config = bundle.getParcelable(EXTRA_PARAM_KEY_CONFIG);
-                            ((ExternalApproverRequestListener) listener)
-                                    .onConnectionRequested(requestType, config, device);
-                        }
-                        break;
-                    case EXTERNAL_APPROVER_PIN_GENERATED:
-                        if (listener != null) {
-                            Bundle bundle = (Bundle) message.obj;
-                            MacAddress deviceAddress = bundle.getParcelable(
-                                    EXTRA_PARAM_KEY_PEER_ADDRESS);
-                            String pin = bundle.getString(EXTRA_PARAM_KEY_WPS_PIN);
-                            ((ExternalApproverRequestListener) listener)
-                                    .onPinGenerated(deviceAddress, pin);
-                        }
-                        break;
                     default:
                         Log.d(TAG, "Ignored " + message);
                         break;
@@ -1429,13 +1121,6 @@ public class WifiP2pManager {
         private Object getListener(int key) {
             if (key == INVALID_LISTENER_KEY) return null;
             synchronized (mListenerMapLock) {
-                return mListenerMap.get(key);
-            }
-        }
-
-        private Object removeListener(int key) {
-            if (key == INVALID_LISTENER_KEY) return null;
-            synchronized (mListenerMapLock) {
                 return mListenerMap.remove(key);
             }
         }
@@ -1471,20 +1156,8 @@ public class WifiP2pManager {
      */
     public Channel initialize(Context srcContext, Looper srcLooper, ChannelListener listener) {
         Binder binder = new Binder();
-        Bundle extras = prepareExtrasBundle(srcContext);
-        int displayId = Display.DEFAULT_DISPLAY;
-        try {
-            Display display = srcContext.getDisplay();
-            if (display != null) {
-                displayId = display.getDisplayId();
-            }
-        } catch (UnsupportedOperationException e) {
-            // an acceptable (per API definition) result of getDisplay - implying there's no display
-            // associated with the context
-        }
-        extras.putInt(EXTRA_PARAM_KEY_DISPLAY_ID, displayId);
         Channel channel = initializeChannel(srcContext, srcLooper, listener,
-                getMessenger(binder, srcContext.getOpPackageName(), extras), binder);
+                getMessenger(binder, srcContext.getOpPackageName()), binder);
         return channel;
     }
 
@@ -1498,21 +1171,6 @@ public class WifiP2pManager {
                 null);
     }
 
-    private Bundle prepareExtrasBundle(Channel c) {
-        Bundle b = prepareExtrasBundle(c.mContext);
-        b.putBinder(CALLING_BINDER, c.getBinder());
-        return b;
-    }
-
-    private Bundle prepareExtrasBundle(Context context) {
-        Bundle bundle = new Bundle();
-        if (SdkLevel.isAtLeastS()) {
-            bundle.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                    context.getAttributionSource());
-        }
-        return bundle;
-    }
-
     private Channel initializeChannel(Context srcContext, Looper srcLooper,
             ChannelListener listener, Messenger messenger, Binder binder) {
         if (messenger == null) return null;
@@ -1524,10 +1182,6 @@ public class WifiP2pManager {
             bundle.putString(CALLING_PACKAGE, c.mContext.getOpPackageName());
             bundle.putString(CALLING_FEATURE_ID, c.mContext.getAttributionTag());
             bundle.putBinder(CALLING_BINDER, binder);
-            if (SdkLevel.isAtLeastT()) {
-                bundle.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        c.mContext.getAttributionSource());
-            }
             c.mAsyncChannel.sendMessage(UPDATE_CHANNEL_INFO, 0,
                     c.putListener(null), bundle);
             return c;
@@ -1551,117 +1205,15 @@ public class WifiP2pManager {
      * determine when the framework notifies of a change as peers are discovered.
      *
      * <p> Upon receiving a {@link #WIFI_P2P_PEERS_CHANGED_ACTION} intent, an application
-     * can request the list of peers using {@link #requestPeers}.
-     * <p>
-     * If targeting {@link android.os.Build.VERSION_CODES#TIRAMISU} or later, the application must
-     * have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
-     * If targeting an earlier release than {@link android.os.Build.VERSION_CODES#TIRAMISU}, the
-     * application must have {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
+     * can request for the list of peers using {@link #requestPeers}.
      *
      * @param c is the channel created at {@link #initialize}
      * @param listener for callbacks on success or failure. Can be null.
      */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-            }, conditional = true)
+    @RequiresPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
     public void discoverPeers(Channel c, ActionListener listener) {
         checkChannel(c);
-        Bundle extras = prepareExtrasBundle(c);
-        // TODO(b/216723991): Revise to scan type + freq form to avoid overlaying the same field.
-        c.mAsyncChannel.sendMessage(DISCOVER_PEERS, WIFI_P2P_SCAN_FULL,
-                c.putListener(listener), extras);
-    }
-
-    /**
-     * Scan only the social channels.
-     *
-     * A discovery process involves scanning for available Wi-Fi peers
-     * for the purpose of establishing a connection.
-     *
-     * <p> The function call immediately returns after sending a discovery request
-     * to the framework. The application is notified of a success or failure to initiate
-     * discovery through listener callbacks {@link ActionListener#onSuccess} or
-     * {@link ActionListener#onFailure}.
-     *
-     * <p> The discovery remains active until a connection is initiated or
-     * a p2p group is formed. Register for {@link #WIFI_P2P_PEERS_CHANGED_ACTION} intent to
-     * determine when the framework notifies of a change as peers are discovered.
-     *
-     * <p> Upon receiving a {@link #WIFI_P2P_PEERS_CHANGED_ACTION} intent, an application
-     * can request the list of peers using {@link #requestPeers}.
-     * <p>
-     * The application must have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
-     * @param c is the channel created at {@link #initialize}
-     * @param listener for callbacks on success or failure.
-     */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-            }, conditional = true)
-    public void discoverPeersOnSocialChannels(@NonNull Channel c,
-            @Nullable ActionListener listener) {
-        if (!SdkLevel.isAtLeastT()) {
-            throw new UnsupportedOperationException();
-        }
-        checkChannel(c);
-        Bundle extras = prepareExtrasBundle(c);
-        // TODO(b/216723991): Revise to scan type + freq form to avoid overlaying the same field.
-        c.mAsyncChannel.sendMessage(DISCOVER_PEERS, WIFI_P2P_SCAN_SOCIAL,
-                c.putListener(listener), extras);
-    }
-
-    /**
-     * Scan only a single channel specified by frequency.
-     *
-     * A discovery process involves scanning for available Wi-Fi peers
-     * for the purpose of establishing a connection.
-     *
-     * <p> The function call immediately returns after sending a discovery request
-     * to the framework. The application is notified of a success or failure to initiate
-     * discovery through listener callbacks {@link ActionListener#onSuccess} or
-     * {@link ActionListener#onFailure}.
-     *
-     * <p> The discovery remains active until a connection is initiated or
-     * a p2p group is formed. Register for {@link #WIFI_P2P_PEERS_CHANGED_ACTION} intent to
-     * determine when the framework notifies of a change as peers are discovered.
-     *
-     * <p> Upon receiving a {@link #WIFI_P2P_PEERS_CHANGED_ACTION} intent, an application
-     * can request the list of peers using {@link #requestPeers}.
-     * <p>
-     * The application must have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
-     * @param c is the channel created at {@link #initialize}
-     * @param frequencyMhz is the frequency of the channel to use for peer discovery.
-     * @param listener for callbacks on success or failure.
-     */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-            }, conditional = true)
-    public void discoverPeersOnSpecificFrequency(
-            @NonNull Channel c, int frequencyMhz, @Nullable ActionListener listener) {
-        if (!SdkLevel.isAtLeastT()) {
-            throw new UnsupportedOperationException();
-        }
-        checkChannel(c);
-        if (frequencyMhz <= 0) {
-            throw new IllegalArgumentException("This frequency must be a positive value.");
-        }
-        Bundle extras = prepareExtrasBundle(c);
-        // TODO(b/216723991): Revise to scan type + freq form to avoid overlaying the same field.
-        c.mAsyncChannel.sendMessage(DISCOVER_PEERS, frequencyMhz, c.putListener(listener), extras);
+        c.mAsyncChannel.sendMessage(DISCOVER_PEERS, 0, c.putListener(listener));
     }
 
     /**
@@ -1697,30 +1249,16 @@ public class WifiP2pManager {
      * <p> If the current device is part of an existing p2p group or has created
      * a p2p group with {@link #createGroup}, an invitation to join the group is sent to
      * the peer device.
-     * <p>
-     * If targeting {@link android.os.Build.VERSION_CODES#TIRAMISU} or later, the application must
-     * have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
-     * If targeting an earlier release than {@link android.os.Build.VERSION_CODES#TIRAMISU}, the
-     * application must have {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
      *
      * @param c is the channel created at {@link #initialize}
      * @param config options as described in {@link WifiP2pConfig} class
      * @param listener for callbacks on success or failure. Can be null.
      */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-            }, conditional = true)
+    @RequiresPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
     public void connect(Channel c, WifiP2pConfig config, ActionListener listener) {
         checkChannel(c);
         checkP2pConfig(config);
-        Bundle extras = prepareExtrasBundle(c);
-        extras.putParcelable(EXTRA_PARAM_KEY_CONFIG, config);
-        c.mAsyncChannel.sendMessage(CONNECT, 0, c.putListener(listener), extras);
+        c.mAsyncChannel.sendMessage(CONNECT, 0, c.putListener(listener), config);
     }
 
     /**
@@ -1754,28 +1292,15 @@ public class WifiP2pManager {
      * {@link ActionListener#onFailure}.
      *
      * <p> Application can request for the group details with {@link #requestGroupInfo}.
-     * <p>
-     * If targeting {@link android.os.Build.VERSION_CODES#TIRAMISU} or later, the application must
-     * have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
-     * If targeting an earlier release than {@link android.os.Build.VERSION_CODES#TIRAMISU}, the
-     * application must have {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
      *
      * @param c is the channel created at {@link #initialize}
      * @param listener for callbacks on success or failure. Can be null.
      */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-            }, conditional = true)
+    @RequiresPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
     public void createGroup(Channel c, ActionListener listener) {
         checkChannel(c);
-        Bundle extras = prepareExtrasBundle(c);
         c.mAsyncChannel.sendMessage(CREATE_GROUP, WifiP2pGroup.NETWORK_ID_PERSISTENT,
-                c.putListener(listener), extras);
+                c.putListener(listener));
     }
 
     /**
@@ -1797,32 +1322,18 @@ public class WifiP2pManager {
      * {@link ActionListener#onFailure}.
      *
      * <p> Application can request for the group details with {@link #requestGroupInfo}.
-     * <p>
-     * If targeting {@link android.os.Build.VERSION_CODES#TIRAMISU} or later, the application must
-     * have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
-     * If targeting an earlier release than {@link android.os.Build.VERSION_CODES#TIRAMISU}, the
-     * application must have {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
      *
      * @param c is the channel created at {@link #initialize}.
      * @param config the configuration of a p2p group.
      * @param listener for callbacks on success or failure. Can be null.
      */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-            }, conditional = true)
+    @RequiresPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
     public void createGroup(@NonNull Channel c,
             @Nullable WifiP2pConfig config,
             @Nullable ActionListener listener) {
         checkChannel(c);
-        Bundle extras = prepareExtrasBundle(c);
-        extras.putParcelable(EXTRA_PARAM_KEY_CONFIG, config);
         c.mAsyncChannel.sendMessage(CREATE_GROUP, 0,
-                c.putListener(listener), extras);
+                c.putListener(listener), config);
     }
 
     /**
@@ -1842,47 +1353,30 @@ public class WifiP2pManager {
     }
 
     /**
-     * Force p2p to enter listen state.
+     * Force p2p to enter listen state
      *
-     * When this API is called, this device will periodically enter LISTENING state until
-     * {@link #stopListening(Channel, ActionListener)} or
-     * {@link #stopPeerDiscovery(Channel, ActionListener)} are called.
-     * While in LISTENING state, this device will dwell at its social channel and respond
-     * to probe requests from other Wi-Fi Direct peers.
-     * <p>
-     * If targeting {@link android.os.Build.VERSION_CODES#TIRAMISU} or later, the application must
-     * have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
-     * If targeting an earlier release than {@link android.os.Build.VERSION_CODES#TIRAMISU}, the
-     * application must have {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
      * @param c is the channel created at {@link #initialize(Context, Looper, ChannelListener)}
-     * @param listener for callbacks on success or failure.
+     * @param listener for callbacks on success or failure. Can be null.
+     *
+     * @hide
      */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-            }, conditional = true)
+    @SystemApi
+    @RequiresPermission(android.Manifest.permission.NETWORK_SETTINGS)
     public void startListening(@NonNull Channel c, @Nullable ActionListener listener) {
         checkChannel(c);
         c.mAsyncChannel.sendMessage(START_LISTEN, 0, c.putListener(listener));
     }
 
     /**
-     * Force p2p to exit listen state.
-     *
-     * When this API is called, this device will stop entering LISTENING state periodically
-     * which is triggered by {@link #startListening(Channel, ActionListener)}.
-     * If there are running peer discovery which is triggered by
-     * {@link #discoverPeers(Channel, ActionListener)} or running service discovery which is
-     * triggered by {@link #discoverServices(Channel, ActionListener)}, they will be stopped
-     * as well.
+     * Force p2p to exit listen state
      *
      * @param c is the channel created at {@link #initialize(Context, Looper, ChannelListener)}
-     * @param listener for callbacks on success or failure.
+     * @param listener for callbacks on success or failure. Can be null.
+     *
+     * @hide
      */
+    @SystemApi
+    @RequiresPermission(android.Manifest.permission.NETWORK_SETTINGS)
     public void stopListening(@NonNull Channel c, @Nullable ActionListener listener) {
         checkChannel(c);
         c.mAsyncChannel.sendMessage(STOP_LISTEN, 0, c.putListener(listener));
@@ -1945,30 +1439,16 @@ public class WifiP2pManager {
      *
      * <p>The service information can be cleared with calls to
      *  {@link #removeLocalService} or {@link #clearLocalServices}.
-     * <p>
-     * If targeting {@link android.os.Build.VERSION_CODES#TIRAMISU} or later, the application must
-     * have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
-     * If targeting an earlier release than {@link android.os.Build.VERSION_CODES#TIRAMISU}, the
-     * application must have {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
      *
      * @param c is the channel created at {@link #initialize}
      * @param servInfo is a local service information.
      * @param listener for callbacks on success or failure. Can be null.
      */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-            }, conditional = true)
+    @RequiresPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
     public void addLocalService(Channel c, WifiP2pServiceInfo servInfo, ActionListener listener) {
         checkChannel(c);
         checkServiceInfo(servInfo);
-        Bundle extras = prepareExtrasBundle(c);
-        extras.putParcelable(EXTRA_PARAM_KEY_SERVICE_INFO, servInfo);
-        c.mAsyncChannel.sendMessage(ADD_LOCAL_SERVICE, 0, c.putListener(listener), extras);
+        c.mAsyncChannel.sendMessage(ADD_LOCAL_SERVICE, 0, c.putListener(listener), servInfo);
     }
 
     /**
@@ -2070,27 +1550,14 @@ public class WifiP2pManager {
      * <p>The application is notified of the response against the service discovery request
      * through listener callbacks registered by {@link #setServiceResponseListener} or
      * {@link #setDnsSdResponseListeners}, or {@link #setUpnpServiceResponseListener}.
-     * <p>
-     * If targeting {@link android.os.Build.VERSION_CODES#TIRAMISU} or later, the application must
-     * have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
-     * If targeting an earlier release than {@link android.os.Build.VERSION_CODES#TIRAMISU}, the
-     * application must have {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
      *
      * @param c is the channel created at {@link #initialize}
      * @param listener for callbacks on success or failure. Can be null.
      */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-            }, conditional = true)
+    @RequiresPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
     public void discoverServices(Channel c, ActionListener listener) {
         checkChannel(c);
-        Bundle extras = prepareExtrasBundle(c);
-        c.mAsyncChannel.sendMessage(DISCOVER_SERVICES, 0, c.putListener(listener), extras);
+        c.mAsyncChannel.sendMessage(DISCOVER_SERVICES, 0, c.putListener(listener));
     }
 
     /**
@@ -2159,27 +1626,14 @@ public class WifiP2pManager {
 
     /**
      * Request the current list of peers.
-     * <p>
-     * If targeting {@link android.os.Build.VERSION_CODES#TIRAMISU} or later, the application must
-     * have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
-     * If targeting an earlier release than {@link android.os.Build.VERSION_CODES#TIRAMISU}, the
-     * application must have {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
      *
      * @param c is the channel created at {@link #initialize}
      * @param listener for callback when peer list is available. Can be null.
      */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-            }, conditional = true)
+    @RequiresPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
     public void requestPeers(Channel c, PeerListListener listener) {
         checkChannel(c);
-        Bundle extras = prepareExtrasBundle(c);
-        c.mAsyncChannel.sendMessage(REQUEST_PEERS, 0, c.putListener(listener), extras);
+        c.mAsyncChannel.sendMessage(REQUEST_PEERS, 0, c.putListener(listener));
     }
 
     /**
@@ -2195,27 +1649,14 @@ public class WifiP2pManager {
 
     /**
      * Request p2p group info.
-     * <p>
-     * If targeting {@link android.os.Build.VERSION_CODES#TIRAMISU} or later, the application must
-     * have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
-     * If targeting an earlier release than {@link android.os.Build.VERSION_CODES#TIRAMISU}, the
-     * application must have {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
      *
      * @param c is the channel created at {@link #initialize}
      * @param listener for callback when group info is available. Can be null.
      */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-            }, conditional = true)
+    @RequiresPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
     public void requestGroupInfo(Channel c, GroupInfoListener listener) {
         checkChannel(c);
-        Bundle extras = prepareExtrasBundle(c);
-        c.mAsyncChannel.sendMessage(REQUEST_GROUP_INFO, 0, c.putListener(listener), extras);
+        c.mAsyncChannel.sendMessage(REQUEST_GROUP_INFO, 0, c.putListener(listener));
     }
 
     /**
@@ -2270,24 +1711,6 @@ public class WifiP2pManager {
         c.mAsyncChannel.sendMessage(SET_WFD_INFO, 0, c.putListener(listener), wfdInfo);
     }
 
-    /**
-     * Remove the client with the MAC address from the group.
-     *
-     * @param c is the channel created at {@link #initialize}
-     * @param peerAddress MAC address of the client.
-     * @param listener for callbacks on success or failure. Can be null.
-     */
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    public void removeClient(@NonNull Channel c, @NonNull MacAddress peerAddress,
-            @Nullable ActionListener listener) {
-        if (!SdkLevel.isAtLeastT()) {
-            throw new UnsupportedOperationException();
-        }
-        checkChannel(c);
-        c.mAsyncChannel.sendMessage(REMOVE_CLIENT, 0, c.putListener(listener),
-                peerAddress);
-    }
-
 
     /**
      * Delete a stored persistent group from the system settings.
@@ -2322,34 +1745,21 @@ public class WifiP2pManager {
     /**
      * Request a list of all the persistent p2p groups stored in system.
      *
-     * <p>The caller must have one of {@link android.Manifest.permission.NETWORK_SETTINGS},
-     * {@link android.Manifest.permission.NETWORK_STACK}, and
-     * {@link android.Manifest.permission.READ_WIFI_CREDENTIAL}.
-     *
-     * <p>If targeting {@link android.os.Build.VERSION_CODES#TIRAMISU} or later,
-     * the application must have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
      * @param c is the channel created at {@link #initialize}
      * @param listener for callback when persistent group info list is available. Can be null.
      *
      * @hide
      */
     @SystemApi
-    @RequiresPermission(allOf = {
+    @RequiresPermission(anyOf = {
             android.Manifest.permission.NETWORK_SETTINGS,
             android.Manifest.permission.NETWORK_STACK,
-            android.Manifest.permission.READ_WIFI_CREDENTIAL,
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION}, conditional = true)
+            android.Manifest.permission.READ_WIFI_CREDENTIAL
+    })
     public void requestPersistentGroupInfo(@NonNull Channel c,
             @Nullable PersistentGroupInfoListener listener) {
         checkChannel(c);
-        Bundle extras = prepareExtrasBundle(c);
-        c.mAsyncChannel.sendMessage(REQUEST_PERSISTENT_GROUP_INFO, 0, c.putListener(listener),
-                extras);
+        c.mAsyncChannel.sendMessage(REQUEST_PERSISTENT_GROUP_INFO, 0, c.putListener(listener));
     }
 
     /** @hide */
@@ -2380,40 +1790,6 @@ public class WifiP2pManager {
     public static final int MIRACAST_SINK     = 2;
 
     /**
-     * Accept the incoming request.
-     *
-     * Used in {@link #setConnectionRequestResult(Channel, MacAddress, int, ActionListener)}.
-     */
-    public static final int CONNECTION_REQUEST_ACCEPT = 0;
-    /**
-     * Reject the incoming request.
-     *
-     * Used in {@link #setConnectionRequestResult(Channel, MacAddress, int, ActionListener)}.
-     */
-    public static final int CONNECTION_REQUEST_REJECT = 1;
-    /**
-     * Defer the decision back to the Wi-Fi service (which will display a dialog to the user).
-     *
-     * Used in {@link #setConnectionRequestResult(Channel, MacAddress, int, ActionListener)}.
-     */
-    public static final int CONNECTION_REQUEST_DEFER_TO_SERVICE = 2;
-    /**
-     * Defer the PIN display to the Wi-Fi service (which will display a dialog to the user).
-     *
-     * Used in {@link #setConnectionRequestResult(Channel, MacAddress, int, ActionListener)}.
-     */
-    public static final int CONNECTION_REQUEST_DEFER_SHOW_PIN_TO_SERVICE = 3;
-    /** @hide */
-    @IntDef(prefix = {"CONNECTION_REQUEST_"}, value = {
-        CONNECTION_REQUEST_ACCEPT,
-        CONNECTION_REQUEST_REJECT,
-        CONNECTION_REQUEST_DEFER_TO_SERVICE,
-        CONNECTION_REQUEST_DEFER_SHOW_PIN_TO_SERVICE})
-    @Retention(RetentionPolicy.SOURCE)
-    public @interface ConnectionRequestResponse {
-    }
-
-    /**
      * This is used to provide information to drivers to optimize performance depending
      * on the current mode of operation.
      * {@link #MIRACAST_DISABLED} - disabled
@@ -2438,13 +1814,26 @@ public class WifiP2pManager {
         }
     }
 
-    private Messenger getMessenger(@NonNull Binder binder, @Nullable String packageName,
-            @NonNull Bundle extras) {
+    private Messenger getMessenger(@NonNull Binder binder, @Nullable String packageName) {
         try {
-            return mService.getMessenger(binder, packageName, extras);
+            return mService.getMessenger(binder, packageName);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
+    }
+
+    /**
+     * Get a reference to WifiP2pService handler. This is used to establish
+     * an AsyncChannel communication with WifiService
+     *
+     * @param binder A binder for the service to associate with this client.
+     *
+     * @return Messenger pointing to the WifiP2pService handler
+     * @hide
+     */
+    public Messenger getMessenger(Binder binder) {
+        // No way to determine package name in this case.
+        return getMessenger(binder, null);
     }
 
     /**
@@ -2567,7 +1956,7 @@ public class WifiP2pManager {
      * broadcast event with extra {@link #EXTRA_WIFI_STATE}.
      *
      * @param c is the channel created at {@link #initialize}.
-     * @param listener for callback when p2p state is available.
+     * @param listener for callback when p2p state is available..
      */
     public void requestP2pState(@NonNull Channel c,
             @NonNull P2pStateListener listener) {
@@ -2588,7 +1977,7 @@ public class WifiP2pManager {
      * broadcast event with extra {@link #EXTRA_DISCOVERY_STATE}.
      *
      * @param c is the channel created at {@link #initialize}.
-     * @param listener for callback when discovery state is available.
+     * @param listener for callback when discovery state is available..
      */
     public void requestDiscoveryState(@NonNull Channel c,
             @NonNull DiscoveryStateListener listener) {
@@ -2610,7 +1999,7 @@ public class WifiP2pManager {
      * broadcast event with extra {@link #EXTRA_NETWORK_INFO}.
      *
      * @param c is the channel created at {@link #initialize}.
-     * @param listener for callback when network info is available.
+     * @param listener for callback when network info is available..
      */
     public void requestNetworkInfo(@NonNull Channel c,
             @NonNull NetworkInfoListener listener) {
@@ -2619,7 +2008,7 @@ public class WifiP2pManager {
         c.mAsyncChannel.sendMessage(REQUEST_NETWORK_INFO, 0, c.putListener(listener));
     }
 
-    /**
+     /**
      * Request Device Info
      *
      * <p> This method provides the device info
@@ -2637,172 +2026,14 @@ public class WifiP2pManager {
      *
      * <p> This information is also included in the {@link #WIFI_P2P_THIS_DEVICE_CHANGED_ACTION}
      * broadcast event with extra {@link #EXTRA_WIFI_P2P_DEVICE}.
-     * <p>
-     * If targeting {@link android.os.Build.VERSION_CODES#TIRAMISU} or later, the application must
-     * have {@link android.Manifest.permission#NEARBY_WIFI_DEVICES} with
-     * android:usesPermissionFlags="neverForLocation". If the application does not declare
-     * android:usesPermissionFlags="neverForLocation", then it must also have
-     * {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
-     *
-     * If targeting an earlier release than {@link android.os.Build.VERSION_CODES#TIRAMISU}, the
-     * application must have {@link android.Manifest.permission#ACCESS_FINE_LOCATION}.
      *
      * @param c is the channel created at {@link #initialize(Context, Looper, ChannelListener)}.
      * @param listener for callback when network info is available.
      */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.ACCESS_FINE_LOCATION
-            }, conditional = true)
+    @RequiresPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
     public void requestDeviceInfo(@NonNull Channel c, @NonNull DeviceInfoListener listener) {
         checkChannel(c);
         if (listener == null) throw new IllegalArgumentException("This listener cannot be null.");
-
-        Bundle extras = prepareExtrasBundle(c);
-        c.mAsyncChannel.sendMessage(REQUEST_DEVICE_INFO, 0, c.putListener(listener), extras);
-    }
-
-    /**
-     * Set the external approver for a specific peer.
-     *
-     * This API associates a specific peer with an approver. When an incoming request is received
-     * from a peer, an authorization request is routed to the attached approver. The approver then
-     * calls {@link #setConnectionRequestResult(Channel, MacAddress, int, ActionListener)} to send
-     * the result to the WiFi service. A specific peer (identified by its {@code MacAddress}) can
-     * only be attached to a single approver. The previous approver will be detached once a new
-     * approver is attached. The approver will also be detached automatically when the channel is
-     * closed.
-     * <p>
-     * When an approver is attached, {@link ExternalApproverRequestListener#onAttached(MacAddress)}
-     * is called. When an approver is detached,
-     * {@link ExternalApproverRequestListener#onDetached(MacAddress, int)} is called.
-     * When an incoming request is received,
-     * {@link ExternalApproverRequestListener#onConnectionRequested(int, WifiP2pConfig, WifiP2pDevice)}
-     * is called. When a WPS PIN is generated,
-     * {@link ExternalApproverRequestListener#onPinGenerated(MacAddress, String)} is called.
-     *
-     * @param c is the channel created at {@link #initialize(Context, Looper, ChannelListener)}.
-     * @param deviceAddress the peer which is bound to the external approver.
-     * @param listener for callback when the framework needs to notify the external approver.
-     */
-    @RequiresPermission(android.Manifest.permission.MANAGE_WIFI_AUTO_JOIN)
-    public void addExternalApprover(@NonNull Channel c, @NonNull MacAddress deviceAddress,
-            @NonNull ExternalApproverRequestListener listener) {
-        checkChannel(c);
-        if (listener == null) throw new IllegalArgumentException("This listener cannot be null.");
-        if (null == deviceAddress) {
-            throw new IllegalArgumentException("deviceAddress cannot be empty");
-        }
-
-        Bundle extras = prepareExtrasBundle(c);
-        extras.putParcelable(EXTRA_PARAM_KEY_PEER_ADDRESS, deviceAddress);
-        c.mAsyncChannel.sendMessage(ADD_EXTERNAL_APPROVER, 0, c.putListener(listener), extras);
-    }
-
-    /**
-     * Remove the external approver for a specific peer.
-     *
-     * @param c is the channel created at {@link #initialize(Context, Looper, ChannelListener)}.
-     * @param deviceAddress the peer which is bound to the external approver.
-     * @param listener for callback on success or failure.
-     */
-    @RequiresPermission(android.Manifest.permission.MANAGE_WIFI_AUTO_JOIN)
-    public void removeExternalApprover(@NonNull Channel c, @NonNull MacAddress deviceAddress,
-            @Nullable ActionListener listener) {
-        checkChannel(c);
-        if (null == deviceAddress) {
-            throw new IllegalArgumentException("deviceAddress cannot be empty");
-        }
-
-        Bundle extras = prepareExtrasBundle(c);
-        extras.putParcelable(EXTRA_PARAM_KEY_PEER_ADDRESS, deviceAddress);
-        c.mAsyncChannel.sendMessage(REMOVE_EXTERNAL_APPROVER, 0, c.putListener(listener), extras);
-    }
-
-    /**
-     * Set the result for the incoming request from a specific peer.
-     *
-     * @param c is the channel created at {@link #initialize(Context, Looper, ChannelListener)}.
-     * @param listener for callback on success or failure.
-     */
-    @RequiresPermission(android.Manifest.permission.MANAGE_WIFI_AUTO_JOIN)
-    public void setConnectionRequestResult(@NonNull Channel c, @NonNull MacAddress deviceAddress,
-            @ConnectionRequestResponse int result, @Nullable ActionListener listener) {
-        checkChannel(c);
-        if (null == deviceAddress) {
-            throw new IllegalArgumentException("deviceAddress cannot be empty");
-        }
-
-        Bundle extras = prepareExtrasBundle(c);
-        extras.putParcelable(EXTRA_PARAM_KEY_PEER_ADDRESS, deviceAddress);
-        c.mAsyncChannel.sendMessage(SET_CONNECTION_REQUEST_RESULT,
-                result, c.putListener(listener), extras);
-    }
-
-    /**
-     * Set/Clear vendor specific information elements (VSIEs) to be published during
-     * Wi-Fi Direct (P2P) discovery.
-     *
-     * Once {@link Channel#close()} is called, the vendor information elements will be cleared from
-     * framework. The information element format is defined in the IEEE 802.11-2016 spec
-     * Table 9-77.
-     * <p>
-     * To clear the previously set vendor elements, call this API with an empty List.
-     * <p>
-     * The maximum accumulated length of all VSIEs must be before the limit specified by
-     * {@link #getP2pMaxAllowedVendorElementsLength()}.
-     * <p>
-     * To publish vendor elements, this API should be called before peer discovery API, ex.
-     * {@link #discoverPeers(Channel, ActionListener)}.
-     *
-     * @param c is the channel created at {@link #initialize(Context, Looper, ChannelListener)}.
-     * @param vendorElements application information as vendor-specific information elements.
-     * @param listener for callback when network info is available.
-     */
-    @RequiresPermission(allOf = {
-            android.Manifest.permission.NEARBY_WIFI_DEVICES,
-            android.Manifest.permission.OVERRIDE_WIFI_CONFIG
-            })
-    public void setVendorElements(@NonNull Channel c,
-            @NonNull List<ScanResult.InformationElement> vendorElements,
-            @Nullable ActionListener listener) {
-        if (!SdkLevel.isAtLeastT()) {
-            throw new UnsupportedOperationException();
-        }
-        checkChannel(c);
-        int totalBytes = 0;
-        for (ScanResult.InformationElement e : vendorElements) {
-            if (e.id != ScanResult.InformationElement.EID_VSA) {
-                throw new IllegalArgumentException("received InformationElement which is not "
-                        + "a Vendor Specific IE (VSIE). VSIEs have an ID = 221.");
-            }
-            // Length field is 1 byte.
-            if (e.bytes == null || e.bytes.length > 0xff) {
-                throw new IllegalArgumentException("received InformationElement whose payload "
-                        + "size is 0 or greater than 255.");
-            }
-            // The total bytes of an IE is EID (1 byte) + length (1 byte) + payload length.
-            totalBytes += 2 + e.bytes.length;
-            if (totalBytes > WIFI_P2P_VENDOR_ELEMENTS_MAXIMUM_LENGTH) {
-                throw new IllegalArgumentException("received InformationElement whose total "
-                        + "size is greater than " + WIFI_P2P_VENDOR_ELEMENTS_MAXIMUM_LENGTH + ".");
-            }
-        }
-        Bundle extras = prepareExtrasBundle(c);
-        extras.putParcelableArrayList(EXTRA_PARAM_KEY_INFORMATION_ELEMENT_LIST,
-                new ArrayList<>(vendorElements));
-        c.mAsyncChannel.sendMessage(SET_VENDOR_ELEMENTS, 0,
-                c.putListener(listener), extras);
-    }
-
-    /**
-     * Return the maximum total length (in bytes) of all Vendor specific information
-     * elements (VSIEs).
-     *
-     * The length is calculated adding the payload length + 2 bytes for each VSIE
-     * (2 bytes: 1 byte for type and 1 byte for length).
-     */
-    public static int getP2pMaxAllowedVendorElementsLength() {
-        return WIFI_P2P_VENDOR_ELEMENTS_MAXIMUM_LENGTH;
+        c.mAsyncChannel.sendMessage(REQUEST_DEVICE_INFO, 0, c.putListener(listener));
     }
 }
