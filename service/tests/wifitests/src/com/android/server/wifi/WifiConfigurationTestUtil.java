@@ -680,7 +680,7 @@ public class WifiConfigurationTestUtil {
             WifiConfiguration configuration, String bssid, int level, int frequency,
             long tsf, long seen) {
         String caps = getScanResultCapsForNetwork(configuration);
-        WifiSsid ssid = WifiSsid.createFromAsciiEncoded(configuration.getPrintableSsid());
+        WifiSsid ssid = WifiSsid.fromString(configuration.SSID);
         return new ScanDetail(ssid, bssid, caps, level, frequency, tsf, seen);
     }
 
@@ -692,7 +692,7 @@ public class WifiConfigurationTestUtil {
             WifiConfiguration configuration, String bssid, int level, int frequency,
             long tsf, long seen) {
         String caps = getScanResultCapsForWpa2Wpa3TransitionNetwork();
-        WifiSsid ssid = WifiSsid.createFromAsciiEncoded(configuration.getPrintableSsid());
+        WifiSsid ssid = WifiSsid.fromUtf8Text(configuration.getPrintableSsid());
         return new ScanDetail(ssid, bssid, caps, level, frequency, tsf, seen);
     }
 
@@ -771,6 +771,7 @@ public class WifiConfigurationTestUtil {
         assertEquals(expected.oemPaid, actual.oemPaid);
         assertEquals(expected.oemPrivate, actual.oemPrivate);
         assertEquals(expected.carrierMerged, actual.carrierMerged);
+        assertEquals(expected.restricted, actual.restricted);
         assertEquals(0, actual.numAssociation);
         assertEquals(expected.creatorUid, actual.creatorUid);
         assertEquals(expected.creatorName, actual.creatorName);

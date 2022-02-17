@@ -41,6 +41,7 @@ import android.content.res.Resources;
 import android.database.ContentObserver;
 import android.net.Uri;
 import android.net.wifi.ScanResult;
+import android.net.wifi.WifiContext;
 import android.net.wifi.WifiManager;
 import android.os.Message;
 import android.os.Process;
@@ -73,6 +74,7 @@ public class OpenNetworkNotifierTest extends WifiBaseTest {
 
     private static final String TEST_SSID_1 = "Test SSID 1";
     private static final String TEST_SSID_2 = "Test SSID 2";
+    private static final String TEST_BSSID = "11:22:33:44:55:66";
     private static final int MIN_RSSI_LEVEL = -127;
     private static final String OPEN_NET_NOTIFIER_TAG = OpenNetworkNotifier.TAG;
     private static final int TEST_NETWORK_ID = 42;
@@ -111,10 +113,11 @@ public class OpenNetworkNotifierTest extends WifiBaseTest {
         when(mContext.getResources()).thenReturn(mResources);
         mTestNetwork = new ScanResult();
         mTestNetwork.SSID = TEST_SSID_1;
+        mTestNetwork.BSSID = TEST_BSSID;
         mTestNetwork.capabilities = "[ESS]";
         mTestNetwork.level = MIN_RSSI_LEVEL;
         mOpenNetworks = new ArrayList<>();
-        mOpenNetworks.add(new ScanDetail(mTestNetwork, null /* networkDetail */));
+        mOpenNetworks.add(new ScanDetail(mTestNetwork));
 
         mLooper = new TestLooper();
         mNotificationController = new OpenNetworkNotifier(
@@ -316,9 +319,10 @@ public class OpenNetworkNotifierTest extends WifiBaseTest {
 
         ScanResult newNetwork = new ScanResult();
         newNetwork.SSID = TEST_SSID_2;
+        newNetwork.BSSID = TEST_BSSID;
         mTestNetwork.capabilities = "[ESS]";
         mTestNetwork.level = MIN_RSSI_LEVEL + 1;
-        mOpenNetworks.add(new ScanDetail(newNetwork, null /* networkDetail */));
+        mOpenNetworks.add(new ScanDetail(newNetwork));
 
         mNotificationController.handleScreenStateChanged(false);
         mNotificationController.handleScanResults(mOpenNetworks);
@@ -714,7 +718,7 @@ public class OpenNetworkNotifierTest extends WifiBaseTest {
                 ConnectToNetworkNotificationAndActionCount.ACTION_CONNECT_TO_NETWORK);
         verify(mWifiNotificationManager, times(2)).notify(anyInt(), any());
 
-        connectListener.sendFailure(WifiManager.ERROR);
+        connectListener.sendFailure(WifiManager.ActionListener.FAILURE_INTERNAL_ERROR);
         mLooper.dispatchAll();
 
         // Failed to Connect Notification
@@ -741,8 +745,9 @@ public class OpenNetworkNotifierTest extends WifiBaseTest {
         for (String ssid : ssids) {
             ScanResult scanResult = new ScanResult();
             scanResult.SSID = ssid;
+            scanResult.BSSID = TEST_BSSID;
             scanResult.capabilities = "[ESS]";
-            scanResults.add(new ScanDetail(scanResult, null /* networkDetail */));
+            scanResults.add(new ScanDetail(scanResult));
         }
         return scanResults;
     }
