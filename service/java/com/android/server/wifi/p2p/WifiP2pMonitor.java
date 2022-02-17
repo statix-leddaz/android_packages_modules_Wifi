@@ -70,6 +70,7 @@ public class WifiP2pMonitor {
     public static final int P2P_FIND_STOPPED_EVENT               = BASE + 37;
     public static final int P2P_SERV_DISC_RESP_EVENT             = BASE + 38;
     public static final int P2P_PROV_DISC_FAILURE_EVENT          = BASE + 39;
+    public static final int P2P_FREQUENCY_CHANGED_EVENT          = BASE + 40;
 
     /* hostap events */
     public static final int AP_STA_DISCONNECTED_EVENT            = BASE + 41;
@@ -81,8 +82,8 @@ public class WifiP2pMonitor {
     /**
      * Enable verbose logging for all sub modules.
      */
-    public void enableVerboseLogging(int verbose) {
-        mVerboseLoggingEnabled = verbose > 0;
+    public void enableVerboseLogging(boolean verboseEnabled) {
+        mVerboseLoggingEnabled = verboseEnabled;
     }
 
     private final Map<String, SparseArray<Set<Handler>>> mHandlerMap = new HashMap<>();
@@ -453,5 +454,15 @@ public class WifiP2pMonitor {
      */
     public void broadcastP2pApStaDisconnected(String iface, WifiP2pDevice device) {
         sendMessage(iface, AP_STA_DISCONNECTED_EVENT, device);
+    }
+
+    /**
+     * Broadcast frequency changed event.
+     *
+     * @param iface Name of iface on which this occurred.
+     * @param frequency New operating frequency.
+     */
+    public void broadcastP2pFrequencyChanged(String iface,  int frequency) {
+        sendMessage(iface, P2P_FREQUENCY_CHANGED_EVENT, frequency);
     }
 }
