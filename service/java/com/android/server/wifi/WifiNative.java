@@ -26,6 +26,7 @@ import android.net.TrafficStats;
 import android.net.apf.ApfCapabilities;
 import android.net.wifi.CoexUnsafeChannel;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SecurityParams;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiAnnotations;
 import android.net.wifi.WifiAvailableChannel;
@@ -126,45 +127,45 @@ public class WifiNative {
     /**
      * Enable verbose logging for all sub modules.
      */
-    public void enableVerboseLogging(boolean verbose) {
-        mVerboseLoggingEnabled = verbose;
-        setSupplicantLogLevel(mVerboseLoggingEnabled);
-        mWifiCondManager.enableVerboseLogging(mVerboseLoggingEnabled);
-        mSupplicantStaIfaceHal.enableVerboseLogging(mVerboseLoggingEnabled);
-        mHostapdHal.enableVerboseLogging(mVerboseLoggingEnabled);
-        mWifiVendorHal.enableVerboseLogging(mVerboseLoggingEnabled);
-        mIfaceMgr.enableVerboseLogging(mVerboseLoggingEnabled);
+    public void enableVerboseLogging(boolean verboseEnabled, boolean halVerboseEnabled) {
+        Log.d(TAG, "enableVerboseLogging " + verboseEnabled + " hal " + halVerboseEnabled);
+        mVerboseLoggingEnabled = verboseEnabled;
+        mWifiCondManager.enableVerboseLogging(verboseEnabled);
+        mSupplicantStaIfaceHal.enableVerboseLogging(verboseEnabled, halVerboseEnabled);
+        mHostapdHal.enableVerboseLogging(verboseEnabled, halVerboseEnabled);
+        mWifiVendorHal.enableVerboseLogging(verboseEnabled, halVerboseEnabled);
+        mIfaceMgr.enableVerboseLogging(verboseEnabled);
     }
 
     /**
      * Callbacks for SoftAp interface.
      */
-    public class SoftApListenerFromWificond implements WifiNl80211Manager.SoftApCallback {
+    public class SoftApHalCallbackFromWificond implements WifiNl80211Manager.SoftApCallback {
         // placeholder for now - provide a shell so that clients don't use a
         // WifiNl80211Manager-specific API.
         private String mIfaceName;
-        private SoftApListener mSoftApListener;
+        private SoftApHalCallback mSoftApHalCallback;
 
-        SoftApListenerFromWificond(String ifaceName,
-                SoftApListener softApListener) {
+        SoftApHalCallbackFromWificond(String ifaceName,
+                SoftApHalCallback softApHalCallback) {
             mIfaceName = ifaceName;
-            mSoftApListener = softApListener;
+            mSoftApHalCallback = softApHalCallback;
         }
 
         @Override
         public void onFailure() {
-            mSoftApListener.onFailure();
+            mSoftApHalCallback.onFailure();
         }
 
         @Override
         public void onSoftApChannelSwitched(int frequency, int bandwidth) {
-            mSoftApListener.onInfoChanged(mIfaceName, frequency, bandwidth,
+            mSoftApHalCallback.onInfoChanged(mIfaceName, frequency, bandwidth,
                     ScanResult.WIFI_STANDARD_UNKNOWN, null);
         }
 
         @Override
         public void onConnectedClientsChanged(NativeWifiClient client, boolean isConnected) {
-            mSoftApListener.onConnectedClientsChanged(mIfaceName,
+            mSoftApHalCallback.onConnectedClientsChanged(mIfaceName,
                     client.getMacAddress(), isConnected);
         }
     }
@@ -196,11 +197,16 @@ public class WifiNative {
     /**
      * Callbacks for SoftAp instance.
      */
-    public interface SoftApListener {
+    public interface SoftApHalCallback {
         /**
          * Invoked when there is a fatal failure and the SoftAp is shutdown.
          */
         void onFailure();
+
+        /**
+         * Invoked when there is a fatal happen in specific instance only.
+         */
+        default void onInstanceFailure(String instanceName) {}
 
         /**
          * Invoked when a channel switch event happens - i.e. the SoftAp is moved to a different
@@ -1211,6 +1217,7 @@ public class WifiNative {
             // Just to avoid any race conditions with interface state change callbacks,
             // update the interface state before we exit.
             onInterfaceStateChanged(iface, isInterfaceUp(iface.name));
+            mWifiVendorHal.enableLinkLayerStats(iface.name);
             initializeNwParamsForClientInterface(iface.name);
             Log.i(TAG, "Successfully setup " + iface);
 
@@ -1269,6 +1276,7 @@ public class WifiNative {
             // Just to avoid any race conditions with interface state change callbacks,
             // update the interface state before we exit.
             onInterfaceStateChanged(iface, isInterfaceUp(iface.name));
+            mWifiVendorHal.enableLinkLayerStats(iface.name);
             Log.i(TAG, "Successfully setup " + iface);
 
             iface.featureSet = getSupportedFeatureSetInternal(iface.name);
@@ -1642,18 +1650,15 @@ public class WifiNative {
     public ArrayList<ScanDetail> getScanResults(@NonNull String ifaceName) {
         if (mUseFakeScanDetails) {
             synchronized (mFakeScanDetails) {
-                ArrayList<ScanDetail> copy = new ArrayList<>();
+                ArrayList<ScanDetail> copyList = new ArrayList<>();
                 for (ScanDetail sd: mFakeScanDetails) {
-                    sd.getScanResult().ifaceName = ifaceName;
+                    ScanDetail copy = new ScanDetail(sd);
+                    copy.getScanResult().ifaceName = ifaceName;
                     // otherwise the fake will be too old
-                    sd.getScanResult().timestamp = SystemClock.elapsedRealtime() * 1000;
-
-                    // clone the ScanResult (which was updated above) so that each call gets a
-                    // unique timestamp
-                    copy.add(new ScanDetail(new ScanResult(sd.getScanResult()),
-                            sd.getNetworkDetail()));
+                    copy.getScanResult().timestamp = SystemClock.elapsedRealtime() * 1000;
+                    copyList.add(copy);
                 }
-                return copy;
+                return copyList;
             }
         }
         return convertNativeScanResults(ifaceName, mWifiCondManager.getScanResults(
@@ -1715,7 +1720,7 @@ public class WifiNative {
             List<NativeScanResult> nativeResults) {
         ArrayList<ScanDetail> results = new ArrayList<>();
         for (NativeScanResult result : nativeResults) {
-            WifiSsid wifiSsid = WifiSsid.createFromByteArray(result.getSsid());
+            WifiSsid wifiSsid = WifiSsid.fromBytes(result.getSsid());
             MacAddress bssidMac = result.getBssid();
             if (bssidMac == null) {
                 Log.e(TAG, "Invalid MAC (BSSID) for SSID " + wifiSsid);
@@ -1776,6 +1781,8 @@ public class WifiNative {
                 return ScanResult.WIFI_STANDARD_11AC;
             case InformationElementUtil.WifiMode.MODE_11AX:
                 return ScanResult.WIFI_STANDARD_11AX;
+            case InformationElementUtil.WifiMode.MODE_11BE:
+                return ScanResult.WIFI_STANDARD_11BE;
             case InformationElementUtil.WifiMode.MODE_UNDEFINED:
             default:
                 return ScanResult.WIFI_STANDARD_UNKNOWN;
@@ -1961,28 +1968,28 @@ public class WifiNative {
      * @param ifaceName Name of the interface.
      * @param config Configuration to use for the soft ap created.
      * @param isMetered Indicates the network is metered or not.
-     * @param listener Callback for AP events.
+     * @param callback Callback for AP events.
      * @return true on success, false otherwise.
      */
     public boolean startSoftAp(
             @NonNull String ifaceName, SoftApConfiguration config, boolean isMetered,
-            SoftApListener listener) {
+            SoftApHalCallback callback) {
         if (mHostapdHal.isApInfoCallbackSupported()) {
-            if (!mHostapdHal.registerApCallback(ifaceName, listener)) {
-                Log.e(TAG, "Failed to register ap listener");
+            if (!mHostapdHal.registerApCallback(ifaceName, callback)) {
+                Log.e(TAG, "Failed to register ap hal event callback");
                 return false;
             }
         } else {
-            SoftApListenerFromWificond softApListenerFromWificond =
-                    new SoftApListenerFromWificond(ifaceName, listener);
+            SoftApHalCallbackFromWificond softApHalCallbackFromWificond =
+                    new SoftApHalCallbackFromWificond(ifaceName, callback);
             if (!mWifiCondManager.registerApCallback(ifaceName,
-                    Runnable::run, softApListenerFromWificond)) {
-                Log.e(TAG, "Failed to register ap listener from wificond");
+                    Runnable::run, softApHalCallbackFromWificond)) {
+                Log.e(TAG, "Failed to register ap hal event callback from wificond");
                 return false;
             }
         }
 
-        if (!mHostapdHal.addAccessPoint(ifaceName, config, isMetered, listener::onFailure)) {
+        if (!mHostapdHal.addAccessPoint(ifaceName, config, isMetered, callback::onFailure)) {
             Log.e(TAG, "Failed to add acccess point");
             mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHostapd();
             return false;
@@ -2113,15 +2120,6 @@ public class WifiNative {
          * Invoked when the supplicant dies.
          */
         void onDeath();
-    }
-
-    /**
-     * Set supplicant log level
-     *
-     * @param turnOnVerbose Whether to turn on verbose logging or not.
-     */
-    public void setSupplicantLogLevel(boolean turnOnVerbose) {
-        mSupplicantStaIfaceHal.setLogLevel(turnOnVerbose);
     }
 
     /**
@@ -3292,6 +3290,15 @@ public class WifiNative {
     }
 
     /**
+     * Returns whether a new AP iface can be created or not.
+     */
+    public boolean isItPossibleToCreateBridgedApIface(@NonNull WorkSource requestorWs) {
+        synchronized (mLock) {
+            return mWifiVendorHal.isItPossibleToCreateBridgedApIface(requestorWs);
+        }
+    }
+
+    /**
      * Returns whether a new STA iface can be created or not.
      */
     public boolean isItPossibleToCreateStaIface(@NonNull WorkSource requestorWs) {
@@ -3390,6 +3397,39 @@ public class WifiNative {
      */
     public ConnectionCapabilities getConnectionCapabilities(@NonNull String ifaceName) {
         return mSupplicantStaIfaceHal.getConnectionCapabilities(ifaceName);
+    }
+
+    /**
+     * Class to represent a connection MLO Link
+     */
+    public static class ConnectionMloLink {
+        public int linkId;
+        public MacAddress staMacAddress;
+
+        ConnectionMloLink() {
+            // Nothing for now
+        };
+    }
+
+    /**
+     * Class to represent the MLO links info for a connection that is collected after association
+     */
+    public static class ConnectionMloLinksInfo {
+        public ConnectionMloLink[] links;
+
+        ConnectionMloLinksInfo() {
+            // Nothing for now
+        }
+    }
+
+    /**
+     * Returns connection MLO Links Info.
+     *
+     * @param ifaceName Name of the interface.
+     * @return connection MLO Links Info
+     */
+    public ConnectionMloLinksInfo getConnectionMloLinksInfo(@NonNull String ifaceName) {
+        return mSupplicantStaIfaceHal.getConnectionMloLinksInfo(ifaceName);
     }
 
     /**
@@ -3589,6 +3629,15 @@ public class WifiNative {
      */
     public byte[] getDriverStateDump() {
         return mWifiVendorHal.getDriverStateDump();
+    }
+
+    /**
+     * Dump information about the internal state
+     *
+     * @param pw PrintWriter to write dump to
+     */
+    protected void dump(PrintWriter pw) {
+        mHostapdHal.dump(pw);
     }
 
     //---------------------------------------------------------------------------------
@@ -4129,6 +4178,30 @@ public class WifiNative {
         registerWificondListenerIfNecessary();
         if (mCountryCodeChangeListener != null) {
             mCountryCodeChangeListener.setChangeListener(listener);
+        }
+    }
+
+    /**
+     * Gets the security params of the current network associated with this interface
+     *
+     * @param ifaceName Name of the interface
+     * @return Security params of the current network associated with the interface
+     */
+    public SecurityParams getCurrentNetworkSecurityParams(@NonNull String ifaceName) {
+        return mSupplicantStaIfaceHal.getCurrentNetworkSecurityParams(ifaceName);
+    }
+
+    /**
+     * Notify wificond daemon of country code have changed.
+     */
+    public void countryCodeChanged(String countryCode) {
+        if (SdkLevel.isAtLeastT()) {
+            try {
+                mWifiCondManager.notifyCountryCodeChanged(countryCode);
+            } catch (RuntimeException re) {
+                Log.e(TAG, "Fail to notify wificond country code changed to " + countryCode
+                        + "because exception happened:" + re);
+            }
         }
     }
 }
