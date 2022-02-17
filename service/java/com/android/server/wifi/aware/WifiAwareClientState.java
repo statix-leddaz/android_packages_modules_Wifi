@@ -16,6 +16,10 @@
 
 package com.android.server.wifi.aware;
 
+import static com.android.server.wifi.aware.WifiAwareStateManager.INSTANT_MODE_24GHZ;
+import static com.android.server.wifi.aware.WifiAwareStateManager.INSTANT_MODE_5GHZ;
+import static com.android.server.wifi.aware.WifiAwareStateManager.INSTANT_MODE_DISABLED;
+
 import android.annotation.Nullable;
 import android.app.AppOpsManager;
 import android.content.Context;
@@ -23,7 +27,6 @@ import android.net.wifi.aware.ConfigRequest;
 import android.net.wifi.aware.IWifiAwareEventCallback;
 import android.net.wifi.util.HexEncoding;
 import android.os.RemoteException;
-import android.os.WorkSource;
 import android.util.Log;
 import android.util.SparseArray;
 
@@ -106,6 +109,11 @@ public class WifiAwareClientState {
         }
         mSessions.clear();
         mConfigRequest = null;
+        try {
+            mCallback.onAttachTerminate();
+        } catch (RemoteException e1) {
+            Log.e(TAG, "Error on onSessionTerminate()");
+        }
     }
 
     public ConfigRequest getConfigRequest() {
@@ -294,6 +302,25 @@ public class WifiAwareClientState {
             }
         }
         return false;
+    }
+
+    /**
+     * Check the highest instant communication mode of the client.
+     * @param timeout Specify an interval when instant mode config timeout
+     * @return current instant mode one of the {@code INSTANT_MODE_*}
+     */
+    public int getInstantMode(long timeout) {
+        int instantMode = INSTANT_MODE_DISABLED;
+        for (int i = 0; i < mSessions.size(); ++i) {
+            int currentSession = mSessions.valueAt(i).getInstantMode(timeout);
+            if (currentSession == INSTANT_MODE_5GHZ) {
+                return INSTANT_MODE_5GHZ;
+            }
+            if (currentSession == INSTANT_MODE_24GHZ) {
+                instantMode = currentSession;
+            }
+        }
+        return instantMode;
     }
 
     /**
