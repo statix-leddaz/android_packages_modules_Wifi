@@ -21,6 +21,7 @@ import android.content.Context;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiScanner.WifiBandIndex;
+import android.net.wifi.util.ScanResultUtil;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -32,7 +33,6 @@ import com.android.server.wifi.WifiMonitor;
 import com.android.server.wifi.WifiNative;
 import com.android.server.wifi.scanner.ChannelHelper.ChannelCollection;
 import com.android.server.wifi.util.NativeUtil;
-import com.android.server.wifi.util.ScanResultUtil;
 import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
@@ -369,9 +369,13 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
                 ScanResult result = mNativeScanResults.get(i).getScanResult();
                 // nanoseconds -> microseconds
                 if (result.timestamp >= mLastScanSettings.startTimeNanos / 1_000) {
+                    // Allow even not explicitly requested 6Ghz results because they could be found
+                    // via 6Ghz RNR.
                     if (mLastScanSettings.singleScanFreqs.containsChannel(
-                                    result.frequency)) {
+                                    result.frequency) || ScanResult.is6GHz(result.frequency)) {
                         singleScanResults.add(result);
+                    } else {
+                        numFilteredScanResults++;
                     }
                 } else {
                     numFilteredScanResults++;
