@@ -47,6 +47,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.security.cert.X509Certificate;
+
 /**
  * Unit tests for {@link com.android.server.wifi.WifiMonitor}.
  */
@@ -165,7 +167,8 @@ public class WifiMonitorTest extends WifiBaseTest {
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(mHandlerSpy).handleMessage(messageCaptor.capture());
         assertEquals(WifiMonitor.WPS_FAIL_EVENT, messageCaptor.getValue().what);
-        assertEquals(WifiManager.ERROR, messageCaptor.getValue().arg1);
+        assertEquals(WifiManager.ActionListener.FAILURE_INTERNAL_ERROR,
+                messageCaptor.getValue().arg1);
         assertEquals(WpsConfigError.MSG_TIMEOUT, messageCaptor.getValue().arg2);
     }
 
@@ -441,7 +444,7 @@ public class WifiMonitorTest extends WifiBaseTest {
         mWifiMonitor.registerHandler(
                 WLAN_IFACE_NAME, WifiMonitor.NETWORK_CONNECTION_EVENT, mHandlerSpy);
         int networkId = NETWORK_ID;
-        WifiSsid wifiSsid = WifiSsid.createFromByteArray(new byte[]{'a', 'b', 'c'});
+        WifiSsid wifiSsid = WifiSsid.fromBytes(new byte[]{'a', 'b', 'c'});
         String bssid = BSSID;
         mWifiMonitor.broadcastNetworkConnectionEvent(WLAN_IFACE_NAME, networkId, false,
                 wifiSsid, bssid);
@@ -492,7 +495,7 @@ public class WifiMonitorTest extends WifiBaseTest {
         mWifiMonitor.registerHandler(
                 WLAN_IFACE_NAME, WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, mHandlerSpy);
         int networkId = NETWORK_ID;
-        WifiSsid wifiSsid = WifiSsid.createFromAsciiEncoded(SSID);
+        WifiSsid wifiSsid = WifiSsid.fromUtf8Text(SSID);
         String bssid = BSSID;
         SupplicantState newState = SupplicantState.ASSOCIATED;
         mWifiMonitor.broadcastSupplicantStateChangeEvent(
@@ -614,7 +617,7 @@ public class WifiMonitorTest extends WifiBaseTest {
         mWifiMonitor.registerHandler(
                 WLAN_IFACE_NAME, WifiMonitor.NETWORK_CONNECTION_EVENT, mHandlerSpy);
         int networkId = NETWORK_ID;
-        WifiSsid wifiSsid = WifiSsid.createFromByteArray(new byte[]{'a', 'b', 'c'});
+        WifiSsid wifiSsid = WifiSsid.fromBytes(new byte[]{'a', 'b', 'c'});
         String bssid = BSSID;
         mWifiMonitor.broadcastNetworkConnectionEvent(WLAN_IFACE_NAME, networkId, true,
                 wifiSsid, bssid);
@@ -722,5 +725,24 @@ public class WifiMonitorTest extends WifiBaseTest {
         assertEquals(WifiMonitor.NETWORK_NOT_FOUND_EVENT, messageCaptor.getValue().what);
         String ssid = (String) messageCaptor.getValue().obj;
         assertEquals(SSID, ssid);
+    }
+
+    /**
+     * Broadcast Certification event.
+     */
+    @Test
+    public void testBroadcastCertificateEvent() {
+        mWifiMonitor.registerHandler(
+                WLAN_IFACE_NAME, WifiMonitor.TOFU_ROOT_CA_CERTIFICATE, mHandlerSpy);
+        mWifiMonitor.broadcastCertificationEvent(
+                WLAN_IFACE_NAME, NETWORK_ID, SSID, FakeKeys.CA_CERT0);
+        mLooper.dispatchAll();
+
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(mHandlerSpy).handleMessage(messageCaptor.capture());
+        assertEquals(WifiMonitor.TOFU_ROOT_CA_CERTIFICATE, messageCaptor.getValue().what);
+        assertEquals(NETWORK_ID, messageCaptor.getValue().arg1);
+        X509Certificate cert = (X509Certificate) messageCaptor.getValue().obj;
+        assertEquals(FakeKeys.CA_CERT0, cert);
     }
 }

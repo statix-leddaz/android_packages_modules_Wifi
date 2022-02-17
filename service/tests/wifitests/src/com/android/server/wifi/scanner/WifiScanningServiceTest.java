@@ -34,6 +34,7 @@ import static com.android.server.wifi.scanner.WifiScanningServiceImpl.WifiSingle
 import static com.android.server.wifi.scanner.WifiScanningServiceImpl.WifiSingleScanStateMachine.EMERGENCY_SCAN_END_INDICATION_ALARM_TAG;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -151,8 +152,8 @@ public class WifiScanningServiceTest extends WifiBaseTest {
     @Mock WifiMetrics.ScanMetrics mScanMetrics;
     @Mock WifiManager mWifiManager;
     @Mock LastCallerInfoManager mLastCallerInfoManager;
-    ChannelHelper mChannelHelper0;
-    ChannelHelper mChannelHelper1;
+    PresetKnownBandsChannelHelper mChannelHelper0;
+    PresetKnownBandsChannelHelper mChannelHelper1;
     TestLooper mLooper;
     WifiScanningServiceImpl mWifiScanningServiceImpl;
 
@@ -877,6 +878,32 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         assertEquals(WifiScanner.WIFI_RNR_ENABLED,
                 requestSettings.getRnrSetting());
         assertEquals(true, nativeSettings.enable6GhzRnr);
+        doSuccessfulSingleScan(requestSettings, nativeSettings,
+                ScanResults.create(0, WifiScanner.WIFI_BAND_BOTH, new int[0]));
+    }
+
+    /**
+     * Verify that when 6Ghz scanning is not supported, RNR will not get enabled even if RNR
+     * setting is WIFI_RNR_ENABLED.
+     */
+    @Test
+    public void testRnrIsDisabledWhen6GhzChannelsNotAvailable() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
+        mChannelHelper0 = new PresetKnownBandsChannelHelper(
+                new int[]{2412, 2450},
+                new int[]{5160, 5175},
+                new int[]{5600, 5650, 5660},
+                new int[0], // 6Ghz scanning unavailable
+                new int[]{58320, 60480});
+        when(mWifiScannerImpl0.getChannelHelper()).thenReturn(mChannelHelper0);
+        WifiScanner.ScanSettings requestSettings = createRequest(WifiScanner.WIFI_BAND_BOTH, 0,
+                0, 20, WifiScanner.REPORT_EVENT_AFTER_EACH_SCAN);
+        requestSettings.setRnrSetting(WifiScanner.WIFI_RNR_ENABLED);
+        WifiNative.ScanSettings nativeSettings = computeSingleScanNativeSettings(requestSettings);
+        // RNR should not be enabled in the native settings
+        nativeSettings.enable6GhzRnr = false;
+        assertEquals(WifiScanner.WIFI_RNR_ENABLED,
+                requestSettings.getRnrSetting());
         doSuccessfulSingleScan(requestSettings, nativeSettings,
                 ScanResults.create(0, WifiScanner.WIFI_BAND_BOTH, new int[0]));
     }
@@ -2716,7 +2743,7 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         verifySuccessfulResponse(order, handler, 192);
         assertDumpContainsRequestLog("addBackgroundScanRequest", 192);
         verify(mLastCallerInfoManager, atLeastOnce()).put(
-                eq(LastCallerInfoManager.SCANNING_ENABLED), anyInt(), anyInt(), anyInt(), any(),
+                eq(WifiManager.API_SCANNING_ENABLED), anyInt(), anyInt(), anyInt(), any(),
                 eq(true));
     }
 
@@ -2770,7 +2797,7 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         assertDumpContainsCallbackLog("singleScanResults", requestId,
                 "results=" + results.getScanData().getResults().length);
         verify(mLastCallerInfoManager, atLeastOnce()).put(
-                eq(LastCallerInfoManager.SCANNING_ENABLED), anyInt(), anyInt(), anyInt(), any(),
+                eq(WifiManager.API_SCANNING_ENABLED), anyInt(), anyInt(), anyInt(), any(),
                 eq(true));
     }
 
@@ -2808,6 +2835,9 @@ public class WifiScanningServiceTest extends WifiBaseTest {
     /**
      * Verifies that only clients with NETWORK_STACK permission can issues restricted messages
      * (from API's).
+     *
+     * Also verifies that starting in Android T CMD_REGISTER_SCAN_LISTENER is callable without
+     * NEWORK_STACK permission.
      */
     @Test
     public void rejectRestrictedMessagesFromNonPrivilegedApps() throws Exception {
@@ -2848,8 +2878,17 @@ public class WifiScanningServiceTest extends WifiBaseTest {
                 "Not authorized", messageCaptor.getAllValues().get(2));
         assertFailedResponse(0, WifiScanner.REASON_NOT_AUTHORIZED,
                 "Not authorized", messageCaptor.getAllValues().get(3));
-        assertFailedResponse(0, WifiScanner.REASON_NOT_AUTHORIZED,
-                "Not authorized", messageCaptor.getAllValues().get(4));
+        if (SdkLevel.isAtLeastT()) {
+            assertSuccessfulResponse(0, messageCaptor.getAllValues().get(4));
+            verify(mWifiPermissionsUtil).enforceCanAccessScanResultsForWifiScanner(
+                    any(), any(), eq(Binder.getCallingUid()),
+                    eq(false), eq(false));
+        } else {
+            assertFailedResponse(0, WifiScanner.REASON_NOT_AUTHORIZED,
+                    "Not authorized", messageCaptor.getAllValues().get(4));
+            verify(mWifiPermissionsUtil, never()).enforceCanAccessScanResultsForWifiScanner(
+                    any(), any(), anyInt(), anyBoolean(), anyBoolean());
+        }
 
         // Ensure we didn't create scanner instance.
         verify(mWifiScannerImplFactory, never()).create(any(), any(), any(), any());
@@ -3122,7 +3161,7 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         controlChannel.sendMessage(Message.obtain(null, WifiScanner.CMD_DISABLE));
         mLooper.dispatchAll();
 
-        verify(mLastCallerInfoManager).put(eq(LastCallerInfoManager.SCANNING_ENABLED), anyInt(),
+        verify(mLastCallerInfoManager).put(eq(WifiManager.API_SCANNING_ENABLED), anyInt(),
                 anyInt(), anyInt(), any(), eq(false));
         verify(mWifiScannerImpl0).cleanup();
     }
@@ -3683,6 +3722,72 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verifyPnoNetworkFoundReceived(order, handler, requestId, scanResults.getRawScanResults());
+    }
+
+    /**
+     * Verify that isScanning throws a security exception if the calliing app has no
+     * permission.
+     */
+    @Test(expected = SecurityException.class)
+    public void testIsScanningThrowsException() throws Exception {
+        startServiceAndLoadDriver();
+
+        // Client doesn't have LOCATION_HARDWARE permission.
+        when(mWifiPermissionsUtil.checkCallersHardwareLocationPermission(anyInt()))
+                .thenReturn(false);
+        mWifiScanningServiceImpl.isScanning();
+    }
+
+    /**
+     * Test isScanning returns the proper value.
+     */
+    @Test
+    public void testIsScanning() throws Exception {
+        when(mWifiPermissionsUtil.checkCallersHardwareLocationPermission(anyInt()))
+                .thenReturn(true);
+        WifiScanner.ScanSettings requestSettings = createRequest(WifiScanner.WIFI_BAND_BOTH, 0,
+                0, 20, WifiScanner.REPORT_EVENT_AFTER_EACH_SCAN);
+        int requestId = 9;
+
+        startServiceAndLoadDriver();
+
+        // Verify that now isScanning = false
+        assertFalse("isScanning should be false before scan starts",
+                mWifiScanningServiceImpl.isScanning());
+
+        mWifiScanningServiceImpl.setWifiHandlerLogForTest(mLog);
+        Handler handler = mock(Handler.class);
+        BidirectionalAsyncChannel controlChannel = connectChannel(handler);
+        mLooper.dispatchAll();
+
+        when(mWifiScannerImpl0.startSingleScan(any(WifiNative.ScanSettings.class),
+                any(WifiNative.ScanEventHandler.class))).thenReturn(true);
+        ScanResults results = ScanResults.create(0, WifiScanner.WIFI_BAND_BOTH, 2412);
+        when(mWifiScannerImpl0.getLatestSingleScanResults())
+                .thenReturn(results.getRawScanData());
+
+        InOrder order = inOrder(mWifiScannerImpl0, handler);
+
+        sendSingleScanRequest(controlChannel, requestId, requestSettings, null);
+        mLooper.dispatchAll();
+
+        // Verify that now isScanning = true
+        assertTrue("isScanning should be true during scanning",
+                mWifiScanningServiceImpl.isScanning());
+
+        WifiNative.ScanEventHandler eventHandler1 = verifyStartSingleScan(order,
+                computeSingleScanNativeSettings(requestSettings));
+        verifySuccessfulResponse(order, handler, requestId);
+
+        eventHandler1.onScanStatus(WifiNative.WIFI_SCAN_RESULTS_AVAILABLE);
+        mLooper.dispatchAll();
+        verifyScanResultsReceived(order, handler, requestId, results.getScanData());
+        verifySingleScanCompletedReceived(order, handler, requestId);
+        verifyNoMoreInteractions(handler);
+
+        // Verify that now isScanning = false
+        assertFalse("isScanning should be false since scanning is complete",
+                mWifiScanningServiceImpl.isScanning());
     }
 
     /**
