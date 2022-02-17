@@ -18,6 +18,7 @@ package com.android.server.wifi.p2p;
 
 import static android.net.NetworkInfo.DetailedState.FAILED;
 import static android.net.NetworkInfo.DetailedState.IDLE;
+import static android.net.wifi.WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE;
 
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
 import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_P2P_DEVICE_NAME;
@@ -28,7 +29,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Matchers.any;
@@ -43,6 +46,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
@@ -52,7 +56,9 @@ import static org.mockito.Mockito.when;
 
 import android.annotation.Nullable;
 import android.app.AlarmManager;
+import android.app.BroadcastOptions;
 import android.app.test.MockAnswerUtil.AnswerWithArguments;
+import android.content.AttributionSource;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -62,9 +68,11 @@ import android.content.res.Resources;
 import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.InetAddresses;
+import android.net.MacAddress;
 import android.net.NetworkInfo;
 import android.net.TetheringManager;
 import android.net.wifi.CoexUnsafeChannel;
+import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
@@ -82,16 +90,19 @@ import android.net.wifi.p2p.WifiP2pWfdInfo;
 import android.net.wifi.p2p.nsd.WifiP2pServiceInfo;
 import android.net.wifi.p2p.nsd.WifiP2pServiceRequest;
 import android.os.Binder;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
 import android.os.Messenger;
+import android.os.Process;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.WorkSource;
 import android.os.test.TestLooper;
 import android.provider.Settings;
+import android.view.Display;
 
 import androidx.test.filters.SmallTest;
 
@@ -99,6 +110,7 @@ import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.FakeWifiLog;
 import com.android.server.wifi.FrameworkFacade;
 import com.android.server.wifi.WifiBaseTest;
+import com.android.server.wifi.WifiDialogManager;
 import com.android.server.wifi.WifiGlobals;
 import com.android.server.wifi.WifiInjector;
 import com.android.server.wifi.WifiSettingsConfigStore;
@@ -125,6 +137,7 @@ import java.net.NetworkInterface;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -141,21 +154,34 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     private static final String ANONYMIZED_DEVICE_ADDRESS = "02:00:00:00:00:00";
     private static final String TEST_PACKAGE_NAME = "com.p2p.test";
     private static final String TEST_ANDROID_ID = "314Deadbeef";
+    private static final String[] TEST_REQUIRED_PERMISSIONS_T =
+            new String[] {
+                    android.Manifest.permission.NEARBY_WIFI_DEVICES,
+                    android.Manifest.permission.ACCESS_WIFI_STATE
+            };
+    private static final String[] TEST_EXCLUDED_PERMISSIONS_T =
+            new String[] {
+                    android.Manifest.permission.ACCESS_FINE_LOCATION
+            };
+    private static final int TEST_GROUP_FREQUENCY = 5180;
 
     private ArgumentCaptor<BroadcastReceiver> mBcastRxCaptor = ArgumentCaptor.forClass(
             BroadcastReceiver.class);
+    private ArgumentCaptor<WorkSource> mWsCaptor = ArgumentCaptor.forClass(WorkSource.class);
     private Binder mClient1;
     private Binder mClient2;
 
     private BroadcastReceiver mLocationModeReceiver;
     private BroadcastReceiver mWifiStateChangedReceiver;
     private BroadcastReceiver mTetherStateReceiver;
+    private BroadcastReceiver mUserRestrictionReceiver;
     private Handler mClientHandler;
     private Messenger mP2pStateMachineMessenger;
     private Messenger mClientMessenger;
     private WifiP2pServiceImpl mWifiP2pServiceImpl;
     private TestLooper mClientHanderLooper;
     private TestLooper mLooper;
+    private MacAddress mTestWifiP2pPeerAddress;
     private WifiP2pConfig mTestWifiP2pPeerConfig;
     private WifiP2pConfig mTestWifiP2pFastConnectionConfig;
     private WifiP2pGroup mTestWifiP2pNewPersistentGoGroup;
@@ -165,7 +191,9 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     private WifiP2pDevice mTestThisDevice;
     private ArgumentCaptor<Message> mMessageCaptor = ArgumentCaptor.forClass(Message.class);
     private MockitoSession mStaticMockSession = null;
+    private Bundle mAttribution = new Bundle();
 
+    @Mock Bundle mBundle;
     @Mock Context mContext;
     @Mock FrameworkFacade mFrameworkFacade;
     @Mock HandlerThread mHandlerThread;
@@ -174,6 +202,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Mock Resources mResources;
     @Mock NetworkInterface mP2pNetworkInterface;
     @Mock WifiInjector mWifiInjector;
+    @Mock BroadcastOptions mBroadcastOptions;
     @Mock WifiManager mMockWifiManager;
     @Mock WifiPermissionsUtil mWifiPermissionsUtil;
     @Mock WifiSettingsConfigStore mWifiSettingsConfigStore;
@@ -190,6 +219,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Spy MockWifiP2pMonitor mWifiMonitor;
     @Mock WifiGlobals mWifiGlobals;
     @Mock AlarmManager mAlarmManager;
+    @Mock WifiDialogManager mWifiDialogManager;
     CoexManager.CoexListener mCoexListener;
 
     private void generatorTestData() {
@@ -198,6 +228,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         mTestWifiP2pDevice = spy(new WifiP2pDevice());
         mTestWifiP2pDevice.deviceName = "TestDeviceName";
         mTestWifiP2pDevice.deviceAddress = "aa:bb:cc:dd:ee:ff";
+
+        mTestWifiP2pPeerAddress = MacAddress.fromString(mTestWifiP2pDevice.deviceAddress);
 
         // for general connect command
         mTestWifiP2pPeerConfig = new WifiP2pConfig();
@@ -322,8 +354,10 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     private void sendAddLocalServiceMsg(Messenger replyMessenger) throws Exception {
         Message msg = Message.obtain();
+        Bundle extras = new Bundle();
+        extras.putParcelable(WifiP2pManager.EXTRA_PARAM_KEY_SERVICE_INFO, mTestWifiP2pServiceInfo);
         msg.what = WifiP2pManager.ADD_LOCAL_SERVICE;
-        msg.obj = mTestWifiP2pServiceInfo;
+        msg.obj = extras;
         msg.replyTo = replyMessenger;
         mP2pStateMachineMessenger.send(Message.obtain(msg));
         mLooper.dispatchAll();
@@ -355,7 +389,9 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     private void sendDiscoverPeersMsg(Messenger replyMessenger) throws Exception {
         Message msg = Message.obtain();
+        Bundle extras = new Bundle();
         msg.what = WifiP2pManager.DISCOVER_PEERS;
+        msg.obj = extras;
         msg.replyTo = replyMessenger;
         mP2pStateMachineMessenger.send(Message.obtain(msg));
         mLooper.dispatchAll();
@@ -382,7 +418,9 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     private void sendDiscoverServiceMsg(Messenger replyMessenger) throws Exception {
         Message msg = Message.obtain();
+        Bundle extras = new Bundle();
         msg.what = WifiP2pManager.DISCOVER_SERVICES;
+        msg.obj = extras;
         msg.replyTo = replyMessenger;
         mP2pStateMachineMessenger.send(Message.obtain(msg));
         mLooper.dispatchAll();
@@ -395,8 +433,18 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     private void sendRequestPeersMsg(Messenger replyMessenger) throws Exception {
         Message msg = Message.obtain();
+        Bundle extras = new Bundle();
         msg.what = WifiP2pManager.REQUEST_PEERS;
+        msg.obj = extras;
         msg.replyTo = replyMessenger;
+        mP2pStateMachineMessenger.send(Message.obtain(msg));
+        mLooper.dispatchAll();
+    }
+
+    private void sendNegotiationRequestEvent(WifiP2pConfig config) throws Exception {
+        Message msg = Message.obtain();
+        msg.what = WifiP2pMonitor.P2P_GO_NEGOTIATION_REQUEST_EVENT;
+        msg.obj = config;
         mP2pStateMachineMessenger.send(Message.obtain(msg));
         mLooper.dispatchAll();
     }
@@ -408,7 +456,9 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     private void sendRequestGroupInfoMsg(Messenger replyMessenger) throws Exception {
         Message msg = Message.obtain();
+        Bundle extras = new Bundle();
         msg.what = WifiP2pManager.REQUEST_GROUP_INFO;
+        msg.obj = extras;
         msg.replyTo = replyMessenger;
         mP2pStateMachineMessenger.send(Message.obtain(msg));
         mLooper.dispatchAll();
@@ -604,8 +654,10 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     private void sendConnectMsg(Messenger replyMessenger,
             WifiP2pConfig config) throws Exception {
         Message msg = Message.obtain();
+        Bundle extras = new Bundle();
+        extras.putParcelable(WifiP2pManager.EXTRA_PARAM_KEY_CONFIG, config);
         msg.what = WifiP2pManager.CONNECT;
-        msg.obj = config;
+        msg.obj = extras;
         msg.replyTo = replyMessenger;
         mP2pStateMachineMessenger.send(Message.obtain(msg));
         mLooper.dispatchAll();
@@ -621,9 +673,32 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
             int netId,
             WifiP2pConfig config) throws Exception {
         Message msg = Message.obtain();
+        Bundle extras = new Bundle();
+        extras.putParcelable(WifiP2pManager.EXTRA_PARAM_KEY_CONFIG, config);
         msg.what = WifiP2pManager.CREATE_GROUP;
         msg.arg1 = netId;
-        msg.obj = config;
+        msg.obj = extras;
+        msg.replyTo = replyMessenger;
+        mP2pStateMachineMessenger.send(Message.obtain(msg));
+        mLooper.dispatchAll();
+    }
+
+    /**
+     * Send SetVendorElements API msg.
+     *
+     * @param replyMessenger For checking replied message.
+     * @param ies The list of information elements.
+     */
+    private void sendSetVendorElementsMsg(Messenger replyMessenger,
+            ArrayList<ScanResult.InformationElement> ies) throws Exception {
+        Message msg = Message.obtain();
+        Bundle extras = new Bundle();
+        extras.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                mContext.getAttributionSource());
+        extras.putParcelableArrayList(WifiP2pManager.EXTRA_PARAM_KEY_INFORMATION_ELEMENT_LIST,
+                ies);
+        msg.what = WifiP2pManager.SET_VENDOR_ELEMENTS;
+        msg.obj = extras;
         msg.replyTo = replyMessenger;
         mP2pStateMachineMessenger.send(Message.obtain(msg));
         mLooper.dispatchAll();
@@ -639,7 +714,9 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     private void sendSimpleMsg(Messenger replyMessenger,
             int what) throws Exception {
         Message msg = Message.obtain();
+        Bundle extras = new Bundle();
         msg.what = what;
+        msg.obj = extras;
         if (replyMessenger != null) {
             msg.replyTo = replyMessenger;
         }
@@ -666,6 +743,32 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
     }
 
+    private void setTargetSdkGreaterThanT() {
+        if (SdkLevel.isAtLeastT()) {
+            when(mWifiPermissionsUtil.isTargetSdkLessThan(any(),
+                    eq(Build.VERSION_CODES.TIRAMISU), anyInt())).thenReturn(false);
+        }
+    }
+
+    /**
+     * Send simple API msg.
+     *
+     * Mock the API msg with int arg.
+     *
+     * @param replyMessenger for checking replied message.
+     */
+    private void sendSimpleMsg(Messenger replyMessenger,
+            int what, int arg1) throws Exception {
+        Message msg = Message.obtain();
+        msg.what = what;
+        msg.arg1 = arg1;
+        if (replyMessenger != null) {
+            msg.replyTo = replyMessenger;
+        }
+        mP2pStateMachineMessenger.send(Message.obtain(msg));
+        mLooper.dispatchAll();
+    }
+
     /**
      * force P2p State enter InactiveState to start others unit test
      *
@@ -682,6 +785,15 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mContext, never()).sendBroadcastWithMultiplePermissions(
                 argThat(new WifiP2pServiceImplTest
                         .P2pConnectionChangedIntentMatcherForNetworkState(FAILED)), any());
+        if (SdkLevel.isAtLeastT()) {
+            verify(mContext).sendBroadcast(
+                    argThat(new WifiP2pServiceImplTest
+                            .P2pConnectionChangedIntentMatcherForNetworkState(IDLE)), any(), any());
+            verify(mBroadcastOptions, atLeastOnce())
+                    .setRequireAllOfPermissions(TEST_REQUIRED_PERMISSIONS_T);
+            verify(mBroadcastOptions, atLeastOnce())
+                    .setRequireNoneOfPermissions(TEST_EXCLUDED_PERMISSIONS_T);
+        }
     }
 
     /**
@@ -697,7 +809,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     private void checkIsP2pInitWhenClientConnected(boolean expectInit,
             Binder clientBinder, WorkSource expectedRequestorWs)
             throws Exception {
-        mWifiP2pServiceImpl.getMessenger(clientBinder, TEST_PACKAGE_NAME);
+        mWifiP2pServiceImpl.getMessenger(clientBinder, TEST_PACKAGE_NAME, null);
         if (expectInit) {
             // send a command to force P2P enabled.
             sendSimpleMsg(mClientMessenger, WifiP2pManager.DISCOVER_PEERS);
@@ -742,21 +854,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         }
     }
 
-    /**
-     * Check the broadcast of WIFI_P2P_THIS_DEVICE_CHANGED_ACTION is sent as expected.
-     */
-    private void checkSendThisDeviceChangedBroadcast() {
-        ArgumentCaptor<Intent> intentCaptor = ArgumentCaptor.forClass(Intent.class);
-        String[] permission_gold = new String[] {android.Manifest.permission.ACCESS_FINE_LOCATION,
-                                                 android.Manifest.permission.ACCESS_WIFI_STATE};
-        ArgumentCaptor<String []> permissionCaptor = ArgumentCaptor.forClass(String[].class);
-        verify(mContext, atLeastOnce()).sendBroadcastWithMultiplePermissions(
-                intentCaptor.capture(), permissionCaptor.capture());
-        String [] permission = permissionCaptor.getValue();
-        Arrays.sort(permission);
-        Arrays.sort(permission_gold);
-        assertEquals(permission_gold, permission);
-        Intent intent = intentCaptor.getValue();
+    private void verifyDeviceChangedBroadcastIntent(Intent intent) {
         WifiP2pDevice device = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE);
         assertEquals(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION, intent.getAction());
         assertEquals(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT, intent.getFlags());
@@ -779,6 +877,35 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                     device.wfdInfo.getMaxThroughput());
         } else {
             assertEquals(mTestThisDevice.wfdInfo, device.wfdInfo);
+        }
+    }
+
+    /**
+     * Check the broadcast of WIFI_P2P_THIS_DEVICE_CHANGED_ACTION is sent as expected.
+     */
+    private void checkSendThisDeviceChangedBroadcast() {
+        ArgumentCaptor<Intent> intentCaptor = ArgumentCaptor.forClass(Intent.class);
+        String[] permission_gold = new String[] {
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_WIFI_STATE};
+        ArgumentCaptor<String []> permissionCaptor = ArgumentCaptor.forClass(String[].class);
+        verify(mContext, atLeastOnce()).sendBroadcastWithMultiplePermissions(
+                intentCaptor.capture(), permissionCaptor.capture());
+        String [] permission = permissionCaptor.getValue();
+        Arrays.sort(permission);
+        Arrays.sort(permission_gold);
+        assertEquals(permission_gold, permission);
+        verifyDeviceChangedBroadcastIntent(intentCaptor.getValue());
+        if (SdkLevel.isAtLeastT()) {
+            // verify the same broadcast is also sent to apps with NEARBY_WIFI_DEVICES permission
+            // but without ACCESS_FINE_LOCATION.
+            verify(mContext, atLeastOnce()).sendBroadcast(
+                    intentCaptor.capture(), any(), any());
+            verify(mBroadcastOptions, atLeastOnce())
+                    .setRequireAllOfPermissions(TEST_REQUIRED_PERMISSIONS_T);
+            verify(mBroadcastOptions, atLeastOnce())
+                    .setRequireNoneOfPermissions(TEST_EXCLUDED_PERMISSIONS_T);
+            verifyDeviceChangedBroadcastIntent(intentCaptor.getValue());
         }
     }
 
@@ -830,6 +957,10 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         when(mContext.getPackageManager()).thenReturn(mPackageManager);
         when(mContext.getResources()).thenReturn(mResources);
         when(mContext.getSystemService(WifiManager.class)).thenReturn(mWifiManager);
+        if (SdkLevel.isAtLeastS()) {
+            when(mContext.getAttributionSource()).thenReturn(
+                    new AttributionSource(1000, TEST_PACKAGE_NAME, null));
+        }
         when(mWifiManager.getConnectionInfo()).thenReturn(mWifiInfo);
         when(mWifiSettingsConfigStore.get(eq(WIFI_P2P_DEVICE_NAME))).thenReturn(thisDeviceName);
         when(mWifiSettingsConfigStore.get(eq(WIFI_P2P_PENDING_FACTORY_RESET))).thenReturn(false);
@@ -853,6 +984,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         when(mWifiInjector.getSettingsConfigStore()).thenReturn(mWifiSettingsConfigStore);
         when(mWifiInjector.getCoexManager()).thenReturn(mCoexManager);
         when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
+        when(mWifiInjector.makeBroadcastOptions()).thenReturn(mBroadcastOptions);
+        when(mWifiInjector.getWifiDialogManager()).thenReturn(mWifiDialogManager);
         // enable all permissions, disable specific permissions in tests
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
         when(mWifiPermissionsUtil.checkNetworkStackPermission(anyInt())).thenReturn(true);
@@ -860,8 +993,19 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         when(mWifiPermissionsUtil.checkConfigOverridePermission(anyInt())).thenReturn(true);
         when(mWifiPermissionsUtil.checkCanAccessWifiDirect(anyString(), anyString(), anyInt(),
                 anyBoolean())).thenReturn(true);
+        // Mock target SDK to less than T by default to keep existing tests working.
+        if (SdkLevel.isAtLeastT()) {
+            when(mWifiPermissionsUtil.checkNearbyDevicesPermission(any(), anyBoolean(), any()))
+                    .thenReturn(true);
+            when(mWifiPermissionsUtil.isTargetSdkLessThan(any(),
+                    eq(Build.VERSION_CODES.TIRAMISU), anyInt())).thenReturn(true);
+        }
         when(mWifiNative.setupInterface(any(), any(), any())).thenReturn(IFACE_NAME_P2P);
         when(mWifiNative.p2pGetDeviceAddress()).thenReturn(thisDeviceMac);
+        when(mUserManager.getUserRestrictions()).thenReturn(mBundle);
+        if (SdkLevel.isAtLeastT()) {
+            when(mBundle.getBoolean(UserManager.DISALLOW_WIFI_DIRECT)).thenReturn(false);
+        }
         doAnswer(new AnswerWithArguments() {
             public boolean answer(WifiP2pGroupList groups) {
                 groups.clear();
@@ -877,6 +1021,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                 return true;
             }
         }).when(mWifiNative).removeP2pNetwork(anyInt());
+        when(mWifiNative.setVendorElements(any())).thenReturn(true);
         when(mWifiSettingsConfigStore.get(eq(WIFI_VERBOSE_LOGGING_ENABLED))).thenReturn(true);
 
         doAnswer(new AnswerWithArguments() {
@@ -893,8 +1038,15 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
             // * WifiManager.WIFI_STATE_CHANGED_ACTION
             // * LocationManager.MODE_CHANGED_ACTION
             // * TetheringManager.ACTION_TETHER_STATE_CHANGED
-            verify(mContext, times(3)).registerReceiver(mBcastRxCaptor.capture(),
-                    any(IntentFilter.class));
+            // * UserManager.ACTION_USER_RESTRICTIONS_CHANGED
+            if (SdkLevel.isAtLeastT()) {
+                verify(mContext, times(4)).registerReceiver(mBcastRxCaptor.capture(),
+                        any(IntentFilter.class));
+                mUserRestrictionReceiver = mBcastRxCaptor.getAllValues().get(3);
+            } else {
+                verify(mContext, times(3)).registerReceiver(mBcastRxCaptor.capture(),
+                        any(IntentFilter.class));
+            }
             mWifiStateChangedReceiver = mBcastRxCaptor.getAllValues().get(0);
             mLocationModeReceiver = mBcastRxCaptor.getAllValues().get(1);
             mTetherStateReceiver = mBcastRxCaptor.getAllValues().get(2);
@@ -923,7 +1075,6 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         setUpWifiP2pServiceImpl(true);
         mClient1 = new Binder();
         mClient2 = new Binder();
-
         when(mContext.createContextAsUser(any(), anyInt())).thenReturn(mContext);
     }
 
@@ -956,6 +1107,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     private void mockEnterProvisionDiscoveryState() throws Exception {
         mockPeersList();
         sendConnectMsg(mClientMessenger, mTestWifiP2pPeerConfig);
+    }
+
+    /**
+     * Mock enter Group created state.
+     */
+    private void mockEnterGroupCreatedState() throws Exception {
+        forceP2pEnabled(mClient1);
+        WifiP2pGroup group = new WifiP2pGroup();
+        group.setNetworkId(WifiP2pGroup.NETWORK_ID_PERSISTENT);
+        group.setNetworkName("DIRECT-xy-NEW");
+        group.setOwner(new WifiP2pDevice("thisDeviceMac"));
+        group.setIsGroupOwner(true);
+        group.setInterface(IFACE_NAME_P2P);
+        sendGroupStartedMsg(group);
+        simulateTetherReady();
     }
 
     /**
@@ -1019,6 +1185,30 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     }
 
     /**
+     * Verify that p2p will teardown /won't init when DISALLOW_WIFI_DIRECT user restriction is set
+     */
+    @Test
+    public void checkIsP2pInitForUserRestrictionChanges() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        forceP2pEnabled(mClient1);
+
+        // p2p interface disabled when user restriction is set
+        when(mBundle.getBoolean(UserManager.DISALLOW_WIFI_DIRECT)).thenReturn(true);
+        Intent intent = new Intent(UserManager.ACTION_USER_RESTRICTIONS_CHANGED);
+        mUserRestrictionReceiver.onReceive(mContext, intent);
+        mLooper.dispatchAll();
+        verify(mWifiNative).teardownInterface();
+        verify(mWifiMonitor).stopMonitoring(anyString());
+        // Force to back disable state for next test
+        mockEnterDisabledState();
+
+        // p2p interface won't initialize when user restriction is set
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.DISCOVER_PEERS);
+        verify(mWifiNative, times(1)).setupInterface(any(), any(), any());
+        verify(mNetdWrapper, times(1)).setInterfaceUp(anyString());
+    }
+
+    /**
      * Verify p2p init / teardown when two clients connect / disconnect
      */
     @Test
@@ -1069,16 +1259,29 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testAddLocalServiceFailureWhenCallerPermissionDenied() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         doNothing().when(mWifiPermissionsUtil).checkPackage(anyInt(), anyString());
-        when(mWifiPermissionsUtil.checkCanAccessWifiDirect(
-                anyString(), anyString(), anyInt(), anyBoolean())).thenReturn(false);
+        if (SdkLevel.isAtLeastT()) {
+            when(mWifiPermissionsUtil.checkNearbyDevicesPermission(any(), anyBoolean(), any()))
+                    .thenReturn(false);
+        } else {
+            when(mWifiPermissionsUtil.checkCanAccessWifiDirect(any(), any(), anyInt(),
+                    anyBoolean())).thenReturn(false);
+        }
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendAddLocalServiceMsg(mClientMessenger);
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.ADD_LOCAL_SERVICE_FAILED));
         verify(mWifiNative, never()).p2pServiceAdd(any());
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
     }
 
     private void verifyAddLocalService() throws Exception {
@@ -1086,8 +1289,15 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         when(mWifiNative.p2pServiceAdd(any())).thenReturn(true);
         sendAddLocalServiceMsg(mClientMessenger);
         verify(mWifiNative).p2pServiceAdd(any());
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.ADD_LOCAL_SERVICE_SUCCEEDED));
     }
 
@@ -1096,6 +1306,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testAddLocalServiceSuccess() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         verifyAddLocalService();
@@ -1106,14 +1317,22 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testAddLocalServiceFailureWhenNativeCallFailure() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         doNothing().when(mWifiPermissionsUtil).checkPackage(anyInt(), anyString());
         when(mWifiNative.p2pServiceAdd(any())).thenReturn(false);
         sendAddLocalServiceMsg(mClientMessenger);
         verify(mWifiNative).p2pServiceAdd(any());
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.ADD_LOCAL_SERVICE_FAILED));
     }
 
@@ -1151,16 +1370,29 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testConnectWithConfigValidAsGroupFailureWhenPermissionDenied() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         doNothing().when(mWifiPermissionsUtil).checkPackage(anyInt(), anyString());
-        when(mWifiPermissionsUtil.checkCanAccessWifiDirect(anyString(), anyString(), anyInt(),
-                anyBoolean())).thenReturn(false);
+        if (SdkLevel.isAtLeastT()) {
+            when(mWifiPermissionsUtil.checkNearbyDevicesPermission(any(), anyBoolean(), any()))
+                    .thenReturn(false);
+        } else {
+            when(mWifiPermissionsUtil.checkCanAccessWifiDirect(any(), any(), anyInt(),
+                    anyBoolean())).thenReturn(false);
+        }
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendConnectMsgWithConfigValidAsGroup(mClientMessenger);
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.CONNECT_FAILED));
         verify(mWifiNative, never()).p2pGroupAdd(any(), anyBoolean());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
     }
 
     /**
@@ -1168,13 +1400,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testConnectWithConfigValidAsGroupSuccess() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         when(mWifiNative.p2pGroupAdd(any(), eq(true))).thenReturn(true);
         sendConnectMsgWithConfigValidAsGroup(mClientMessenger);
         verify(mWifiNative).p2pGroupAdd(any(), eq(true));
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.CONNECT_SUCCEEDED));
     }
 
@@ -1183,13 +1423,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testConnectWithConfigValidAsGroupFailureWhenNativeCallFailure() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         when(mWifiNative.p2pGroupAdd(any(), eq(true))).thenReturn(false);
         sendConnectMsgWithConfigValidAsGroup(mClientMessenger);
         verify(mWifiNative).p2pGroupAdd(any(), eq(true));
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.CONNECT_FAILED));
     }
 
@@ -1231,17 +1479,30 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Test
     public void testCreateGroupWithConfigValidAsGroupFailureWhenPermissionDenied()
             throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         doNothing().when(mWifiPermissionsUtil).checkPackage(anyInt(), anyString());
-        when(mWifiPermissionsUtil.checkCanAccessWifiDirect(anyString(), anyString(), anyInt(),
-                anyBoolean())).thenReturn(false);
+        if (SdkLevel.isAtLeastT()) {
+            when(mWifiPermissionsUtil.checkNearbyDevicesPermission(any(), anyBoolean(), any()))
+                    .thenReturn(false);
+        } else {
+            when(mWifiPermissionsUtil.checkCanAccessWifiDirect(any(), any(), anyInt(),
+                    anyBoolean())).thenReturn(false);
+        }
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendCreateGroupMsgWithConfigValidAsGroup(mClientMessenger);
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.CREATE_GROUP_FAILED));
         verify(mWifiNative, never()).p2pGroupAdd(anyBoolean());
         verify(mWifiNative, never()).p2pGroupAdd(any(), anyBoolean());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
     }
 
     /**
@@ -1249,14 +1510,22 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testCreateGroupWithConfigValidAsGroupSuccess() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         when(mWifiNative.p2pGroupAdd(any(), eq(false))).thenReturn(true);
         sendCreateGroupMsgWithConfigValidAsGroup(mClientMessenger);
         verify(mWifiNative).p2pGroupAdd(any(), eq(false));
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.CREATE_GROUP_SUCCEEDED));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
     }
 
     /**
@@ -1265,13 +1534,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Test
     public void testCreateGroupWithConfigValidAsGroupFailureWhenNativeCallFailure()
             throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         when(mWifiNative.p2pGroupAdd(any(), eq(false))).thenReturn(false);
         sendCreateGroupMsgWithConfigValidAsGroup(mClientMessenger);
         verify(mWifiNative).p2pGroupAdd(any(), eq(false));
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.CREATE_GROUP_FAILED));
     }
 
@@ -1283,7 +1560,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     public void testDiscoverPeersFailureWhenNoChannelUpdated() throws Exception {
         forceP2pEnabled(mClient1);
         sendDiscoverPeersMsg(mClientMessenger);
-        verify(mWifiNative, never()).p2pFind(anyInt());
+        verify(mWifiNative, never()).p2pFind(anyInt(), anyInt());
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.DISCOVER_PEERS_FAILED));
     }
 
@@ -1298,7 +1575,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                 .when(mWifiPermissionsUtil).checkPackage(anyInt(), anyString());
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendDiscoverPeersMsg(mClientMessenger);
-        verify(mWifiNative, never()).p2pFind(anyInt());
+        verify(mWifiNative, never()).p2pFind(anyInt(), anyInt());
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.DISCOVER_PEERS_FAILED));
     }
 
@@ -1308,15 +1585,28 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testDiscoverPeersFailureWhenPermissionDenied() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         doNothing().when(mWifiPermissionsUtil).checkPackage(anyInt(), anyString());
-        when(mWifiPermissionsUtil.checkCanAccessWifiDirect(anyString(), anyString(), anyInt(),
-                anyBoolean())).thenReturn(false);
+        if (SdkLevel.isAtLeastT()) {
+            when(mWifiPermissionsUtil.checkNearbyDevicesPermission(any(), anyBoolean(), any()))
+                    .thenReturn(false);
+        } else {
+            when(mWifiPermissionsUtil.checkCanAccessWifiDirect(any(), any(), anyInt(),
+                    anyBoolean())).thenReturn(false);
+        }
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendDiscoverPeersMsg(mClientMessenger);
-        verify(mWifiNative, never()).p2pFind(anyInt());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        verify(mWifiNative, never()).p2pFind(anyInt(), anyInt());
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.DISCOVER_PEERS_FAILED));
     }
 
@@ -1334,9 +1624,9 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                 eq(true))).thenReturn(false);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendDiscoverPeersMsg(mClientMessenger);
-        verify(mWifiNative, never()).p2pFind(anyInt());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        verify(mWifiNative, never()).p2pFind(anyInt(), anyInt());
+        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                eq("testFeature"), anyInt(), eq(true));
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.DISCOVER_PEERS_FAILED));
     }
 
@@ -1345,13 +1635,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testDiscoverPeersSuccess() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
-        when(mWifiNative.p2pFind(anyInt())).thenReturn(true);
+        when(mWifiNative.p2pFind(anyInt(), anyInt())).thenReturn(true);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendDiscoverPeersMsg(mClientMessenger);
-        verify(mWifiNative).p2pFind(anyInt());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        verify(mWifiNative).p2pFind(anyInt(), anyInt());
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.DISCOVER_PEERS_SUCCEEDED));
     }
 
@@ -1360,13 +1658,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testDiscoverPeersFailureWhenNativeCallFailure() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
-        when(mWifiNative.p2pFind(anyInt())).thenReturn(false);
+        when(mWifiNative.p2pFind(anyInt(), anyInt())).thenReturn(false);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendDiscoverPeersMsg(mClientMessenger);
-        verify(mWifiNative).p2pFind(anyInt());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        verify(mWifiNative).p2pFind(anyInt(), anyInt());
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.DISCOVER_PEERS_FAILED));
     }
 
@@ -1410,19 +1716,32 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testDiscoverServicesFailureWhenPermissionDenied() throws Exception {
+        setTargetSdkGreaterThanT();
         when(mWifiNative.p2pServDiscReq(anyString(), anyString()))
                 .thenReturn("mServiceDiscReqId");
         forceP2pEnabled(mClient1);
         doNothing().when(mWifiPermissionsUtil).checkPackage(anyInt(), anyString());
-        when(mWifiPermissionsUtil.checkCanAccessWifiDirect(anyString(), anyString(), anyInt(),
-                anyBoolean())).thenReturn(false);
+        if (SdkLevel.isAtLeastT()) {
+            when(mWifiPermissionsUtil.checkNearbyDevicesPermission(any(), anyBoolean(), any()))
+                    .thenReturn(false);
+        } else {
+            when(mWifiPermissionsUtil.checkCanAccessWifiDirect(any(), any(), anyInt(),
+                    anyBoolean())).thenReturn(false);
+        }
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendAddServiceRequestMsg(mClientMessenger);
         sendDiscoverServiceMsg(mClientMessenger);
         verify(mWifiNative, never()).p2pServDiscReq(anyString(), anyString());
-        verify(mWifiNative, never()).p2pFind(anyInt());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        verify(mWifiNative, never()).p2pFind(anyInt(), anyInt());
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.DISCOVER_SERVICES_FAILED));
     }
 
@@ -1444,9 +1763,9 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         sendAddServiceRequestMsg(mClientMessenger);
         sendDiscoverServiceMsg(mClientMessenger);
         verify(mWifiNative, never()).p2pServDiscReq(anyString(), anyString());
-        verify(mWifiNative, never()).p2pFind(anyInt());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        verify(mWifiNative, never()).p2pFind(anyInt(), anyInt());
+        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                eq("testFeature"), anyInt(), eq(true));
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.DISCOVER_SERVICES_FAILED));
     }
 
@@ -1455,17 +1774,25 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testDiscoverServicesSuccess() throws Exception {
+        setTargetSdkGreaterThanT();
         when(mWifiNative.p2pServDiscReq(anyString(), anyString()))
                 .thenReturn("mServiceDiscReqId");
-        when(mWifiNative.p2pFind(anyInt())).thenReturn(true);
+        when(mWifiNative.p2pFind(anyInt(), anyInt())).thenReturn(true);
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendAddServiceRequestMsg(mClientMessenger);
         sendDiscoverServiceMsg(mClientMessenger);
         verify(mWifiNative).p2pServDiscReq(anyString(), anyString());
-        verify(mWifiNative).p2pFind(anyInt());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        verify(mWifiNative, atLeastOnce()).p2pFind(anyInt(), anyInt());
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.DISCOVER_SERVICES_SUCCEEDED));
     }
 
@@ -1474,15 +1801,23 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testDiscoverServicesFailureWhenAddServiceRequestFailure() throws Exception {
+        setTargetSdkGreaterThanT();
         when(mWifiNative.p2pServDiscReq(anyString(), anyString())).thenReturn(null);
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendAddServiceRequestMsg(mClientMessenger);
         sendDiscoverServiceMsg(mClientMessenger);
         verify(mWifiNative).p2pServDiscReq(anyString(), anyString());
-        verify(mWifiNative, never()).p2pFind(anyInt());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        verify(mWifiNative, never()).p2pFind(anyInt(), anyInt());
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.DISCOVER_SERVICES_FAILED));
     }
 
@@ -1491,17 +1826,25 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testDiscoverServicesFailureWhenNativeCallFailure() throws Exception {
+        setTargetSdkGreaterThanT();
         when(mWifiNative.p2pServDiscReq(anyString(), anyString()))
                 .thenReturn("mServiceDiscReqId");
-        when(mWifiNative.p2pFind(anyInt())).thenReturn(false);
+        when(mWifiNative.p2pFind(anyInt(), anyInt())).thenReturn(false);
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendAddServiceRequestMsg(mClientMessenger);
         sendDiscoverServiceMsg(mClientMessenger);
         verify(mWifiNative).p2pServDiscReq(anyString(), anyString());
-        verify(mWifiNative).p2pFind(anyInt());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        verify(mWifiNative).p2pFind(anyInt(), anyInt());
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.DISCOVER_SERVICES_FAILED));
     }
 
@@ -1545,16 +1888,29 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRequestPeersFailureWhenPermissionDenied() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         mockPeersList();
         doNothing().when(mWifiPermissionsUtil).checkPackage(anyInt(), anyString());
-        when(mWifiPermissionsUtil.checkCanAccessWifiDirect(anyString(), anyString(), anyInt(),
-                anyBoolean())).thenReturn(false);
+        if (SdkLevel.isAtLeastT()) {
+            when(mWifiPermissionsUtil.checkNearbyDevicesPermission(any(), anyBoolean(), any()))
+                    .thenReturn(false);
+        } else {
+            when(mWifiPermissionsUtil.checkCanAccessWifiDirect(any(), any(), anyInt(),
+                    anyBoolean())).thenReturn(false);
+        }
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendRequestPeersMsg(mClientMessenger);
         verify(mClientHandler).sendMessage(mMessageCaptor.capture());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
         WifiP2pDeviceList peers = (WifiP2pDeviceList) mMessageCaptor.getValue().obj;
         assertEquals(WifiP2pManager.RESPONSE_PEERS, mMessageCaptor.getValue().what);
         assertNull(peers.get(mTestWifiP2pDevice.deviceAddress));
@@ -1577,8 +1933,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendRequestPeersMsg(mClientMessenger);
         verify(mClientHandler).sendMessage(mMessageCaptor.capture());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                eq("testFeature"), anyInt(), eq(true));
         WifiP2pDeviceList peers = (WifiP2pDeviceList) mMessageCaptor.getValue().obj;
         assertEquals(WifiP2pManager.RESPONSE_PEERS, mMessageCaptor.getValue().what);
         assertNull(peers.get(mTestWifiP2pDevice.deviceAddress));
@@ -1591,13 +1947,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRequestPeersSuccess() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         mockPeersList();
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendRequestPeersMsg(mClientMessenger);
         verify(mClientHandler).sendMessage(mMessageCaptor.capture());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
         WifiP2pDeviceList peers = (WifiP2pDeviceList) mMessageCaptor.getValue().obj;
         assertEquals(WifiP2pManager.RESPONSE_PEERS, mMessageCaptor.getValue().what);
         assertNotEquals(null, peers.get(mTestWifiP2pDevice.deviceAddress));
@@ -1642,17 +2006,30 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRequestGroupInfoFailureWhenPermissionDenied() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendGroupStartedMsg(mTestWifiP2pGroup);
         simulateTetherReady();
         doNothing().when(mWifiPermissionsUtil).checkPackage(anyInt(), anyString());
-        when(mWifiPermissionsUtil.checkCanAccessWifiDirect(anyString(), anyString(), anyInt(),
-                anyBoolean())).thenReturn(false);
+        if (SdkLevel.isAtLeastT()) {
+            when(mWifiPermissionsUtil.checkNearbyDevicesPermission(any(), anyBoolean(), any()))
+                    .thenReturn(false);
+        } else {
+            when(mWifiPermissionsUtil.checkCanAccessWifiDirect(any(), any(), anyInt(),
+                    anyBoolean())).thenReturn(false);
+        }
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendRequestGroupInfoMsg(mClientMessenger);
         verify(mClientHandler).sendMessage(mMessageCaptor.capture());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
         assertEquals(WifiP2pManager.RESPONSE_GROUP_INFO, mMessageCaptor.getValue().what);
         assertNull(mMessageCaptor.getValue().obj);
     }
@@ -1663,6 +2040,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRequestGroupInfoSuccess() throws Exception {
+        setTargetSdkGreaterThanT();
         mTestWifiP2pGroup.setOwner(mTestThisDevice);
         forceP2pEnabled(mClient1);
         sendGroupStartedMsg(mTestWifiP2pGroup);
@@ -1671,8 +2049,15 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendRequestGroupInfoMsg(mClientMessenger);
         verify(mClientHandler).sendMessage(mMessageCaptor.capture());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
         assertEquals(WifiP2pManager.RESPONSE_GROUP_INFO, mMessageCaptor.getValue().what);
         WifiP2pGroup wifiP2pGroup = (WifiP2pGroup) mMessageCaptor.getValue().obj;
         assertEquals(mTestWifiP2pGroup.getNetworkName(), wifiP2pGroup.getNetworkName());
@@ -1686,6 +2071,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRequestGroupInfoIncludesMacForNetworkSettingsApp() throws Exception {
+        setTargetSdkGreaterThanT();
         mTestWifiP2pGroup.setOwner(mTestThisDevice);
         forceP2pEnabled(mClient1);
         sendGroupStartedMsg(mTestWifiP2pGroup);
@@ -1694,8 +2080,15 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendRequestGroupInfoMsg(mClientMessenger);
         verify(mClientHandler).sendMessage(mMessageCaptor.capture());
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
         assertEquals(WifiP2pManager.RESPONSE_GROUP_INFO, mMessageCaptor.getValue().what);
         WifiP2pGroup wifiP2pGroup = (WifiP2pGroup) mMessageCaptor.getValue().obj;
         assertEquals(thisDeviceMac, wifiP2pGroup.getOwner().deviceAddress);
@@ -1707,7 +2100,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartListenFailureWhenPermissionDenied() throws Exception {
-        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.checkCanAccessWifiDirect(anyString(), anyString(), anyInt(),
+                anyBoolean())).thenReturn(false);
         forceP2pEnabled(mClient1);
         sendSimpleMsg(mClientMessenger, WifiP2pManager.START_LISTEN);
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.START_LISTEN_FAILED));
@@ -1721,14 +2115,24 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartListenFailureWhenNativeCallFailure() throws Exception {
-        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+        setTargetSdkGreaterThanT();
         when(mWifiNative.p2pExtListen(eq(true), anyInt(), anyInt())).thenReturn(false);
         forceP2pEnabled(mClient1);
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendSimpleMsg(mClientMessenger, WifiP2pManager.START_LISTEN);
         // p2pFlush would be invoked in forceP2pEnabled and startListen both.
         verify(mWifiNative, times(2)).p2pFlush();
         verify(mWifiNative).p2pExtListen(eq(true), anyInt(), anyInt());
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.START_LISTEN_FAILED));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
     }
 
     /**
@@ -1736,27 +2140,24 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartListenSuccess() throws Exception {
+        setTargetSdkGreaterThanT();
         when(mWifiNative.p2pExtListen(eq(true), anyInt(), anyInt())).thenReturn(true);
-        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
         forceP2pEnabled(mClient1);
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendSimpleMsg(mClientMessenger, WifiP2pManager.START_LISTEN);
         // p2pFlush would be invoked in forceP2pEnabled and startListen both.
         verify(mWifiNative, times(2)).p2pFlush();
         verify(mWifiNative).p2pExtListen(eq(true), anyInt(), anyInt());
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.START_LISTEN_SUCCEEDED));
-    }
-
-    /**
-     * Verify WifiP2pManager.STOP_LISTEN_FAILED is returned when a caller
-     * without proper permission attempts to sends WifiP2pManager.STOP_LISTEN.
-     */
-    @Test
-    public void testStopListenFailureWhenPermissionDenied() throws Exception {
-        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
-        forceP2pEnabled(mClient1);
-        sendSimpleMsg(mClientMessenger, WifiP2pManager.STOP_LISTEN);
-        assertTrue(mClientHandler.hasMessages(WifiP2pManager.STOP_LISTEN_FAILED));
-        verify(mWifiNative, never()).p2pExtListen(anyBoolean(), anyInt(), anyInt());
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
     }
 
     /**
@@ -1764,7 +2165,6 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStopListenFailureWhenNativeCallFailure() throws Exception {
-        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
         when(mWifiNative.p2pExtListen(eq(false), anyInt(), anyInt())).thenReturn(false);
         forceP2pEnabled(mClient1);
         sendSimpleMsg(mClientMessenger, WifiP2pManager.STOP_LISTEN);
@@ -1777,7 +2177,6 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStopListenSuccess() throws Exception {
-        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
         when(mWifiNative.p2pExtListen(eq(false), anyInt(), anyInt())).thenReturn(true);
         forceP2pEnabled(mClient1);
         sendSimpleMsg(mClientMessenger, WifiP2pManager.STOP_LISTEN);
@@ -1873,13 +2272,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testPeerScanMetricWhenSendDiscoverPeers() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
-        when(mWifiNative.p2pFind(anyInt())).thenReturn(true);
+        when(mWifiNative.p2pFind(anyInt(), anyInt())).thenReturn(true);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendDiscoverPeersMsg(mClientMessenger);
         verify(mWifiP2pMetrics).incrementPeerScans();
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
     }
 
     /**
@@ -1888,16 +2295,24 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testServiceScanMetricWhenSendDiscoverServices() throws Exception {
+        setTargetSdkGreaterThanT();
         when(mWifiNative.p2pServDiscReq(anyString(), anyString()))
                 .thenReturn("mServiceDiscReqId");
-        when(mWifiNative.p2pFind(anyInt())).thenReturn(true);
+        when(mWifiNative.p2pFind(anyInt(), anyInt())).thenReturn(true);
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendAddServiceRequestMsg(mClientMessenger);
         sendDiscoverServiceMsg(mClientMessenger);
         verify(mWifiP2pMetrics).incrementServiceScans();
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
     }
 
     /**
@@ -1998,13 +2413,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartFreshConnectionEventWhenSendConnect() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         mockPeersList();
         sendConnectMsg(mClientMessenger, mTestWifiP2pPeerConfig);
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
 
         ArgumentCaptor<WifiP2pConfig> configCaptor =
                 ArgumentCaptor.forClass(WifiP2pConfig.class);
@@ -2019,6 +2442,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartReinvokeConnectionEventWhenSendConnect() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         when(mWifiNative.p2pGroupAdd(anyInt()))
                 .thenReturn(true);
@@ -2029,8 +2453,15 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
 
         mockPeersList();
         sendConnectMsg(mClientMessenger, mTestWifiP2pPeerConfig);
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
 
         ArgumentCaptor<WifiP2pConfig> configCaptor =
                 ArgumentCaptor.forClass(WifiP2pConfig.class);
@@ -2050,12 +2481,20 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Test
     public void testStartReinvokeConnectionEventWhenCreateGroup()
             throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         sendCreateGroupMsg(mClientMessenger, WifiP2pGroup.NETWORK_ID_PERSISTENT, null);
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
 
         verify(mWifiP2pMetrics).startConnectionEvent(
                 eq(P2pConnectionEvent.CONNECTION_REINVOKE),
@@ -2068,6 +2507,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartLocalConnectionWhenCreateGroup() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
@@ -2084,8 +2524,15 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         sendSimpleMsg(mClientMessenger, WifiP2pManager.FACTORY_RESET);
 
         sendCreateGroupMsg(mClientMessenger, WifiP2pGroup.NETWORK_ID_PERSISTENT, null);
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
 
         verify(mWifiP2pMetrics).startConnectionEvent(
                 eq(P2pConnectionEvent.CONNECTION_LOCAL),
@@ -2098,12 +2545,20 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartLocalConnectionEventWhenCreateTemporaryGroup() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         sendCreateGroupMsg(mClientMessenger, WifiP2pGroup.NETWORK_ID_TEMPORARY, null);
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
 
         verify(mWifiP2pMetrics).startConnectionEvent(
                 eq(P2pConnectionEvent.CONNECTION_LOCAL),
@@ -2117,13 +2572,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Test
     public void testStartFastConnectionEventWhenSendConnectWithConfig()
             throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         when(mWifiNative.p2pGroupAdd(any(), eq(true))).thenReturn(true);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         sendConnectMsg(mClientMessenger, mTestWifiP2pFastConnectionConfig);
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
 
         ArgumentCaptor<WifiP2pConfig> configCaptor =
                 ArgumentCaptor.forClass(WifiP2pConfig.class);
@@ -2141,12 +2604,20 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Test
     public void testStartFastConnectionEventWhenCreateGroupWithConfig()
             throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         sendCreateGroupMsg(mClientMessenger, 0, mTestWifiP2pFastConnectionConfig);
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
 
         ArgumentCaptor<WifiP2pConfig> configCaptor =
                 ArgumentCaptor.forClass(WifiP2pConfig.class);
@@ -2182,13 +2653,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testEndConnectionEventWhenTimeout() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         when(mWifiNative.p2pGroupAdd(anyBoolean())).thenReturn(true);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         mockEnterGroupNegotiationState();
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
 
         mLooper.moveTimeForward(120 * 1000 * 2);
         mLooper.dispatchAll();
@@ -2202,13 +2681,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testEndConnectionEventWhenCancel() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         when(mWifiNative.p2pGroupAdd(anyBoolean())).thenReturn(true);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         mockEnterGroupNegotiationState();
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
 
         sendSimpleMsg(mClientMessenger, WifiP2pManager.CANCEL_CONNECT);
 
@@ -2221,13 +2708,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testEndConnectionEventWhenProvDiscFailure() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         when(mWifiNative.p2pGroupAdd(anyBoolean())).thenReturn(true);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         mockEnterProvisionDiscoveryState();
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
 
         sendSimpleMsg(null, WifiP2pMonitor.P2P_PROV_DISC_FAILURE_EVENT);
 
@@ -2240,21 +2735,38 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testEndConnectionEventWhenGroupRemoval() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         when(mWifiNative.p2pGroupAdd(anyBoolean())).thenReturn(true);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         mockEnterGroupNegotiationState();
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
 
         sendSimpleMsg(null, WifiP2pMonitor.P2P_GROUP_REMOVED_EVENT);
         verify(mContext).sendBroadcastWithMultiplePermissions(
                 argThat(new WifiP2pServiceImplTest
                         .P2pConnectionChangedIntentMatcherForNetworkState(FAILED)), any());
+        if (SdkLevel.isAtLeastT()) {
+            verify(mContext).sendBroadcast(
+                    argThat(new WifiP2pServiceImplTest
+                            .P2pConnectionChangedIntentMatcherForNetworkState(FAILED)), any(),
+                    any());
+            verify(mBroadcastOptions, atLeastOnce())
+                    .setRequireAllOfPermissions(TEST_REQUIRED_PERMISSIONS_T);
+            verify(mBroadcastOptions, atLeastOnce())
+                    .setRequireNoneOfPermissions(TEST_EXCLUDED_PERMISSIONS_T);
+        }
 
-        verify(mWifiP2pMetrics).endConnectionEvent(
-                eq(P2pConnectionEvent.CLF_UNKNOWN));
+        verify(mWifiP2pMetrics).endConnectionEvent(eq(P2pConnectionEvent.CLF_UNKNOWN));
     }
 
     /**
@@ -2262,13 +2774,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testEndConnectionEventWhenInvitationFailure() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         when(mWifiNative.p2pGroupAdd(anyBoolean())).thenReturn(true);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         mockEnterGroupNegotiationState();
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
 
         sendInvitationResultMsg(WifiP2pServiceImpl.P2pStatus.UNKNOWN);
 
@@ -2282,14 +2802,27 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRequestDeviceInfoFailureWhenPermissionDenied() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         doNothing().when(mWifiPermissionsUtil).checkPackage(anyInt(), anyString());
-        when(mWifiPermissionsUtil.checkCanAccessWifiDirect(anyString(), anyString(), anyInt(),
-                anyBoolean())).thenReturn(false);
+        if (SdkLevel.isAtLeastT()) {
+            when(mWifiPermissionsUtil.checkNearbyDevicesPermission(any(), anyBoolean(), any()))
+                    .thenReturn(false);
+        } else {
+            when(mWifiPermissionsUtil.checkCanAccessWifiDirect(any(), any(), anyInt(),
+                    anyBoolean())).thenReturn(false);
+        }
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_DEVICE_INFO);
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
         verify(mClientHandler).sendMessage(mMessageCaptor.capture());
         assertEquals(WifiP2pManager.RESPONSE_DEVICE_INFO, mMessageCaptor.getValue().what);
         assertNull(mMessageCaptor.getValue().obj);
@@ -2301,11 +2834,19 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRequestDeviceInfoSuccessWhenP2pEnabled() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_DEVICE_INFO);
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
         verify(mClientHandler).sendMessage(mMessageCaptor.capture());
         assertEquals(WifiP2pManager.RESPONSE_DEVICE_INFO, mMessageCaptor.getValue().what);
         WifiP2pDevice wifiP2pDevice = (WifiP2pDevice) mMessageCaptor.getValue().obj;
@@ -2319,10 +2860,18 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRequestDeviceInfoReturnEmptyWifiP2pDeviceWhenP2pDisabled() throws Exception {
+        setTargetSdkGreaterThanT();
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_DEVICE_INFO);
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
         verify(mClientHandler).sendMessage(mMessageCaptor.capture());
         assertEquals(WifiP2pManager.RESPONSE_DEVICE_INFO, mMessageCaptor.getValue().what);
         WifiP2pDevice wifiP2pDevice = (WifiP2pDevice) mMessageCaptor.getValue().obj;
@@ -2336,12 +2885,20 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRequestDeviceInfoReturnsActualMacForNetworkSettingsApp() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         when(mWifiPermissionsUtil.checkLocalMacAddressPermission(anyInt())).thenReturn(true);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_DEVICE_INFO);
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        }
         verify(mClientHandler).sendMessage(mMessageCaptor.capture());
         assertEquals(WifiP2pManager.RESPONSE_DEVICE_INFO, mMessageCaptor.getValue().what);
         WifiP2pDevice wifiP2pDevice = (WifiP2pDevice) mMessageCaptor.getValue().obj;
@@ -2377,11 +2934,20 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         when(mWifiGlobals.getWifiP2pDeviceNamePostfixNumDigits()).thenReturn(postfixDigit);
     }
 
+    /** Verify that the default device name is customized by overlay on S or older. */
+    @Test
+    public void testCustomizeDefaultDeviceNameOnSorOlder() throws Exception {
+        assumeFalse(SdkLevel.isAtLeastT());
+        setupDefaultDeviceNameCustomization("Niceboat-", -1);
+        verifyCustomizeDefaultDeviceName("Niceboat-" + TEST_ANDROID_ID.substring(0, 4), false);
+    }
+
     /** Verify that the default device name is customized by overlay. */
     @Test
     public void testCustomizeDefaultDeviceName() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
         setupDefaultDeviceNameCustomization("Niceboat-", -1);
-        verifyCustomizeDefaultDeviceName("Niceboat-" + TEST_ANDROID_ID.substring(0, 4), false);
+        verifyCustomizeDefaultDeviceName("Niceboat-", true);
     }
 
     /** Verify that the prefix fallback to Android_ if the prefix is too long. */
@@ -2402,17 +2968,36 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
 
     /** Verify that the postfix fallbacks to 4-digit ANDROID_ID if the length is smaller than 4. */
     @Test
-    public void testCustomizeDefaultDeviceNamePostfixTooShort() throws Exception {
+    public void testCustomizeDefaultDeviceNamePostfixTooShortOnSorOlder() throws Exception {
+        assumeFalse(SdkLevel.isAtLeastT());
         setupDefaultDeviceNameCustomization("Prefix",
                 WifiP2pServiceImpl.DEVICE_NAME_POSTFIX_LENGTH_MIN - 1);
+        verifyCustomizeDefaultDeviceName("Prefix" + TEST_ANDROID_ID.substring(0, 4), true);
+    }
+
+    /** Verify that the postfix fallbacks to 4-digit ANDROID_ID if the length is smaller than 4. */
+    @Test
+    public void testCustomizeDefaultDeviceNamePostfixTooShort() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        setupDefaultDeviceNameCustomization("Prefix",
+                WifiP2pServiceImpl.DEVICE_NAME_POSTFIX_LENGTH_MIN - 1);
+        verifyCustomizeDefaultDeviceName("Prefix", true);
+    }
+
+    /** Verify that the postfix fallbacks to 4-digit ANDROID_ID if the length is 0.*/
+    @Test
+    public void testCustomizeDefaultDeviceNamePostfixIsZeroLengthOnSorOlder() throws Exception {
+        assumeFalse(SdkLevel.isAtLeastT());
+        setupDefaultDeviceNameCustomization("Prefix", 0);
         verifyCustomizeDefaultDeviceName("Prefix" + TEST_ANDROID_ID.substring(0, 4), true);
     }
 
     /** Verify that the postfix fallbacks to 4-digit ANDROID_ID if the length is 0.*/
     @Test
     public void testCustomizeDefaultDeviceNamePostfixIsZeroLength() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
         setupDefaultDeviceNameCustomization("Prefix", 0);
-        verifyCustomizeDefaultDeviceName("Prefix" + TEST_ANDROID_ID.substring(0, 4), true);
+        verifyCustomizeDefaultDeviceName("Prefix", true);
     }
 
     /** Verify that the digit length exceeds the remaining bytes. */
@@ -2428,10 +3013,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     /** Verify that the default device name is customized by overlay
      * when saved one is an empty string. */
     @Test
-    public void testCustomizeDefaultDeviceNameWithEmptySavedName() throws Exception {
+    public void testCustomizeDefaultDeviceNameWithEmptySavedNameOnSorOlder() throws Exception {
+        assumeFalse(SdkLevel.isAtLeastT());
         setupDefaultDeviceNameCustomization("Niceboat-", -1);
         when(mWifiSettingsConfigStore.get(eq(WIFI_P2P_DEVICE_NAME))).thenReturn("");
         verifyCustomizeDefaultDeviceName("Niceboat-" + TEST_ANDROID_ID.substring(0, 4), false);
+    }
+
+    /** Verify that the default device name is customized by overlay
+     * when saved one is an empty string. */
+    @Test
+    public void testCustomizeDefaultDeviceNameWithEmptySavedName() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        setupDefaultDeviceNameCustomization("Niceboat-", -1);
+        when(mWifiSettingsConfigStore.get(eq(WIFI_P2P_DEVICE_NAME))).thenReturn("");
+        verifyCustomizeDefaultDeviceName("Niceboat-", true);
     }
 
     /**
@@ -2547,16 +3143,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRemoveGroupSuccess() throws Exception {
-        // Move to group created state
-        forceP2pEnabled(mClient1);
-        WifiP2pGroup group = new WifiP2pGroup();
-        group.setNetworkId(WifiP2pGroup.NETWORK_ID_PERSISTENT);
-        group.setNetworkName("DIRECT-xy-NEW");
-        group.setOwner(new WifiP2pDevice("thisDeviceMac"));
-        group.setIsGroupOwner(true);
-        group.setInterface(IFACE_NAME_P2P);
-        sendGroupStartedMsg(group);
-        simulateTetherReady();
+        mockEnterGroupCreatedState();
 
         when(mWifiNative.p2pGroupRemove(eq(IFACE_NAME_P2P))).thenReturn(true);
         sendSimpleMsg(mClientMessenger, WifiP2pManager.REMOVE_GROUP);
@@ -2571,16 +3158,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRemoveGroupFailureWhenNativeCallFailure() throws Exception {
-        // Move to group created state
-        forceP2pEnabled(mClient1);
-        WifiP2pGroup group = new WifiP2pGroup();
-        group.setNetworkId(WifiP2pGroup.NETWORK_ID_PERSISTENT);
-        group.setNetworkName("DIRECT-xy-NEW");
-        group.setOwner(new WifiP2pDevice("thisDeviceMac"));
-        group.setIsGroupOwner(true);
-        group.setInterface(IFACE_NAME_P2P);
-        sendGroupStartedMsg(group);
-        simulateTetherReady();
+        mockEnterGroupCreatedState();
 
         when(mWifiNative.p2pGroupRemove(eq(IFACE_NAME_P2P))).thenReturn(false);
         sendSimpleMsg(mClientMessenger, WifiP2pManager.REMOVE_GROUP);
@@ -2754,16 +3332,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartWpsWithPbcSuccess() throws Exception {
-        // Move to group created state
-        forceP2pEnabled(mClient1);
-        WifiP2pGroup group = new WifiP2pGroup();
-        group.setNetworkId(WifiP2pGroup.NETWORK_ID_PERSISTENT);
-        group.setNetworkName("DIRECT-xy-NEW");
-        group.setOwner(new WifiP2pDevice("thisDeviceMac"));
-        group.setIsGroupOwner(true);
-        group.setInterface(IFACE_NAME_P2P);
-        sendGroupStartedMsg(group);
-        simulateTetherReady();
+        mockEnterGroupCreatedState();
 
         when(mWifiNative.startWpsPbc(anyString(), any())).thenReturn(true);
         WpsInfo wps = new WpsInfo();
@@ -2788,16 +3357,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartWpsWithPinKeypadSuccess() throws Exception {
-        // Move to group created state
-        forceP2pEnabled(mClient1);
-        WifiP2pGroup group = new WifiP2pGroup();
-        group.setNetworkId(WifiP2pGroup.NETWORK_ID_PERSISTENT);
-        group.setNetworkName("DIRECT-xy-NEW");
-        group.setOwner(new WifiP2pDevice("thisDeviceMac"));
-        group.setIsGroupOwner(true);
-        group.setInterface(IFACE_NAME_P2P);
-        sendGroupStartedMsg(group);
-        simulateTetherReady();
+        mockEnterGroupCreatedState();
 
         when(mWifiNative.startWpsPinKeypad(anyString(), anyString())).thenReturn(true);
         WpsInfo wps = new WpsInfo();
@@ -2815,16 +3375,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartWpsFailureWhenObjectIsNull() throws Exception {
-        // Move to group created state
-        forceP2pEnabled(mClient1);
-        WifiP2pGroup group = new WifiP2pGroup();
-        group.setNetworkId(WifiP2pGroup.NETWORK_ID_PERSISTENT);
-        group.setNetworkName("DIRECT-xy-NEW");
-        group.setOwner(new WifiP2pDevice("thisDeviceMac"));
-        group.setIsGroupOwner(true);
-        group.setInterface(IFACE_NAME_P2P);
-        sendGroupStartedMsg(group);
-        simulateTetherReady();
+        mockEnterGroupCreatedState();
 
         WpsInfo wps = null;
         sendStartWpsMsg(mClientMessenger, wps);
@@ -2839,16 +3390,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartWpsWithPbcFailureWhenNativeCallFailure() throws Exception {
-        // Move to group created state
-        forceP2pEnabled(mClient1);
-        WifiP2pGroup group = new WifiP2pGroup();
-        group.setNetworkId(WifiP2pGroup.NETWORK_ID_PERSISTENT);
-        group.setNetworkName("DIRECT-xy-NEW");
-        group.setOwner(new WifiP2pDevice("thisDeviceMac"));
-        group.setIsGroupOwner(true);
-        group.setInterface(IFACE_NAME_P2P);
-        sendGroupStartedMsg(group);
-        simulateTetherReady();
+        mockEnterGroupCreatedState();
         when(mWifiNative.startWpsPbc(anyString(), any())).thenReturn(false);
         WpsInfo wps = new WpsInfo();
         wps.setup = WpsInfo.PBC;
@@ -2865,16 +3407,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartWpsWithPinDisplayFailureWhenNativeCallFailure() throws Exception {
-        // Move to group created state
-        forceP2pEnabled(mClient1);
-        WifiP2pGroup group = new WifiP2pGroup();
-        group.setNetworkId(WifiP2pGroup.NETWORK_ID_PERSISTENT);
-        group.setNetworkName("DIRECT-xy-NEW");
-        group.setOwner(new WifiP2pDevice("thisDeviceMac"));
-        group.setIsGroupOwner(true);
-        group.setInterface(IFACE_NAME_P2P);
-        sendGroupStartedMsg(group);
-        simulateTetherReady();
+        mockEnterGroupCreatedState();
 
         when(mWifiNative.startWpsPinDisplay(anyString(), any())).thenReturn("abcd");
         WpsInfo wps = new WpsInfo();
@@ -2892,16 +3425,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStartWpsWithPinKeypadFailureWhenNativeCallFailure() throws Exception {
-        // Move to group created state
-        forceP2pEnabled(mClient1);
-        WifiP2pGroup group = new WifiP2pGroup();
-        group.setNetworkId(WifiP2pGroup.NETWORK_ID_PERSISTENT);
-        group.setNetworkName("DIRECT-xy-NEW");
-        group.setOwner(new WifiP2pDevice("thisDeviceMac"));
-        group.setIsGroupOwner(true);
-        group.setInterface(IFACE_NAME_P2P);
-        sendGroupStartedMsg(group);
-        simulateTetherReady();
+        mockEnterGroupCreatedState();
 
         when(mWifiNative.startWpsPinKeypad(anyString(), anyString())).thenReturn(false);
         WpsInfo wps = new WpsInfo();
@@ -3458,7 +3982,6 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         // Move to enabled state
         when(mWifiSettingsConfigStore.get(eq(WIFI_P2P_PENDING_FACTORY_RESET))).thenReturn(true);
         forceP2pEnabled(mClient1);
-        verify(mWifiInjector, times(2)).getUserManager();
         verify(mPackageManager, times(2)).getNameForUid(anyInt());
         verify(mWifiPermissionsUtil, times(2)).checkNetworkSettingsPermission(anyInt());
         verify(mUserManager, times(2)).hasUserRestrictionForUser(
@@ -3657,6 +4180,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         // Ensure our own MAC address is not anonymized in the result
         when(mWifiPermissionsUtil.checkLocalMacAddressPermission(anyInt())).thenReturn(true);
         forceP2pEnabled(mClient1);
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_PERSISTENT_GROUP_INFO);
 
@@ -3675,13 +4199,43 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Test
     public void testRequestPersistentGroupInfoNoPermissionFailure() throws Exception {
         // Ensure our own MAC address is not anonymized in the result
-        when(mWifiPermissionsUtil.checkLocalMacAddressPermission(anyInt())).thenReturn(true);
         forceP2pEnabled(mClient1);
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         // no permissions held
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
         when(mWifiPermissionsUtil.checkNetworkStackPermission(anyInt())).thenReturn(false);
         when(mWifiPermissionsUtil.checkReadWifiCredentialPermission(anyInt())).thenReturn(false);
+
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_PERSISTENT_GROUP_INFO);
+
+        verify(mClientHandler).sendMessage(mMessageCaptor.capture());
+        Message message = mMessageCaptor.getValue();
+        WifiP2pGroupList groups = (WifiP2pGroupList) message.obj;
+        assertEquals(WifiP2pManager.RESPONSE_PERSISTENT_GROUP_INFO, message.what);
+        // WifiP2pGroupList does not implement equals operator,
+        // use toString to compare two lists.
+        // Expect empty WifiP2pGroupList()
+        assertEquals(new WifiP2pGroupList().toString(), groups.toString());
+    }
+
+    /**
+     * Verify that respond with RESPONSE_PERSISTENT_GROUP_INFO
+     * when caller sends REQUEST_PERSISTENT_GROUP_INFO without LOCATION_FINE permission.
+     */
+    @Test
+    public void testRequestPersistentGroupInfoNoLocationFinePermission() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        // Ensure our own MAC address is not anonymized in the result
+        when(mWifiPermissionsUtil.checkLocalMacAddressPermission(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.checkNearbyDevicesPermission(any(), anyBoolean(), any()))
+                .thenReturn(false);
+        when(mWifiPermissionsUtil.isTargetSdkLessThan(any(),
+                eq(Build.VERSION_CODES.TIRAMISU), anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.checkCallersLocationPermission(
+                anyString(), anyString(), anyInt(), anyBoolean(), any())).thenReturn(false);
+        forceP2pEnabled(mClient1);
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_PERSISTENT_GROUP_INFO);
 
@@ -3755,12 +4309,12 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                 anyInt(), anyBoolean())).thenReturn(false);
         when(mWifiPermissionsUtil.checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
                 anyInt(), anyBoolean())).thenReturn(true);
-        when(mWifiNative.p2pFind(anyInt())).thenReturn(true);
+        when(mWifiNative.p2pFind(anyInt(), anyInt())).thenReturn(true);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendDiscoverPeersMsg(mClientMessenger);
-        verify(mWifiNative).p2pFind(anyInt());
-        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"),
-                anyInt(), eq(true));
+        verify(mWifiNative).p2pFind(anyInt(), anyInt());
+        verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                eq("testPkg1"), eq("testFeature"), anyInt(), eq(true));
 
         sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_DISCOVERY_STATE);
 
@@ -3813,6 +4367,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRemoveLocalServiceSuccess() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         verifyAddLocalService();
@@ -3841,6 +4396,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRemoveLocalServiceSuccessWithNullServiceInfo() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         verifyAddLocalService();
@@ -3888,6 +4444,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testClearLocalServiceSuccess() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         verifyAddLocalService();
@@ -3995,7 +4552,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     public void testAddServiceRequestFailureWithNullRequest() throws Exception {
         forceP2pEnabled(mClient1);
 
-        sendSimpleMsg(mClientMessenger, WifiP2pManager.ADD_SERVICE_REQUEST);
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.ADD_SERVICE_REQUEST, null);
 
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.ADD_SERVICE_REQUEST_FAILED));
     }
@@ -4073,6 +4630,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testRemoveServiceRequestSuccessWithNullServiceInfo() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         verifyAddLocalService();
@@ -4169,14 +4727,19 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     }
 
     /**
-     * Verify stopping discovery is executed when location mode is turned off.
+     * Verify when prior to Android T, stopping discovery is executed when location mode is
+     * turned off.
      */
     @Test
     public void testStopDiscoveryWhenLocationModeIsDisabled() throws Exception {
         forceP2pEnabled(mClient1);
         simulateLocationModeChange(false);
         mLooper.dispatchAll();
-        verify(mWifiNative).p2pStopFind();
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiNative, never()).p2pStopFind();
+        } else {
+            verify(mWifiNative).p2pStopFind();
+        }
     }
 
     /**
@@ -4196,11 +4759,24 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testSendConnectMsgWithTooShortNetworkName() throws Exception {
+        setTargetSdkGreaterThanT();
         mTestWifiP2pFastConnectionConfig.networkName = "DIRECT-x";
+        forceP2pEnabled(mClient1);
+        when(mWifiNative.p2pGroupAdd(any(), eq(true))).thenReturn(true);
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
         sendConnectMsg(mClientMessenger, mTestWifiP2pFastConnectionConfig);
         verify(mClientHandler).sendMessage(mMessageCaptor.capture());
         Message message = mMessageCaptor.getValue();
         assertEquals(WifiP2pManager.CONNECT_FAILED, message.what);
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        }
     }
 
     /**
@@ -4476,13 +5052,21 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testIdleTimeoutCancelledAfterLeavingInactiveState() throws Exception {
+        setTargetSdkGreaterThanT();
         forceP2pEnabled(mClient1);
         sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
 
         mockPeersList();
         sendConnectMsg(mClientMessenger, mTestWifiP2pPeerConfig);
-        verify(mWifiPermissionsUtil)
-                .checkCanAccessWifiDirect(eq("testPkg1"), eq("testFeature"), anyInt(), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq("testPkg1"),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
 
         ArgumentCaptor<WifiP2pConfig> configCaptor =
                 ArgumentCaptor.forClass(WifiP2pConfig.class);
@@ -4616,5 +5200,339 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         // Restore data for resuming from idle shutdown.
         verify(mWifiNative).setWfdEnable(eq(true));
         verify(mWifiNative).setWfdDeviceInfo(eq(mTestThisDevice.wfdInfo.getDeviceInfoHex()));
+    }
+
+    /**
+     * Verify the frequency changed event handling.
+     */
+    @Test
+    public void testP2pFrequencyChangedEventHandling() throws Exception {
+        // Move to group created state
+        forceP2pEnabled(mClient1);
+        WifiP2pGroup group = new WifiP2pGroup();
+        group.setNetworkId(WifiP2pGroup.NETWORK_ID_PERSISTENT);
+        group.setNetworkName("DIRECT-xy-NEW");
+        group.setOwner(new WifiP2pDevice("thisDeviceMac"));
+        group.setIsGroupOwner(true);
+        group.setInterface(IFACE_NAME_P2P);
+        sendGroupStartedMsg(group);
+        simulateTetherReady();
+
+        // Send Frequency changed event.
+        sendSimpleMsg(null,
+                WifiP2pMonitor.P2P_FREQUENCY_CHANGED_EVENT,
+                TEST_GROUP_FREQUENCY);
+
+        // send WifiP2pManager.REQUEST_GROUP_INFO and check the updated frequency.
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
+        sendRequestGroupInfoMsg(mClientMessenger);
+        verify(mClientHandler).sendMessage(mMessageCaptor.capture());
+        assertEquals(WifiP2pManager.RESPONSE_GROUP_INFO, mMessageCaptor.getValue().what);
+        WifiP2pGroup wifiP2pGroup = (WifiP2pGroup) mMessageCaptor.getValue().obj;
+        assertEquals(TEST_GROUP_FREQUENCY, wifiP2pGroup.getFrequency());
+    }
+
+    /*
+     * Verify the caller sends WifiP2pManager.REMOVE_CLIENT.
+     */
+    @Test
+    public void testRemoveClientSuccess() throws Exception {
+        mockEnterGroupCreatedState();
+
+        when(mWifiNative.removeClient(anyString())).thenReturn(true);
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REMOVE_CLIENT, mTestWifiP2pPeerAddress);
+        verify(mWifiNative).removeClient(anyString());
+        verify(mClientHandler).sendMessage(mMessageCaptor.capture());
+        Message message = mMessageCaptor.getValue();
+        assertEquals(WifiP2pManager.REMOVE_CLIENT_SUCCEEDED, message.what);
+    }
+
+    /**
+     *  Verify WifiP2pManager.REMOVE_CLIENT_FAILED is returned when native call failure.
+     */
+    @Test
+    public void testRemoveClientFailureWhenNativeCallFailure() throws Exception {
+        mockEnterGroupCreatedState();
+
+        when(mWifiNative.removeClient(anyString())).thenReturn(false);
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REMOVE_CLIENT, mTestWifiP2pPeerAddress);
+        verify(mWifiNative).removeClient(anyString());
+        verify(mClientHandler).sendMessage(mMessageCaptor.capture());
+        Message message = mMessageCaptor.getValue();
+        assertEquals(WifiP2pManager.REMOVE_CLIENT_FAILED, message.what);
+        assertEquals(WifiP2pManager.ERROR, message.arg1);
+    }
+
+    /**
+     *  Verify WifiP2pManager.REMOVE_CLIENT_SUCCEEDED is returned when p2p is creating group.
+     */
+    @Test
+    public void testRemoveClientSuccessWhenP2pCreatingGroup() throws Exception {
+        // Move to group creating state
+        testConnectWithConfigValidAsGroupSuccess();
+
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REMOVE_CLIENT, mTestWifiP2pPeerAddress);
+        verify(mClientHandler, atLeastOnce()).sendMessage(mMessageCaptor.capture());
+        Message message = mMessageCaptor.getValue();
+        assertEquals(WifiP2pManager.REMOVE_CLIENT_SUCCEEDED, message.what);
+    }
+
+    /**
+     *  Verify WifiP2pManager.REMOVE_CLIENT_SUCCEEDED is returned when p2p is inactive.
+     */
+    @Test
+    public void testRemoveClientSuccessWhenP2pInactive() throws Exception {
+        // Move to inactive state
+        forceP2pEnabled(mClient1);
+
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REMOVE_CLIENT, mTestWifiP2pPeerAddress);
+        verify(mClientHandler).sendMessage(mMessageCaptor.capture());
+        Message message = mMessageCaptor.getValue();
+        assertEquals(WifiP2pManager.REMOVE_CLIENT_SUCCEEDED, message.what);
+    }
+
+    /**
+     *  Verify WifiP2pManager.REMOVE_CLIENT_SUCCEEDED is returned when p2p is disabled.
+     */
+    @Test
+    public void testRemoveClientSuccessWhenP2pDisabled() throws Exception {
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REMOVE_CLIENT, mTestWifiP2pPeerAddress);
+        verify(mClientHandler).sendMessage(mMessageCaptor.capture());
+        Message message = mMessageCaptor.getValue();
+        assertEquals(WifiP2pManager.REMOVE_CLIENT_SUCCEEDED, message.what);
+    }
+
+    /**
+     *  Verify WifiP2pManager.REMOVE_CLIENT_FAILED is returned when p2p is unsupported.
+     */
+    @Test
+    public void testRemoveClientFailureWhenP2pUnsupported() throws Exception {
+        setUpWifiP2pServiceImpl(false);
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REMOVE_CLIENT, mTestWifiP2pPeerAddress);
+        verify(mClientHandler).sendMessage(mMessageCaptor.capture());
+        Message message = mMessageCaptor.getValue();
+        assertEquals(WifiP2pManager.REMOVE_CLIENT_FAILED, message.what);
+        assertEquals(WifiP2pManager.P2P_UNSUPPORTED, message.arg1);
+    }
+
+    /**
+     * Verify attribution is passed in correctly by WifiP2pManager#getMessenger.
+     */
+    @Test
+    public void testGetMessenger_InvalidAttributions() {
+        assumeTrue(SdkLevel.isAtLeastS());
+        AttributionSource attributionSource = mock(AttributionSource.class);
+        when(attributionSource.checkCallingUid()).thenReturn(true);
+        when(attributionSource.isTrusted(any(Context.class))).thenReturn(true);
+        mAttribution.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE, attributionSource);
+        mWifiP2pServiceImpl = spy(mWifiP2pServiceImpl);
+        lenient().when(mWifiP2pServiceImpl.getMockableCallingUid()).thenReturn(Process.SYSTEM_UID);
+        assertThrows(SecurityException.class, () -> {
+            mWifiP2pServiceImpl.getMessenger(new Binder(), TEST_PACKAGE_NAME, null);
+        });
+
+        assertThrows(SecurityException.class, () -> {
+            mWifiP2pServiceImpl.getMessenger(new Binder(), TEST_PACKAGE_NAME, new Bundle());
+        });
+
+        assertThrows(SecurityException.class, () -> {
+            Bundle nullEntry = new Bundle();
+            nullEntry.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE, null);
+            mWifiP2pServiceImpl.getMessenger(new Binder(), TEST_PACKAGE_NAME, nullEntry);
+        });
+
+        assertThrows(SecurityException.class, () -> {
+            Bundle incorrectEntry = new Bundle();
+            incorrectEntry.putInt(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE, 10);
+            mWifiP2pServiceImpl.getMessenger(new Binder(), TEST_PACKAGE_NAME, incorrectEntry);
+        });
+
+        when(attributionSource.checkCallingUid()).thenReturn(false);
+        assertThrows(SecurityException.class, () -> {
+            mWifiP2pServiceImpl.getMessenger(new Binder(), TEST_PACKAGE_NAME, mAttribution);
+        });
+        when(attributionSource.checkCallingUid()).thenReturn(true); // restore
+
+        // single first attributions should not fail - even if (theoretically, doesn't happen in
+        // practice) are not trusted. I.e. this call checks that this method isn't called.
+        AttributionSource freshAs = mock(AttributionSource.class);
+        Bundle freshAttribution = new Bundle();
+        freshAttribution.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE, freshAs);
+        when(freshAs.checkCallingUid()).thenReturn(true);
+        when(freshAs.isTrusted(any(Context.class))).thenReturn(false);
+        mWifiP2pServiceImpl.getMessenger(new Binder(), TEST_PACKAGE_NAME, freshAttribution);
+        verify(freshAs, never()).isTrusted(any());
+
+        AttributionSource originalCaller = mock(AttributionSource.class);
+        when(originalCaller.getUid()).thenReturn(12345);
+        when(originalCaller.getPackageName()).thenReturn(TEST_PACKAGE_NAME + ".other");
+        when(originalCaller.isTrusted(any(Context.class))).thenReturn(false);
+        when(attributionSource.getNext()).thenReturn(originalCaller);
+        assertThrows(SecurityException.class, () -> {
+            mWifiP2pServiceImpl.getMessenger(new Binder(), TEST_PACKAGE_NAME, mAttribution);
+        });
+    }
+
+    /**
+     * Verify p2p connection dialog triggering without any Display ID information
+     */
+    @Test
+    public void testInvitationReceivedDialogTrigger() throws Exception {
+        forceP2pEnabled(mClient1);
+        mockPeersList();
+        WifiP2pConfig config = new WifiP2pConfig();
+        config.deviceAddress = mTestWifiP2pDevice.deviceAddress;
+        config.wps = new WpsInfo();
+        config.wps.setup = WpsInfo.PBC;
+
+        // "simple" client connect (no display ID)
+        sendNegotiationRequestEvent(config);
+        verify(mWifiDialogManager).launchP2pInvitationReceivedDialog(anyString(), anyBoolean(),
+                any(), eq(Display.DEFAULT_DISPLAY), any(), any());
+    }
+
+    /**
+     * Verify p2p connection dialog triggering with a privileged caller specifying a display ID.
+     */
+    @Test
+    public void testInvitationReceivedDialogTriggerWithDisplayId() throws Exception {
+        final int someNonDefaultDisplayId = 123;
+
+        forceP2pEnabled(mClient1);
+        mockPeersList();
+        WifiP2pConfig config = new WifiP2pConfig();
+        config.deviceAddress = mTestWifiP2pDevice.deviceAddress;
+        config.wps = new WpsInfo();
+        config.wps.setup = WpsInfo.PBC;
+
+        // add a privileged client with a display ID
+        Bundle bundle = new Bundle();
+        bundle.putInt(WifiP2pManager.EXTRA_PARAM_KEY_DISPLAY_ID, someNonDefaultDisplayId);
+        when(mWifiPermissionsUtil.isSystem(eq(TEST_PACKAGE_NAME), anyInt())).thenReturn(true);
+        mWifiP2pServiceImpl.getMessenger(mClient2, TEST_PACKAGE_NAME, bundle);
+
+        sendNegotiationRequestEvent(config);
+        verify(mWifiDialogManager).launchP2pInvitationReceivedDialog(anyString(),
+                anyBoolean(), any(), eq(someNonDefaultDisplayId), any(), any());
+    }
+
+    /**
+     * Verify p2p connection dialog triggering with a privileged client adding a Display ID but then
+     * closing (i.e. removing itself).
+     */
+    @Test
+    public void testInvitationReceivedDialogTriggerWithDisplayIdDeleted() throws Exception {
+        forceP2pEnabled(mClient1);
+        mockPeersList();
+        WifiP2pConfig config = new WifiP2pConfig();
+        config.deviceAddress = mTestWifiP2pDevice.deviceAddress;
+        config.wps = new WpsInfo();
+        config.wps.setup = WpsInfo.PBC;
+
+        // add a privileged client with a display ID
+        Bundle bundle = new Bundle();
+        bundle.putInt(WifiP2pManager.EXTRA_PARAM_KEY_DISPLAY_ID, 123);
+        when(mWifiPermissionsUtil.isSystem(eq(TEST_PACKAGE_NAME), anyInt())).thenReturn(true);
+        mWifiP2pServiceImpl.getMessenger(mClient2, TEST_PACKAGE_NAME, bundle);
+        mWifiP2pServiceImpl.close(mClient2);
+
+        // "simple" client connect (no display ID)
+        sendNegotiationRequestEvent(config);
+        verify(mWifiDialogManager).launchP2pInvitationReceivedDialog(anyString(), anyBoolean(),
+                any(), eq(Display.DEFAULT_DISPLAY), any(), any());
+    }
+
+    private void verifySetVendorElement(boolean isP2pActivated, boolean shouldSucceed,
+            boolean hasPermission, boolean shouldSetToNative) throws Exception {
+
+        when(mWifiPermissionsUtil.checkNearbyDevicesPermission(any(), anyBoolean(), any()))
+                .thenReturn(hasPermission);
+        when(mWifiPermissionsUtil.checkConfigOverridePermission(anyInt()))
+                .thenReturn(hasPermission);
+
+        simulateWifiStateChange(true);
+        simulateLocationModeChange(true);
+        checkIsP2pInitWhenClientConnected(isP2pActivated, mClient1,
+                new WorkSource(mClient1.getCallingUid(), TEST_PACKAGE_NAME));
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
+
+        ArrayList<ScanResult.InformationElement> ies = new ArrayList<>();
+        ies.add(new ScanResult.InformationElement(
+                ScanResult.InformationElement.EID_VSA, 0,
+                        new byte[]{(byte) 0xa, (byte) 0xb}));
+        HashSet<ScanResult.InformationElement> expectedIes = new HashSet<>();
+        expectedIes.add(ies.get(0));
+
+        sendSetVendorElementsMsg(mClientMessenger, ies);
+
+        verify(mClientHandler).sendMessage(mMessageCaptor.capture());
+        Message message = mMessageCaptor.getValue();
+        if (shouldSucceed) {
+            assertEquals(WifiP2pManager.SET_VENDOR_ELEMENTS_SUCCEEDED, message.what);
+        } else {
+            assertEquals(WifiP2pManager.SET_VENDOR_ELEMENTS_FAILED, message.what);
+        }
+
+        // Launch a peer discovery to set cached VSIEs to the native service.
+        sendDiscoverPeersMsg(mClientMessenger);
+        if (shouldSetToNative) {
+            if (shouldSucceed) {
+                verify(mWifiNative).setVendorElements(eq(expectedIes));
+            } else {
+                // If failed to set vendor elements, there is no entry in the list.
+                verify(mWifiNative).setVendorElements(eq(
+                        new HashSet<ScanResult.InformationElement>()));
+            }
+        } else {
+            verify(mWifiNative, never()).setVendorElements(any());
+        }
+    }
+    /**
+     * Verify sunny scenario for setVendorElements when P2P is not in EnabledState.
+     */
+    @Test
+    public void testSetVendorElementsSuccessForIdleShutdown() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        boolean isP2pActivated = false, shouldSucceed = true;
+        boolean hasPermission = true, shouldSetToNative = true;
+        verifySetVendorElement(isP2pActivated, shouldSucceed,
+                hasPermission, shouldSetToNative);
+    }
+
+    /**
+     * Verify sunny scenario for setVendorElements when P2P is in EnabledState.
+     */
+    @Test
+    public void testSetVendorElementsSuccessForActiveP2p() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        boolean isP2pActivated = true, shouldSucceed = true;
+        boolean hasPermission = true, shouldSetToNative = true;
+        verifySetVendorElement(isP2pActivated, shouldSucceed,
+                hasPermission, shouldSetToNative);
+    }
+
+    /**
+     * Verify failure scenario for setVendorElements on preT.
+     */
+    @Test
+    public void testSetVendorElementsFailureOnPreT() throws Exception {
+        assumeFalse(SdkLevel.isAtLeastT());
+        assumeTrue(SdkLevel.isAtLeastS());
+        boolean isP2pActivated = false, shouldSucceed = false;
+        boolean hasPermission = true, shouldSetToNative = false;
+        verifySetVendorElement(isP2pActivated, shouldSucceed,
+                hasPermission, shouldSetToNative);
+    }
+
+    /**
+     * Verify failure scenario for setVendorElements when no NEARBY permission.
+     */
+    @Test
+    public void testSetVendorElementsFailureWithoutNearbyPermission() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        boolean isP2pActivated = false, shouldSucceed = false;
+        boolean hasPermission = false, shouldSetToNative = true;
+        verifySetVendorElement(isP2pActivated, shouldSucceed,
+                hasPermission, shouldSetToNative);
     }
 }
