@@ -99,6 +99,7 @@ import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.concurrent.Executor;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
  * This class provides the primary API for managing all aspects of Wi-Fi
@@ -2064,7 +2065,8 @@ public class WifiManager {
      * @throws {@link SecurityException} if the calling app is not a Device Owner (DO),
      *                           Profile Owner (PO), system app, or a privileged app that has one of
      *                           the permissions required by this API.
-     * @throws {@link IllegalArgumentException} if the input configuration is null.
+     * @throws {@link IllegalArgumentException} if the input configuration is null or if the
+     *            security type in input configuration is not supported.
      */
     @RequiresPermission(anyOf = {
             android.Manifest.permission.NETWORK_SETTINGS,
@@ -2075,6 +2077,10 @@ public class WifiManager {
     @NonNull
     public AddNetworkResult addNetworkPrivileged(@NonNull WifiConfiguration config) {
         if (config == null) throw new IllegalArgumentException("config cannot be null");
+        if (config.isSecurityType(WifiInfo.SECURITY_TYPE_DPP)
+                && !isFeatureSupported(WIFI_FEATURE_DPP_AKM)) {
+            throw new IllegalArgumentException("dpp akm is not supported");
+        }
         config.networkId = -1;
         try {
             return mService.addOrUpdateNetworkPrivileged(config, mContext.getOpPackageName());
@@ -3184,6 +3190,12 @@ public class WifiManager {
      * @hide
      */
     public static final long WIFI_FEATURE_ADDITIONAL_STA_MULTI_INTERNET = 0x20000000000000L;
+
+    /**
+     * Support for DPP (Easy-Connect) AKM.
+     * @hide
+     */
+    public static final long WIFI_FEATURE_DPP_AKM = 0x40000000000000L;
 
     private long getSupportedFeatures() {
         try {
@@ -6203,6 +6215,40 @@ public class WifiManager {
         }
     }
 
+    /**
+     * Query whether or not auto-join global is enabled/disabled
+     * @see #allowAutojoinGlobal(boolean)
+     *
+     * Available for DO/PO apps.
+     * Other apps require {@code android.Manifest.permission#NETWORK_SETTINGS} or
+     * {@code android.Manifest.permission#MANAGE_WIFI_AUTO_JOIN} permission.
+     *
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return {@code Boolean} indicating
+     *                        whether auto-join global is enabled/disabled.
+     *
+     * @throws SecurityException if the caller does not have permission.
+     * @throws NullPointerException if the caller provided invalid inputs.
+     */
+    public void queryAutojoinGlobal(@NonNull Executor executor,
+            @NonNull Consumer<Boolean> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            mService.queryAutojoinGlobal(
+                    new IBooleanListener.Stub() {
+                        @Override
+                        public void onResult(boolean value) {
+                            Binder.clearCallingIdentity();
+                            executor.execute(() -> {
+                                resultsCallback.accept(value);
+                            });
+                        }
+                    });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
 
     /**
      * Sets the user choice for allowing auto-join to a network.
@@ -7263,6 +7309,19 @@ public class WifiManager {
      */
     public boolean isTrustOnFirstUseSupported() {
         return isFeatureSupported(WIFI_FEATURE_TRUST_ON_FIRST_USE);
+    }
+
+    /**
+     * Wi-Fi Easy Connect DPP AKM enables provisioning and configuration of Wi-Fi devices without
+     * the need of using the device PSK passphrase.
+     * For more details, visit <a href="https://www.wi-fi.org/">https://www.wi-fi.org/</a> and
+     * search for "Easy Connect" or "Device Provisioning Protocol specification".
+     *
+     * @return true if this device supports Wi-Fi Easy-connect DPP (Device Provisioning Protocol)
+     * AKM, false otherwise.
+     */
+    public boolean isEasyConnectDppAkmSupported() {
+        return isFeatureSupported(WIFI_FEATURE_DPP_AKM);
     }
 
     /**
@@ -9303,16 +9362,24 @@ public class WifiManager {
     public static final int DIALOG_TYPE_SIMPLE = 1;
 
     /**
+     * DialogType for a P2P Invitation Sent dialog.
+     * @see {@link com.android.server.wifi.WifiDialogManager#createP2pInvitationSentDialog}
+     * @hide
+     */
+    public static final int DIALOG_TYPE_P2P_INVITATION_SENT = 2;
+
+    /**
      * DialogType for a P2P Invitation Received dialog.
      * @see {@link com.android.server.wifi.WifiDialogManager#createP2pInvitationReceivedDialog}
      * @hide
      */
-    public static final int DIALOG_TYPE_P2P_INVITATION_RECEIVED = 2;
+    public static final int DIALOG_TYPE_P2P_INVITATION_RECEIVED = 3;
 
     /** @hide */
     @IntDef(prefix = { "DIALOG_TYPE_" }, value = {
             DIALOG_TYPE_UNKNOWN,
             DIALOG_TYPE_SIMPLE,
+            DIALOG_TYPE_P2P_INVITATION_SENT,
             DIALOG_TYPE_P2P_INVITATION_RECEIVED,
     })
     @Retention(RetentionPolicy.SOURCE)
@@ -9571,12 +9638,12 @@ public class WifiManager {
     }
 
     /**
-     * Wi-Fi interface of type STA.
+     * Wi-Fi interface of type STA (station/client Wi-Fi infrastructure device).
      */
     public static final int WIFI_INTERFACE_TYPE_STA = 0;
 
     /**
-     * Wi-Fi interface of type AP.
+     * Wi-Fi interface of type AP (access point Wi-Fi infrastructure device).
      */
     public static final int WIFI_INTERFACE_TYPE_AP = 1;
 
@@ -9601,13 +9668,50 @@ public class WifiManager {
     public @interface WifiInterfaceType {}
 
     /**
+     * Class describing an impact of interface creation - returned by
+     * {@link #reportCreateInterfaceImpact(int, boolean, Executor, BiConsumer)}. Due to Wi-Fi
+     * concurrency limitations certain interfaces may have to be torn down. Each of these
+     * interfaces was requested by a set of applications who could potentially be impacted.
+     *
+     * This class contain the information for a single interface: the interface type with
+     * {@link InterfaceCreationImpact#getInterfaceType()} and the set of impacted packages
+     * with {@link InterfaceCreationImpact#getPackages()}.
+     */
+    public static class InterfaceCreationImpact {
+        private final int mInterfaceType;
+        private final Set<String> mPackages;
+
+        public InterfaceCreationImpact(@WifiInterfaceType int interfaceType,
+                @NonNull Set<String> packages) {
+            mInterfaceType = interfaceType;
+            mPackages = packages;
+        }
+
+        /**
+         * @return The interface type which will be torn down to make room for the interface
+         * requested in {@link #reportCreateInterfaceImpact(int, boolean, Executor, BiConsumer)}.
+         */
+        public @WifiInterfaceType int getInterfaceType() {
+            return mInterfaceType;
+        }
+
+        /**
+         * @return The list of potentially impacted packages due to tearing down the interface
+         * specified in {@link #getInterfaceType()}.
+         */
+        public @NonNull Set<String> getPackages() {
+            return mPackages;
+        }
+    }
+
+    /**
      * Queries the framework to determine whether the specified interface can be created, and if
      * so - what other interfaces would be torn down by the framework to allow this creation if
      * it were requested. The result is returned via the specified {@link BiConsumer} callback
      * which returns two arguments:
      * <li>First argument: a {@code boolean} - indicating whether or not the interface can be
      * created.</li>
-     * <li>Second argument: a {@code List<Pair<Integer, String[]>>} - if the interface can be
+     * <li>Second argument: a {@code List<InterfaceCreationImpact>} - if the interface can be
      * created (first argument is {@code true} then this is the list of interface types which
      * will be removed and the packages which requested them. Possibly an empty list. If the
      * first argument is {@code false}, then an empty list will be returned here.</li>
@@ -9625,29 +9729,29 @@ public class WifiManager {
      * change due to actions of the framework or other apps.
      *
      * @param interfaceType The interface type whose possible creation is being queried.
-     * @param queryForNewInterface Indicates that the query is for a new interface of the specified
+     * @param requireNewInterface Indicates that the query is for a new interface of the specified
      *                             type - an existing interface won't meet the query. Some
      *                             operations (such as Wi-Fi Direct and Wi-Fi Aware are a shared
      *                             resource and so may not need a new interface).
      * @param executor An {@link Executor} on which to return the result.
      * @param resultCallback The asynchronous callback which will return two argument: a
-     * {@code boolean} (whether or not the interface can be created), and a
-     * {@code List<Pair<Integer, String[]>>} (a list of interfaces which will be destroyed when
-     *                      the interface is created and the packages which requested them and
-     *                      thus may be impacted).
+     * {@code boolean} (whether the interface can be created), and a
+     * {@code List<InterfaceCreationImpact>} (a list of {@link InterfaceCreationImpact}:
+     *                       interfaces which will be destroyed when the interface is created
+     *                       and the packages which requested them and thus may be impacted).
      */
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     @RequiresPermission(allOf = {android.Manifest.permission.MANAGE_WIFI_INTERFACES,
             ACCESS_WIFI_STATE})
-    public void reportImpactToCreateIfaceRequest(@WifiInterfaceType int interfaceType,
-            boolean queryForNewInterface,
+    public void reportCreateInterfaceImpact(@WifiInterfaceType int interfaceType,
+            boolean requireNewInterface,
             @NonNull @CallbackExecutor Executor executor,
-            @NonNull BiConsumer<Boolean, List<Pair<Integer, String[]>>> resultCallback) {
-        if (executor == null) throw new IllegalArgumentException("Null executor");
-        if (resultCallback == null) throw new IllegalArgumentException("Null resultCallback");
+            @NonNull BiConsumer<Boolean, List<InterfaceCreationImpact>> resultCallback) {
+        Objects.requireNonNull(executor, "Non-null executor required");
+        Objects.requireNonNull(resultCallback, "Non-null resultCallback required");
         try {
-            mService.reportImpactToCreateIfaceRequest(mContext.getOpPackageName(), interfaceType,
-                    queryForNewInterface, new IInterfaceCreationInfoCallback.Stub() {
+            mService.reportCreateInterfaceImpact(mContext.getOpPackageName(), interfaceType,
+                    requireNewInterface, new IInterfaceCreationInfoCallback.Stub() {
                         @Override
                         public void onResults(boolean canCreate, int[] interfacesToDelete,
                                 String[] packagesForInterfaces) {
@@ -9667,13 +9771,15 @@ public class WifiManager {
                                 return;
                             }
 
-                            final List<Pair<Integer, String[]>> finalList =
+                            final List<InterfaceCreationImpact> finalList =
                                     (canCreate && interfacesToDelete.length > 0) ? new ArrayList<>()
                                             : Collections.emptyList();
                             if (canCreate) {
                                 for (int i = 0; i < interfacesToDelete.length; ++i) {
-                                    finalList.add(Pair.create(interfacesToDelete[i],
-                                            packagesForInterfaces[i].split(",")));
+                                    finalList.add(
+                                            new InterfaceCreationImpact(interfacesToDelete[i],
+                                                    new ArraySet<>(
+                                                            packagesForInterfaces[i].split(","))));
                                 }
                             }
                             executor.execute(() -> resultCallback.accept(canCreate, finalList));

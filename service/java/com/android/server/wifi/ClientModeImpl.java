@@ -863,6 +863,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 mWifiNative,
                 mFacade,
                 mNotificationManager,
+                mWifiInjector.getWifiDialogManager(),
                 isTrustOnFirstUseSupported(),
                 mInsecureEapNetworkHandlerCallbacksImpl,
                 mInterfaceName,
@@ -2699,6 +2700,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mWifiInfo.setApMldMacAddress(matchingScanResult.getApMldMacAddress());
             mWifiInfo.setApMloLinkId(matchingScanResult.getApMloLinkId());
             mWifiInfo.setAffiliatedMloLinks(matchingScanResult.getAffiliatedMloLinks());
+        } else {
+            mWifiInfo.setApMldMacAddress(null);
+            mWifiInfo.setApMloLinkId(MloLink.INVALID_MLO_LINK_ID);
+            mWifiInfo.setAffiliatedMloLinks(Collections.emptyList());
         }
     }
 

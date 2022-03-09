@@ -43,6 +43,7 @@ import static android.net.wifi.WifiManager.WIFI_FEATURE_ADDITIONAL_STA_RESTRICTE
 import static android.net.wifi.WifiManager.WIFI_FEATURE_AP_STA;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_DECORATED_IDENTITY;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_DPP;
+import static android.net.wifi.WifiManager.WIFI_FEATURE_DPP_AKM;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_DPP_ENROLLEE_RESPONDER;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_OWE;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_P2P;
@@ -117,7 +118,6 @@ import android.os.RemoteException;
 import android.os.connectivity.WifiActivityEnergyInfo;
 import android.os.test.TestLooper;
 import android.util.ArraySet;
-import android.util.Pair;
 import android.util.SparseArray;
 
 import androidx.test.filters.SmallTest;
@@ -2435,6 +2435,19 @@ public class WifiManagerTest {
     }
 
     /**
+     * Test behavior of isEasyConnectDppAkmSupported
+     */
+    @Test
+    public void testIsEasyConnectDppAkmSupported() throws Exception {
+        when(mWifiService.getSupportedFeatures())
+                .thenReturn(new Long(WIFI_FEATURE_DPP_AKM));
+        assertTrue(mWifiManager.isEasyConnectDppAkmSupported());
+        when(mWifiService.getSupportedFeatures())
+                .thenReturn(new Long(~WIFI_FEATURE_DPP_AKM));
+        assertFalse(mWifiManager.isEasyConnectDppAkmSupported());
+    }
+
+    /**
      * Test behavior of isEasyConnectEnrolleeResponderModeSupported
      */
     @Test
@@ -3752,14 +3765,14 @@ public class WifiManagerTest {
 
     /**
      * Verify call to
-     * {@link WifiManager#reportImpactToCreateIfaceRequest(int, boolean, Executor, BiConsumer)}.
+     * {@link WifiManager#reportCreateInterfaceImpact(int, boolean, Executor, BiConsumer)}.
      */
     @Test
     public void testIsItPossibleToCreateInterface() throws Exception {
         assumeTrue(SdkLevel.isAtLeastT());
 
         final int interfaceToCreate = WifiManager.WIFI_INTERFACE_TYPE_DIRECT;
-        final boolean queryForNewInterface = false;
+        final boolean requireNewInterface = false;
         final boolean canCreate = true;
         final String packageName1 = "TestPackage1";
         final String packageName2 = "TestPackage2";
@@ -3767,27 +3780,31 @@ public class WifiManagerTest {
                 {WifiManager.WIFI_INTERFACE_TYPE_AP, WifiManager.WIFI_INTERFACE_TYPE_AWARE};
         final String[] packagesForInterfaces =
                 {TEST_PACKAGE_NAME, packageName1 + "," + packageName2};
-        final List<Pair<Integer, String[]>> interfacePairs = List.of(
-                Pair.create(interfaces[0], new String[]{TEST_PACKAGE_NAME}),
-                Pair.create(interfaces[1], new String[]{packageName1, packageName2}));
+        final List<WifiManager.InterfaceCreationImpact> interfacePairs = List.of(
+                new WifiManager.InterfaceCreationImpact(interfaces[0],
+                        new ArraySet<>(new String[]{TEST_PACKAGE_NAME})),
+                new WifiManager.InterfaceCreationImpact(interfaces[1],
+                        new ArraySet<>(new String[]{packageName1, packageName2})));
         when(mContext.getOpPackageName()).thenReturn(TEST_PACKAGE_NAME);
-        BiConsumer<Boolean, List<Pair<Integer, String[]>>> resultCallback = mock(
+        BiConsumer<Boolean, List<WifiManager.InterfaceCreationImpact>> resultCallback = mock(
                 BiConsumer.class);
         ArgumentCaptor<IInterfaceCreationInfoCallback.Stub> cbCaptor = ArgumentCaptor.forClass(
                 IInterfaceCreationInfoCallback.Stub.class);
-        ArgumentCaptor<List<Pair<Integer, String[]>>> resultCaptor = ArgumentCaptor.forClass(
-                List.class);
+        ArgumentCaptor<List<WifiManager.InterfaceCreationImpact>> resultCaptor =
+                ArgumentCaptor.forClass(List.class);
 
-        mWifiManager.reportImpactToCreateIfaceRequest(interfaceToCreate, queryForNewInterface,
+        mWifiManager.reportCreateInterfaceImpact(interfaceToCreate, requireNewInterface,
                 new SynchronousExecutor(), resultCallback);
-        verify(mWifiService).reportImpactToCreateIfaceRequest(eq(TEST_PACKAGE_NAME),
-                eq(interfaceToCreate), eq(queryForNewInterface), cbCaptor.capture());
+        verify(mWifiService).reportCreateInterfaceImpact(eq(TEST_PACKAGE_NAME),
+                eq(interfaceToCreate), eq(requireNewInterface), cbCaptor.capture());
         cbCaptor.getValue().onResults(canCreate, interfaces, packagesForInterfaces);
         verify(resultCallback).accept(eq(canCreate), resultCaptor.capture());
         assertEquals(interfacePairs.size(), resultCaptor.getValue().size());
         for (int i = 0; i < interfacePairs.size(); ++i) {
-            assertEquals(interfacePairs.get(i).first, resultCaptor.getValue().get(i).first);
-            assertArrayEquals(interfacePairs.get(i).second, resultCaptor.getValue().get(i).second);
+            assertEquals(interfacePairs.get(i).getInterfaceType(),
+                    resultCaptor.getValue().get(i).getInterfaceType());
+            assertArrayEquals(interfacePairs.get(i).getPackages().toArray(),
+                    resultCaptor.getValue().get(i).getPackages().toArray());
         }
     }
 }

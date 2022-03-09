@@ -22,13 +22,10 @@ import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_VERBOSE_LOGGI
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.app.AlertDialog;
 import android.app.BroadcastOptions;
 import android.content.AttributionSource;
 import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.DialogInterface;
-import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageInfo;
@@ -92,7 +89,6 @@ import android.view.Display;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.WindowManager;
 import android.widget.TextView;
 
 import androidx.annotation.RequiresApi;
@@ -116,7 +112,7 @@ import com.android.server.wifi.WifiLog;
 import com.android.server.wifi.WifiSettingsConfigStore;
 import com.android.server.wifi.WifiThreadRunner;
 import com.android.server.wifi.coex.CoexManager;
-import com.android.server.wifi.p2p.ExternalApproverManager.ApproverEntry;;
+import com.android.server.wifi.p2p.ExternalApproverManager.ApproverEntry;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.P2pConnectionEvent;
 import com.android.server.wifi.util.NetdWrapper;
 import com.android.server.wifi.util.StringUtil;
@@ -251,7 +247,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     // User accepted a peer request
     private static final int PEER_CONNECTION_USER_ACCEPT    =   BASE + 2;
     // User rejected a peer request
-    private static final int PEER_CONNECTION_USER_REJECT    =   BASE + 3;
+    @VisibleForTesting
+    static final int PEER_CONNECTION_USER_REJECT            =   BASE + 3;
     // User wants to disconnect wifi in favour of p2p
     private static final int DROP_WIFI_USER_ACCEPT          =   BASE + 4;
     // User wants to keep his wifi connection and drop p2p
@@ -379,6 +376,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     // Idle shut down
     @VisibleForTesting
     public WakeupMessage mP2pIdleShutdownMessage;
+
+    private boolean mIsUserRejected = false;
 
     private boolean mIsBootComplete;
 
@@ -1057,6 +1056,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         // The deviceAddress will be an empty string when the device is inactive
         // or if it is connected without any ongoing join request
         private WifiP2pConfig mSavedPeerConfig = new WifiP2pConfig();
+        private WifiDialogManager.DialogHandle mInvitationDialogHandle = null;
 
         P2pStateMachine(String name, Looper looper, boolean p2pSupported) {
             super(name, looper);
@@ -1832,6 +1832,12 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         // A group formation failure is always followed by
                         // a group removed event. Flushing things at group formation
                         // failure causes supplicant issues. Ignore right now.
+                        break;
+                    case WifiP2pMonitor.P2P_GO_NEGOTIATION_FAILURE_EVENT:
+                        if (mIsUserRejected) {
+                            sendP2pRequestChangedBroadcast(false);
+                            mIsUserRejected = false;
+                        }
                         break;
                     case WifiP2pManager.FACTORY_RESET:
                         if (factoryReset(message.sendingUid)) {
@@ -3151,6 +3157,14 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         mWifiNative.p2pCancelConnect();
                         mWifiP2pMetrics.endConnectionEvent(
                                 P2pConnectionEvent.CLF_CANCEL);
+                        // Notify the peer about the rejection.
+                        if (mSavedPeerConfig != null) {
+                            mWifiNative.p2pStopFind();
+                            mWifiNative.p2pReject(mSavedPeerConfig.deviceAddress);
+                            // p2pReject() only updates the peer state, but not sends this
+                            // to the peer, trigger provision discovery to notify the peer.
+                            mWifiNative.p2pProvisionDiscovery(mSavedPeerConfig);
+                        }
                         handleGroupCreationFailure();
                         transitionTo(mInactiveState);
                         replyToMessage(message, WifiP2pManager.CANCEL_CONNECT_SUCCEEDED);
@@ -3196,6 +3210,35 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         if (isVerboseLoggingEnabled()) {
                             logd("User rejected negotiation " + mSavedPeerConfig);
                         }
+                        if (mSavedPeerConfig != null) {
+                            WifiP2pDevice dev = fetchCurrentDeviceDetails(mSavedPeerConfig);
+                            boolean join = (dev != null && dev.isGroupOwner())
+                                    || mJoinExistingGroup;
+                            if (mVerboseLoggingEnabled) {
+                                logd("User rejected negotiation, join =  " + join
+                                        + " peer = " + mSavedPeerConfig);
+                            }
+                            mIsUserRejected = true;
+                            if (join) {
+                                mWifiNative.p2pCancelConnect();
+                                mWifiNative.p2pStopFind();
+                                mWifiNative.p2pReject(mSavedPeerConfig.deviceAddress);
+                                // p2pReject() only updates the peer state, but not sends this
+                                // to the peer, trigger provision discovery to notify the peer.
+                                mWifiNative.p2pProvisionDiscovery(mSavedPeerConfig);
+                                sendP2pConnectionChangedBroadcast();
+                            } else {
+                                mWifiNative.p2pReject(mSavedPeerConfig.deviceAddress);
+                                // p2pReject() only updates the peer state, but not sends this
+                                // to the peer, trigger negotiation request to notify the peer.
+                                p2pConnectWithPinDisplay(mSavedPeerConfig,
+                                        P2P_CONNECT_TRIGGER_GROUP_NEG_REQ);
+                            }
+                            mSavedPeerConfig.invalidate();
+                        } else {
+                            mWifiNative.p2pCancelConnect();
+                            handleGroupCreationFailure();
+                        }
                         transitionTo(mInactiveState);
                         break;
                     case PEER_CONNECTION_USER_CONFIRM:
@@ -3226,7 +3269,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
             @Override
             public void exit() {
-                // TODO: dismiss dialog if not already done
+                if (null != mInvitationDialogHandle) {
+                    mInvitationDialogHandle.dismissDialog();
+                    mInvitationDialogHandle = null;
+                }
             }
         }
 
@@ -3280,7 +3326,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
             @Override
             public void exit() {
-                // TODO: dismiss dialog if not already done
+                if (null != mInvitationDialogHandle) {
+                    mInvitationDialogHandle.dismissDialog();
+                    mInvitationDialogHandle = null;
+                }
             }
         }
 
@@ -3367,7 +3416,15 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         }
                         break;
                     case WifiP2pMonitor.P2P_PROV_DISC_FAILURE_EVENT:
-                        loge("provision discovery failed");
+                        loge("provision discovery failed status: " + message.arg1);
+
+                        // Saved peer information is used in handleGroupCreationFailure().
+                        if (!handleProvDiscFailure(
+                                (WifiP2pProvDiscEvent) message.obj, false)) {
+                            break;
+                        }
+
+                        mWifiNative.p2pCancelConnect();
                         mWifiP2pMetrics.endConnectionEvent(
                                 P2pConnectionEvent.CLF_PROV_DISC_FAIL);
                         handleGroupCreationFailure();
@@ -4036,6 +4093,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         replyToMessage(message,
                                 WifiP2pManager.SET_CONNECTION_REQUEST_RESULT_SUCCEEDED);
                         break;
+                    case WifiP2pMonitor.P2P_PROV_DISC_FAILURE_EVENT:
+                        loge("provision discovery failed status: " + message.arg1);
+                        handleProvDiscFailure((WifiP2pProvDiscEvent) message.obj, true);
+                        break;
                     default:
                         return NOT_HANDLED;
                 }
@@ -4078,6 +4139,14 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     case WifiP2pMonitor.P2P_PROV_DISC_SHOW_PIN_EVENT:
                         // Ignore more client requests
                         break;
+                    case WifiP2pMonitor.P2P_PROV_DISC_FAILURE_EVENT:
+                        loge("provision discovery failed status: " + message.arg1);
+                        if (!handleProvDiscFailure(
+                                (WifiP2pProvDiscEvent) message.obj, true)) {
+                            break;
+                        }
+                        transitionTo(mGroupCreatedState);
+                        break;
                     case PEER_CONNECTION_USER_ACCEPT:
                         // Stop discovery to avoid failure due to channel switch
                         mWifiNative.p2pStopFind();
@@ -4091,6 +4160,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         break;
                     case PEER_CONNECTION_USER_REJECT:
                         if (isVerboseLoggingEnabled()) logd("User rejected incoming request");
+                        mSavedPeerConfig.invalidate();
                         transitionTo(mGroupCreatedState);
                         break;
                     case WifiP2pManager.SET_CONNECTION_REQUEST_RESULT:
@@ -4112,7 +4182,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
             @Override
             public void exit() {
-                // TODO: dismiss dialog if not already done
+                if (null != mInvitationDialogHandle) {
+                    mInvitationDialogHandle.dismissDialog();
+                    mInvitationDialogHandle = null;
+                }
             }
         }
 
@@ -4337,6 +4410,18 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             mContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
         }
 
+        private void sendP2pRequestChangedBroadcast(boolean accepted) {
+            if (mVerboseLoggingEnabled) logd("sending p2p request changed broadcast");
+            Intent intent = new Intent(WifiP2pManager.ACTION_WIFI_P2P_REQUEST_RESPONSE_CHANGED);
+            intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT
+                    | Intent.FLAG_RECEIVER_REPLACE_PENDING);
+            intent.putExtra(WifiP2pManager.EXTRA_REQUEST_RESPONSE, accepted);
+
+            Context context = mContext.createContextAsUser(UserHandle.ALL, 0);
+            context.sendBroadcastWithMultiplePermissions(
+                    intent, RECEIVER_PERMISSIONS_FOR_BROADCAST);
+        }
+
         private void addRowToDialog(ViewGroup group, int stringId, String value) {
             Resources r = mContext.getResources();
             View row = LayoutInflater.from(mContext).cloneInContext(mContext)
@@ -4358,26 +4443,13 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         extras);
                 return;
             }
-
-            Resources r = mContext.getResources();
-
-            final View textEntryView = LayoutInflater.from(mContext).cloneInContext(mContext)
-                    .inflate(R.layout.wifi_p2p_dialog, null);
-
-            ViewGroup group = (ViewGroup) textEntryView.findViewById(R.id.info);
-            addRowToDialog(group, R.string.wifi_p2p_to_message, getDeviceName(peerAddress));
-            addRowToDialog(group, R.string.wifi_p2p_show_pin_message, pin);
-
-            AlertDialog dialog = mFrameworkFacade.makeAlertDialogBuilder(mContext)
-                    .setTitle(r.getString(R.string.wifi_p2p_invitation_sent_title))
-                    .setView(textEntryView)
-                    .setPositiveButton(r.getString(R.string.ok), null)
-                    .create();
-            dialog.setCanceledOnTouchOutside(false);
-            dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
-            dialog.getWindow().addSystemFlags(
-                    WindowManager.LayoutParams.SYSTEM_FLAG_SHOW_FOR_ALL_USERS);
-            dialog.show();
+            WifiDialogManager.DialogHandle dialogHandle = mWifiInjector.getWifiDialogManager()
+                    .createP2pInvitationSentDialog(getDeviceName(peerAddress), pin);
+            if (dialogHandle == null) {
+                loge("Could not create invitation sent dialog!");
+                return;
+            }
+            dialogHandle.launchDialog();
         }
 
         private void notifyP2pProvDiscShowPinRequest(String pin, String peerAddress) {
@@ -4397,28 +4469,32 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 return;
             }
 
-            Resources r = mContext.getResources();
-            final View textEntryView = LayoutInflater.from(mContext).cloneInContext(mContext)
-                    .inflate(R.layout.wifi_p2p_dialog, null);
+            int displayId = mDeathDataByBinder.values().stream()
+                    .filter(d -> d.mDisplayId != Display.DEFAULT_DISPLAY)
+                    .findAny()
+                    .map((dhd) -> dhd.mDisplayId)
+                    .orElse(Display.DEFAULT_DISPLAY);
+            // TODO(b/222115086): This dialog only makes sense for the provision discovery receiver.
+            //                    Use WifiDialogManager.createP2pInvitationSentDialog(...) for the
+            //                    initiator.
+            mWifiInjector.getWifiDialogManager().createP2pInvitationReceivedDialog(
+                    getDeviceName(peerAddress),
+                    false /* isPinRequested */,
+                    pin,
+                    displayId,
+                    new WifiDialogManager.P2pInvitationReceivedDialogCallback() {
+                        @Override
+                        public void onAccepted(@Nullable String optionalPin) {
+                            sendMessage(PEER_CONNECTION_USER_CONFIRM);
+                        }
 
-            ViewGroup group = (ViewGroup) textEntryView.findViewById(R.id.info);
-            addRowToDialog(group, R.string.wifi_p2p_to_message, getDeviceName(peerAddress));
-            addRowToDialog(group, R.string.wifi_p2p_show_pin_message, pin);
-
-            AlertDialog dialog = mFrameworkFacade.makeAlertDialogBuilder(mContext)
-                    .setTitle(r.getString(R.string.wifi_p2p_invitation_sent_title))
-                    .setView(textEntryView)
-                    .setPositiveButton(r.getString(R.string.accept), new OnClickListener() {
-                            public void onClick(DialogInterface dialog, int which) {
-                                sendMessage(PEER_CONNECTION_USER_CONFIRM);
-                            }
-                    })
-                    .create();
-            dialog.setCanceledOnTouchOutside(false);
-            dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
-            dialog.getWindow().addSystemFlags(
-                    WindowManager.LayoutParams.SYSTEM_FLAG_SHOW_FOR_ALL_USERS);
-            dialog.show();
+                        @Override
+                        public void onDeclined() {
+                            // Do nothing
+                            // TODO(b/222115086): Do the correct "decline" behavior.
+                        }
+                    },
+                    new WifiThreadRunner(getHandler())).launchDialog();
         }
 
         private void notifyInvitationReceived(
@@ -4470,6 +4546,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         logd(getName() + " accept invitation " + mSavedPeerConfig);
                     }
                     sendMessage(PEER_CONNECTION_USER_ACCEPT);
+                    mInvitationDialogHandle = null;
                 }
 
                 @Override
@@ -4478,18 +4555,19 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         logd(getName() + " ignore connect");
                     }
                     sendMessage(PEER_CONNECTION_USER_REJECT);
+                    mInvitationDialogHandle = null;
                 }
             };
 
-            WifiDialogManager.DialogHandle dialogHandle = mWifiInjector.getWifiDialogManager()
-                    .createP2pInvitationReceivedDialog(
+            WifiDialogManager.DialogHandle mInvitationDialogHandle =
+                    mWifiInjector.getWifiDialogManager().createP2pInvitationReceivedDialog(
                             deviceName,
                             isPinRequested,
                             displayPin,
                             displayId,
                             callback,
                             new WifiThreadRunner(getHandler()));
-            dialogHandle.launchDialog(mContext.getResources().getInteger(
+            mInvitationDialogHandle.launchDialog(mContext.getResources().getInteger(
                     R.integer.config_p2pInvitationReceivedDialogTimeoutMs));
         }
 
@@ -5065,6 +5143,24 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         private void updateThisDevice(int status) {
             mThisDevice.status = status;
             sendThisDeviceChangedBroadcast();
+        }
+
+        private boolean handleProvDiscFailure(WifiP2pProvDiscEvent pdEvent,
+                boolean invalidateSavedPeer) {
+            if (TextUtils.isEmpty(pdEvent.device.deviceAddress)) return false;
+            if (!pdEvent.device.deviceAddress.equals(
+                    mSavedPeerConfig.deviceAddress)) {
+                return false;
+            }
+
+            if (null != mInvitationDialogHandle) {
+                mInvitationDialogHandle.dismissDialog();
+                mInvitationDialogHandle = null;
+            }
+            if (invalidateSavedPeer) {
+                mSavedPeerConfig.invalidate();
+            }
+            return true;
         }
 
         private void handleGroupCreationFailure() {

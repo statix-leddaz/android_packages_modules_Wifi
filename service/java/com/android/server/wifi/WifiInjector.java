@@ -32,6 +32,7 @@ import android.net.NetworkProvider;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.nl80211.WifiNl80211Manager;
+import android.os.BatteryManager;
 import android.os.BatteryStatsManager;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -479,7 +480,8 @@ public class WifiInjector {
         mConnectionFailureNotifier = new ConnectionFailureNotifier(
                 mContext, mFrameworkFacade, mWifiConfigManager,
                 mWifiConnectivityManager, wifiHandler,
-                mWifiNotificationManager, mConnectionFailureNotificationBuilder);
+                mWifiNotificationManager, mConnectionFailureNotificationBuilder,
+                mWifiDialogManager);
         mWifiNetworkFactory = new WifiNetworkFactory(
                 wifiLooper, mContext, REGULAR_NETWORK_CAPABILITIES_FILTER,
                 (ActivityManager) mContext.getSystemService(Context.ACTIVITY_SERVICE),
@@ -708,6 +710,13 @@ public class WifiInjector {
         return mContext.getSystemService(TelephonyManager.class);
     }
 
+    /**
+     * Returns BatteryManager service
+     */
+    public BatteryManager makeBatteryManager() {
+        return mContext.getSystemService(BatteryManager.class);
+    }
+
     public WifiCarrierInfoManager getWifiCarrierInfoManager() {
         return mWifiCarrierInfoManager;
     }
@@ -741,11 +750,12 @@ public class WifiInjector {
             @NonNull ActiveModeManager.SoftApRole role,
             boolean verboseLoggingEnabled) {
         return new SoftApManager(mContext, mWifiHandlerThread.getLooper(),
-                mFrameworkFacade, mWifiNative, mCoexManager, mCountryCode.getCountryCode(),
-                listener, callback, mWifiApConfigStore, config, mWifiMetrics, mSarManager,
-                mWifiDiagnostics, new SoftApNotifier(mContext, mFrameworkFacade,
-                mWifiNotificationManager), mCmiMonitor, mActiveModeWarden,
-                mClock.getElapsedSinceBootMillis(), requestorWs, role, verboseLoggingEnabled);
+                mFrameworkFacade, mWifiNative, mCoexManager, makeBatteryManager(),
+                mCountryCode.getCountryCode(), listener, callback, mWifiApConfigStore,
+                config, mWifiMetrics, mSarManager, mWifiDiagnostics,
+                new SoftApNotifier(mContext, mFrameworkFacade, mWifiNotificationManager),
+                mCmiMonitor, mActiveModeWarden, mClock.getElapsedSinceBootMillis(),
+                requestorWs, role, verboseLoggingEnabled);
     }
 
     /**

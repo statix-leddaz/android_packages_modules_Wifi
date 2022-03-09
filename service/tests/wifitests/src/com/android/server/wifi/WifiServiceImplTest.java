@@ -125,6 +125,7 @@ import android.net.NetworkStack;
 import android.net.Uri;
 import android.net.wifi.CoexUnsafeChannel;
 import android.net.wifi.IActionListener;
+import android.net.wifi.IBooleanListener;
 import android.net.wifi.ICoexCallback;
 import android.net.wifi.IDppCallback;
 import android.net.wifi.IInterfaceCreationInfoCallback;
@@ -6731,8 +6732,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Test
     public void testRemoveNonCallerConfiguredNetworks_NetworksRemoved() {
         final int callerUid = Binder.getCallingUid();
-        when(mWifiPermissionsUtil.isDeviceOwner(Binder.getCallingUid(), TEST_PACKAGE_NAME))
-                .thenReturn(true);
+        when(mWifiPermissionsUtil.isOrganizationOwnedDeviceAdmin(
+                Binder.getCallingUid(), TEST_PACKAGE_NAME)).thenReturn(true);
 
         mLooper.startAutoDispatch();
         mWifiServiceImpl.removeNonCallerConfiguredNetworks(TEST_PACKAGE_NAME);
@@ -7463,6 +7464,36 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mWifiServiceImpl.allowAutojoinGlobal(true);
     }
 
+    @Test
+    public void testQueryAutojoinGlobal_Exceptions() {
+        // good inputs should result in no exceptions.
+        IBooleanListener listener = mock(IBooleanListener.class);
+        // null listener ==> IllegalArgumentException
+        assertThrows(IllegalArgumentException.class,
+                () -> mWifiServiceImpl.queryAutojoinGlobal(null));
+
+        // No permission ==> SecurityException
+        assertThrows(SecurityException.class,
+                () -> mWifiServiceImpl.queryAutojoinGlobal(listener));
+    }
+
+    @Test
+    public void testQueryAutojoinGlobal_GoodCase() throws RemoteException {
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+        IBooleanListener listener = mock(IBooleanListener.class);
+
+        InOrder inOrder = inOrder(listener);
+        when(mWifiConnectivityManager.getAutoJoinEnabledExternal()).thenReturn(true);
+        mWifiServiceImpl.queryAutojoinGlobal(listener);
+        mLooper.dispatchAll();
+        inOrder.verify(listener).onResult(true);
+
+        when(mWifiConnectivityManager.getAutoJoinEnabledExternal()).thenReturn(false);
+        mWifiServiceImpl.queryAutojoinGlobal(listener);
+        mLooper.dispatchAll();
+        inOrder.verify(listener).onResult(false);
+    }
+
     @Test(expected = SecurityException.class)
     public void testSetSsidsDoNotBlocklist_NoPermission() throws Exception {
         // by default no permissions are given so the call should fail.
@@ -8180,6 +8211,37 @@ public class WifiServiceImplTest extends WifiBaseTest {
                         featureP2pMacRandomization, true, true, false));
         assertEquals(featureStaConnectedMacRandomization | featureApMacRandomization,
                 testGetSupportedFeaturesCaseForMacRandomization(0, true, true, false));
+    }
+
+    /**
+     * Verifies feature support for DPP AKM when DPP is supported.
+     */
+    @Test
+    public void testDppAkmFeatureSupportDppSupported() throws Exception {
+        when(mResources.getBoolean(R.bool.config_wifiDppAkmSupported)).thenReturn(true);
+        when(mWifiNative.getSupportedFeatureSet(anyString()))
+                .thenReturn(WifiManager.WIFI_FEATURE_DPP);
+
+        mLooper.startAutoDispatch();
+        long supportedFeatures = mWifiServiceImpl.getSupportedFeatures();
+        mLooper.stopAutoDispatchAndIgnoreExceptions();
+
+        assertTrue((supportedFeatures & WifiManager.WIFI_FEATURE_DPP_AKM) != 0);
+    }
+
+    /**
+     * Verifies feature support for DPP AKM when DPP is not supported.
+     */
+    @Test
+    public void testDppAkmFeatureSupportDppNotSupported() throws Exception {
+        when(mResources.getBoolean(R.bool.config_wifiDppAkmSupported)).thenReturn(true);
+        when(mWifiNative.getSupportedFeatureSet(anyString())).thenReturn(0L);
+
+        mLooper.startAutoDispatch();
+        long supportedFeatures = mWifiServiceImpl.getSupportedFeatures();
+        mLooper.stopAutoDispatchAndIgnoreExceptions();
+
+        assertFalse((supportedFeatures & WifiManager.WIFI_FEATURE_DPP_AKM) != 0);
     }
 
     @Test
@@ -10116,13 +10178,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 IInterfaceCreationInfoCallback.Stub.class);
 
         assertThrows(IllegalArgumentException.class,
-                () -> mWifiServiceImpl.reportImpactToCreateIfaceRequest(null,
+                () -> mWifiServiceImpl.reportCreateInterfaceImpact(null,
                         WifiManager.WIFI_INTERFACE_TYPE_AP, true, mockCallback));
         assertThrows(IllegalArgumentException.class,
-                () -> mWifiServiceImpl.reportImpactToCreateIfaceRequest(TEST_PACKAGE_NAME,
+                () -> mWifiServiceImpl.reportCreateInterfaceImpact(TEST_PACKAGE_NAME,
                         WifiManager.WIFI_INTERFACE_TYPE_AP, true, null));
         assertThrows(IllegalArgumentException.class,
-                () -> mWifiServiceImpl.reportImpactToCreateIfaceRequest(TEST_PACKAGE_NAME,
+                () -> mWifiServiceImpl.reportCreateInterfaceImpact(TEST_PACKAGE_NAME,
                         /* clearly invalid value */ 100, true, mockCallback));
 
         mWifiServiceImpl = spy(mWifiServiceImpl);
@@ -10130,12 +10192,12 @@ public class WifiServiceImplTest extends WifiBaseTest {
         doThrow(new SecurityException()).when(mWifiPermissionsUtil).checkPackage(TEST_UID,
                 TEST_PACKAGE_NAME);
         assertThrows(SecurityException.class,
-                () -> mWifiServiceImpl.reportImpactToCreateIfaceRequest(TEST_PACKAGE_NAME,
+                () -> mWifiServiceImpl.reportCreateInterfaceImpact(TEST_PACKAGE_NAME,
                         WifiManager.WIFI_INTERFACE_TYPE_AP, false, mockCallback));
 
         when(mWifiPermissionsUtil.checkManageWifiInterfacesPermission(anyInt())).thenReturn(false);
         assertThrows(SecurityException.class,
-                () -> mWifiServiceImpl.reportImpactToCreateIfaceRequest(TEST_PACKAGE_NAME,
+                () -> mWifiServiceImpl.reportCreateInterfaceImpact(TEST_PACKAGE_NAME,
                         WifiManager.WIFI_INTERFACE_TYPE_AP, false, mockCallback));
 
         when(mWifiPermissionsUtil.checkManageWifiInterfacesPermission(anyInt())).thenReturn(true);
@@ -10143,7 +10205,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 .enforceCallingOrSelfPermission(eq(ACCESS_WIFI_STATE),
                         eq("WifiService"));
         assertThrows(SecurityException.class,
-                () -> mWifiServiceImpl.reportImpactToCreateIfaceRequest(TEST_PACKAGE_NAME,
+                () -> mWifiServiceImpl.reportCreateInterfaceImpact(TEST_PACKAGE_NAME,
                         WifiManager.WIFI_INTERFACE_TYPE_AP, false, mockCallback));
     }
 
@@ -10171,12 +10233,12 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 .thenReturn(null)
                 .thenReturn(Collections.emptyList())
                 .thenReturn(List.of(Pair.create(HalDeviceManager.HDM_CREATE_IFACE_P2P, wsOther)));
-        mWifiServiceImpl.reportImpactToCreateIfaceRequest(TEST_PACKAGE_NAME, interfaceToCreate,
-                true, mockCallback);
-        mWifiServiceImpl.reportImpactToCreateIfaceRequest(TEST_PACKAGE_NAME, interfaceToCreate,
-                true, mockCallback);
-        mWifiServiceImpl.reportImpactToCreateIfaceRequest(TEST_PACKAGE_NAME, interfaceToCreate,
-                true, mockCallback);
+        mWifiServiceImpl.reportCreateInterfaceImpact(TEST_PACKAGE_NAME, interfaceToCreate, true,
+                mockCallback);
+        mWifiServiceImpl.reportCreateInterfaceImpact(TEST_PACKAGE_NAME, interfaceToCreate, true,
+                mockCallback);
+        mWifiServiceImpl.reportCreateInterfaceImpact(TEST_PACKAGE_NAME, interfaceToCreate, true,
+                mockCallback);
         mLooper.dispatchAll();
         verify(mHalDeviceManager, times(3)).reportImpactToCreateIface(
                 interfaceToCreateInternal, true, ws);
