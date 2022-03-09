@@ -1094,6 +1094,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 Log.i(getTag(), "Carrier network offload disabled, triggering disconnect");
                 sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_CARRIER_OFFLOAD_DISABLED);
             }
+            mWifiConnectivityManager.clearCachedCandidates();
         }
     }
 
@@ -6316,7 +6317,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     }
 
     private boolean startIpClient(WifiConfiguration config, boolean isFilsConnection) {
-        if (mIpClient == null) {
+        if (mIpClient == null || config == null) {
             return false;
         }
 
