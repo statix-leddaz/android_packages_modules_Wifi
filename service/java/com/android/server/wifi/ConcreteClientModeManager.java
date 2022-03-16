@@ -1411,6 +1411,11 @@ public class ConcreteClientModeManager implements ClientModeManager {
         getClientMode().setShouldReduceNetworkScore(shouldReduceNetworkScore);
     }
 
+    public void sendNetworkChangeBroadcastWithCurrentState(){
+        Log.i(TAG, "sendNetworkChangeBroadcastWithCurrentState");
+        mClientModeImpl.sendNetworkChangeBroadcastWithCurrentState();
+    }
+
     @Override
     public String toString() {
         return "ConcreteClientModeManager{id=" + getId()
