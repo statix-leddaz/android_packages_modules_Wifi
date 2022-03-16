@@ -2421,7 +2421,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         sendNetworkChangeBroadcastWithCurrentState();
     }
 
-    private void sendNetworkChangeBroadcastWithCurrentState() {
+    public void sendNetworkChangeBroadcastWithCurrentState() {
         // copy into local variables to force lambda to capture by value and not reference, since
         // mNetworkAgentState is mutable and can change
         final DetailedState networkAgentState = mNetworkAgentState;

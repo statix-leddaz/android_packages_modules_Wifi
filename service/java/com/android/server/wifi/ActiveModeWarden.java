@@ -1763,6 +1763,15 @@ public class ActiveModeWarden {
             if (shouldEnableSta()) {
                 if (hasAnyClientModeManager()) {
                     switchAllPrimaryOrScanOnlyClientModeManagers();
+                    // Refresh network state for wifi entry when we move from deferring to enabled.
+                    Log.i(TAG, "Refresh network state for wifi entry when we move from deferring to enabled.");
+                    for (ConcreteClientModeManager clientModeManager : mClientModeManagers) {
+                        Log.i(TAG, "handleStaToggleChangeInEnabledState: clientModeManager = " + clientModeManager);
+                        Log.i(TAG, "handleStaToggleChangeInEnabledState: role = " + clientModeManager.getRole());
+                        if (clientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+                            clientModeManager.sendNetworkChangeBroadcastWithCurrentState();
+                        }
+                    }
                 } else {
                     startPrimaryOrScanOnlyClientModeManager(requestorWs);
                 }
