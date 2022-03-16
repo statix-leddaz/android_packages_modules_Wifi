@@ -23,6 +23,7 @@ import static android.net.wifi.WifiManager.WIFI_FEATURE_FILS_SHA256;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_FILS_SHA384;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE;
 
+import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_LOCAL_ONLY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_LONG_LIVED;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_TRANSIENT;
@@ -108,6 +109,7 @@ import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
 import android.util.Pair;
+import android.util.Range;
 
 import androidx.annotation.RequiresApi;
 
@@ -862,6 +864,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 mWifiNative,
                 mFacade,
                 mNotificationManager,
+                mWifiInjector.getWifiDialogManager(),
                 isTrustOnFirstUseSupported(),
                 mInsecureEapNetworkHandlerCallbacksImpl,
                 mInterfaceName,
@@ -2291,6 +2294,25 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 && mClientModeManager.isSecondaryInternet();
     }
 
+    /** Check whether this connection is for local only network. */
+    private boolean isLocalOnly() {
+        return mClientModeManager.getRole() == ROLE_CLIENT_LOCAL_ONLY;
+    }
+
+    /**
+     * Check if originaly requested as local only for ClientModeManager before fallback.
+     * A secondary role could fallback to primary due to hardware support limit.
+     * @return true if the original request for ClientModeManager is local only.
+     */
+    public boolean isRequestedForLocalOnly(WifiConfiguration currentWifiConfiguration,
+            String currentBssid) {
+        Set<Integer> uids =
+                mNetworkFactory.getSpecificNetworkRequestUids(
+                        currentWifiConfiguration, currentBssid);
+        // Check if there is an active specific request in WifiNetworkFactory for local only.
+        return !uids.isEmpty();
+    }
+
     private void handleScreenStateChanged(boolean screenOn) {
         mScreenOn = screenOn;
         if (mVerboseLoggingEnabled) {
@@ -2679,6 +2701,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mWifiInfo.setApMldMacAddress(matchingScanResult.getApMldMacAddress());
             mWifiInfo.setApMloLinkId(matchingScanResult.getApMloLinkId());
             mWifiInfo.setAffiliatedMloLinks(matchingScanResult.getAffiliatedMloLinks());
+        } else {
+            mWifiInfo.setApMldMacAddress(null);
+            mWifiInfo.setApMloLinkId(MloLink.INVALID_MLO_LINK_ID);
+            mWifiInfo.setAffiliatedMloLinks(Collections.emptyList());
         }
     }
 
@@ -2742,7 +2768,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     }
 
     private void updateWifiInfoWhenConnected(@NonNull WifiConfiguration config) {
-        mWifiInfo.setHiddenSSID(config.hiddenSSID);
         mWifiInfo.setEphemeral(config.ephemeral);
         mWifiInfo.setTrusted(config.trusted);
         mWifiInfo.setOemPaid(config.oemPaid);
@@ -4318,7 +4343,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
 
         builder.setOwnerUid(currentWifiConfiguration.creatorUid);
-        builder.setAdministratorUids(new int[] {currentWifiConfiguration.creatorUid});
+        builder.setAdministratorUids(new int[]{currentWifiConfiguration.creatorUid});
 
         if (!WifiConfiguration.isMetered(currentWifiConfiguration, mWifiInfo)) {
             builder.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
@@ -4350,18 +4375,26 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             }
         }
 
-        Pair<Integer, String> specificRequestUidAndPackageName =
-                mNetworkFactory.getSpecificNetworkRequestUidAndPackageName(
-                        currentWifiConfiguration, currentBssid);
+        List<Integer> uids = new ArrayList<>(mNetworkFactory
+                .getSpecificNetworkRequestUids(
+                        currentWifiConfiguration, currentBssid));
         // There is an active specific request.
         // TODO: Check if the specific Request is for dual band Wifi or local only.
-        if (specificRequestUidAndPackageName.first != Process.INVALID_UID
+        if (!uids.isEmpty()
                 && !mWifiConnectivityManager.hasMultiInternetConnection()) {
             // Remove internet capability.
             builder.removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
-            // Fill up the uid/packageName for this connection.
-            builder.setRequestorUid(specificRequestUidAndPackageName.first);
-            builder.setRequestorPackageName(specificRequestUidAndPackageName.second);
+            if (SdkLevel.isAtLeastS()) {
+                builder.setUids(getUidRangeSet(uids));
+            } else {
+                // Use requestor Uid and PackageName on pre-S device.
+                Pair<Integer, String> specificRequestUidAndPackageName = mNetworkFactory
+                        .getSpecificNetworkRequestUidAndPackageName(currentWifiConfiguration,
+                                currentBssid);
+                // Fill up the uid/packageName for this connection.
+                builder.setRequestorUid(specificRequestUidAndPackageName.first);
+                builder.setRequestorPackageName(specificRequestUidAndPackageName.second);
+            }
             // Fill up the network agent specifier for this connection, allowing NetworkCallbacks
             // to match local-only specifiers in requests. TODO(b/187921303): a third-party app can
             // observe this location-sensitive information by registering a NetworkCallback.
@@ -4400,6 +4433,27 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         return builder.build();
     }
 
+    private Set<Range<Integer>> getUidRangeSet(List<Integer> uids) {
+        Collections.sort(uids);
+        Set<Range<Integer>> uidRanges = new ArraySet<>();
+        int start = 0;
+        int next = 0;
+        for (int i : uids) {
+            if (start == next) {
+                start = i;
+                next = start + 1;
+            } else if (i == next) {
+                next++;
+            } else {
+                uidRanges.add(new Range<>(start, next - 1));
+                start = i;
+                next = start + 1;
+            }
+        }
+        uidRanges.add(new Range<>(start, next - 1));
+        return uidRanges;
+    }
+
     private void updateLinkBandwidth(NetworkCapabilities.Builder networkCapabilitiesBuilder) {
         int txTputKbps = 0;
         int rxTputKbps = 0;
@@ -4429,6 +4483,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     /**
      * Method to update network capabilities from the current WifiConfiguration.
      */
+    @Override
     public void updateCapabilities() {
         updateCapabilities(getConnectedWifiConfigurationInternal());
     }
@@ -5015,7 +5070,13 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     if (isPermanentWrongPasswordFailure(mTargetNetworkId, reasonCode)) {
                         disableReason = WifiConfiguration.NetworkSelectionStatus
                                 .DISABLED_BY_WRONG_PASSWORD;
-                        if (targetedNetwork != null && isPrimary()) {
+                        // For primary role, send error notification except for local only network,
+                        // for secondary role, send only for secondary internet.
+                        final boolean isForLocalOnly = isRequestedForLocalOnly(
+                                targetedNetwork, mTargetBssid) || isLocalOnly();
+                        final boolean needNotifyError = isPrimary() ? !isForLocalOnly
+                                : isSecondaryInternet();
+                        if (targetedNetwork != null && needNotifyError) {
                             mWrongPasswordNotifier.onWrongPasswordError(targetedNetwork.SSID);
                         }
                     } else if (reasonCode == WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE) {
@@ -5464,6 +5525,14 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 ScanResult scanResult = scanDetailCache.getScanResult(mLastBssid);
                                 if (scanResult != null) {
                                     mWifiInfo.setFrequency(scanResult.frequency);
+                                    boolean isHidden = true;
+                                    for (byte b : scanResult.getWifiSsid().getBytes()) {
+                                        if (b != 0) {
+                                            isHidden = false;
+                                            break;
+                                        }
+                                    }
+                                    mWifiInfo.setHiddenSSID(isHidden);
                                 }
                             }
                         }

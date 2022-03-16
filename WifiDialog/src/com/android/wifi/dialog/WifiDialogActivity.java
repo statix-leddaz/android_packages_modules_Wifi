@@ -25,7 +25,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Configuration;
 import android.content.res.Resources;
-import android.hardware.display.DisplayManager;
 import android.media.AudioManager;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
@@ -43,7 +42,6 @@ import android.text.style.URLSpan;
 import android.util.ArraySet;
 import android.util.Log;
 import android.util.SparseArray;
-import android.view.Display;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
@@ -305,14 +303,18 @@ public class WifiDialogActivity extends Activity  {
                         intent.getStringExtra(WifiManager.EXTRA_DIALOG_NEGATIVE_BUTTON_TEXT),
                         intent.getStringExtra(WifiManager.EXTRA_DIALOG_NEUTRAL_BUTTON_TEXT));
                 break;
+            case WifiManager.DIALOG_TYPE_P2P_INVITATION_SENT:
+                dialog = createP2pInvitationSentDialog(
+                        dialogId,
+                        intent.getStringExtra(WifiManager.EXTRA_P2P_DEVICE_NAME),
+                        intent.getStringExtra(WifiManager.EXTRA_P2P_DISPLAY_PIN));
+                break;
             case WifiManager.DIALOG_TYPE_P2P_INVITATION_RECEIVED:
                 dialog = createP2pInvitationReceivedDialog(
                         dialogId,
                         intent.getStringExtra(WifiManager.EXTRA_P2P_DEVICE_NAME),
                         intent.getBooleanExtra(WifiManager.EXTRA_P2P_PIN_REQUESTED, false),
-                        intent.getStringExtra(WifiManager.EXTRA_P2P_DISPLAY_PIN),
-                        intent.getIntExtra(WifiManager.EXTRA_P2P_DISPLAY_ID,
-                                Display.DEFAULT_DISPLAY));
+                        intent.getStringExtra(WifiManager.EXTRA_P2P_DISPLAY_PIN));
                 break;
             default:
                 if (mIsVerboseLoggingEnabled) {
@@ -436,6 +438,54 @@ public class WifiDialogActivity extends Activity  {
     }
 
     /**
+     * Returns a P2P Invitation Sent Dialog for the given Intent, or {@code null} if no Dialog
+     * could be created.
+     */
+    private @Nullable Dialog createP2pInvitationSentDialog(
+            final int dialogId,
+            final @NonNull String deviceName,
+            @Nullable String displayPin) {
+        if (TextUtils.isEmpty(deviceName)) {
+            if (mIsVerboseLoggingEnabled) {
+                Log.v(TAG, "Could not create P2P Invitation Sent dialog with null or empty"
+                        + " device name."
+                        + " id=" + dialogId
+                        + " deviceName=" + deviceName
+                        + " displayPin=" + displayPin);
+            }
+            return null;
+        }
+
+        final View textEntryView = LayoutInflater.from(this)
+                .inflate(getLayoutId("wifi_p2p_dialog"), null);
+        ViewGroup group = textEntryView.findViewById(getViewId("info"));
+        addRowToP2pDialog(group, getStringId("wifi_p2p_to_message"), deviceName);
+
+        if (displayPin != null) {
+            addRowToP2pDialog(group, getStringId("wifi_p2p_show_pin_message"), displayPin);
+        }
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(getString(getStringId("wifi_p2p_invitation_sent_title")))
+                .setView(textEntryView)
+                .setPositiveButton(getStringId("ok"), (dialogPositive, which) -> {
+                    // No-op
+                    if (mIsVerboseLoggingEnabled) {
+                        Log.v(TAG, "P2P Invitation Sent Dialog id=" + dialogId
+                                + " accepted.");
+                    }
+                })
+                .create();
+        if (mIsVerboseLoggingEnabled) {
+            Log.v(TAG, "Created P2P Invitation Sent dialog."
+                    + " id=" + dialogId
+                    + " deviceName=" + deviceName
+                    + " displayPin=" + displayPin);
+        }
+        return dialog;
+    }
+
+    /**
      * Returns a P2P Invitation Received Dialog for the given Intent, or {@code null} if no Dialog
      * could be created.
      */
@@ -443,8 +493,7 @@ public class WifiDialogActivity extends Activity  {
             final int dialogId,
             final @NonNull String deviceName,
             final boolean isPinRequested,
-            @Nullable String displayPin,
-            int displayId) {
+            @Nullable String displayPin) {
         if (TextUtils.isEmpty(deviceName)) {
             if (mIsVerboseLoggingEnabled) {
                 Log.v(TAG, "Could not create P2P Invitation Received dialog with null or empty"
@@ -452,8 +501,7 @@ public class WifiDialogActivity extends Activity  {
                         + " id=" + dialogId
                         + " deviceName=" + deviceName
                         + " isPinRequested=" + isPinRequested
-                        + " displayPin=" + displayPin
-                        + " displayId=" + displayId);
+                        + " displayPin=" + displayPin);
             }
             return null;
         }
@@ -475,7 +523,7 @@ public class WifiDialogActivity extends Activity  {
             addRowToP2pDialog(group, getStringId("wifi_p2p_show_pin_message"), displayPin);
         }
 
-        AlertDialog dialog = new AlertDialog.Builder(getDisplayContextFromId(this, displayId))
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(getString(getStringId("wifi_p2p_invitation_to_connect_title")))
                 .setView(textEntryView)
                 .setPositiveButton(getStringId("accept"), (dialogPositive, which) -> {
@@ -535,22 +583,5 @@ public class WifiDialogActivity extends Activity  {
         ((TextView) row.findViewById(getViewId("name"))).setText(getString(stringId));
         ((TextView) row.findViewById(getViewId("value"))).setText(value);
         group.addView(row);
-    }
-
-    private Context getDisplayContextFromId(Context context, int displayId) {
-        if (displayId == Display.DEFAULT_DISPLAY) {
-            return context;
-        }
-
-        DisplayManager dm = getSystemService(DisplayManager.class);
-        Display[] displays = dm.getDisplays();
-        for (Display display: displays) {
-            if (display.getDisplayId() == displayId) {
-                return context.createDisplayContext(display);
-            }
-        }
-
-        Log.e(TAG, "Can't find a display matching the specified ID = " + displayId);
-        return context;
     }
 }

@@ -1240,7 +1240,6 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         sendUserSelectionSelect(networkRequestUserSelectionCallback, selectedNetwork);
         mLooper.dispatchAll();
 
-        // verify(mWifiConnectivityManager).isStaConcurrencyForMultiInternetEnabled();
         // Verify we did not attempt to trigger a connection or disable connectivity manager.
         verifyNoMoreInteractions(mClientModeManager, mWifiConnectivityManager);
     }
@@ -2284,6 +2283,8 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
      */
     @Test
     public void testHandleNetworkRequestWithSpecifierGetUid() throws Exception {
+        assertTrue(mWifiNetworkFactory.getSpecificNetworkRequestUids(
+                new WifiConfiguration(), "").isEmpty());
         assertEquals(Integer.valueOf(Process.INVALID_UID),
                 mWifiNetworkFactory.getSpecificNetworkRequestUidAndPackageName(
                         new WifiConfiguration(), new String()).first);
@@ -2296,6 +2297,8 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // connected to a different network.
         WifiConfiguration connectedNetwork = new WifiConfiguration(mSelectedNetwork);
         connectedNetwork.SSID += "test";
+        assertTrue(mWifiNetworkFactory.getSpecificNetworkRequestUids(
+                new WifiConfiguration(), "").isEmpty());
         assertEquals(Integer.valueOf(Process.INVALID_UID),
                 mWifiNetworkFactory.getSpecificNetworkRequestUidAndPackageName(
                         new WifiConfiguration(), new String()).first);
@@ -2305,6 +2308,9 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // connected to the correct network.
         connectedNetwork = new WifiConfiguration(mSelectedNetwork);
         String connectedBssid = TEST_BSSID_1;
+        assertEquals(Set.of(TEST_UID_1),
+                mWifiNetworkFactory.getSpecificNetworkRequestUids(
+                        connectedNetwork, connectedBssid));
         assertEquals(Integer.valueOf(TEST_UID_1),
                 mWifiNetworkFactory.getSpecificNetworkRequestUidAndPackageName(
                         connectedNetwork, connectedBssid).first);
@@ -2522,7 +2528,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         attachDefaultWifiNetworkSpecifierAndAppInfo(TEST_UID_2, false);
         mWifiNetworkFactory.needNetworkFor(mNetworkRequest);
 
-        // Ensure we don't request a new ClientModeManager.
+        // Ensure we do request a new ClientModeManager.
         verify(mActiveModeWarden, times(1)).requestLocalOnlyClientModeManager(
                 any(), any(), any(), any());
 
@@ -2536,7 +2542,6 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         mWifiNetworkFactory.releaseNetworkFor(oldRequest);
         verify(mClientModeManager, times(2)).disconnect();
         verify(mClientModeManager, times(3)).getRole();
-        // verify(mWifiConnectivityManager, times(3)).isStaConcurrencyForMultiInternetEnabled();
 
         verifyNoMoreInteractions(mWifiConnectivityManager, mWifiScanner, mClientModeManager,
                 mAlarmManager);
@@ -2548,7 +2553,6 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         verify(mWifiConnectivityManager).setSpecificNetworkRequestInProgress(false);
         verify(mClientModeManager).enableRoaming(true);
         verify(mActiveModeWarden).removeClientModeManager(any());
-        // verify(mWifiConnectivityManager, times(3)).isStaConcurrencyForMultiInternetEnabled();
 
         verifyNoMoreInteractions(mWifiConnectivityManager, mWifiScanner, mClientModeManager,
                 mAlarmManager);
@@ -2574,7 +2578,6 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         mWifiNetworkFactory.needNetworkFor(mNetworkRequest);
         mLooper.dispatchAll();
 
-        // verify(mWifiConnectivityManager).isStaConcurrencyForMultiInternetEnabled();
         verifyNoMoreInteractions(mWifiConnectivityManager, mWifiScanner, mClientModeManager,
                 mAlarmManager);
     }
@@ -2630,7 +2633,6 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         verify(mWifiConnectivityManager).setSpecificNetworkRequestInProgress(false);
         verify(mClientModeManager).enableRoaming(true);
         verify(mActiveModeWarden).removeClientModeManager(any());
-
         verifyNoMoreInteractions(mWifiConnectivityManager, mWifiScanner, mClientModeManager,
                 mAlarmManager);
     }
@@ -2676,7 +2678,6 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         verify(mWifiConnectivityManager).setSpecificNetworkRequestInProgress(false);
         verify(mClientModeManager).enableRoaming(true);
         verify(mActiveModeWarden).removeClientModeManager(any());
-        // verify(mWifiConnectivityManager, times(3)).isStaConcurrencyForMultiInternetEnabled();
 
         verifyNoMoreInteractions(mWifiConnectivityManager, mWifiScanner, mClientModeManager,
                 mAlarmManager);
@@ -3225,6 +3226,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         mWifiNetworkFactory.removeCallback(mNetworkRequestMatchCallback);
         reset(mNetworkRequestMatchCallback, mWifiScanner, mAlarmManager, mClientModeManager,
                 mConnectHelper);
+        mWifiNetworkFactory.releaseNetworkFor(mNetworkRequest);
 
         // 2. Second request for the same access point (user approval bypass).
         ScanResult matchingScanResult = mTestScanDatas[0].getResults()[0];
@@ -3448,6 +3450,12 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
 
         verify(mActiveModeWarden, atLeastOnce()).requestLocalOnlyClientModeManager(
                 any(), any(), any(), any());
+        if (SdkLevel.isAtLeastS()) {
+            verify(mClientModeManager, atLeastOnce()).getConnectedWifiConfiguration();
+            verify(mClientModeManager, atLeastOnce()).getConnectingWifiConfiguration();
+            verify(mClientModeManager, atLeastOnce()).getConnectingBssid();
+            verify(mClientModeManager, atLeastOnce()).getConnectedBssid();
+        }
 
         // Cancel the periodic scan timer.
         mInOrder.verify(mAlarmManager).cancel(mPeriodicScanListenerArgumentCaptor.getValue());

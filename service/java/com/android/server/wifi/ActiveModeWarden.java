@@ -438,8 +438,11 @@ public class ActiveModeWarden {
                     R.bool.config_wifiMultiStaLocalOnlyConcurrencyEnabled)) {
                 return false;
             }
-            final int uid = requestorWs.getUid(0);
-            final String packageName = requestorWs.getPackageName(0);
+            // Remove settings WorkSource to make sure the targetSdk is correct.
+            WorkSource ws = new WorkSource(requestorWs);
+            ws.remove(mFacade.getSettingsWorkSource(mContext));
+            final int uid = ws.getUid(0);
+            final String packageName = ws.getPackageName(0);
             // For peer to peer use-case, only allow secondary STA if the app is targeting S SDK
             // or is a system app to provide backward compatibility.
             return mWifiPermissionsUtil.isSystem(packageName, uid)
@@ -1957,22 +1960,6 @@ public class ActiveModeWarden {
                 super.exit();
             }
 
-            private boolean isClientModeManagerConnectedOrConnectingToBssid(
-                    @NonNull ClientModeManager clientModeManager,
-                    @NonNull String ssid, @NonNull String bssid) {
-                WifiConfiguration connectedOrConnectingWifiConfiguration = coalesce(
-                        clientModeManager.getConnectingWifiConfiguration(),
-                        clientModeManager.getConnectedWifiConfiguration());
-                String connectedOrConnectingBssid = coalesce(
-                        clientModeManager.getConnectingBssid(),
-                        clientModeManager.getConnectedBssid());
-                String connectedOrConnectingSsid =
-                        connectedOrConnectingWifiConfiguration == null
-                                ? null : connectedOrConnectingWifiConfiguration.SSID;
-                return Objects.equals(ssid, connectedOrConnectingSsid)
-                        && Objects.equals(bssid, connectedOrConnectingBssid);
-            }
-
             @Nullable
             private ConcreteClientModeManager findAnyClientModeManagerConnectingOrConnectedToBssid(
                     @NonNull String ssid, @Nullable String bssid) {
@@ -2207,5 +2194,25 @@ public class ActiveModeWarden {
 
     private static <T> T coalesce(T a, T  b) {
         return a != null ? a : b;
+    }
+
+    /**
+     * Check if CMM is connecting or connected to target BSSID and SSID
+     */
+    public static boolean isClientModeManagerConnectedOrConnectingToBssid(
+            @NonNull ClientModeManager clientModeManager,
+            @NonNull String ssid, @NonNull String bssid) {
+        WifiConfiguration connectedOrConnectingWifiConfiguration = coalesce(
+                clientModeManager.getConnectingWifiConfiguration(),
+                clientModeManager.getConnectedWifiConfiguration());
+        String connectedOrConnectingBssid = coalesce(
+                clientModeManager.getConnectingBssid(),
+                clientModeManager.getConnectedBssid());
+        String connectedOrConnectingSsid =
+                connectedOrConnectingWifiConfiguration == null
+                        ? null : connectedOrConnectingWifiConfiguration.SSID;
+        Log.v(TAG, connectedOrConnectingBssid + "   " + connectedOrConnectingSsid);
+        return Objects.equals(ssid, connectedOrConnectingSsid)
+                && Objects.equals(bssid, connectedOrConnectingBssid);
     }
 }

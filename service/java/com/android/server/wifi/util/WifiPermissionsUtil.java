@@ -730,10 +730,15 @@ public class WifiPermissionsUtil {
     }
 
     /**
-     * Returns true if the |uid| holds MANAGE_WIFI_AUTO_JOIN permission.
+     * Returns true if the |uid| holds MANAGE_WIFI_NETWORK_SELECTION permission.
      */
-    public boolean checkManageWifiAutoJoinPermission(int uid) {
+    public boolean checkManageWifiNetworkSelectionPermission(int uid) {
+        // TODO(b/223298889): remove check for MANAGE_WIFI_AUTO_JOIN after call callers have
+        // migrated to MANAGE_WIFI_NETWORK_SELECTION.
         return mWifiPermissionsWrapper.getUidPermission(
+                android.Manifest.permission.MANAGE_WIFI_NETWORK_SELECTION, uid)
+                == PackageManager.PERMISSION_GRANTED
+                || mWifiPermissionsWrapper.getUidPermission(
                 android.Manifest.permission.MANAGE_WIFI_AUTO_JOIN, uid)
                 == PackageManager.PERMISSION_GRANTED;
     }
@@ -999,6 +1004,36 @@ public class WifiPermissionsUtil {
                 retrieveDevicePolicyManagerFromUserContext(uid);
         if (devicePolicyManager == null) return false;
         return devicePolicyManager.isProfileOwnerApp(packageName);
+    }
+
+    /**
+     * Returns {@code true} if the calling {@code uid} is the profile owner of
+     * an organization owned device.
+     */
+    public boolean isProfileOwnerOfOrganizationOwnedDevice(int uid) {
+        DevicePolicyManager devicePolicyManager =
+                retrieveDevicePolicyManagerFromUserContext(uid);
+        if (devicePolicyManager == null) return false;
+
+        // this relies on having only one PO on COPE device.
+        if (!devicePolicyManager.isOrganizationOwnedDeviceWithManagedProfile()) {
+            return false;
+        }
+        String[] packages = mContext.getPackageManager().getPackagesForUid(uid);
+        for (String packageName : packages) {
+            if (devicePolicyManager.isProfileOwnerApp(packageName)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Returns {@code true} if the calling {@code uid} and {@code packageName} is the device owner
+     * or the profile owner of an organization owned device.
+     */
+    public boolean isOrganizationOwnedDeviceAdmin(int uid, @Nullable String packageName) {
+        boolean isDeviceOwner =
+                packageName == null ? isDeviceOwner(uid) : isDeviceOwner(uid, packageName);
+        return isDeviceOwner || isProfileOwnerOfOrganizationOwnedDevice(uid);
     }
 
     /** Helper method to check if the entity initiating the binder call is a system app. */

@@ -1001,20 +1001,22 @@ public class WifiConfigManager {
         // isDeviceOwner(uid) method), but it would require changing  many methods to pass the
         // package name around (for example, all methods called by
         // WifiServiceImpl.triggerConnectAndReturnStatus(netId, callingUid)
-        final boolean isDeviceOwner = packageName == null
-                ? mWifiPermissionsUtil.isDeviceOwner(uid)
-                : mWifiPermissionsUtil.isDeviceOwner(uid, packageName);
+        final boolean isOrganizationOwnedDeviceAdmin =
+                mWifiPermissionsUtil.isOrganizationOwnedDeviceAdmin(uid, packageName);
 
-        // If |uid| corresponds to the device owner, allow all modifications.
-        if (isDeviceOwner) {
+        // If |uid| corresponds to the device owner or the profile owner of an organization owned
+        // device, allow all modifications.
+        if (isOrganizationOwnedDeviceAdmin) {
             return true;
         }
 
         final boolean isCreator = (config.creatorUid == uid);
 
-        // WiFi config lockdown related logic. At this point we know uid is NOT a Device Owner.
+        // WiFi config lockdown related logic. At this point we know uid is NOT a Device Owner
+        // or a Profile Owner of an organization owned device.
         final boolean isConfigEligibleForLockdown =
-                mWifiPermissionsUtil.isDeviceOwner(config.creatorUid, config.creatorName);
+                mWifiPermissionsUtil.isOrganizationOwnedDeviceAdmin(config.creatorUid,
+                        config.creatorName);
         if (!isConfigEligibleForLockdown) {
             // App that created the network or settings app (i.e user) has permission to
             // modify the network.
@@ -1030,7 +1032,6 @@ public class WifiConfigManager {
                 // If not locked down, settings app (i.e user) has permission to modify the network.
                 && (mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
                 || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid));
-
     }
 
     private void mergeSecurityParamsListWithInternalWifiConfiguration(
@@ -1174,6 +1175,7 @@ public class WifiConfigManager {
         internalConfig.getNetworkSelectionStatus().setConnectChoiceRssi(
                 externalConfig.getNetworkSelectionStatus().getConnectChoiceRssi());
         internalConfig.setBssidAllowlist(externalConfig.getBssidAllowlistInternal());
+        internalConfig.setRepeaterEnabled(externalConfig.isRepeaterEnabled());
     }
 
     /**
@@ -3514,16 +3516,15 @@ public class WifiConfigManager {
      * Returns true if the given uid has permission to add, update or remove proxy settings
      */
     private boolean canModifyProxySettings(int uid, String packageName) {
-        final boolean isDeviceOwner = mWifiPermissionsUtil.isDeviceOwner(uid, packageName);
-        final boolean isProfileOwner = mWifiPermissionsUtil.isProfileOwner(uid, packageName);
+        final boolean isAdmin = mWifiPermissionsUtil.isAdmin(uid, packageName);
         final boolean hasNetworkSettingsPermission =
                 mWifiPermissionsUtil.checkNetworkSettingsPermission(uid);
         final boolean hasNetworkSetupWizardPermission =
                 mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid);
         final boolean hasNetworkManagedProvisioningPermission =
                 mWifiPermissionsUtil.checkNetworkManagedProvisioningPermission(uid);
-        // If |uid| corresponds to the device owner, allow all modifications.
-        if (isProfileOwner || isDeviceOwner || hasNetworkSettingsPermission
+        // If |uid| corresponds to the admin, allow all modifications.
+        if (isAdmin || hasNetworkSettingsPermission
                 || hasNetworkSetupWizardPermission || hasNetworkManagedProvisioningPermission) {
             return true;
         }
@@ -3531,8 +3532,7 @@ public class WifiConfigManager {
             Log.v(TAG, "UID: " + uid + " cannot modify WifiConfiguration proxy settings."
                     + " hasNetworkSettings=" + hasNetworkSettingsPermission
                     + " hasNetworkSetupWizard=" + hasNetworkSetupWizardPermission
-                    + " DeviceOwner=" + isDeviceOwner
-                    + " ProfileOwner=" + isProfileOwner);
+                    + " Admin=" + isAdmin);
         }
         return false;
     }
@@ -3660,7 +3660,7 @@ public class WifiConfigManager {
     /**
      * This maintains the legacy user connect choice state in the config store
      */
-    private boolean setLegacyUserConnectChoice(@NonNull final WifiConfiguration selected,
+    public boolean setLegacyUserConnectChoice(@NonNull final WifiConfiguration selected,
             int rssi) {
         boolean change = false;
         Collection<WifiConfiguration> configuredNetworks = getInternalConfiguredNetworks();

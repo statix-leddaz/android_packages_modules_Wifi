@@ -195,6 +195,11 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public void queryAutojoinGlobal(@NonNull IBooleanListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void allowAutojoin(int netId, boolean choice) {
         throw new UnsupportedOperationException();
     }
@@ -858,7 +863,12 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
-    public void validateCurrentWifiMeetsAdminRequirements() {
+    public void notifyMinimumRequiredWifiSecurityLevelChanged(int level) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void notifyWifiSsidPolicyChanged(int policyType, @NonNull List<WifiSsid> ssids) {
         throw new UnsupportedOperationException();
     }
 
@@ -889,8 +899,8 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
-    public void reportImpactToCreateIfaceRequest(String packageName, int interfaceType,
-            boolean queryForNewInterface, IInterfaceCreationInfoCallback callback) {
+    public void reportCreateInterfaceImpact(String packageName, int interfaceType,
+            boolean requireNewInterface, IInterfaceCreationInfoCallback callback) {
         throw new UnsupportedOperationException();
     }
 }

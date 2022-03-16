@@ -38,6 +38,9 @@
           <item type="bool" name="config_wifi_turn_off_during_emergency_call" />
           <item type="integer" name="config_wifiFrameworkThroughputBonusNumerator" />
           <item type="integer" name="config_wifiFrameworkThroughputBonusDenominator" />
+          <item type="integer" name="config_wifiFrameworkThroughputBonusNumeratorAfter800Mbps" />
+          <item type="integer" name="config_wifiFrameworkThroughputBonusDenominatorAfter800Mbps" />
+          <item type="bool" name="config_wifiEnable6GhzBeaconRssiBoost" />
           <item type="integer" name="config_wifiFrameworkThroughputBonusLimit" />
           <item type="integer" name="config_wifiFrameworkSavedNetworkBonus" />
           <item type="integer" name="config_wifiFrameworkUnmeteredNetworkBonus" />
@@ -61,6 +64,7 @@
           <item type="integer" name="config_wifiFrameworkScoreGoodRssiThreshold6ghz" />
           <item type="integer" name="config_wifiFrameworkSoftApShutDownTimeoutMilliseconds" />
           <item type="integer" name="config_wifiFrameworkSoftApShutDownIdleInstanceInBridgedModeTimeoutMillisecond" />
+          <item type="bool" name="config_wifiFrameworkSoftApDisableBridgedModeShutdownIdleInstanceWhenCharging" />
           <item type="bool" name="config_wifiSoftApDynamicCountryCodeUpdateSupported" />
           <item type="bool" name="config_wifiSoftapResetChannelConfig" />
           <item type="bool" name="config_wifiSoftapResetHiddenConfig" />
@@ -224,7 +228,10 @@
           <item type="integer" name="config_p2pInvitationReceivedDialogTimeoutMs"/>
           <item type="bool" name="config_p2pInvitationReceivedDialogNotificationSound"/>
           <item type="bool" name="config_wifiForcedSoftApRestartWhenCountryCodeChanged" />
+          <item type="bool" name="config_wifiDppAkmSupported" />
           <item type="array" name="config_wifiInterfacePriorityTreatAsForegroundList"/>
+          <item type="bool" name="config_wifiUserApprovalRequiredForD2dInterfacePriority" />
+          <item type="array" name="config_wifiExcludedFromUserApprovalForD2dInterfacePriority" />
           <!-- Params from config.xml that can be overlayed -->
 
           <!-- Params from strings.xml that can be overlayed -->
@@ -300,6 +307,10 @@
           <item type="string" name="wifi_enable_request_dialog_message" />
           <item type="string" name="wifi_enable_request_dialog_positive_button" />
           <item type="string" name="wifi_enable_request_dialog_negative_button" />
+          <item type="string" name="wifi_interface_priority_title" />
+          <item type="string" name="wifi_interface_priority_message" />
+          <item type="string" name="wifi_interface_priority_approve" />
+          <item type="string" name="wifi_interface_priority_reject" />
           <!-- Params from strings.xml that can be overlayed -->
 
           <!-- Params from styles.xml that can be overlayed -->
