@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "54ac2e81_9096c461",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1898255
+      },
+      "writtenOn": "2022-03-21T06:38:10Z",
+      "side": 1,
+      "message": "Hi Etan , Could you please vote this patch\nAlready reviewed ref : https://googleplex-android-review.git.corp.google.com/c/platform/packages/modules/Wifi/+/16752682",
+      "revId": "e8022b680db1eb740d8cd7ff3cf816634074c39b",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
