@@ -2244,6 +2244,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         } else {
             mWifiInfo.setRssi(WifiInfo.INVALID_RSSI);
             updateCapabilities();
+            mLastSignalLevel = -1;
         }
         mWifiConfigManager.updateScanDetailCacheFromWifiInfo(mWifiInfo);
         /*
