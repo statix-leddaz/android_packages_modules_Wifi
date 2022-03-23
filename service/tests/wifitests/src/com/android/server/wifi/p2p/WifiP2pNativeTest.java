@@ -312,34 +312,6 @@ public class WifiP2pNativeTest extends WifiBaseTest {
     }
 
     /**
-     * Verifies initiating a P2P service discovery on social channels.
-     */
-    @Test
-    public void testP2pFindOnSocialChannels() {
-        when(mSupplicantP2pIfaceHalMock.find(anyInt(), anyInt(), anyInt())).thenReturn(true);
-        assertTrue(mWifiP2pNative.p2pFind(
-                WifiP2pManager.WIFI_P2P_SCAN_SOCIAL,
-                WifiP2pManager.WIFI_P2P_SCAN_FREQ_UNSPECIFIED, TEST_P2P_FIND_TIMEOUT));
-        verify(mSupplicantP2pIfaceHalMock).find(
-                eq(WifiP2pManager.WIFI_P2P_SCAN_SOCIAL),
-                eq(WifiP2pManager.WIFI_P2P_SCAN_FREQ_UNSPECIFIED),
-                eq(TEST_P2P_FIND_TIMEOUT));
-    }
-
-    /**
-     * Verifies initiating a P2P service discovery on specific frequency.
-     */
-    @Test
-    public void testP2pFindOnSpecificFrequency() {
-        int freq = 2412;
-        when(mSupplicantP2pIfaceHalMock.find(anyInt(), anyInt(), anyInt())).thenReturn(true);
-        assertTrue(mWifiP2pNative.p2pFind(
-                WifiP2pManager.WIFI_P2P_SCAN_SINGLE_FREQ, freq, TEST_P2P_FIND_TIMEOUT));
-        verify(mSupplicantP2pIfaceHalMock).find(
-                eq(WifiP2pManager.WIFI_P2P_SCAN_SINGLE_FREQ),
-                eq(freq), eq(TEST_P2P_FIND_TIMEOUT));
-    }
-    /**
      * Verifies stopping a P2P service discovery.
      */
     @Test
@@ -725,15 +697,5 @@ public class WifiP2pNativeTest extends WifiBaseTest {
         assertEquals(WifiManager.WIFI_FEATURE_P2P_RAND_MAC,
                 mWifiP2pNative.getSupportedFeatureSet(TEST_IFACE));
         verify(mWifiVendorHalMock).getSupportedFeatureSet(eq(TEST_IFACE));
-    }
-
-    /**
-     * Verifies removing client with specified mac address.
-     */
-    @Test
-    public void testRemoveClient() {
-        when(mSupplicantP2pIfaceHalMock.removeClient(anyString(), anyBoolean())).thenReturn(true);
-        assertTrue(mWifiP2pNative.removeClient(TEST_BSSID));
-        verify(mSupplicantP2pIfaceHalMock).removeClient(eq(TEST_BSSID), anyBoolean());
     }
 }

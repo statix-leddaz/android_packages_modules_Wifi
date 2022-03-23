@@ -30,6 +30,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.hardware.wifi.supplicant.V1_0.ISupplicantStaIfaceCallback;
 import android.net.wifi.EAPConstants;
 import android.net.wifi.IOnWifiUsabilityStatsListener;
 import android.net.wifi.ScanResult;
@@ -48,7 +49,6 @@ import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.ProvisioningCallback;
 import android.net.wifi.hotspot2.ProvisioningCallback.OsuFailure;
 import android.net.wifi.nl80211.WifiNl80211Manager;
-import android.net.wifi.util.ScanResultUtil;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -70,8 +70,6 @@ import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
 
 import com.android.internal.annotations.VisibleForTesting;
-import com.android.server.wifi.SupplicantStaIfaceHal.StaIfaceReasonCode;
-import com.android.server.wifi.SupplicantStaIfaceHal.StaIfaceStatusCode;
 import com.android.server.wifi.aware.WifiAwareMetrics;
 import com.android.server.wifi.hotspot2.ANQPNetworkKey;
 import com.android.server.wifi.hotspot2.NetworkDetail;
@@ -128,6 +126,7 @@ import com.android.server.wifi.util.IntCounter;
 import com.android.server.wifi.util.IntHistogram;
 import com.android.server.wifi.util.MetricsUtils;
 import com.android.server.wifi.util.ObjectCounter;
+import com.android.server.wifi.util.ScanResultUtil;
 import com.android.wifi.resources.R;
 
 import org.json.JSONArray;
@@ -1843,7 +1842,7 @@ public class WifiMetrics {
                         config.macRandomizationSetting
                         != WifiConfiguration.RANDOMIZATION_NONE;
                 currentConnectionEvent.mConnectionEvent.useAggressiveMac =
-                        mWifiConfigManager.shouldUseNonPersistentRandomization(config);
+                        mWifiConfigManager.shouldUseEnhancedRandomization(config);
                 currentConnectionEvent.mConnectionEvent.connectionNominator =
                         mNetworkIdToNominatorId.get(config.networkId,
                                 WifiMetricsProto.ConnectionEvent.NOMINATOR_UNKNOWN);
@@ -2222,9 +2221,9 @@ public class WifiMetrics {
     }
 
     /**
-     * Developer options toggle value for non-persistent MAC randomization.
+     * Developer options toggle value for enhanced MAC randomization.
      */
-    public void setNonPersistentMacRandomizationForceEnabled(boolean enabled) {
+    public void setEnhancedMacRandomizationForceEnabled(boolean enabled) {
         synchronized (mLock) {
             mWifiLogProto.isEnhancedMacRandomizationForceEnabled = enabled;
         }
@@ -5669,7 +5668,7 @@ public class WifiMetrics {
                 sb.append("ASSOCIATION_REJECTION_EVENT")
                         .append(" timedOut=").append(event.associationTimedOut)
                         .append(" status=").append(event.status).append(":")
-                        .append(StaIfaceStatusCode.toString(event.status));
+                        .append(ISupplicantStaIfaceCallback.StatusCode.toString(event.status));
                 break;
             case StaEvent.TYPE_AUTHENTICATION_FAILURE_EVENT:
                 sb.append("AUTHENTICATION_FAILURE_EVENT reason=").append(event.authFailureReason)
@@ -5682,7 +5681,7 @@ public class WifiMetrics {
                 sb.append("NETWORK_DISCONNECTION_EVENT")
                         .append(" local_gen=").append(event.localGen)
                         .append(" reason=").append(event.reason).append(":")
-                        .append(StaIfaceReasonCode.toString(
+                        .append(ISupplicantStaIfaceCallback.ReasonCode.toString(
                                 (event.reason >= 0 ? event.reason : -1 * event.reason)));
                 break;
             case StaEvent.TYPE_CMD_ASSOCIATED_BSSID:
