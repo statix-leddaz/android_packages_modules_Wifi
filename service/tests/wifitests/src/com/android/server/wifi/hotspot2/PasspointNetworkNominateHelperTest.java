@@ -38,7 +38,6 @@ import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.HomeSp;
-import android.net.wifi.util.ScanResultUtil;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.util.LocalLog;
@@ -53,6 +52,7 @@ import com.android.server.wifi.WifiConfigurationTestUtil;
 import com.android.server.wifi.hotspot2.anqp.ANQPElement;
 import com.android.server.wifi.hotspot2.anqp.Constants.ANQPElementType;
 import com.android.server.wifi.hotspot2.anqp.HSWanMetricsElement;
+import com.android.server.wifi.util.ScanResultUtil;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -163,8 +163,6 @@ public class PasspointNetworkNominateHelperTest {
 
         mNominateHelper = new PasspointNetworkNominateHelper(
                 mPasspointManager, mWifiConfigManager, mLocalLog);
-        // Always assume Passpoint is enabled as we don't disable it in the test.
-        when(mPasspointManager.isWifiPasspointEnabled()).thenReturn(true);
     }
 
     /**
@@ -232,7 +230,7 @@ public class PasspointNetworkNominateHelperTest {
         ArgumentCaptor<WifiConfiguration> addedConfig =
                 ArgumentCaptor.forClass(WifiConfiguration.class);
         verify(mWifiConfigManager).addOrUpdateNetwork(addedConfig.capture(), anyInt(), any());
-        assertEquals(ScanResultUtil.createQuotedSsid(TEST_SSID1), addedConfig.getValue().SSID);
+        assertEquals(ScanResultUtil.createQuotedSSID(TEST_SSID1), addedConfig.getValue().SSID);
         assertEquals(TEST_FQDN1, addedConfig.getValue().FQDN);
         assertNotNull(addedConfig.getValue().enterpriseConfig);
         assertEquals("", addedConfig.getValue().enterpriseConfig.getAnonymousIdentity());
@@ -279,7 +277,7 @@ public class PasspointNetworkNominateHelperTest {
         ArgumentCaptor<WifiConfiguration> addedConfig =
                 ArgumentCaptor.forClass(WifiConfiguration.class);
         verify(mWifiConfigManager).addOrUpdateNetwork(addedConfig.capture(), anyInt(), any());
-        assertEquals(ScanResultUtil.createQuotedSsid(TEST_SSID1), addedConfig.getValue().SSID);
+        assertEquals(ScanResultUtil.createQuotedSSID(TEST_SSID1), addedConfig.getValue().SSID);
         assertEquals(TEST_FQDN1, addedConfig.getValue().FQDN);
         assertNotNull(addedConfig.getValue().enterpriseConfig);
         assertEquals("", addedConfig.getValue().enterpriseConfig.getAnonymousIdentity());
@@ -320,7 +318,7 @@ public class PasspointNetworkNominateHelperTest {
         ArgumentCaptor<WifiConfiguration> addedConfig =
                 ArgumentCaptor.forClass(WifiConfiguration.class);
         verify(mWifiConfigManager).addOrUpdateNetwork(addedConfig.capture(), anyInt(), any());
-        assertEquals(ScanResultUtil.createQuotedSsid(TEST_SSID1), addedConfig.getValue().SSID);
+        assertEquals(ScanResultUtil.createQuotedSSID(TEST_SSID1), addedConfig.getValue().SSID);
         assertEquals(TEST_FQDN1, addedConfig.getValue().FQDN);
         assertNotNull(addedConfig.getValue().enterpriseConfig);
         assertEquals("", addedConfig.getValue().enterpriseConfig.getAnonymousIdentity());
@@ -416,7 +414,7 @@ public class PasspointNetworkNominateHelperTest {
         // Setup currently connected network.
         WifiConfiguration currentNetwork = new WifiConfiguration();
         currentNetwork.networkId = TEST_NETWORK_ID;
-        currentNetwork.SSID = ScanResultUtil.createQuotedSsid(TEST_SSID1);
+        currentNetwork.SSID = ScanResultUtil.createQuotedSSID(TEST_SSID1);
         String currentBssid = TEST_BSSID1;
 
         // Match the current connected network to a home provider.
@@ -505,8 +503,7 @@ public class PasspointNetworkNominateHelperTest {
     }
 
     /**
-     * Verify that when the WAN metrics status is 'LINK_STATUS_DOWN', it should be set
-     * No Internet.
+     * Verify that when the WAN metrics status is 'LINK_STATUS_DOWN', it should be ignored.
      * @throws Exception
      */
     @Test
@@ -531,9 +528,7 @@ public class PasspointNetworkNominateHelperTest {
 
         List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
                 .getPasspointNetworkCandidates(scanDetails, false);
-        assertEquals(1, candidates.size());
-        assertEquals(TEST_FQDN1, candidates.get(0).second.FQDN);
-        verify(mWifiConfigManager).incrementNetworkNoInternetAccessReports(eq(TEST_NETWORK_ID));
+        assertTrue(candidates.isEmpty());
     }
 
     /**
@@ -564,7 +559,7 @@ public class PasspointNetworkNominateHelperTest {
         // verify Only home provider matched candidate will by chosen
         assertEquals(1, candidates.size());
         assertTrue(candidates.get(0).second.isHomeProviderNetwork);
-        assertEquals(ScanResultUtil.createQuotedSsid(TEST_SSID2), candidates.get(0).second.SSID);
+        assertEquals(ScanResultUtil.createQuotedSSID(TEST_SSID2), candidates.get(0).second.SSID);
     }
 
     /**
@@ -599,9 +594,9 @@ public class PasspointNetworkNominateHelperTest {
         // the second (TEST_SSID2).
         assertEquals(2, candidates.size());
         assertTrue(candidates.stream().anyMatch(c -> c.second.isHomeProviderNetwork
-                && c.second.SSID.equals(ScanResultUtil.createQuotedSsid(TEST_SSID1))));
+                && c.second.SSID.equals(ScanResultUtil.createQuotedSSID(TEST_SSID1))));
         assertTrue(candidates.stream().anyMatch(c -> !c.second.isHomeProviderNetwork
-                && c.second.SSID.equals(ScanResultUtil.createQuotedSsid(TEST_SSID2))));
+                && c.second.SSID.equals(ScanResultUtil.createQuotedSSID(TEST_SSID2))));
     }
 
     /**
@@ -751,7 +746,7 @@ public class PasspointNetworkNominateHelperTest {
         ArgumentCaptor<WifiConfiguration> addedConfig =
                 ArgumentCaptor.forClass(WifiConfiguration.class);
         verify(mWifiConfigManager).addOrUpdateNetwork(addedConfig.capture(), anyInt(), any());
-        assertEquals(ScanResultUtil.createQuotedSsid(TEST_SSID1), addedConfig.getValue().SSID);
+        assertEquals(ScanResultUtil.createQuotedSSID(TEST_SSID1), addedConfig.getValue().SSID);
         assertEquals(TEST_FQDN1, addedConfig.getValue().FQDN);
         assertNotNull(addedConfig.getValue().enterpriseConfig);
         assertEquals("", addedConfig.getValue().enterpriseConfig.getAnonymousIdentity());

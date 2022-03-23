@@ -18,7 +18,6 @@ package android.net.wifi;
 import android.annotation.SystemApi;
 import android.app.SystemServiceRegistry;
 import android.content.Context;
-import android.content.pm.PackageManager;
 import android.net.wifi.aware.IWifiAwareManager;
 import android.net.wifi.aware.WifiAwareManager;
 import android.net.wifi.p2p.IWifiP2pManager;
@@ -77,22 +76,14 @@ public class WifiFrameworkInitializer {
                 Context.WIFI_SERVICE,
                 WifiManager.class,
                 (context, serviceBinder) -> {
-                    if (!context.getPackageManager().hasSystemFeature(
-                            PackageManager.FEATURE_WIFI)) {
-                        return null;
-                    }
                     IWifiManager service = IWifiManager.Stub.asInterface(serviceBinder);
                     return new WifiManager(context, service, getInstanceLooper());
                 }
         );
-        SystemServiceRegistry.registerContextAwareService(
+        SystemServiceRegistry.registerStaticService(
                 Context.WIFI_P2P_SERVICE,
                 WifiP2pManager.class,
-                (context, serviceBinder) -> {
-                    if (!context.getPackageManager().hasSystemFeature(
-                            PackageManager.FEATURE_WIFI_DIRECT)) {
-                        return null;
-                    }
+                serviceBinder -> {
                     IWifiP2pManager service = IWifiP2pManager.Stub.asInterface(serviceBinder);
                     return new WifiP2pManager(service);
                 }
@@ -101,10 +92,6 @@ public class WifiFrameworkInitializer {
                 Context.WIFI_AWARE_SERVICE,
                 WifiAwareManager.class,
                 (context, serviceBinder) -> {
-                    if (!context.getPackageManager().hasSystemFeature(
-                            PackageManager.FEATURE_WIFI_AWARE)) {
-                        return null;
-                    }
                     IWifiAwareManager service = IWifiAwareManager.Stub.asInterface(serviceBinder);
                     return new WifiAwareManager(context, service);
                 }
@@ -113,10 +100,6 @@ public class WifiFrameworkInitializer {
                 Context.WIFI_SCANNING_SERVICE,
                 WifiScanner.class,
                 (context, serviceBinder) -> {
-                    if (!context.getPackageManager().hasSystemFeature(
-                            PackageManager.FEATURE_WIFI)) {
-                        return null;
-                    }
                     IWifiScanner service = IWifiScanner.Stub.asInterface(serviceBinder);
                     return new WifiScanner(context, service, getInstanceLooper());
                 }
@@ -125,10 +108,6 @@ public class WifiFrameworkInitializer {
                 Context.WIFI_RTT_RANGING_SERVICE,
                 WifiRttManager.class,
                 (context, serviceBinder) -> {
-                    if (!context.getPackageManager().hasSystemFeature(
-                            PackageManager.FEATURE_WIFI_RTT)) {
-                        return null;
-                    }
                     IWifiRttManager service = IWifiRttManager.Stub.asInterface(serviceBinder);
                     return new WifiRttManager(context, service);
                 }
@@ -137,10 +116,6 @@ public class WifiFrameworkInitializer {
                 Context.WIFI_RTT_SERVICE,
                 RttManager.class,
                 context -> {
-                    if (!context.getPackageManager().hasSystemFeature(
-                            PackageManager.FEATURE_WIFI_RTT)) {
-                        return null;
-                    }
                     WifiRttManager wifiRttManager = context.getSystemService(WifiRttManager.class);
                     return new RttManager(context, wifiRttManager);
                 }

@@ -54,7 +54,7 @@ public class SarManagerTest extends WifiBaseTest {
     private static final String OP_PACKAGE_NAME = "com.xxx";
 
     private void enableDebugLogs() {
-        mSarMgr.enableVerboseLogging(true);
+        mSarMgr.enableVerboseLogging(1);
     }
 
     private MockResources getMockResources() {

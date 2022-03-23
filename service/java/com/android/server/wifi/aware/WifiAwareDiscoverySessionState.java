@@ -16,18 +16,12 @@
 
 package com.android.server.wifi.aware;
 
-import static com.android.server.wifi.aware.WifiAwareStateManager.INSTANT_MODE_24GHZ;
-import static com.android.server.wifi.aware.WifiAwareStateManager.INSTANT_MODE_5GHZ;
-import static com.android.server.wifi.aware.WifiAwareStateManager.INSTANT_MODE_DISABLED;
-
 import android.hardware.wifi.V1_0.NanStatusType;
-import android.net.wifi.WifiScanner;
 import android.net.wifi.aware.IWifiAwareDiscoverySessionCallback;
 import android.net.wifi.aware.PublishConfig;
 import android.net.wifi.aware.SubscribeConfig;
 import android.net.wifi.util.HexEncoding;
 import android.os.RemoteException;
-import android.os.SystemClock;
 import android.util.Log;
 import android.util.SparseArray;
 
@@ -54,9 +48,6 @@ public class WifiAwareDiscoverySessionState {
     private boolean mIsPublishSession;
     private boolean mIsRangingEnabled;
     private final long mCreationTime;
-    private long mUpdateTime;
-    private boolean mInstantModeEnabled;
-    private int mInstantModeBand;
 
     static class PeerInfo {
         PeerInfo(int instanceId, byte[] mac) {
@@ -79,8 +70,7 @@ public class WifiAwareDiscoverySessionState {
 
     public WifiAwareDiscoverySessionState(WifiAwareNativeApi wifiAwareNativeApi, int sessionId,
             byte pubSubId, IWifiAwareDiscoverySessionCallback callback, boolean isPublishSession,
-            boolean isRangingEnabled, long creationTime, boolean instantModeEnabled,
-            int instantModeBand) {
+            boolean isRangingEnabled, long creationTime) {
         mWifiAwareNativeApi = wifiAwareNativeApi;
         mSessionId = sessionId;
         mPubSubId = pubSubId;
@@ -88,9 +78,6 @@ public class WifiAwareDiscoverySessionState {
         mIsPublishSession = isPublishSession;
         mIsRangingEnabled = isRangingEnabled;
         mCreationTime = creationTime;
-        mUpdateTime = creationTime;
-        mInstantModeEnabled = instantModeEnabled;
-        mInstantModeBand = instantModeBand;
     }
 
     /**
@@ -118,29 +105,6 @@ public class WifiAwareDiscoverySessionState {
 
     public void setRangingEnabled(boolean enabled) {
         mIsRangingEnabled = enabled;
-    }
-
-    public void setInstantModeEnabled(boolean enabled) {
-        mInstantModeEnabled = enabled;
-    }
-
-    public void setInstantModeBand(int band) {
-        mInstantModeBand = band;
-    }
-
-    /**
-     * Check the instant communication mode of the client.
-     * @param timeout Specify a interval when instant mode config timeout
-     * @return current instant mode one of the {@code INSTANT_MODE_*}
-     */
-    public int getInstantMode(long timeout) {
-        if (SystemClock.elapsedRealtime() - mUpdateTime > timeout || !mInstantModeEnabled) {
-            return INSTANT_MODE_DISABLED;
-        }
-        if (mInstantModeBand == WifiScanner.WIFI_BAND_5_GHZ) {
-            return INSTANT_MODE_5GHZ;
-        }
-        return INSTANT_MODE_24GHZ;
     }
 
     public long getCreationTime() {
@@ -208,7 +172,6 @@ public class WifiAwareDiscoverySessionState {
             return false;
         }
 
-        mUpdateTime = SystemClock.elapsedRealtime();
         boolean success = mWifiAwareNativeApi.publish(transactionId, mPubSubId, config);
         if (!success) {
             try {
@@ -239,7 +202,6 @@ public class WifiAwareDiscoverySessionState {
             return false;
         }
 
-        mUpdateTime = SystemClock.elapsedRealtime();
         boolean success = mWifiAwareNativeApi.subscribe(transactionId, mPubSubId, config);
         if (!success) {
             try {
@@ -294,30 +256,28 @@ public class WifiAwareDiscoverySessionState {
      * Callback from HAL when a discovery occurs - i.e. when a match to an
      * active subscription request or to a solicited publish request occurs.
      * Propagates to client if registered.
-     *  @param requestorInstanceId The ID used to identify the peer in this
+     *
+     * @param requestorInstanceId The ID used to identify the peer in this
      *            matched session.
      * @param peerMac The MAC address of the peer. Never propagated to client
      *            due to privacy concerns.
      * @param serviceSpecificInfo Information from the discovery advertisement
- *            (usually not used in the match decisions).
+     *            (usually not used in the match decisions).
      * @param matchFilter The filter from the discovery advertisement (which was
-*            used in the match decision).
+     *            used in the match decision).
      * @param rangingIndication Bit mask indicating the type of ranging event triggered.
      * @param rangeMm The range to the peer in mm (valid if rangingIndication specifies ingress
-     * @param peerCiphersuite
-     * @param scid
+     *                or egress events - i.e. non-zero).
      */
     public void onMatch(int requestorInstanceId, byte[] peerMac, byte[] serviceSpecificInfo,
-            byte[] matchFilter, int rangingIndication, int rangeMm, int peerCiphersuite,
-            byte[] scid) {
+            byte[] matchFilter, int rangingIndication, int rangeMm) {
         int peerId = getPeerIdOrAddIfNew(requestorInstanceId, peerMac);
 
         try {
             if (rangingIndication == 0) {
-                mCallback.onMatch(peerId, serviceSpecificInfo, matchFilter, peerCiphersuite, scid);
+                mCallback.onMatch(peerId, serviceSpecificInfo, matchFilter);
             } else {
-                mCallback.onMatchWithDistance(peerId, serviceSpecificInfo, matchFilter, rangeMm,
-                        peerCiphersuite, scid);
+                mCallback.onMatchWithDistance(peerId, serviceSpecificInfo, matchFilter, rangeMm);
             }
         } catch (RemoteException e) {
             Log.w(TAG, "onMatch: RemoteException (FYI): " + e);
