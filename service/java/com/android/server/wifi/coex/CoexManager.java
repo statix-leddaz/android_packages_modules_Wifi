@@ -36,7 +36,6 @@ import static com.android.server.wifi.coex.CoexUtils.get5gHarmonicCoexUnsafeChan
 import static com.android.server.wifi.coex.CoexUtils.getIntermodCoexUnsafeChannels;
 import static com.android.server.wifi.coex.CoexUtils.getNeighboringCoexUnsafeChannels;
 
-import android.annotation.AnyThread;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.BroadcastReceiver;
@@ -49,6 +48,7 @@ import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.CoexRestriction;
 import android.os.Build;
 import android.os.Handler;
+import android.os.HandlerExecutor;
 import android.os.PersistableBundle;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
@@ -66,9 +66,7 @@ import android.util.SparseBooleanArray;
 
 import androidx.annotation.RequiresApi;
 
-import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
-import com.android.modules.utils.HandlerExecutor;
 import com.android.server.wifi.WifiNative;
 import com.android.wifi.resources.R;
 
@@ -255,9 +253,6 @@ public class CoexManager {
     private final List<CoexUtils.CoexCellChannel> mMockCellChannels = new ArrayList<>();
     private boolean mIsUsingMockCellChannels = false;
 
-    private final Object mLock = new Object();
-
-    @GuardedBy("mLock")
     @NonNull
     private final List<CoexUnsafeChannel> mCurrentCoexUnsafeChannels = new ArrayList<>();
     private int mCoexRestrictions;
@@ -307,12 +302,9 @@ public class CoexManager {
      *
      * @return Set of current CoexUnsafeChannels.
      */
-    @AnyThread
     @NonNull
     public List<CoexUnsafeChannel> getCoexUnsafeChannels() {
-        synchronized (mLock) {
-            return new ArrayList<>(mCurrentCoexUnsafeChannels);
-        }
+        return mCurrentCoexUnsafeChannels;
     }
 
     /**
@@ -346,21 +338,19 @@ public class CoexManager {
             Log.e(TAG, "setCoexUnsafeChannels called with undefined restriction flags");
             return;
         }
-        synchronized (mLock) {
-            if (new HashSet(mCurrentCoexUnsafeChannels).equals(new HashSet(coexUnsafeChannels))
-                    && mCoexRestrictions == coexRestrictions) {
-                // Do not update if the unsafe channels haven't changed since the last time
-                return;
-            }
-            mCurrentCoexUnsafeChannels.clear();
-            mCurrentCoexUnsafeChannels.addAll(coexUnsafeChannels);
-            mCoexRestrictions = coexRestrictions;
-            if (mVerboseLoggingEnabled) {
-                Log.v(TAG, "Current unsafe channels: " + mCurrentCoexUnsafeChannels
-                        + ", restrictions: " + mCoexRestrictions);
-            }
-            mWifiNative.setCoexUnsafeChannels(mCurrentCoexUnsafeChannels, mCoexRestrictions);
+        if (new HashSet(mCurrentCoexUnsafeChannels).equals(new HashSet(coexUnsafeChannels))
+                && mCoexRestrictions == coexRestrictions) {
+            // Do not update if the unsafe channels haven't changed since the last time
+            return;
         }
+        mCurrentCoexUnsafeChannels.clear();
+        mCurrentCoexUnsafeChannels.addAll(coexUnsafeChannels);
+        mCoexRestrictions = coexRestrictions;
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "Current unsafe channels: " + mCurrentCoexUnsafeChannels
+                    + ", restrictions: " + mCoexRestrictions);
+        }
+        mWifiNative.setCoexUnsafeChannels(mCurrentCoexUnsafeChannels, mCoexRestrictions);
         notifyListeners();
         notifyRemoteCallbacks();
     }
@@ -400,9 +390,7 @@ public class CoexManager {
     public void registerRemoteCoexCallback(ICoexCallback callback) {
         mRemoteCallbackList.register(callback);
         try {
-            synchronized (mLock) {
-                callback.onCoexUnsafeChannelsChanged(mCurrentCoexUnsafeChannels, mCoexRestrictions);
-            }
+            callback.onCoexUnsafeChannelsChanged(mCurrentCoexUnsafeChannels, mCoexRestrictions);
         } catch (RemoteException e) {
             Log.e(TAG, "onCoexUnsafeChannelsChanged: remote exception -- " + e);
         }
@@ -427,10 +415,8 @@ public class CoexManager {
         final int itemCount = mRemoteCallbackList.beginBroadcast();
         for (int i = 0; i < itemCount; i++) {
             try {
-                synchronized (mLock) {
-                    mRemoteCallbackList.getBroadcastItem(i).onCoexUnsafeChannelsChanged(
-                            mCurrentCoexUnsafeChannels, mCoexRestrictions);
-                }
+                mRemoteCallbackList.getBroadcastItem(i)
+                        .onCoexUnsafeChannelsChanged(mCurrentCoexUnsafeChannels, mCoexRestrictions);
             } catch (RemoteException e) {
                 Log.e(TAG, "onCoexUnsafeChannelsChanged: remote exception -- " + e);
             }

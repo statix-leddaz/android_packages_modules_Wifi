@@ -124,8 +124,7 @@ public class ThroughputPredictor {
     public int predictMaxTxThroughput(@NonNull WifiNative.ConnectionCapabilities capabilities) {
         return predictThroughputInternal(capabilities.wifiStandard, capabilities.is11bMode,
                 capabilities.channelBandwidth,
-                WifiInfo.MAX_RSSI, capabilities.maxNumberTxSpatialStreams, MIN_CHANNEL_UTILIZATION,
-                0);
+                WifiInfo.MAX_RSSI, capabilities.maxNumberTxSpatialStreams, MIN_CHANNEL_UTILIZATION);
     }
 
     /**
@@ -136,8 +135,7 @@ public class ThroughputPredictor {
     public int predictMaxRxThroughput(@NonNull WifiNative.ConnectionCapabilities capabilities) {
         return predictThroughputInternal(capabilities.wifiStandard, capabilities.is11bMode,
                 capabilities.channelBandwidth,
-                WifiInfo.MAX_RSSI, capabilities.maxNumberRxSpatialStreams, MIN_CHANNEL_UTILIZATION,
-                0);
+                WifiInfo.MAX_RSSI, capabilities.maxNumberRxSpatialStreams, MIN_CHANNEL_UTILIZATION);
     }
 
     /**
@@ -150,8 +148,7 @@ public class ThroughputPredictor {
                 INVALID, channelUtilization, false);
         return predictThroughputInternal(capabilities.wifiStandard, capabilities.is11bMode,
                 capabilities.channelBandwidth,
-                rssiDbm, capabilities.maxNumberTxSpatialStreams, channelUtilizationFinal,
-                frequency);
+                rssiDbm, capabilities.maxNumberTxSpatialStreams, channelUtilizationFinal);
     }
 
     /**
@@ -164,8 +161,7 @@ public class ThroughputPredictor {
                 INVALID, channelUtilization, false);
         return predictThroughputInternal(capabilities.wifiStandard, capabilities.is11bMode,
                 capabilities.channelBandwidth,
-                rssiDbm, capabilities.maxNumberRxSpatialStreams, channelUtilizationFinal,
-                frequency);
+                rssiDbm, capabilities.maxNumberRxSpatialStreams, channelUtilizationFinal);
     }
 
     /**
@@ -267,12 +263,11 @@ public class ThroughputPredictor {
                 isBluetoothConnected);
 
         return predictThroughputInternal(wifiStandard, false/* is11bMode */, channelWidth,
-                rssiDbm, maxNumSpatialStream, channelUtilization, frequency);
+                rssiDbm, maxNumSpatialStream, channelUtilization);
     }
 
     private int predictThroughputInternal(@WifiStandard int wifiStandard, boolean is11bMode,
-            int channelWidth, int rssiDbm, int maxNumSpatialStream,  int channelUtilization,
-            int frequency) {
+            int channelWidth, int rssiDbm, int maxNumSpatialStream,  int channelUtilization) {
 
         // channel bandwidth in MHz = 20MHz * (2 ^ channelWidthFactor);
         int channelWidthFactor;
@@ -338,27 +333,6 @@ public class ThroughputPredictor {
             maxBitsPerTone = MAX_BITS_PER_TONE_11AX;
             symDurationNs = SYM_DURATION_11AX_NS;
         }
-        // 6Ghz RSSI boost
-        if (mContext.getResources().getBoolean(R.bool.config_wifiEnable6GhzBeaconRssiBoost)
-                && ScanResult.is6GHz(frequency)) {
-            switch (channelWidth) {
-                case ScanResult.CHANNEL_WIDTH_40MHZ:
-                    rssiDbm += 3;
-                    break;
-                case ScanResult.CHANNEL_WIDTH_80MHZ:
-                    rssiDbm += 6;
-                    break;
-                case ScanResult.CHANNEL_WIDTH_160MHZ:
-                    rssiDbm += 9;
-                    break;
-                case ScanResult.CHANNEL_WIDTH_320MHZ:
-                    rssiDbm += 12;
-                    break;
-                default:
-                    // do nothing
-            }
-        }
-
         // noiseFloorDbBoost = 10 * log10 * (2 ^ channelWidthFactor)
         int noiseFloorDbBoost = TWO_IN_DB * channelWidthFactor;
         int noiseFloorDbm = NOISE_FLOOR_20MHZ_DBM + noiseFloorDbBoost + SNR_MARGIN_DB;
