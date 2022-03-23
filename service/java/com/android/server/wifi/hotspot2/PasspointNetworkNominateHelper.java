@@ -18,7 +18,7 @@ package com.android.server.wifi.hotspot2;
 
 import android.annotation.NonNull;
 import android.net.wifi.WifiConfiguration;
-import android.net.wifi.util.ScanResultUtil;
+import android.os.Process;
 import android.util.LocalLog;
 import android.util.Pair;
 
@@ -29,6 +29,7 @@ import com.android.server.wifi.WifiNetworkSelector;
 import com.android.server.wifi.hotspot2.anqp.ANQPElement;
 import com.android.server.wifi.hotspot2.anqp.Constants;
 import com.android.server.wifi.hotspot2.anqp.HSWanMetricsElement;
+import com.android.server.wifi.util.ScanResultUtil;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -88,6 +89,12 @@ public class PasspointNetworkNominateHelper {
                 // If scanDetail is not Passpoint network, ignore.
                 continue;
             }
+            if (isApWanLinkStatusDown(scanDetail)) {
+                // If scanDetail has no internet connection, ignore.
+                mLocalLog.log("Ignoring no internet connection Passpoint AP: "
+                        + WifiNetworkSelector.toScanId(scanDetail.getScanResult()));
+                continue;
+            }
             filteredScanDetails.add(scanDetail);
         }
         if (!filteredScanDetails.isEmpty()) {
@@ -143,8 +150,7 @@ public class PasspointNetworkNominateHelper {
      */
     private @NonNull List<Pair<ScanDetail, WifiConfiguration>> findBestMatchScanDetailForProviders(
             List<ScanDetail> scanDetails, boolean isFromSuggestion) {
-        if (mPasspointManager.isProvidersListEmpty()
-                || !mPasspointManager.isWifiPasspointEnabled()) {
+        if (mPasspointManager.isProvidersListEmpty()) {
             return Collections.emptyList();
         }
         List<Pair<ScanDetail, WifiConfiguration>> results = new ArrayList<>();
@@ -198,7 +204,7 @@ public class PasspointNetworkNominateHelper {
     private WifiConfiguration createWifiConfigForProvider(
             PasspointNetworkCandidate candidate) {
         WifiConfiguration config = candidate.mProvider.getWifiConfig();
-        config.SSID = ScanResultUtil.createQuotedSsid(candidate.mScanDetail.getSSID());
+        config.SSID = ScanResultUtil.createQuotedSSID(candidate.mScanDetail.getSSID());
         config.isHomeProviderNetwork = candidate.mMatchStatus == PasspointMatch.HomeProvider;
         if (candidate.mScanDetail.getNetworkDetail().getAnt()
                 == NetworkDetail.Ant.ChargeablePublic) {
@@ -233,15 +239,6 @@ public class PasspointNetworkNominateHelper {
                 candidate.mScanDetail.getScanResult(), 0, null);
         mWifiConfigManager.updateScanDetailForNetwork(
                 result.getNetworkId(), candidate.mScanDetail);
-        if (isApWanLinkStatusDown(candidate.mScanDetail)) {
-            // If scanDetail has no internet connection, mark No Internet and
-            // still report to the upper layer.
-            mLocalLog.log("Mark no internet connection Passpoint AP: "
-                    + WifiNetworkSelector.toScanId(candidate.mScanDetail.getScanResult()));
-            mWifiConfigManager.incrementNetworkNoInternetAccessReports(result.getNetworkId());
-            mWifiConfigManager.updateNetworkSelectionStatus(result.getNetworkId(),
-                    WifiConfiguration.NetworkSelectionStatus.DISABLED_NO_INTERNET_PERMANENT);
-        }
         return mWifiConfigManager.getConfiguredNetwork(result.getNetworkId());
     }
 

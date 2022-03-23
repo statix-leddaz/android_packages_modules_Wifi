@@ -297,7 +297,6 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
         mInterfaceCallbackCaptor.getValue().onUp(TEST_INTERFACE_NAME);
         mLooper.dispatchAll();
 
-        verify(mClientModeImpl).onUpChanged(true);
         ArgumentCaptor<Intent> intentCaptor = ArgumentCaptor.forClass(Intent.class);
         verify(mContext, atLeastOnce()).sendStickyBroadcastAsUser(intentCaptor.capture(),
                 eq(UserHandle.ALL));

@@ -16,18 +16,14 @@
 
 package com.android.server.wifi.aware;
 
-import static com.android.server.wifi.aware.WifiAwareStateManager.INSTANT_MODE_24GHZ;
-import static com.android.server.wifi.aware.WifiAwareStateManager.INSTANT_MODE_5GHZ;
-import static com.android.server.wifi.aware.WifiAwareStateManager.INSTANT_MODE_DISABLED;
-
 import android.annotation.Nullable;
 import android.app.AppOpsManager;
 import android.content.Context;
 import android.net.wifi.aware.ConfigRequest;
 import android.net.wifi.aware.IWifiAwareEventCallback;
 import android.net.wifi.util.HexEncoding;
-import android.os.Bundle;
 import android.os.RemoteException;
+import android.os.WorkSource;
 import android.util.Log;
 import android.util.SparseArray;
 
@@ -66,7 +62,6 @@ public class WifiAwareClientState {
     private final @Nullable String mCallingFeatureId;
     private final boolean mNotifyIdentityChange;
     private final WifiPermissionsUtil mWifiPermissionsUtil;
-    private final Bundle mExtra;
 
     private final AppOpsManager mAppOps;
     private final long mCreationTime;
@@ -78,7 +73,7 @@ public class WifiAwareClientState {
             String callingPackage, @Nullable String callingFeatureId,
             IWifiAwareEventCallback callback, ConfigRequest configRequest,
             boolean notifyIdentityChange, long creationTime,
-            WifiPermissionsUtil wifiPermissionsUtil, Bundle extra) {
+            WifiPermissionsUtil wifiPermissionsUtil) {
         mContext = context;
         mClientId = clientId;
         mUid = uid;
@@ -92,7 +87,6 @@ public class WifiAwareClientState {
         mAppOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
         mCreationTime = creationTime;
         mWifiPermissionsUtil = wifiPermissionsUtil;
-        mExtra = extra;
     }
 
     /**
@@ -112,11 +106,6 @@ public class WifiAwareClientState {
         }
         mSessions.clear();
         mConfigRequest = null;
-        try {
-            mCallback.onAttachTerminate();
-        } catch (RemoteException e1) {
-            Log.e(TAG, "Error on onSessionTerminate()");
-        }
     }
 
     public ConfigRequest getConfigRequest() {
@@ -147,9 +136,6 @@ public class WifiAwareClientState {
         return mSessions;
     }
 
-    public Bundle getExtra() {
-        return mExtra;
-    }
     /**
      * Searches the discovery sessions of this client and returns the one
      * corresponding to the publish/subscribe ID. Used on callbacks from HAL to
@@ -308,25 +294,6 @@ public class WifiAwareClientState {
             }
         }
         return false;
-    }
-
-    /**
-     * Check the highest instant communication mode of the client.
-     * @param timeout Specify an interval when instant mode config timeout
-     * @return current instant mode one of the {@code INSTANT_MODE_*}
-     */
-    public int getInstantMode(long timeout) {
-        int instantMode = INSTANT_MODE_DISABLED;
-        for (int i = 0; i < mSessions.size(); ++i) {
-            int currentSession = mSessions.valueAt(i).getInstantMode(timeout);
-            if (currentSession == INSTANT_MODE_5GHZ) {
-                return INSTANT_MODE_5GHZ;
-            }
-            if (currentSession == INSTANT_MODE_24GHZ) {
-                instantMode = currentSession;
-            }
-        }
-        return instantMode;
     }
 
     /**

@@ -41,8 +41,12 @@ class LogcatLog implements WifiLog {
         mTag = tag;
     }
 
-    public static void enableVerboseLogging(boolean verboseEnabled) {
-        sVerboseLogging = verboseEnabled;
+    public static void enableVerboseLogging(int verboseMode) {
+        if (verboseMode > 0) {
+            sVerboseLogging = true;
+        } else {
+            sVerboseLogging = false;
+        }
     }
 
     /* New-style methods */
