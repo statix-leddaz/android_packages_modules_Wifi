@@ -25,12 +25,10 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.RequiresPermission;
 import android.annotation.SystemApi;
-import android.app.admin.DevicePolicyManager;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.LinkProperties;
-import android.net.MacAddress;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkInfo.DetailedState;
@@ -52,8 +50,6 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
@@ -67,7 +63,6 @@ import java.util.Objects;
  * the same permissions as {@link WifiManager#getScanResults}. If such access is not allowed,
  * {@link #getSSID} will return {@link WifiManager#UNKNOWN_SSID} and
  * {@link #getBSSID} will return {@code "02:00:00:00:00:00"}.
- * {@link #getApMldMacAddress()} will return null.
  * {@link #getNetworkId()} will return {@code -1}.
  * {@link #getPasspointFqdn()} will return null.
  * {@link #getPasspointProviderFriendlyName()} will return null.
@@ -114,28 +109,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
     private String mBSSID;
     @UnsupportedAppUsage
     private WifiSsid mWifiSsid;
-    private boolean mIsHiddenSsid = false;
     private int mNetworkId;
     private int mSecurityType;
-
-    /**
-     * The Multi-Link Device (MLD) MAC Address for the connected access point.
-     * Only applicable for Wi-Fi 7 access points, null otherwise.
-     * This will be set even if the STA is non-MLD
-     */
-    private MacAddress mApMldMacAddress;
-
-    /**
-     * The Multi-Link Operation (MLO) link-id for the access point.
-     * Only applicable for Wi-Fi 7 access points.
-     */
-    private int mApMloLinkId;
-
-    /**
-     * The Multi-Link Operation (MLO) affiliated Links.
-     * Only applicable for Wi-Fi 7 access points.
-     */
-    private List<MloLink> mAffiliatedMloLinks;
 
     /**
      * Used to indicate that the RSSI is invalid, for example if no RSSI measurements are available
@@ -182,15 +157,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * and PMF must be set to Required.
      */
     public static final int SECURITY_TYPE_PASSPOINT_R3 = 12;
-    /** Security type for Easy Connect (DPP) network */
-    public static final int SECURITY_TYPE_DPP = 13;
-
-    /**
-     * Unknown security type that cannot be converted to
-     * DevicePolicyManager.WifiSecurity security type.
-     * @hide
-     */
-    public static final int DPM_SECURITY_TYPE_UNKNOWN = -1;
 
     /**
      * Security type of current connection.
@@ -211,7 +177,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
             SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT,
             SECURITY_TYPE_PASSPOINT_R1_R2,
             SECURITY_TYPE_PASSPOINT_R3,
-            SECURITY_TYPE_DPP,
     })
     public @interface SecurityType {}
 
@@ -290,11 +255,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * Whether the network is trusted or not.
      */
     private boolean mTrusted;
-
-    /**
-     * Whether the network is restricted or not.
-     */
-    private boolean mRestricted;
 
     /**
      * Whether the network is oem paid or not.
@@ -482,19 +442,11 @@ public class WifiInfo implements TransportInfo, Parcelable {
      */
     private @IsPrimaryValues int mIsPrimary;
 
-    /**
-     * Key of the current network.
-     */
-    private String mNetworkKey;
-
     /** @hide */
     @UnsupportedAppUsage
     public WifiInfo() {
         mWifiSsid = null;
         mBSSID = null;
-        mApMldMacAddress = null;
-        mApMloLinkId = 0;
-        mAffiliatedMloLinks = Collections.emptyList();
         mNetworkId = -1;
         mSupplicantState = SupplicantState.UNINITIALIZED;
         mRssi = INVALID_RSSI;
@@ -503,8 +455,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
         mSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
         mSecurityType = -1;
         mIsPrimary = IS_PRIMARY_FALSE;
-        mNetworkKey = null;
-        mApMloLinkId = MloLink.INVALID_MLO_LINK_ID;
     }
 
     /** @hide */
@@ -512,7 +462,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
         setInetAddress(null);
         setBSSID(null);
         setSSID(null);
-        setHiddenSSID(false);
         setNetworkId(-1);
         setRssi(INVALID_RSSI);
         setLinkSpeed(LINK_SPEED_UNKNOWN);
@@ -535,7 +484,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
         setSubscriptionId(SubscriptionManager.INVALID_SUBSCRIPTION_ID);
         setInformationElements(null);
         setIsPrimary(false);
-        setRestricted(false);
         txBad = 0;
         txSuccess = 0;
         rxSuccess = 0;
@@ -547,15 +495,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
         score = 0;
         mIsUsable = true;
         mSecurityType = -1;
-        mNetworkKey = null;
-        resetMultiLinkInfo();
-    }
-
-    /** @hide */
-    public void resetMultiLinkInfo() {
-        setApMldMacAddress(null);
-        mApMloLinkId = MloLink.INVALID_MLO_LINK_ID;
-        mAffiliatedMloLinks = Collections.emptyList();
     }
 
     /**
@@ -575,19 +514,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
             mSupplicantState = source.mSupplicantState;
             mBSSID = shouldRedactLocationSensitiveFields(redactions)
                     ? DEFAULT_MAC_ADDRESS : source.mBSSID;
-            mApMldMacAddress = shouldRedactLocationSensitiveFields(redactions)
-                    ? null : source.mApMldMacAddress;
-            mApMloLinkId = source.mApMloLinkId;
-            if (source.mApMldMacAddress != null) {
-                mAffiliatedMloLinks = new ArrayList<MloLink>();
-                for (MloLink link : source.mAffiliatedMloLinks) {
-                    mAffiliatedMloLinks.add(new MloLink(link, redactions));
-                }
-            } else {
-                mAffiliatedMloLinks = Collections.emptyList();
-            }
             mWifiSsid = shouldRedactLocationSensitiveFields(redactions)
-                    ? null : source.mWifiSsid;
+                    ? WifiSsid.createFromHex(null) : source.mWifiSsid;
             mNetworkId = shouldRedactLocationSensitiveFields(redactions)
                     ? INVALID_NETWORK_ID : source.mNetworkId;
             mRssi = source.mRssi;
@@ -602,7 +530,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
             mMeteredHint = source.mMeteredHint;
             mEphemeral = source.mEphemeral;
             mTrusted = source.mTrusted;
-            mRestricted = source.mRestricted;
             mOemPaid = source.mOemPaid;
             mOemPrivate = source.mOemPrivate;
             mCarrierMerged = source.mCarrierMerged;
@@ -636,8 +563,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
             mIsPrimary = shouldRedactNetworkSettingsFields(redactions)
                     ? IS_PRIMARY_NO_PERMISSION : source.mIsPrimary;
             mSecurityType = source.mSecurityType;
-            mNetworkKey = shouldRedactLocationSensitiveFields(redactions)
-                    ? null : source.mNetworkKey;
         }
     }
 
@@ -651,7 +576,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
          */
         @NonNull
         public Builder setSsid(@NonNull byte[] ssid) {
-            mWifiInfo.setSSID(WifiSsid.fromBytes(ssid));
+            mWifiInfo.setSSID(WifiSsid.createFromByteArray(ssid));
             return this;
         }
 
@@ -662,38 +587,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
         @NonNull
         public Builder setBssid(@NonNull String bssid) {
             mWifiInfo.setBSSID(bssid);
-            return this;
-        }
-
-        /**
-         * Set the AP MLD (Multi-Link Device) MAC Address.
-         * @see WifiInfo#getApMldMacAddress()
-         * @hide
-         */
-        @Nullable
-        public Builder setApMldMacAddress(@Nullable MacAddress address) {
-            mWifiInfo.setApMldMacAddress(address);
-            return this;
-        }
-
-        /**
-         * Set the access point Multi-Link Operation (MLO) link-id.
-         * @see WifiInfo#getApMloLinkId()
-         * @hide
-         */
-        public Builder setApMloLinkId(int linkId) {
-            mWifiInfo.setApMloLinkId(linkId);
-            return this;
-        }
-
-        /**
-         * Set the Multi-Link Operation (MLO) affiliated Links.
-         * Only applicable for Wi-Fi 7 access points.
-         * @see WifiInfo#getAffiliatedMloLinks()
-         * @hide
-         */
-        public Builder setAffiliatedMloLinks(@NonNull List<MloLink> links) {
-            mWifiInfo.setAffiliatedMloLinks(links);
             return this;
         }
 
@@ -758,9 +651,12 @@ public class WifiInfo implements TransportInfo, Parcelable {
      */
     public String getSSID() {
         if (mWifiSsid != null) {
-            String ssidString = mWifiSsid.toString();
-            if (!TextUtils.isEmpty(ssidString)) {
-                return ssidString;
+            String unicode = mWifiSsid.toString();
+            if (!TextUtils.isEmpty(unicode)) {
+                return "\"" + unicode + "\"";
+            } else {
+                String hex = mWifiSsid.getHexString();
+                return (hex != null) ? hex : WifiManager.UNKNOWN_SSID;
             }
         }
         return WifiManager.UNKNOWN_SSID;
@@ -779,76 +675,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
     }
 
     /**
-     * Set the access point Multi-Link Device (MLD) MAC Address.
-     * @hide
-     */
-    public void setApMldMacAddress(@Nullable MacAddress address) {
-        mApMldMacAddress = address;
-    }
-
-    /**
-     * Set the access point Multi-Link Operation (MLO) link-id
-     * @hide
-     */
-    public void setApMloLinkId(int linkId) {
-        mApMloLinkId = linkId;
-    }
-
-    /**
-     * Set the Multi-Link Operation (MLO) affiliated Links.
-     * Only applicable for Wi-Fi 7 access points.
-     *
-     * @hide
-     */
-    public void setAffiliatedMloLinks(@NonNull List<MloLink> links) {
-        mAffiliatedMloLinks = new ArrayList<MloLink>(links);
-    }
-
-    /**
-     * Update the MLO link STA MAC Address
-     *
-     * @param linkId for the link to be updated.
-     * @param macAddress value to be set in the link.
-     *
-     * @return true on success, false on failure
-     *
-     * @hide
-     */
-    public boolean updateMloLinkStaAddress(int linkId, MacAddress macAddress) {
-        for (MloLink link : mAffiliatedMloLinks) {
-            if (link.getLinkId() == linkId) {
-                link.setStaMacAddress(macAddress);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Update the MLO link State
-     *
-     * @param linkId for the link to be updated.
-     * @param state value to be set in the link as one of {@link MloLink.MloLinkState}
-     *
-     * @return true on success, false on failure
-     *
-     * @hide
-     */
-    public boolean updateMloLinkState(int linkId, @MloLink.MloLinkState int state) {
-        if (!MloLink.isValidState(state)) {
-            return false;
-        }
-
-        for (MloLink link : mAffiliatedMloLinks) {
-            if (link.getLinkId() == linkId) {
-                link.setState(state);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * Return the basic service set identifier (BSSID) of the current access point.
      * <p>
      * The BSSID may be
@@ -861,48 +687,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
      */
     public String getBSSID() {
         return mBSSID;
-    }
-
-    /**
-     * Return the Multi-Link Device (MLD) MAC Address for the connected access point.
-     * <p>
-     * The returned MLD MAC Address will be {@code null} in the following cases:
-     * <lt>There is no network currently connected</lt>
-     * <lt>The connected access point is not an MLD access point,
-     * i.e. {@link #getWifiStandard()} returns {@link ScanResult#WIFI_STANDARD_11BE}.</lt>
-     * <lt>The caller has insufficient permissions to access the access point MLD MAC Address.<lt>
-     * </p>
-     *
-     * @return the MLD Mac address
-     */
-    @Nullable
-    public MacAddress getApMldMacAddress() {
-        return mApMldMacAddress;
-    }
-
-    /**
-     * Return the access point Multi-Link Operation (MLO) link-id for Wi-Fi 7 access points.
-     * i.e. {@link #getWifiStandard()} returns {@link ScanResult#WIFI_STANDARD_11BE},
-     * otherwise return {@link MloLink#INVALID_MLO_LINK_ID}.
-     *
-     * Valid values are 0-15 as described in IEEE 802.11be Specification, section 9.4.2.295b.2.
-     *
-     * @return {@link MloLink#INVALID_MLO_LINK_ID} or a valid value (0-15).
-     */
-    @IntRange(from = MloLink.INVALID_MLO_LINK_ID, to = MloLink.MAX_MLO_LINK_ID)
-    public int getApMloLinkId() {
-        return mApMloLinkId;
-    }
-
-    /**
-     * Return the Multi-Link Operation (MLO) affiliated Links for Wi-Fi 7 access points.
-     * i.e. when {@link #getWifiStandard()} returns {@link ScanResult#WIFI_STANDARD_11BE}.
-     *
-     * @return List of affiliated MLO links, or an empty list if access point is not Wi-Fi 7
-     */
-    @NonNull
-    public List<MloLink> getAffiliatedMloLinks() {
-        return new ArrayList<MloLink>(mAffiliatedMloLinks);
     }
 
     /**
@@ -1108,13 +892,13 @@ public class WifiInfo implements TransportInfo, Parcelable {
         mMeteredHint = meteredHint;
     }
 
-    /** @hide */
+    /** {@hide} */
     @UnsupportedAppUsage
     public boolean getMeteredHint() {
         return mMeteredHint;
     }
 
-    /** @hide */
+    /** {@hide} */
     public void setEphemeral(boolean ephemeral) {
         mEphemeral = ephemeral;
     }
@@ -1132,7 +916,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
         return mEphemeral;
     }
 
-    /** @hide */
+    /** {@hide} */
     public void setTrusted(boolean trusted) {
         mTrusted = trusted;
     }
@@ -1140,29 +924,14 @@ public class WifiInfo implements TransportInfo, Parcelable {
     /**
      * Returns true if the current Wifi network is a trusted network, false otherwise.
      * @see WifiNetworkSuggestion.Builder#setUntrusted(boolean).
-     * @hide
+     * {@hide}
      */
     @SystemApi
     public boolean isTrusted() {
         return mTrusted;
     }
 
-    /** @hide */
-    public void setRestricted(boolean restricted) {
-        mRestricted = restricted;
-    }
-
-    /**
-     * Returns true if the current Wifi network is a restricted network, false otherwise.
-     * A restricted network has its {@link NetworkCapabilities#NET_CAPABILITY_NOT_RESTRICTED}
-     * capability removed.
-     * @see WifiNetworkSuggestion.Builder#setRestricted(boolean).
-     */
-    public boolean isRestricted() {
-        return mRestricted;
-    }
-
-    /** @hide */
+    /** {@hide} */
     public void setOemPaid(boolean oemPaid) {
         mOemPaid = oemPaid;
     }
@@ -1170,7 +939,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
     /**
      * Returns true if the current Wifi network is an oem paid network, false otherwise.
      * @see WifiNetworkSuggestion.Builder#setOemPaid(boolean).
-     * @hide
+     * {@hide}
      */
     @RequiresApi(Build.VERSION_CODES.S)
     @SystemApi
@@ -1181,7 +950,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
         return mOemPaid;
     }
 
-    /** @hide */
+    /** {@hide} */
     public void setOemPrivate(boolean oemPrivate) {
         mOemPrivate = oemPrivate;
     }
@@ -1189,7 +958,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
     /**
      * Returns true if the current Wifi network is an oem private network, false otherwise.
      * @see WifiNetworkSuggestion.Builder#setOemPrivate(boolean).
-     * @hide
+     * {@hide}
      */
     @RequiresApi(Build.VERSION_CODES.S)
     @SystemApi
@@ -1201,7 +970,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
     }
 
     /**
-     * @hide
+     * {@hide}
      */
     public void setCarrierMerged(boolean carrierMerged) {
         mCarrierMerged = carrierMerged;
@@ -1210,7 +979,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
     /**
      * Returns true if the current Wifi network is a carrier merged network, false otherwise.
      * @see WifiNetworkSuggestion.Builder#setCarrierMerged(boolean).
-     * @hide
+     * {@hide}
      */
     @SystemApi
     @RequiresApi(Build.VERSION_CODES.S)
@@ -1222,24 +991,24 @@ public class WifiInfo implements TransportInfo, Parcelable {
     }
 
 
-    /** @hide */
+    /** {@hide} */
     public void setOsuAp(boolean osuAp) {
         mOsuAp = osuAp;
     }
 
-    /** @hide */
+    /** {@hide} */
     @SystemApi
     public boolean isOsuAp() {
         return mOsuAp;
     }
 
-    /** @hide */
+    /** {@hide} */
     @SystemApi
     public boolean isPasspointAp() {
         return mFqdn != null && mProviderFriendlyName != null;
     }
 
-    /** @hide */
+    /** {@hide} */
     public void setFQDN(@Nullable String fqdn) {
         mFqdn = fqdn;
     }
@@ -1256,7 +1025,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
         return mFqdn;
     }
 
-    /** @hide */
+    /** {@hide} */
     public void setProviderFriendlyName(@Nullable String providerFriendlyName) {
         mProviderFriendlyName = providerFriendlyName;
     }
@@ -1274,7 +1043,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
         return mProviderFriendlyName;
     }
 
-    /** @hide */
+    /** {@hide} */
     public void setRequestingPackageName(@Nullable String packageName) {
         mRequestingPackageName = packageName;
     }
@@ -1290,7 +1059,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
         return mRequestingPackageName;
     }
 
-    /** @hide */
+    /** {@hide} */
     public void setSubscriptionId(int subId) {
         mSubscriptionId = subId;
     }
@@ -1371,16 +1140,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * SSID-specific probe request must be used for scans.
      */
     public boolean getHiddenSSID() {
-        return mIsHiddenSsid;
-    }
-
-    /**
-     * Sets whether or not this network is using a hidden SSID. This value should be set from the
-     * corresponding {@link WifiConfiguration} of the network.
-     * @hide
-     */
-    public void setHiddenSSID(boolean isHiddenSsid) {
-        mIsHiddenSsid = isHiddenSsid;
+        if (mWifiSsid == null) return false;
+        return mWifiSsid.isHidden();
     }
 
     /**
@@ -1446,7 +1207,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
         sb.append("SSID: ").append(getSSID())
                 .append(", BSSID: ").append(mBSSID == null ? none : mBSSID)
                 .append(", MAC: ").append(mMacAddress == null ? none : mMacAddress)
-                .append(", IP: ").append(mIpAddress)
                 .append(", Security type: ").append(mSecurityType)
                 .append(", Supplicant state: ")
                 .append(mSupplicantState == null ? none : mSupplicantState)
@@ -1466,27 +1226,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
                 .append(", isUsable: ").append(mIsUsable)
                 .append(", CarrierMerged: ").append(mCarrierMerged)
                 .append(", SubscriptionId: ").append(mSubscriptionId)
-                .append(", IsPrimary: ").append(mIsPrimary)
-                .append(", Trusted: ").append(mTrusted)
-                .append(", Restricted: ").append(mRestricted)
-                .append(", Ephemeral: ").append(mEphemeral)
-                .append(", OEM paid: ").append(mOemPaid)
-                .append(", OEM private: ").append(mOemPrivate)
-                .append(", OSU AP: ").append(mOsuAp)
-                .append(", FQDN: ").append(mFqdn == null ? none : mFqdn)
-                .append(", Provider friendly name: ")
-                .append(mProviderFriendlyName == null ? none : mProviderFriendlyName)
-                .append(", Requesting package name: ")
-                .append(mRequestingPackageName == null ? none : mRequestingPackageName)
-                .append(mNetworkKey == null ? none : mNetworkKey)
-                .append("MLO Information: ")
-                .append(", AP MLD Address: ").append(
-                        mApMldMacAddress == null ? none : mApMldMacAddress.toString())
-                .append(", AP MLO Link Id: ").append(
-                        mApMldMacAddress == null ? none : mApMloLinkId)
-                .append(", AP MLO Affiliated links: ").append(
-                        mApMldMacAddress == null ? none : mAffiliatedMloLinks);
-
+                .append(", IsPrimary: ").append(mIsPrimary);
         return sb.toString();
     }
 
@@ -1560,11 +1300,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
             dest.writeInt(mIsPrimary);
         }
         dest.writeInt(mSecurityType);
-        dest.writeInt(mRestricted ? 1 : 0);
-        dest.writeString(mNetworkKey);
-        dest.writeParcelable(mApMldMacAddress, flags);
-        dest.writeInt(mApMloLinkId);
-        dest.writeTypedList(mAffiliatedMloLinks);
     }
 
     /** Implement the Parcelable interface {@hide} */
@@ -1621,12 +1356,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
                     info.mIsPrimary = in.readInt();
                 }
                 info.mSecurityType = in.readInt();
-                info.mRestricted = in.readInt() != 0;
-                info.mNetworkKey = in.readString();
-
-                info.mApMldMacAddress = in.readParcelable(MacAddress.class.getClassLoader());
-                info.mApMloLinkId = in.readInt();
-                info.mAffiliatedMloLinks = in.createTypedArrayList(MloLink.CREATOR);
                 return info;
             }
 
@@ -1720,18 +1449,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
         return mIsPrimary == IS_PRIMARY_TRUE;
     }
 
-    private List<MloLink> getSortedMloLinkList(List<MloLink> list) {
-        List<MloLink> newList = new ArrayList<MloLink>(list);
-        Collections.sort(newList, new Comparator<MloLink>() {
-            @Override
-            public int compare(MloLink lhs, MloLink rhs) {
-                return lhs.getLinkId() -  rhs.getLinkId();
-            }
-        });
-
-        return newList;
-    }
-
     @Override
     public boolean equals(Object that) {
         if (this == that) return true;
@@ -1742,17 +1459,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
         if (!(that instanceof WifiInfo)) return false;
 
         WifiInfo thatWifiInfo = (WifiInfo) that;
-
-        // compare the MLO affiliated links irrespective of the order
-        if (!Objects.equals(getSortedMloLinkList(mAffiliatedMloLinks),
-                  getSortedMloLinkList(thatWifiInfo.mAffiliatedMloLinks))) {
-            return false;
-        }
-
         return Objects.equals(mWifiSsid, thatWifiInfo.mWifiSsid)
                 && Objects.equals(mBSSID, thatWifiInfo.mBSSID)
-                && Objects.equals(mApMldMacAddress, thatWifiInfo.mApMldMacAddress)
-                && mApMloLinkId == thatWifiInfo.mApMloLinkId
                 && Objects.equals(mNetworkId, thatWifiInfo.mNetworkId)
                 && Objects.equals(mRssi, thatWifiInfo.mRssi)
                 && Objects.equals(mSupplicantState, thatWifiInfo.mSupplicantState)
@@ -1791,10 +1499,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
                 && Objects.equals(mMaxSupportedRxLinkSpeed, thatWifiInfo.mMaxSupportedRxLinkSpeed)
                 && Objects.equals(mPasspointUniqueId, thatWifiInfo.mPasspointUniqueId)
                 && Objects.equals(mInformationElements, thatWifiInfo.mInformationElements)
-                && mIsPrimary ==  thatWifiInfo.mIsPrimary
-                && mSecurityType == thatWifiInfo.mSecurityType
-                && mRestricted == thatWifiInfo.mRestricted
-                && Objects.equals(mNetworkKey, thatWifiInfo.mNetworkKey);
+                && Objects.equals(mIsPrimary, thatWifiInfo.mIsPrimary)
+                && Objects.equals(mSecurityType, thatWifiInfo.mSecurityType);
     }
 
     @Override
@@ -1804,9 +1510,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
 
         return Objects.hash(mWifiSsid,
                 mBSSID,
-                mApMldMacAddress,
-                mApMloLinkId,
-                mAffiliatedMloLinks,
                 mNetworkId,
                 mRssi,
                 mSupplicantState,
@@ -1843,9 +1546,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
                 mPasspointUniqueId,
                 mInformationElements,
                 mIsPrimary,
-                mSecurityType,
-                mRestricted,
-                mNetworkKey);
+                mSecurityType);
     }
 
     /**
@@ -1879,7 +1580,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * @hide
      */
     public void setCurrentSecurityType(@WifiConfiguration.SecurityType int securityType) {
-        mSecurityType = convertWifiConfigurationSecurityType(securityType);
+        mSecurityType = convertSecurityTypeToWifiInfo(securityType);
     }
 
     /**
@@ -1899,15 +1600,9 @@ public class WifiInfo implements TransportInfo, Parcelable {
         return mSecurityType;
     }
 
-    /**
-     * Converts the WifiConfiguration.SecurityType to a WifiInfo.SecurityType
-     * @param wifiConfigSecurity WifiConfiguration.SecurityType to convert
-     * @return security type as a WifiInfo.SecurityType
-     * @hide
-     */
-    public static @SecurityType int convertWifiConfigurationSecurityType(
-            @WifiConfiguration.SecurityType int wifiConfigSecurity) {
-        switch (wifiConfigSecurity) {
+    private @SecurityType int convertSecurityTypeToWifiInfo(
+            @WifiConfiguration.SecurityType int securityType) {
+        switch (securityType) {
             case WifiConfiguration.SECURITY_TYPE_OPEN:
                 return SECURITY_TYPE_OPEN;
             case WifiConfiguration.SECURITY_TYPE_WEP:
@@ -1932,68 +1627,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
                 return SECURITY_TYPE_PASSPOINT_R1_R2;
             case WifiConfiguration.SECURITY_TYPE_PASSPOINT_R3:
                 return SECURITY_TYPE_PASSPOINT_R3;
-            case WifiConfiguration.SECURITY_TYPE_DPP:
-                return SECURITY_TYPE_DPP;
             default:
                 return SECURITY_TYPE_UNKNOWN;
         }
-    }
-
-    /**
-     * Utility method to convert WifiInfo.SecurityType to DevicePolicyManager.WifiSecurity
-     * @param securityType WifiInfo.SecurityType to convert
-     * @return DevicePolicyManager.WifiSecurity security level, or
-     * {@link #DPM_SECURITY_TYPE_UNKNOWN} for unknown security types
-     * @hide
-     */
-    public static int convertSecurityTypeToDpmWifiSecurity(
-            @WifiInfo.SecurityType int securityType) {
-        switch (securityType) {
-            case SECURITY_TYPE_OPEN:
-            case SECURITY_TYPE_OWE:
-                return DevicePolicyManager.WIFI_SECURITY_OPEN;
-            case SECURITY_TYPE_WEP:
-            case SECURITY_TYPE_PSK:
-            case SECURITY_TYPE_SAE:
-            case SECURITY_TYPE_WAPI_PSK:
-                return DevicePolicyManager.WIFI_SECURITY_PERSONAL;
-            case SECURITY_TYPE_EAP:
-            case SECURITY_TYPE_EAP_WPA3_ENTERPRISE:
-            case SECURITY_TYPE_PASSPOINT_R1_R2:
-            case SECURITY_TYPE_PASSPOINT_R3:
-            case SECURITY_TYPE_WAPI_CERT:
-                return DevicePolicyManager.WIFI_SECURITY_ENTERPRISE_EAP;
-            case SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT:
-                return DevicePolicyManager.WIFI_SECURITY_ENTERPRISE_192;
-            default:
-                return DPM_SECURITY_TYPE_UNKNOWN;
-        }
-    }
-
-    /**
-     * Set the network key for the current Wi-Fi network.
-     *
-     * Now we are using this identity to be a key when storing Wi-Fi data usage data.
-     * See: {@link WifiConfiguration#getNetworkKeyFromSecurityType(int)}.
-     *
-     * @param currentNetworkKey the network key of the current Wi-Fi network.
-     * @hide
-     */
-    public void setNetworkKey(@NonNull String currentNetworkKey) {
-        mNetworkKey = currentNetworkKey;
-    }
-
-    /**
-     * Returns the network key of the current Wi-Fi network.
-     *
-     * The network key may be {@code null}, if there is no network currently connected
-     * or if the caller has insufficient permissions to access the network key.
-     *
-     * @hide
-     */
-    @SystemApi
-    @Nullable
-    public String getNetworkKey() {
-        return mNetworkKey;
     }
 }

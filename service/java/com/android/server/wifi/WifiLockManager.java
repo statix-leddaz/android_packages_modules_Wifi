@@ -606,8 +606,7 @@ public class WifiLockManager {
     private boolean resetCurrentMode(@NonNull ClientModeManager clientModeManager) {
         switch (mCurrentOpMode) {
             case WifiManager.WIFI_MODE_FULL_HIGH_PERF:
-                if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
-                        true)) {
+                if (!clientModeManager.setPowerSave(true)) {
                     Log.e(TAG, "Failed to reset the OpMode from hi-perf to Normal");
                     return false;
                 }
@@ -642,8 +641,7 @@ public class WifiLockManager {
     private boolean setNewMode(@NonNull ClientModeManager clientModeManager, int newLockMode) {
         switch (newLockMode) {
             case WifiManager.WIFI_MODE_FULL_HIGH_PERF:
-                if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
-                        false)) {
+                if (!clientModeManager.setPowerSave(false)) {
                     Log.e(TAG, "Failed to set the OpMode to hi-perf");
                     return false;
                 }
@@ -752,8 +750,7 @@ public class WifiLockManager {
                 return false;
             }
 
-            if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
-                    !enabled)) {
+            if (!clientModeManager.setPowerSave(!enabled)) {
                 Log.e(TAG, "Failed to set power save mode");
                 // Revert the low latency mode
                 clientModeManager.setLowLatencyMode(!enabled);
@@ -761,8 +758,7 @@ public class WifiLockManager {
             }
         } else if (lowLatencySupport == LOW_LATENCY_NOT_SUPPORTED) {
             // Only set power save mode
-            if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
-                    !enabled)) {
+            if (!clientModeManager.setPowerSave(!enabled)) {
                 Log.e(TAG, "Failed to set power save mode");
                 return false;
             }
@@ -861,8 +857,12 @@ public class WifiLockManager {
         }
     }
 
-    protected void enableVerboseLogging(boolean verboseEnabled) {
-        mVerboseLoggingEnabled = verboseEnabled;
+    protected void enableVerboseLogging(int verbose) {
+        if (verbose > 0) {
+            mVerboseLoggingEnabled = true;
+        } else {
+            mVerboseLoggingEnabled = false;
+        }
     }
 
     private class WifiLock implements IBinder.DeathRecipient {
@@ -905,7 +905,7 @@ public class WifiLockManager {
         }
 
         public void binderDied() {
-            mHandler.post(() -> releaseLock(mBinder));
+            releaseLock(mBinder);
         }
 
         public void unlinkDeathRecipient() {
