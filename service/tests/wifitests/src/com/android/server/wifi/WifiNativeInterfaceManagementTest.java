@@ -72,7 +72,6 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
     private static final String IFACE_NAME_0 = "mockWlan0";
     private static final String IFACE_NAME_1 = "mockWlan1";
     private static final WorkSource TEST_WORKSOURCE = new WorkSource();
-    private static final long TEST_SUPPORTED_FEATURES = 0;
 
     @Mock private WifiVendorHal mWifiVendorHal;
     @Mock private WifiNl80211Manager mWificondControl;
@@ -88,9 +87,6 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
     @Mock private WifiNative.StatusListener mStatusListener;
     @Mock private WifiNative.InterfaceCallback mIfaceCallback0;
     @Mock private WifiNative.InterfaceCallback mIfaceCallback1;
-
-    @Mock private WifiSettingsConfigStore mWifiSettingsConfigStore;
-
     private TestLooper mLooper;
 
     private ArgumentCaptor<VendorHalDeathEventHandler> mWifiVendorHalDeathHandlerCaptor =
@@ -173,11 +169,6 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
         when(mHostapdHal.registerApCallback(any(), any())).thenReturn(true);
 
         when(mWifiInjector.makeNetdWrapper()).thenReturn(mNetdWrapper);
-        when(mWifiInjector.getSettingsConfigStore()).thenReturn(mWifiSettingsConfigStore);
-
-        when(mWifiSettingsConfigStore.get(
-                eq(WifiSettingsConfigStore.WIFI_NATIVE_SUPPORTED_FEATURES)))
-                .thenReturn(TEST_SUPPORTED_FEATURES);
 
         mInOrder = inOrder(mWifiVendorHal, mWificondControl, mSupplicantStaIfaceHal, mHostapdHal,
                 mWifiMonitor, mNetdWrapper, mIfaceCallback0, mIfaceCallback1, mWifiMetrics);
@@ -537,7 +528,6 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
         mInOrder.verify(mNetdWrapper).registerObserver(mNetworkObserverCaptor1.capture());
         mInOrder.verify(mWifiMonitor).startMonitoring(IFACE_NAME_0);
         mInOrder.verify(mNetdWrapper).isInterfaceUp(IFACE_NAME_0);
-        mInOrder.verify(mWifiVendorHal).enableLinkLayerStats(IFACE_NAME_0);
         mInOrder.verify(mNetdWrapper).clearInterfaceAddresses(IFACE_NAME_0);
         mInOrder.verify(mNetdWrapper).setInterfaceIpv6PrivacyExtensions(IFACE_NAME_0, true);
         mInOrder.verify(mNetdWrapper).disableIpv6(IFACE_NAME_0);
@@ -839,7 +829,7 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
 
         // Start softap
         assertTrue(mWifiNative.startSoftAp(IFACE_NAME_0, new SoftApConfiguration.Builder().build(),
-                true, mock(WifiNative.SoftApHalCallback.class)));
+                true, mock(WifiNative.SoftApListener.class)));
 
         mInOrder.verify(mHostapdHal).isApInfoCallbackSupported();
         mInOrder.verify(mHostapdHal).registerApCallback(any(), any());
@@ -866,7 +856,7 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
 
         // Start softap
         assertTrue(mWifiNative.startSoftAp(IFACE_NAME_0, new SoftApConfiguration.Builder().build(),
-                true, mock(WifiNative.SoftApHalCallback.class)));
+                true, mock(WifiNative.SoftApListener.class)));
 
         mInOrder.verify(mHostapdHal).isApInfoCallbackSupported();
         mInOrder.verify(mWificondControl).registerApCallback(any(), any(), any());
@@ -1288,7 +1278,6 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
         mInOrder.verify(mNetdWrapper).registerObserver(mNetworkObserverCaptor0.capture());
         mInOrder.verify(mWifiMonitor).startMonitoring(IFACE_NAME_0);
         mInOrder.verify(mNetdWrapper).isInterfaceUp(IFACE_NAME_0);
-        mInOrder.verify(mWifiVendorHal).enableLinkLayerStats(eq(IFACE_NAME_0));
         mInOrder.verify(mNetdWrapper).clearInterfaceAddresses(IFACE_NAME_0);
         mInOrder.verify(mNetdWrapper).setInterfaceIpv6PrivacyExtensions(IFACE_NAME_0, true);
         mInOrder.verify(mNetdWrapper).disableIpv6(IFACE_NAME_0);
@@ -1384,7 +1373,6 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
         mInOrder.verify(mNetdWrapper).registerObserver(mNetworkObserverCaptor1.capture());
         mInOrder.verify(mWifiMonitor).startMonitoring(IFACE_NAME_0);
         mInOrder.verify(mNetdWrapper).isInterfaceUp(IFACE_NAME_0);
-        mInOrder.verify(mWifiVendorHal).enableLinkLayerStats(eq(IFACE_NAME_0));
         mInOrder.verify(mNetdWrapper).clearInterfaceAddresses(IFACE_NAME_0);
         mInOrder.verify(mNetdWrapper).setInterfaceIpv6PrivacyExtensions(IFACE_NAME_0, true);
         mInOrder.verify(mNetdWrapper).disableIpv6(IFACE_NAME_0);
@@ -1540,7 +1528,6 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
         mInOrder.verify(mNetdWrapper).registerObserver(networkObserverCaptor.capture());
         mInOrder.verify(mWifiMonitor).startMonitoring(ifaceName);
         mInOrder.verify(mNetdWrapper).isInterfaceUp(ifaceName);
-        mInOrder.verify(mWifiVendorHal).enableLinkLayerStats(ifaceName);
         mInOrder.verify(mNetdWrapper).clearInterfaceAddresses(ifaceName);
         mInOrder.verify(mNetdWrapper).setInterfaceIpv6PrivacyExtensions(ifaceName, true);
         mInOrder.verify(mNetdWrapper).disableIpv6(ifaceName);
@@ -1624,7 +1611,6 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
         mInOrder.verify(mNetdWrapper).registerObserver(networkObserverCaptor.capture());
         mInOrder.verify(mWifiMonitor).startMonitoring(ifaceName);
         mInOrder.verify(mNetdWrapper).isInterfaceUp(ifaceName);
-        mInOrder.verify(mWifiVendorHal).enableLinkLayerStats(ifaceName);
         mInOrder.verify(mSupplicantStaIfaceHal).getAdvancedCapabilities(ifaceName);
         mInOrder.verify(mWifiVendorHal).getSupportedFeatureSet(ifaceName);
         mInOrder.verify(mSupplicantStaIfaceHal).getWpaDriverFeatureSet(ifaceName);
