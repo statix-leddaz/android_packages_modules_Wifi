@@ -19,6 +19,8 @@ package com.android.server.wifi;
 import static android.net.wifi.WifiScanner.WIFI_BAND_24_GHZ;
 import static android.net.wifi.WifiScanner.WIFI_BAND_5_GHZ;
 
+import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_NATIVE_SUPPORTED_FEATURES;
+
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -33,6 +35,7 @@ import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -64,6 +67,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.AdditionalMatchers;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
@@ -233,6 +237,8 @@ public class WifiNativeTest extends WifiBaseTest {
         return result;
     }
 
+    public static final long WIFI_TEST_FEATURE = 0x800000000L;
+
     private static final RadioChainInfo MOCK_NATIVE_RADIO_CHAIN_INFO_1 = new RadioChainInfo(1, -89);
     private static final RadioChainInfo MOCK_NATIVE_RADIO_CHAIN_INFO_2 = new RadioChainInfo(0, -78);
     private static final WorkSource TEST_WORKSOURCE = new WorkSource();
@@ -254,6 +260,7 @@ public class WifiNativeTest extends WifiBaseTest {
     @Mock BuildProperties mBuildProperties;
     @Mock private WifiNative.InterfaceCallback mInterfaceCallback;
     @Mock private WifiCountryCode.ChangeListener mWifiCountryCodeChangeListener;
+    @Mock WifiSettingsConfigStore mSettingsConfigStore;
 
     ArgumentCaptor<WifiNl80211Manager.ScanEventCallback> mScanCallbackCaptor =
             ArgumentCaptor.forClass(WifiNl80211Manager.ScanEventCallback.class);
@@ -286,6 +293,10 @@ public class WifiNativeTest extends WifiBaseTest {
 
         when(mWifiInjector.makeNetdWrapper()).thenReturn(mNetdWrapper);
         when(mWifiInjector.getCoexManager()).thenReturn(mCoexManager);
+
+        when(mWifiInjector.getSettingsConfigStore()).thenReturn(mSettingsConfigStore);
+        when(mSettingsConfigStore.get(eq(WIFI_NATIVE_SUPPORTED_FEATURES)))
+                .thenReturn(WIFI_TEST_FEATURE);
 
         mWifiNative = new WifiNative(
                 mWifiVendorHal, mStaIfaceHal, mHostapdHal, mWificondControl,
@@ -616,13 +627,28 @@ public class WifiNativeTest extends WifiBaseTest {
     // TODO(b/28005116): Add test for the success case of getDriverStateDump().
 
     /**
+     * Verifies getWifiLinkLayerStats() calls underlying WifiVendorHal.
+     *
+     */
+    @Test
+    public void testGetWifiLinkLayerStatsForClientInConnectivityMode() throws Exception {
+        mWifiNative.setupInterfaceForClientInConnectivityMode(null, TEST_WORKSOURCE);
+        mWifiNative.getWifiLinkLayerStats(WIFI_IFACE_NAME);
+        mWifiNative.getWifiLinkLayerStats(WIFI_IFACE_NAME);
+        verify(mWifiVendorHal, times(2)).getWifiLinkLayerStats(eq(WIFI_IFACE_NAME));
+    }
+
+    /**
      * Verifies client mode + scan success.
      */
     @Test
     public void testClientModeScanSuccess() {
+        InOrder order = inOrder(mWificondControl, mNetdWrapper, mWifiVendorHal);
         mWifiNative.setupInterfaceForClientInConnectivityMode(null, TEST_WORKSOURCE);
-        verify(mWificondControl).setupInterfaceForClientMode(eq(WIFI_IFACE_NAME), any(),
+        order.verify(mWificondControl).setupInterfaceForClientMode(eq(WIFI_IFACE_NAME), any(),
                 mScanCallbackCaptor.capture(), any());
+        order.verify(mNetdWrapper).isInterfaceUp(eq(WIFI_IFACE_NAME));
+        order.verify(mWifiVendorHal).enableLinkLayerStats(eq(WIFI_IFACE_NAME));
 
         mScanCallbackCaptor.getValue().onScanResultReady();
         verify(mWifiMonitor).broadcastScanResultEvent(WIFI_IFACE_NAME);
@@ -673,9 +699,12 @@ public class WifiNativeTest extends WifiBaseTest {
      */
     @Test
     public void testScanModeScanSuccess() {
+        InOrder order = inOrder(mWificondControl, mNetdWrapper, mWifiVendorHal);
         mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE);
-        verify(mWificondControl).setupInterfaceForClientMode(eq(WIFI_IFACE_NAME), any(),
+        order.verify(mWificondControl).setupInterfaceForClientMode(eq(WIFI_IFACE_NAME), any(),
                 mScanCallbackCaptor.capture(), any());
+        order.verify(mNetdWrapper).isInterfaceUp(eq(WIFI_IFACE_NAME));
+        order.verify(mWifiVendorHal).enableLinkLayerStats(eq(WIFI_IFACE_NAME));
 
         mScanCallbackCaptor.getValue().onScanResultReady();
         verify(mWifiMonitor).broadcastScanResultEvent(WIFI_IFACE_NAME);
@@ -1347,5 +1376,27 @@ public class WifiNativeTest extends WifiBaseTest {
             verify(mWifiCountryCodeChangeListener, never())
                 .onSetCountryCodeSucceeded(testCountryCode);
         }
+    }
+
+    /**
+     * Tests notifyWifiCondCountryCodeChanged
+     */
+    @Test
+    public void testNotifyWifiCondCountryCodeChanged() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        String testCountryCode = "US";
+        mWifiNative.countryCodeChanged(testCountryCode);
+        verify(mWificondControl).notifyCountryCodeChanged(testCountryCode);
+    }
+
+    /**
+     * Tests that getSupportedFeatureSet() guaranteed to include the feature set stored in config
+     * store even when interface doesn't exist.
+     *
+     */
+    @Test
+    public void testGetSupportedFeatureSetWhenInterfaceDoesntExist() throws Exception {
+        long featureSet = mWifiNative.getSupportedFeatureSet(null);
+        assertEquals(featureSet, WIFI_TEST_FEATURE);
     }
 }
