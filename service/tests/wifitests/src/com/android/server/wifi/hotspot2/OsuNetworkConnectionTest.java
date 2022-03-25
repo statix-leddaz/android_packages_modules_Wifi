@@ -70,7 +70,7 @@ public class OsuNetworkConnectionTest extends WifiBaseTest {
     private static final String TEST_NAI = null;
     private static final String TEST_NAI_OSEN = "access.test.com";
     private static final String TEST_PROVIDER_NAME = "testService";
-    private static final WifiSsid TEST_SSID = WifiSsid.createFromAsciiEncoded("Test SSID");
+    private static final WifiSsid TEST_SSID = WifiSsid.fromUtf8Text("Test SSID");
 
     private OsuNetworkConnection mNetworkConnection;
     private TestLooper mLooper;
@@ -124,7 +124,8 @@ public class OsuNetworkConnectionTest extends WifiBaseTest {
         ArgumentCaptor<IntentFilter> intentFilterCaptor =
                 ArgumentCaptor.forClass(IntentFilter.class);
         verify(mContext).registerReceiver(any(BroadcastReceiver.class),
-                intentFilterCaptor.capture(), any(), eq(mHandler));
+                intentFilterCaptor.capture(), any(), eq(mHandler),
+                eq(Context.RECEIVER_NOT_EXPORTED));
         verify(mWifiManager).isWifiEnabled();
         IntentFilter intentFilter = intentFilterCaptor.getValue();
         assertEquals(intentFilter.countActions(), 1);
@@ -141,7 +142,7 @@ public class OsuNetworkConnectionTest extends WifiBaseTest {
         ArgumentCaptor<BroadcastReceiver> broadcastReceiverCaptor =
                 ArgumentCaptor.forClass(BroadcastReceiver.class);
         verify(mContext).registerReceiver(broadcastReceiverCaptor.capture(),
-                any(IntentFilter.class), any(), eq(mHandler));
+                any(IntentFilter.class), any(), eq(mHandler), eq(Context.RECEIVER_NOT_EXPORTED));
         BroadcastReceiver broadcastReceiver = broadcastReceiverCaptor.getValue();
         mLooper.dispatchAll();
         mNetworkConnection.setEventCallback(mNetworkCallbacks);

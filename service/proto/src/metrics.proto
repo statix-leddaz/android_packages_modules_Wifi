@@ -1044,6 +1044,9 @@ message ConnectionEvent {
 
     // The reason code if AP disconnects STA during the connecting state.
     DISCONNECTION_NON_LOCAL = 6;
+
+    // The reason code if a user rejects this connection.
+    AUTH_FAILURE_REJECTED_BY_USER = 7;
   }
 
   // Entity that recommended connecting to this network.
@@ -1455,6 +1458,8 @@ message StaEvent {
     // Connected to a network that's not found in the database.
     DISCONNECT_UNKNOWN_NETWORK = 15;
 
+    // The network has been marked as untrusted.
+    DISCONNECT_NETWORK_UNTRUSTED = 16;
   }
 
   // Authentication Failure reasons as reported through the API.
@@ -3013,6 +3018,10 @@ message P2pConnectionEvent {
 
   // Failures that happen at the connectivity layer.
   optional ConnectivityLevelFailure connectivity_level_failure_code = 5;
+
+  // Group role. This could be unknown with connect() call when the WifiConfig doesn't have the
+  // credential.
+  optional GroupEvent.GroupRole group_role = 6;
 }
 
 // GroupEvent tracking group information from GroupStarted to GroupRemoved.
@@ -3023,6 +3032,8 @@ message GroupEvent {
     GROUP_OWNER = 0;
 
     GROUP_CLIENT = 1;
+
+    GROUP_UNKNOWN = 2;
   }
 
   // The ID of network in supplicant for this group.
