@@ -118,7 +118,7 @@ public class OsuNetworkConnection {
             }
         };
         mWifiManager = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
-        mContext.registerReceiver(receiver, filter, null, handler);
+        mContext.registerReceiver(receiver, filter, null, handler, Context.RECEIVER_NOT_EXPORTED);
         mWifiEnabled = mWifiManager.isWifiEnabled();
         mConnectivityManager =
                 (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -178,7 +178,7 @@ public class OsuNetworkConnection {
             return false;
         }
         WifiConfiguration config = new WifiConfiguration();
-        config.SSID = "\"" + ssid.toString() + "\"";
+        config.SSID = ssid.toString();
 
         // To suppress Wi-Fi has no internet access notification.
         config.noInternetAccessExpected = true;
