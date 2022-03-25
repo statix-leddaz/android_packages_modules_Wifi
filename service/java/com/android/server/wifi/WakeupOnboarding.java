@@ -24,6 +24,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.net.wifi.WifiContext;
 import android.os.Handler;
 import android.os.SystemClock;
 import android.provider.Settings;
@@ -130,7 +131,7 @@ public class WakeupOnboarding {
         mLastShownTimestamp = timestamp;
 
         mContext.registerReceiver(mBroadcastReceiver, mIntentFilter,
-                null /* broadcastPermission */, mHandler);
+                null /* broadcastPermission */, mHandler, Context.RECEIVER_NOT_EXPORTED);
         mNotificationManager.notify(WakeupNotificationFactory.ONBOARD_ID,
                 mWakeupNotificationFactory.createOnboardingNotification());
     }

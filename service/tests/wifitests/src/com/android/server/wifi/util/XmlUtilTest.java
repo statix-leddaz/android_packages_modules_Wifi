@@ -20,6 +20,7 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 import android.net.IpConfiguration;
+import android.net.MacAddress;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiConfiguration.NetworkSelectionStatus;
 import android.net.wifi.WifiEnterpriseConfig;
@@ -50,6 +51,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 
 /**
  * Unit tests for {@link com.android.server.wifi.util.XmlUtil}.
@@ -94,7 +96,9 @@ public class XmlUtilTest extends WifiBaseTest {
     @Test
     public void testOpenWifiConfigurationSerializeDeserialize()
             throws IOException, XmlPullParserException {
-        serializeDeserializeWifiConfiguration(WifiConfigurationTestUtil.createOpenNetwork());
+        WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
+        config.setBssidAllowlist(List.of(MacAddress.fromString("6c:f3:7f:ae:8c:f3")));
+        serializeDeserializeWifiConfiguration(config);
     }
 
     /**
@@ -161,6 +165,18 @@ public class XmlUtilTest extends WifiBaseTest {
         if (SdkLevel.isAtLeastS()) {
             config.enterpriseConfig.setDecoratedIdentityPrefix(TEST_DECORATED_IDENTITY_PREFIX);
         }
+        serializeDeserializeWifiConfigurationForConfigStore(config);
+    }
+
+    /**
+     * Verify that a EAP WifiConfiguration with TOFU is serialized & deserialized correctly
+     * only for ConfigStore.
+     */
+    @Test
+    public void testTofuEapWifiConfigurationSerializeDeserialize()
+            throws IOException, XmlPullParserException {
+        WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
+        config.enterpriseConfig.enableTrustOnFirstUse(true);
         serializeDeserializeWifiConfigurationForConfigStore(config);
     }
 
@@ -237,6 +253,8 @@ public class XmlUtilTest extends WifiBaseTest {
         configuration.oemPaid = true;
         configuration.oemPrivate = true;
         configuration.carrierMerged = true;
+        configuration.restricted = true;
+        configuration.setRepeaterEnabled(true);
         configuration.lastUpdateUid = configuration.lastConnectUid = configuration.creatorUid;
         configuration.creatorName = configuration.lastUpdateName = TEST_PACKAGE_NAME;
         configuration.setRandomizedMacAddress(MacAddressUtils.createRandomUnicastAddress());
@@ -519,7 +537,7 @@ public class XmlUtilTest extends WifiBaseTest {
 
     /**
      * Verify that when deserializing a XML RANDOMIZATION_PERSISTENT is automatically upgraded to
-     * RANDOIMZATION_ENHANCED.
+     * RANDOIMZATION_NON_PERSISTENT.
      * @throws IOException
      * @throws XmlPullParserException
      */
@@ -637,6 +655,26 @@ public class XmlUtilTest extends WifiBaseTest {
     }
 
     /**
+     * This helper method tests the auto-upgrade type is added for Open,
+     * PSK, and Enterprise networks.
+     */
+    private static void verifyAutoUpgradeType(WifiConfiguration expected,
+            WifiConfiguration actual) {
+        if (expected.isSecurityType(WifiConfiguration.SECURITY_TYPE_OPEN)) {
+            assertTrue(actual.isSecurityType(WifiConfiguration.SECURITY_TYPE_OPEN));
+            assertTrue(actual.isSecurityType(WifiConfiguration.SECURITY_TYPE_OWE));
+        } else if (expected.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
+            assertTrue(actual.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK));
+            assertTrue(actual.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE));
+        } else if (expected.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP)
+                && expected.isEnterprise()) {
+            assertTrue(actual.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP));
+            assertTrue(actual.isSecurityType(
+                    WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE));
+        }
+    }
+
+    /**
      * This helper method tests the serialization for backup/restore.
      */
     private void serializeDeserializeWifiConfigurationForBackupRestore(
@@ -650,6 +688,7 @@ public class XmlUtilTest extends WifiBaseTest {
         assertEquals(retrieved.first, retrieved.second.getKey());
         WifiConfigurationTestUtil.assertConfigurationEqualForBackup(
                 configuration, retrieved.second);
+        verifyAutoUpgradeType(configuration, retrieved.second);
     }
 
     /**
@@ -674,6 +713,7 @@ public class XmlUtilTest extends WifiBaseTest {
             assertNotEquals(0, status.getDisableReasonCounter(
                     status.getNetworkSelectionDisableReason()));
         }
+        verifyAutoUpgradeType(configuration, retrieved.second);
     }
 
     /**
