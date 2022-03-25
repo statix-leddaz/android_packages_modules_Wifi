@@ -17,6 +17,7 @@
 package com.android.server.wifi;
 
 import android.annotation.IntDef;
+import android.net.MacAddress;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiManager;
@@ -30,6 +31,7 @@ import android.util.SparseArray;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.Protocol;
 import com.android.server.wifi.MboOceController.BtmFrameData;
+import com.android.server.wifi.SupplicantStaIfaceHal.SupplicantEventCode;
 import com.android.server.wifi.WifiCarrierInfoManager.SimAuthRequestData;
 import com.android.server.wifi.hotspot2.AnqpEvent;
 import com.android.server.wifi.hotspot2.IconEvent;
@@ -37,6 +39,7 @@ import com.android.server.wifi.hotspot2.WnmData;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -104,6 +107,11 @@ public class WifiMonitor {
     /* Transition Disable Indication */
     public static final int TRANSITION_DISABLE_INDICATION        = BASE + 72;
 
+    /* Trust On First Use Root CA Certification */
+    public static final int TOFU_ROOT_CA_CERTIFICATE             = BASE + 73;
+
+    /* Auxiliary supplicant event */
+    public static final int AUXILIARY_SUPPLICANT_EVENT           = BASE + 74;
 
     /* WPS config errrors */
     private static final int CONFIG_MULTIPLE_PBC_DETECTED = 12;
@@ -327,7 +335,8 @@ public class WifiMonitor {
                 break;
         }
         //For all other errors, return a generic internal error
-        sendMessage(iface, WPS_FAIL_EVENT, WifiManager.ERROR, reason);
+        sendMessage(iface, WPS_FAIL_EVENT, WifiManager.ActionListener.FAILURE_INTERNAL_ERROR,
+                reason);
     }
 
    /**
@@ -500,6 +509,19 @@ public class WifiMonitor {
     }
 
     /**
+     * Broadcast the EAP failure event to all the handlers registered for this event.
+     *
+     * @param iface Name of iface on which this occurred.
+     * @param errorCode Error code associated with the authentication failure event.
+     *               A value of -1 is used when no error code is reported.
+     * @param bssid BSSID of the access point.
+     */
+    public void broadcastEapFailureEvent(String iface, int errorCode, MacAddress bssid) {
+        sendMessage(iface, AUTHENTICATION_FAILURE_EVENT, WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE,
+                errorCode, bssid);
+    }
+
+    /**
      * Broadcast the association rejection event to all the handlers registered for this event.
      *
      * @param iface Name of iface on which this occurred.
@@ -593,5 +615,33 @@ public class WifiMonitor {
      */
     public void broadcastNetworkNotFoundEvent(String iface, String ssid) {
         sendMessage(iface, NETWORK_NOT_FOUND_EVENT, ssid);
+    }
+
+    /**
+     * Broadcast the certification event which takes place during TOFU process.
+     *
+     * @param iface Name of iface on which this occurred.
+     * @param networkId ID of the network in wpa_supplicant.
+     * @param ssid SSID of the network.
+     * @param cert the certificate data.
+     */
+    public void broadcastCertificationEvent(String iface, int networkId, String ssid,
+            X509Certificate cert) {
+        sendMessage(iface, TOFU_ROOT_CA_CERTIFICATE, networkId, 0, cert);
+    }
+
+    /**
+     * Broadcast an auxiliary supplicant event to all handlers registered for this event.
+     *
+     * @param iface Name of iface on which this occurred.
+     * @param eventCode SupplicantEventCode for the event that occurred.
+     * @param bssid BSSID of the network.
+     * @param reasonString Optional string containing more information about why the
+     *                     event occurred.
+     */
+    public void broadcastAuxiliarySupplicantEvent(String iface, @SupplicantEventCode int eventCode,
+            MacAddress bssid, String reasonString) {
+        sendMessage(iface, AUXILIARY_SUPPLICANT_EVENT, 0, 0,
+                new SupplicantEventInfo(eventCode, bssid, reasonString));
     }
 }
