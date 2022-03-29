@@ -176,6 +176,10 @@ public class InsecureEapNetworkHandler {
         if (null == mCurConfig) return false;
         if (!ssid.equals(mCurConfig.SSID)) return false;
         if (null == cert) return false;
+        if (null != mPendingCaCertSubjectInfo) {
+            Log.w(TAG, "There is already pending CA cert, ignore new one.");
+            return false;
+        }
 
         mPendingCaCertSubjectInfo = CertificateSubjectInfo.parse(
                 cert.getSubjectDN().getName());
@@ -250,7 +254,8 @@ public class InsecureEapNetworkHandler {
             filter.addAction(ACTION_CERT_NOTIF_ACCEPT);
             filter.addAction(ACTION_CERT_NOTIF_REJECT);
         }
-        mContext.registerReceiver(mCertNotificationReceiver, filter, null, mHandler);
+        mContext.registerReceiver(mCertNotificationReceiver, filter, null, mHandler,
+                Context.RECEIVER_NOT_EXPORTED);
         mIsCertNotificationReceiverRegistered = true;
     }
 
@@ -273,13 +278,10 @@ public class InsecureEapNetworkHandler {
                 return;
             }
             if (!mWifiConfigManager.updateCaCertificate(mCurConfig.networkId, mPendingCaCert)) {
-                // Since Root CA certificate is installed, reset these flags.
-                mWifiConfigManager.setUserApproveNoCaCert(mCurConfig.networkId, false);
-                mWifiConfigManager.enableTrustOnFirstUse(mCurConfig.networkId, false);
-            } else {
                 // The user approved this network,
                 // keep the connection regardless of the result.
-                Log.e(TAG, "Cannot update CA cert to network " + mCurConfig.getProfileKey());
+                Log.e(TAG, "Cannot update CA cert to network " + mCurConfig.getProfileKey()
+                        + ", CA cert = " + mPendingCaCert);
             }
         }
         mWifiConfigManager.allowAutojoin(mCurConfig.networkId, true);
