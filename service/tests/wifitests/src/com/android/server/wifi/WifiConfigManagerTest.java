@@ -24,6 +24,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
+import static org.mockito.ArgumentMatchers.anyObject;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
@@ -305,6 +306,20 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                 wifiContext, mock(WifiConfigStore.class), mock(Handler.class),
                 mWifiMetrics, mClock));
         mLruConnectionTracker = new LruConnectionTracker(100, mContext);
+
+        when(mWifiInjector.getClock()).thenReturn(mClock);
+        when(mWifiInjector.getUserManager()).thenReturn(mUserManager);
+        when(mWifiInjector.getWifiCarrierInfoManager()).thenReturn(mWifiCarrierInfoManager);
+        when(mWifiInjector.getWifiMetrics()).thenReturn(mWifiMetrics);
+        when(mWifiInjector.getWifiBlocklistMonitor()).thenReturn(mWifiBlocklistMonitor);
+        when(mWifiInjector.getWifiLastResortWatchdog()).thenReturn(mWifiLastResortWatchdog);
+        when(mWifiInjector.getWifiScoreCard()).thenReturn(mWifiScoreCard);
+        when(mWifiInjector.getWifiPermissionsUtil()).thenReturn(mWifiPermissionsUtil);
+        when(mWifiInjector.getFrameworkFacade()).thenReturn(mFrameworkFacade);
+        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfigFacade);
+        when(mWifiInjector.getMacAddressUtil()).thenReturn(mMacAddressUtil);
+        when(mWifiInjector.getBuildProperties()).thenReturn(mBuildProperties);
+
         createWifiConfigManager();
         mWifiConfigManager.addOnNetworkUpdateListener(mWcmListener);
         // static mocking
@@ -5428,14 +5443,9 @@ public class WifiConfigManagerTest extends WifiBaseTest {
     private void createWifiConfigManager() {
         mWifiConfigManager =
                 new WifiConfigManager(
-                        mContext, mClock, mUserManager, mWifiCarrierInfoManager,
-                        mWifiKeyStore, mWifiConfigStore,
-                        mWifiPermissionsUtil, mMacAddressUtil, mWifiMetrics, mWifiBlocklistMonitor,
-                        mWifiLastResortWatchdog,
+                        mContext, mWifiKeyStore, mWifiConfigStore,
                         mNetworkListSharedStoreData, mNetworkListUserStoreData,
-                        mRandomizedMacStoreData,
-                        mFrameworkFacade, mDeviceConfigFacade,
-                        mWifiScoreCard, mLruConnectionTracker, mBuildProperties);
+                        mRandomizedMacStoreData, mLruConnectionTracker, mWifiInjector);
         mWifiConfigManager.enableVerboseLogging(true);
     }
 
@@ -7336,5 +7346,32 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         assertTrue(option23.size() == actual23.size());
         assertTrue(option23.containsAll(actual23));
         assertTrue(actual23.containsAll(option23));
+    }
+
+    @Test
+    public void testAddOnNetworkUpdateListenerNull() throws Exception {
+        ArgumentCaptor<WifiConfiguration> wifiConfigCaptor =
+                ArgumentCaptor.forClass(WifiConfiguration.class);
+        mWifiConfigManager.addOnNetworkUpdateListener(mListener);
+        mWifiConfigManager.addOnNetworkUpdateListener(null);
+        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
+        verifyAddNetworkToWifiConfigManager(openNetwork);
+        NetworkUpdateResult result =
+                mWifiConfigManager.addOrUpdateNetwork(openNetwork, TEST_CREATOR_UID);
+        verify(mListener).onNetworkAdded(wifiConfigCaptor.capture());
+        assertEquals(openNetwork.networkId, wifiConfigCaptor.getValue().networkId);
+    }
+
+    @Test
+    public void testRemoveOnNetworkUpdateListenerNull() throws Exception {
+        mWifiConfigManager.addOnNetworkUpdateListener(mListener);
+        mWifiConfigManager.addOnNetworkUpdateListener(null);
+        mWifiConfigManager.removeOnNetworkUpdateListener(null);
+        mWifiConfigManager.removeOnNetworkUpdateListener(mListener);
+        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
+        verifyAddNetworkToWifiConfigManager(openNetwork);
+        NetworkUpdateResult result =
+                mWifiConfigManager.addOrUpdateNetwork(openNetwork, TEST_CREATOR_UID);
+        verify(mListener, never()).onNetworkAdded(anyObject());
     }
 }

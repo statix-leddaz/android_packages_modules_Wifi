@@ -777,7 +777,8 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         verify(mContext, atLeastOnce()).registerReceiver(
                 mScreenStateBroadcastReceiverCaptor.capture(),
-                argThat(f -> f.hasAction(ACTION_SCREEN_ON) && f.hasAction(ACTION_SCREEN_OFF)));
+                argThat(f -> f.hasAction(ACTION_SCREEN_ON) && f.hasAction(ACTION_SCREEN_OFF)),
+                eq(Context.RECEIVER_NOT_EXPORTED));
     }
 
     @After
@@ -8079,5 +8080,31 @@ public class ClientModeImplTest extends WifiBaseTest {
         assertNull(connectionInfo.getApMldMacAddress());
         assertEquals(MloLink.INVALID_MLO_LINK_ID, connectionInfo.getApMloLinkId());
         assertTrue(connectionInfo.getAffiliatedMloLinks().isEmpty());
+    }
+
+    /**
+     * Verify that an event that occurs on a managed network is handled by
+     * logEventIfManagedNetwork.
+     */
+    @Test
+    public void verifyEventHandledByLogEventIfManagedNetwork() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        MacAddress bssid = MacAddress.fromString(TEST_BSSID_STR);
+        int numMaskedOctets = 4;
+
+        mResources.setInteger(
+                R.integer.config_wifiNumMaskedBssidOctetsInSecurityLog, numMaskedOctets);
+        when(mWifiPermissionsUtil.isAdmin(anyInt(), any())).thenReturn(true);
+        MockitoSession scanResultUtilSession = ExtendedMockito.mockitoSession()
+                .strictness(Strictness.LENIENT)
+                .mockStatic(ScanResultUtil.class, withSettings().lenient())
+                .startMocking();
+        connect();
+
+        // Connect will generate the Associated and Connected events. Confirm the events were
+        // handled by checking that redactBssid() was called for each one.
+        ExtendedMockito.verify(() ->
+                ScanResultUtil.redactBssid(bssid, numMaskedOctets), times(2));
+        scanResultUtilSession.finishMocking();
     }
 }
