@@ -62,6 +62,7 @@ import android.app.AlarmManager;
 import android.app.test.MockAnswerUtil.AnswerWithArguments;
 import android.app.test.TestAlarmManager;
 import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.MacAddress;
@@ -236,6 +237,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         resources.setInteger(R.integer.config_wifiPnoScanLowRssiNetworkRetryMaxDelaySec,
                 LOW_RSSI_NETWORK_RETRY_MAX_DELAY_SEC);
         resources.setBoolean(R.bool.config_wifiEnable6ghzPscScanning, true);
+        resources.setBoolean(R.bool.config_wifiUseHalApiToDisableFwRoaming, true);
     }
 
     /**
@@ -486,6 +488,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         when(cmm.isConnected()).thenReturn(false);
         when(cmm.isDisconnected()).thenReturn(true);
         when(cmm.isSupplicantTransientState()).thenReturn(false);
+        when(cmm.enableRoaming(anyBoolean())).thenReturn(true);
     }
 
     WifiNetworkSelector mockWifiNetworkSelector() {
@@ -565,7 +568,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         verify(mActiveModeWarden, atLeastOnce()).registerModeChangeCallback(
                 mModeChangeCallbackCaptor.capture());
         verify(mContext, atLeastOnce()).registerReceiver(
-                mBroadcastReceiverCaptor.capture(), any(), any(), any());
+                mBroadcastReceiverCaptor.capture(), any(), any(), any(),
+                eq(Context.RECEIVER_NOT_EXPORTED));
         verify(mWifiConfigManager, atLeastOnce()).addOnNetworkUpdateListener(
                 mNetworkUpdateListenerCaptor.capture());
         verify(mWifiNetworkSuggestionsManager, atLeastOnce()).addOnSuggestionUpdateListener(
@@ -664,6 +668,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         verify(mPrimaryClientModeManager).startConnectToNetwork(
                 CANDIDATE_NETWORK_ID, Process.WIFI_UID, "any");
+        verify(mPrimaryClientModeManager).enableRoaming(true);
         verify(mActiveModeWarden).stopAllClientModeManagersInRole(ROLE_CLIENT_SECONDARY_TRANSIENT);
         verify(mActiveModeWarden, never()).requestSecondaryTransientClientModeManager(
                 any(), any(), any(), any());
@@ -824,6 +829,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         verify(mbbCmm, never()).startConnectToNetwork(anyInt(), anyInt(), any());
         verify(mPrimaryClientModeManager).startConnectToNetwork(
                 eq(CANDIDATE_NETWORK_ID), anyInt(), any());
+        verify(mPrimaryClientModeManager).enableRoaming(true);
     }
 
     /**
@@ -1322,6 +1328,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         mMultiInternetConnectionStatusListenerCaptor.getValue().onStartScan(testWorkSource);
         verify(mSecondaryClientModeManager, times(2)).startConnectToNetwork(
                 CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+        verify(mSecondaryClientModeManager, times(2)).enableRoaming(false);
         verify(mActiveModeWarden, times(2)).requestSecondaryLongLivedClientModeManager(
                 any(), any(), any(), any());
 
@@ -1388,6 +1395,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         mMultiInternetConnectionStatusListenerCaptor.getValue().onStartScan(testWorkSource);
         verify(mSecondaryClientModeManager, times(2)).startConnectToNetwork(
                 CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+        verify(mSecondaryClientModeManager, times(2)).enableRoaming(false);
         verify(mActiveModeWarden, times(2)).requestSecondaryLongLivedClientModeManager(
                 any(), any(), any(), any());
 
@@ -3723,6 +3731,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         verify(mPrimaryClientModeManager).startConnectToNetwork(
                 CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+        verify(mPrimaryClientModeManager).enableRoaming(false);
 
         verify(mWifiMetrics).noteFirstNetworkSelectionAfterBoot(true);
     }

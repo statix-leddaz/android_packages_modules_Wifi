@@ -5394,7 +5394,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mContext).registerReceiver(mBroadcastReceiverCaptor.capture(),
                 (IntentFilter) argThat(new IdleModeIntentMatcher()),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         // Tell the wifi service that the device became idle.
         when(mPowerManager.isDeviceIdleMode()).thenReturn(true);
@@ -5488,7 +5488,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                                 && filter.hasAction(Intent.ACTION_PACKAGE_REMOVED)
                                 && filter.hasAction(Intent.ACTION_PACKAGE_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
         int uid = TEST_UID;
         String packageName = TEST_PACKAGE_NAME;
         doThrow(new PackageManager.NameNotFoundException()).when(mPackageManager)
@@ -5522,7 +5522,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                                 && filter.hasAction(Intent.ACTION_PACKAGE_REMOVED)
                                 && filter.hasAction(Intent.ACTION_PACKAGE_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
         int uid = TEST_UID;
         String packageName = TEST_PACKAGE_NAME;
         // Send the broadcast
@@ -5554,7 +5554,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                                 && filter.hasAction(Intent.ACTION_PACKAGE_REMOVED)
                                 && filter.hasAction(Intent.ACTION_PACKAGE_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
         int uid = TEST_UID;
         String packageName = TEST_PACKAGE_NAME;
         mPackageInfo.applicationInfo = mApplicationInfo;
@@ -5586,7 +5586,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(Intent.ACTION_PACKAGE_FULLY_REMOVED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         String packageName = TEST_PACKAGE_NAME;
         // Send the broadcast
@@ -5611,7 +5611,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(Intent.ACTION_PACKAGE_FULLY_REMOVED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         int uid = TEST_UID;
         // Send the broadcast
@@ -5640,7 +5640,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(Intent.ACTION_USER_REMOVED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         UserHandle userHandle = UserHandle.of(TEST_USER_HANDLE);
         // Send the broadcast
@@ -5665,7 +5665,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                         filter.hasAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)
                                 && filter.hasAction(BluetoothAdapter.ACTION_STATE_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         {
             Intent intent = new Intent(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
@@ -5730,7 +5730,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(Intent.ACTION_USER_REMOVED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         UserHandle userHandle = UserHandle.of(TEST_USER_HANDLE);
         // Send the broadcast with wrong action
@@ -5894,7 +5894,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                         filter.hasAction(
                                 TelephonyManager.ACTION_DEFAULT_DATA_SUBSCRIPTION_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         Intent intent = new Intent(TelephonyManager.ACTION_DEFAULT_DATA_SUBSCRIPTION_CHANGED);
         intent.putExtra("subscription", 1);
@@ -7427,7 +7427,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Test(expected = SecurityException.class)
     public void testAllowAutojoinGlobalFailureNoPermission() throws Exception {
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
-        when(mWifiPermissionsUtil.checkManageWifiAutoJoinPermission(anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(false);
         when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(false);
         when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(false);
         mWifiServiceImpl.allowAutojoinGlobal(true);
@@ -7435,30 +7436,34 @@ public class WifiServiceImplTest extends WifiBaseTest {
 
     @Test
     public void testAllowAutojoinGlobalWithPermission() throws Exception {
-        // verify allowAutojoinGlobal with MANAGE_WIFI_AUTO_JOIN
+        // verify allowAutojoinGlobal with MANAGE_WIFI_NETWORK_SELECTION
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
-        when(mWifiPermissionsUtil.checkManageWifiAutoJoinPermission(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(true);
         when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(false);
         when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(false);
         mWifiServiceImpl.allowAutojoinGlobal(true);
 
         // verify allowAutojoinGlobal with NETWORK_SETTINGS
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
-        when(mWifiPermissionsUtil.checkManageWifiAutoJoinPermission(anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(false);
         when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(false);
         when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(false);
         mWifiServiceImpl.allowAutojoinGlobal(true);
 
         // verify allowAutojoinGlobal with DO
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
-        when(mWifiPermissionsUtil.checkManageWifiAutoJoinPermission(anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(false);
         when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(true);
         when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(false);
         mWifiServiceImpl.allowAutojoinGlobal(true);
 
         // verify allowAutojoinGlobal with PO
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
-        when(mWifiPermissionsUtil.checkManageWifiAutoJoinPermission(anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(false);
         when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(false);
         when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(true);
         mWifiServiceImpl.allowAutojoinGlobal(true);
@@ -7523,7 +7528,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
     public void testSetSsidsDoNotBlocklist_WithPermissionAndroidT()
             throws Exception {
         assumeTrue(SdkLevel.isAtLeastT());
-        when(mWifiPermissionsUtil.checkManageWifiAutoJoinPermission(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(true);
 
         List<WifiSsid> expectedSsids = new ArrayList<>();
         expectedSsids.add(WifiSsid.fromString(TEST_SSID_WITH_QUOTES));
@@ -7898,7 +7904,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         // Send the broadcast
         Intent intent = new Intent(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED);
@@ -7918,7 +7924,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
         ArgumentCaptor<PhoneStateListener> phoneStateListenerCaptor =
                 ArgumentCaptor.forClass(PhoneStateListener.class);
         verify(mTelephonyManager).listen(phoneStateListenerCaptor.capture(),
@@ -8211,6 +8217,41 @@ public class WifiServiceImplTest extends WifiBaseTest {
                         featureP2pMacRandomization, true, true, false));
         assertEquals(featureStaConnectedMacRandomization | featureApMacRandomization,
                 testGetSupportedFeaturesCaseForMacRandomization(0, true, true, false));
+    }
+
+    /**
+     * Verifies feature support for DPP AKM when DPP is supported.
+     */
+    @Test
+    public void testDppAkmFeatureSupportDppSupported() throws Exception {
+        when(mResources.getBoolean(R.bool.config_wifiDppAkmSupported)).thenReturn(true);
+        when(mWifiNative.getSupportedFeatureSet(anyString()))
+                .thenReturn(WifiManager.WIFI_FEATURE_DPP);
+
+        mLooper.startAutoDispatch();
+        long supportedFeatures = mWifiServiceImpl.getSupportedFeatures();
+        mLooper.stopAutoDispatchAndIgnoreExceptions();
+
+        if (SdkLevel.isAtLeastT()) {
+            assertTrue((supportedFeatures & WifiManager.WIFI_FEATURE_DPP_AKM) != 0);
+        } else {
+            assertFalse((supportedFeatures & WifiManager.WIFI_FEATURE_DPP_AKM) != 0);
+        }
+    }
+
+    /**
+     * Verifies feature support for DPP AKM when DPP is not supported.
+     */
+    @Test
+    public void testDppAkmFeatureSupportDppNotSupported() throws Exception {
+        when(mResources.getBoolean(R.bool.config_wifiDppAkmSupported)).thenReturn(true);
+        when(mWifiNative.getSupportedFeatureSet(anyString())).thenReturn(0L);
+
+        mLooper.startAutoDispatch();
+        long supportedFeatures = mWifiServiceImpl.getSupportedFeatures();
+        mLooper.stopAutoDispatchAndIgnoreExceptions();
+
+        assertFalse((supportedFeatures & WifiManager.WIFI_FEATURE_DPP_AKM) != 0);
     }
 
     @Test
@@ -8693,7 +8734,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(Intent.ACTION_LOCALE_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
         verify(mWifiNotificationManager).createNotificationChannels();
         clearInvocations(mWifiNotificationManager);
 
@@ -9334,14 +9375,16 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Test(expected = SecurityException.class)
     public void testSetScreenOnScanSchedule_NoPermission() {
         assumeTrue(SdkLevel.isAtLeastT());
-        when(mWifiPermissionsUtil.checkManageWifiAutoJoinPermission(anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(false);
         mWifiServiceImpl.setScreenOnScanSchedule(null, null);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testSetScreenOnScanSchedule_BadInput1() {
         assumeTrue(SdkLevel.isAtLeastT());
-        when(mWifiPermissionsUtil.checkManageWifiAutoJoinPermission(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(true);
         // test that both arrays need to be null or non-null. Never one null one non-null.
         mWifiServiceImpl.setScreenOnScanSchedule(null, new int[] {1});
     }
@@ -9349,7 +9392,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Test(expected = IllegalArgumentException.class)
     public void testSetScreenOnScanSchedule_BadInput2() {
         assumeTrue(SdkLevel.isAtLeastT());
-        when(mWifiPermissionsUtil.checkManageWifiAutoJoinPermission(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(true);
         // test that the input should not be empty arrays.
         mWifiServiceImpl.setScreenOnScanSchedule(new int[0], new int[0]);
     }
@@ -9357,7 +9401,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Test
     public void testSetScreenOnScanSchedule_Success() {
         assumeTrue(SdkLevel.isAtLeastT());
-        when(mWifiPermissionsUtil.checkManageWifiAutoJoinPermission(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(true);
         int[] expectedSchedule = new int[] {20, 40, 80};
         int[] expectedType = new int[] {2, 2, 1};
         mWifiServiceImpl.setScreenOnScanSchedule(expectedSchedule, expectedType);
@@ -10213,6 +10258,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 interfaceToCreateInternal, true, ws);
         verify(mockCallback, times(3)).onResults(boolCaptor.capture(), intArrayCaptor.capture(),
                 stringArrayCaptor.capture());
+        verify(mPackageManager).makeUidVisible(TEST_UID, OTHER_TEST_UID);
 
         // result 0: failure
         assertFalse(boolCaptor.getAllValues().get(0));
