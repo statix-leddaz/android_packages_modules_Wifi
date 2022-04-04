@@ -674,7 +674,8 @@ public class WifiNetworkSuggestionsManager {
         mIntentFilter.addAction(NOTIFICATION_USER_DISALLOWED_APP_INTENT_ACTION);
         mIntentFilter.addAction(NOTIFICATION_USER_DISMISSED_INTENT_ACTION);
 
-        mContext.registerReceiver(mBroadcastReceiver, mIntentFilter, null, handler);
+        mContext.registerReceiver(mBroadcastReceiver, mIntentFilter, null, handler,
+                Context.RECEIVER_NOT_EXPORTED);
         mLruConnectionTracker = lruConnectionTracker;
         mWifiConfigManager.addOnNetworkUpdateListener(
                 new WifiNetworkSuggestionsManager.OnNetworkUpdateListener());
@@ -866,7 +867,6 @@ public class WifiNetworkSuggestionsManager {
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "Updated config in WifiConfigManager");
         }
-        mWifiConfigManager.allowAutojoin(result.getNetworkId(), newConfig.allowAutojoin);
     }
 
     /**
@@ -1065,10 +1065,14 @@ public class WifiNetworkSuggestionsManager {
         if (!checkNetworkSuggestionsNoNulls(networkSuggestions)) {
             return false;
         }
+
+        long supportedFeatures = mWifiInjector.getActiveModeWarden()
+                .getPrimaryClientModeManager().getSupportedFeatures();
+
         for (WifiNetworkSuggestion wns : networkSuggestions) {
             if (wns.passpointConfiguration == null) {
                 WifiConfiguration config = wns.wifiConfiguration;
-                if (!WifiConfigurationUtil.validate(config,
+                if (!WifiConfigurationUtil.validate(config, supportedFeatures,
                         WifiConfigurationUtil.VALIDATE_FOR_ADD)) {
                     return false;
                 }

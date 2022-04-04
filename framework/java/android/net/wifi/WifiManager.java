@@ -23,6 +23,7 @@ import static android.Manifest.permission.MANAGE_WIFI_NETWORK_SELECTION;
 import static android.Manifest.permission.NEARBY_WIFI_DEVICES;
 import static android.Manifest.permission.READ_WIFI_CREDENTIAL;
 import static android.Manifest.permission.REQUEST_COMPANION_PROFILE_AUTOMOTIVE_PROJECTION;
+import static android.net.wifi.WifiAvailableChannel.OP_MODE_WIFI_AWARE;
 
 import android.annotation.CallbackExecutor;
 import android.annotation.IntDef;
@@ -5437,19 +5438,26 @@ public class WifiManager {
             // Check if old info removed or not (client changed case)
             for (SoftApInfo info : mCurrentInfos.values()) {
                 String changedInstance = info.getApInstanceIdentifier();
+                List<WifiClient> changedClientList = clients.getOrDefault(
+                        changedInstance, Collections.emptyList());
                 if (!changedInfoList.contains(info)) {
                     isInfoChanged = true;
                     if (mCurrentClients.getOrDefault(changedInstance,
                               Collections.emptyList()).size() > 0) {
-                        Log.d(TAG, "SoftApCallbackProxy on mode " + mIpMode
-                                + ", info changed on client connected instance(Shut Down case)");
-                        //Here should notify client changed on old info
-                        changedInfoClients.put(info, Collections.emptyList());
+                        SoftApInfo changedInfo = infos.get(changedInstance);
+                        if (changedInfo == null || changedInfo.getFrequency() == 0) {
+                            Log.d(TAG, "SoftApCallbackProxy on mode " + mIpMode
+                                    + ", info changed on client connected instance(AP disabled)");
+                            // Send old info with empty client list for shutdown case
+                            changedInfoClients.put(info, Collections.emptyList());
+                        } else {
+                            Log.d(TAG, "SoftApCallbackProxy on mode " + mIpMode
+                                    + ", info changed on client connected instance");
+                            changedInfoClients.put(changedInfo, changedClientList);
+                        }
                     }
                 } else {
                     // info doesn't change, check client list
-                    List<WifiClient> changedClientList = clients.getOrDefault(
-                            changedInstance, Collections.emptyList());
                     if (changedClientList.size()
                             != mCurrentClients
                             .getOrDefault(changedInstance, Collections.emptyList()).size()) {
@@ -6221,7 +6229,7 @@ public class WifiManager {
      *
      * Available for DO/PO apps.
      * Other apps require {@code android.Manifest.permission#NETWORK_SETTINGS} or
-     * {@code android.Manifest.permission#MANAGE_WIFI_AUTO_JOIN} permission.
+     * {@code android.Manifest.permission#MANAGE_WIFI_NETWORK_SELECTION} permission.
      *
      * @param executor The executor on which callback will be invoked.
      * @param resultsCallback An asynchronous callback that will return {@code Boolean} indicating
@@ -9793,6 +9801,21 @@ public class WifiManager {
                             executor.execute(() -> resultCallback.accept(canCreate, finalSet));
                         }
                     });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Get Wi-Fi Aware discovery channel on target band. Defined as per Wi-Fi Alliance (WFA) Wi-Fi
+     * Aware specifications version 3.1 Section 3.2
+     * @hide
+     */
+    public List<WifiAvailableChannel> getAwareDiscoveryChannels(
+            @WifiScanner.WifiBand int band) {
+        try {
+            return mService.getUsableChannels(band, OP_MODE_WIFI_AWARE,
+                    WifiAvailableChannel.FILTER_NAN_INSTANT_MODE);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }

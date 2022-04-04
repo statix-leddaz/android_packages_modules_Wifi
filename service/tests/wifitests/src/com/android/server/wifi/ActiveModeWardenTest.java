@@ -1389,7 +1389,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                 ArgumentCaptor.forClass(BroadcastReceiver.class);
         verify(mContext).registerReceiver(
                 bcastRxCaptor.capture(),
-                argThat(filter -> filter.hasAction(LocationManager.MODE_CHANGED_ACTION)));
+                argThat(filter -> filter.hasAction(LocationManager.MODE_CHANGED_ACTION)),
+                eq(Context.RECEIVER_NOT_EXPORTED));
         BroadcastReceiver broadcastReceiver = bcastRxCaptor.getValue();
 
         assertInDisabledState();
@@ -1423,7 +1424,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                 ArgumentCaptor.forClass(BroadcastReceiver.class);
         verify(mContext).registerReceiver(
                 bcastRxCaptor.capture(),
-                argThat(filter -> filter.hasAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)));
+                argThat(filter -> filter.hasAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)),
+                eq(Context.RECEIVER_NOT_EXPORTED));
         BroadcastReceiver broadcastReceiver = bcastRxCaptor.getValue();
 
         Intent intent = new Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED);
@@ -1462,7 +1464,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                 ArgumentCaptor.forClass(BroadcastReceiver.class);
         verify(mContext).registerReceiver(
                 bcastRxCaptor.capture(),
-                argThat(filter -> filter.hasAction(LocationManager.MODE_CHANGED_ACTION)));
+                argThat(filter -> filter.hasAction(LocationManager.MODE_CHANGED_ACTION)),
+                eq(Context.RECEIVER_NOT_EXPORTED));
         BroadcastReceiver broadcastReceiver = bcastRxCaptor.getValue();
 
         assertInEnabledState();
@@ -2866,6 +2869,26 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         verify(mPrimaryChangedCallback, never()).onChange(any(), eq(additionalClientModeManager));
 
         return additionalClientListener.value;
+    }
+
+    @Test
+    public void testRemoveDefaultClientModeManager() throws Exception {
+        // Ensure that we can create more client ifaces.
+        when(mWifiNative.isItPossibleToCreateStaIface(any())).thenReturn(true);
+        when(mResources.getBoolean(R.bool.config_wifiMultiStaLocalOnlyConcurrencyEnabled))
+                .thenReturn(true);
+        assertTrue(mActiveModeWarden.canRequestMoreClientModeManagersInRole(
+                TEST_WORKSOURCE, ROLE_CLIENT_LOCAL_ONLY));
+
+        // Verify removing a non DefaultClientModeManager works properly.
+        requestRemoveAdditionalClientModeManager(ROLE_CLIENT_LOCAL_ONLY);
+
+        // Verify that a request to remove DefaultClientModeManager is ignored.
+        ClientModeManager defaultClientModeManager = mock(DefaultClientModeManager.class);
+
+        mActiveModeWarden.removeClientModeManager(defaultClientModeManager);
+        mLooper.dispatchAll();
+        verify(defaultClientModeManager, never()).stop();
     }
 
     private void requestRemoveAdditionalClientModeManager(

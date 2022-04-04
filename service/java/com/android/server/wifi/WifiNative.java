@@ -1726,7 +1726,11 @@ public class WifiNative {
      * @param ifaceName Name of the interface.
      */
     public int getMaxSsidsPerScan(@NonNull String ifaceName) {
-        return mWifiCondManager.getMaxSsidsPerScan(ifaceName);
+        if (SdkLevel.isAtLeastT()) {
+            return mWifiCondManager.getMaxSsidsPerScan(ifaceName);
+        } else {
+            return -1;
+        }
     }
 
     private ArrayList<ScanDetail> convertNativeScanResults(@NonNull String ifaceName,
@@ -3012,6 +3016,13 @@ public class WifiNative {
         return mWifiVendorHal.isHalStarted();
     }
 
+    /**
+     * Tests whether the HAL is supported or not
+     */
+    public boolean isHalSupported() {
+        return mWifiVendorHal.isVendorHalSupported();
+    }
+
     // TODO: Change variable names to camel style.
     public static class ScanCapabilities {
         public int  max_scan_cache_size;
@@ -4254,5 +4265,12 @@ public class WifiNative {
                     .get(WIFI_NATIVE_SUPPORTED_FEATURES);
         }
         return mCachedFeatureSet;
+    }
+
+    /**
+     * Returns whether or not the hostapd HAL supports reporting single instance died event.
+     */
+    public boolean isSoftApInstanceDiedHandlerSupported() {
+        return mHostapdHal.isSoftApInstanceDiedHandlerSupported();
     }
 }

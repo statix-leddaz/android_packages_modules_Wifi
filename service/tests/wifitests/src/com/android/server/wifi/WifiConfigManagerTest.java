@@ -24,6 +24,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
+import static org.mockito.ArgumentMatchers.anyObject;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
@@ -100,6 +101,8 @@ import org.xmlpull.v1.XmlPullParserException;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.security.Principal;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -305,6 +308,20 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                 wifiContext, mock(WifiConfigStore.class), mock(Handler.class),
                 mWifiMetrics, mClock));
         mLruConnectionTracker = new LruConnectionTracker(100, mContext);
+
+        when(mWifiInjector.getClock()).thenReturn(mClock);
+        when(mWifiInjector.getUserManager()).thenReturn(mUserManager);
+        when(mWifiInjector.getWifiCarrierInfoManager()).thenReturn(mWifiCarrierInfoManager);
+        when(mWifiInjector.getWifiMetrics()).thenReturn(mWifiMetrics);
+        when(mWifiInjector.getWifiBlocklistMonitor()).thenReturn(mWifiBlocklistMonitor);
+        when(mWifiInjector.getWifiLastResortWatchdog()).thenReturn(mWifiLastResortWatchdog);
+        when(mWifiInjector.getWifiScoreCard()).thenReturn(mWifiScoreCard);
+        when(mWifiInjector.getWifiPermissionsUtil()).thenReturn(mWifiPermissionsUtil);
+        when(mWifiInjector.getFrameworkFacade()).thenReturn(mFrameworkFacade);
+        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfigFacade);
+        when(mWifiInjector.getMacAddressUtil()).thenReturn(mMacAddressUtil);
+        when(mWifiInjector.getBuildProperties()).thenReturn(mBuildProperties);
+
         createWifiConfigManager();
         mWifiConfigManager.addOnNetworkUpdateListener(mWcmListener);
         // static mocking
@@ -648,6 +665,28 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         mWifiConfigManager.addOrUpdateNetwork(openNetwork, TEST_CREATOR_UID);
         retrievedNetworks = mWifiConfigManager.getConfiguredNetworksWithPasswords();
         assertEquals(randMac, retrievedNetworks.get(0).getRandomizedMacAddress().toString());
+    }
+
+    /**
+     * Verify that add or update networks when WifiConfiguration has RepeaterEnabled set,
+     * requires Network Settings Permission.
+     */
+    @Test
+    public void testAddOrUpdateNetworkRepeaterEnabled() throws Exception {
+        // Create an open network
+        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
+        openNetwork.setRepeaterEnabled(true);
+
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
+
+        NetworkUpdateResult result = addNetworkToWifiConfigManager(openNetwork);
+        assertEquals(WifiConfiguration.INVALID_NETWORK_ID, result.getNetworkId());
+
+        // Now try with the permission is granted
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+
+        result = addNetworkToWifiConfigManager(openNetwork);
+        assertNotEquals(WifiConfiguration.INVALID_NETWORK_ID, result.getNetworkId());
     }
 
     /**
@@ -5406,14 +5445,9 @@ public class WifiConfigManagerTest extends WifiBaseTest {
     private void createWifiConfigManager() {
         mWifiConfigManager =
                 new WifiConfigManager(
-                        mContext, mClock, mUserManager, mWifiCarrierInfoManager,
-                        mWifiKeyStore, mWifiConfigStore,
-                        mWifiPermissionsUtil, mMacAddressUtil, mWifiMetrics, mWifiBlocklistMonitor,
-                        mWifiLastResortWatchdog,
+                        mContext, mWifiKeyStore, mWifiConfigStore,
                         mNetworkListSharedStoreData, mNetworkListUserStoreData,
-                        mRandomizedMacStoreData,
-                        mFrameworkFacade, mDeviceConfigFacade,
-                        mWifiScoreCard, mLruConnectionTracker, mBuildProperties);
+                        mRandomizedMacStoreData, mLruConnectionTracker, mWifiInjector);
         mWifiConfigManager.enableVerboseLogging(true);
     }
 
@@ -7314,5 +7348,87 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         assertTrue(option23.size() == actual23.size());
         assertTrue(option23.containsAll(actual23));
         assertTrue(actual23.containsAll(option23));
+    }
+
+    @Test
+    public void testAddOnNetworkUpdateListenerNull() throws Exception {
+        ArgumentCaptor<WifiConfiguration> wifiConfigCaptor =
+                ArgumentCaptor.forClass(WifiConfiguration.class);
+        mWifiConfigManager.addOnNetworkUpdateListener(mListener);
+        mWifiConfigManager.addOnNetworkUpdateListener(null);
+        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
+        verifyAddNetworkToWifiConfigManager(openNetwork);
+        NetworkUpdateResult result =
+                mWifiConfigManager.addOrUpdateNetwork(openNetwork, TEST_CREATOR_UID);
+        verify(mListener).onNetworkAdded(wifiConfigCaptor.capture());
+        assertEquals(openNetwork.networkId, wifiConfigCaptor.getValue().networkId);
+    }
+
+    @Test
+    public void testRemoveOnNetworkUpdateListenerNull() throws Exception {
+        mWifiConfigManager.addOnNetworkUpdateListener(mListener);
+        mWifiConfigManager.addOnNetworkUpdateListener(null);
+        mWifiConfigManager.removeOnNetworkUpdateListener(null);
+        mWifiConfigManager.removeOnNetworkUpdateListener(mListener);
+        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
+        verifyAddNetworkToWifiConfigManager(openNetwork);
+        NetworkUpdateResult result =
+                mWifiConfigManager.addOrUpdateNetwork(openNetwork, TEST_CREATOR_UID);
+        verify(mListener, never()).onNetworkAdded(anyObject());
+    }
+
+    private int verifyAddNetwork(WifiConfiguration config, boolean expectNew) {
+        NetworkUpdateResult result = addNetworkToWifiConfigManager(config);
+        assertTrue(result.getNetworkId() != WifiConfiguration.INVALID_NETWORK_ID);
+        assertEquals(expectNew, result.isNewNetwork());
+        return result.getNetworkId();
+    }
+
+    @Test
+    public void testUpdateCaCertificateSuccess() throws Exception {
+        when(mPrimaryClientModeManager.getSupportedFeatures()).thenReturn(
+                WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE);
+
+        int openNetId = verifyAddNetwork(WifiConfigurationTestUtil.createOpenNetwork(), true);
+        int eapPeapNetId = verifyAddNetwork(prepareTofuEapConfig(
+                WifiEnterpriseConfig.Eap.PEAP, WifiEnterpriseConfig.Phase2.NONE), true);
+        int eapSimNetId = verifyAddNetwork(WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE), true);
+        assertTrue(mWifiConfigManager.updateCaCertificate(eapPeapNetId, FakeKeys.CA_CERT0));
+        WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(eapPeapNetId);
+        assertFalse(config.enterpriseConfig.isTrustOnFirstUseEnabled());
+        assertFalse(config.enterpriseConfig.isUserApproveNoCaCert());
+        assertEquals(FakeKeys.CA_CERT0, config.enterpriseConfig.getCaCertificate());
+    }
+
+    @Test
+    public void testUpdateCaCertificateFaiulreInvalidArgument() throws Exception {
+        when(mPrimaryClientModeManager.getSupportedFeatures()).thenReturn(
+                WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE);
+
+        int openNetId = verifyAddNetwork(WifiConfigurationTestUtil.createOpenNetwork(), true);
+        int eapPeapNetId = verifyAddNetwork(prepareTofuEapConfig(
+                WifiEnterpriseConfig.Eap.PEAP, WifiEnterpriseConfig.Phase2.NONE), true);
+        int eapSimNetId = verifyAddNetwork(WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE), true);
+
+        // Invalid network id
+        assertFalse(mWifiConfigManager.updateCaCertificate(-1, FakeKeys.CA_CERT0));
+
+        // Not an enterprise network
+        assertFalse(mWifiConfigManager.updateCaCertificate(openNetId, FakeKeys.CA_CERT0));
+
+        // Not a certificate baseed enterprise network
+        assertFalse(mWifiConfigManager.updateCaCertificate(eapSimNetId, FakeKeys.CA_CERT0));
+
+        // No cert
+        assertFalse(mWifiConfigManager.updateCaCertificate(eapPeapNetId, null));
+
+        // No valid subject
+        X509Certificate mockCert = mock(X509Certificate.class);
+        Principal mockSubjectDn = mock(Principal.class);
+        when(mockCert.getSubjectDN()).thenReturn(mockSubjectDn);
+        when(mockSubjectDn.getName()).thenReturn("");
+        assertFalse(mWifiConfigManager.updateCaCertificate(eapPeapNetId, mockCert));
     }
 }

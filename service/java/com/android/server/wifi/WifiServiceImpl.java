@@ -270,7 +270,7 @@ public class WifiServiceImpl extends BaseWifiService {
     @VisibleForTesting
     public final CountryCodeTracker mCountryCodeTracker;
     private final MultiInternetManager mMultiInternetManager;
-    private final int mVerboseAlwaysOnLevel;
+    private int mVerboseAlwaysOnLevel = -1;
 
     /**
      * Callback for use with LocalOnlyHotspot to unregister requesting applications upon death.
@@ -502,8 +502,14 @@ public class WifiServiceImpl extends BaseWifiService {
         mCountryCodeTracker = new CountryCodeTracker();
         mWifiTetheringDisallowed = false;
         mMultiInternetManager = mWifiInjector.getMultiInternetManager();
-        mVerboseAlwaysOnLevel = context.getResources()
-                .getInteger(R.integer.config_wifiVerboseLoggingAlwaysOnLevel);
+    }
+
+    private int getVerboseAlwaysOnLevel() {
+        if (mVerboseAlwaysOnLevel == -1) {
+            mVerboseAlwaysOnLevel = mContext.getResources()
+                    .getInteger(R.integer.config_wifiVerboseLoggingAlwaysOnLevel);
+        }
+        return mVerboseAlwaysOnLevel;
     }
 
     /**
@@ -583,7 +589,7 @@ public class WifiServiceImpl extends BaseWifiService {
                     },
                     new IntentFilter(TelephonyManager.ACTION_DEFAULT_DATA_SUBSCRIPTION_CHANGED),
                     null,
-                    new Handler(mWifiHandlerThread.getLooper()));
+                    new Handler(mWifiHandlerThread.getLooper()), Context.RECEIVER_NOT_EXPORTED);
 
             mContext.registerReceiver(
                     new BroadcastReceiver() {
@@ -610,7 +616,7 @@ public class WifiServiceImpl extends BaseWifiService {
                     },
                     new IntentFilter(Intent.ACTION_LOCALE_CHANGED),
                     null,
-                    new Handler(mWifiHandlerThread.getLooper()));
+                    new Handler(mWifiHandlerThread.getLooper()), Context.RECEIVER_NOT_EXPORTED);
 
             mContext.registerReceiver(
                     new BroadcastReceiver() {
@@ -624,7 +630,7 @@ public class WifiServiceImpl extends BaseWifiService {
                     },
                     new IntentFilter(LocationManager.MODE_CHANGED_ACTION),
                     null,
-                    new Handler(mWifiHandlerThread.getLooper()));
+                    new Handler(mWifiHandlerThread.getLooper()), Context.RECEIVER_NOT_EXPORTED);
             updateLocationMode();
 
             if (SdkLevel.isAtLeastT()) {
@@ -638,7 +644,7 @@ public class WifiServiceImpl extends BaseWifiService {
                         },
                         new IntentFilter(UserManager.ACTION_USER_RESTRICTIONS_CHANGED),
                         null,
-                        new Handler(mWifiHandlerThread.getLooper()));
+                        new Handler(mWifiHandlerThread.getLooper()), Context.RECEIVER_NOT_EXPORTED);
                 mWifiTetheringDisallowed = mUserManager.getUserRestrictions()
                         .getBoolean(UserManager.DISALLOW_WIFI_TETHERING);
             }
@@ -769,7 +775,7 @@ public class WifiServiceImpl extends BaseWifiService {
                     },
                     intentFilter,
                     null,
-                    new Handler(mWifiHandlerThread.getLooper()));
+                    new Handler(mWifiHandlerThread.getLooper()), Context.RECEIVER_NOT_EXPORTED);
             mMemoryStoreImpl.start();
             mPasspointManager.initializeProvisioner(
                     mWifiInjector.getPasspointProvisionerHandlerThread().getLooper());
@@ -1658,6 +1664,19 @@ public class WifiServiceImpl extends BaseWifiService {
         }
 
         @Override
+        public void onCountryCodeChangePending(@NonNull String countryCode) {
+            // post operation to handler thread
+            mWifiThreadRunner.post(() -> {
+                if (mTetheredSoftApTracker != null) {
+                    mTetheredSoftApTracker.notifyNewCountryCodeChangePending(countryCode);
+                }
+                if (mLohsSoftApTracker != null) {
+                    mLohsSoftApTracker.notifyNewCountryCodeChangePending(countryCode);
+                }
+            });
+        }
+
+        @Override
         public void onDriverCountryCodeChanged(@Nullable String countryCode) {
             // post operation to handler thread
             mWifiThreadRunner.post(() -> {
@@ -1666,7 +1685,12 @@ public class WifiServiceImpl extends BaseWifiService {
                 // Update channel capability when country code is not null.
                 // Because the driver country code will reset to null when driver is non-active.
                 if (countryCode != null) {
-                    mTetheredSoftApTracker.updateAvailChannelListInSoftApCapability();
+                    if (TextUtils.equals(countryCode, mCountryCode.getCurrentDriverCountryCode())) {
+                        Log.e(TAG, "Country code not consistent! expect " + countryCode + " actual "
+                                + mCountryCode.getCurrentDriverCountryCode());
+                    }
+                    mTetheredSoftApTracker.updateAvailChannelListInSoftApCapability(countryCode);
+                    mLohsSoftApTracker.updateAvailChannelListInSoftApCapability(countryCode);
                     mActiveModeWarden.updateSoftApCapability(
                             mTetheredSoftApTracker.getSoftApCapability(),
                             WifiManager.IFACE_IP_MODE_TETHERED);
@@ -1725,7 +1749,7 @@ public class WifiServiceImpl extends BaseWifiService {
         private SoftApCapability mTetheredSoftApCapability = null;
 
         public void handleBootCompleted() {
-            updateAvailChannelListInSoftApCapability();
+            updateAvailChannelListInSoftApCapability(mCountryCode.getCurrentDriverCountryCode());
         }
 
         public int getState() {
@@ -1771,32 +1795,50 @@ public class WifiServiceImpl extends BaseWifiService {
             }
         }
 
+        public void notifyNewCountryCodeChangePending(@NonNull String countryCode) {
+            // If country code not changed, no need to update.
+            if (!TextUtils.equals(mTetheredSoftApCapability.getCountryCode(), countryCode)) {
+                // Country code changed when we can't update channels from HAL, invalidate the soft
+                // ap capability for supported channels.
+                SoftApCapability newSoftApCapability = new SoftApCapability(
+                        mTetheredSoftApCapability);
+                for (int b : SoftApConfiguration.BAND_TYPES) {
+                    newSoftApCapability.setSupportedChannelList(b, new int[0]);
+                }
+                // Notify the capability change
+                onCapabilityChanged(newSoftApCapability);
+            }
+        }
+
         public SoftApCapability getSoftApCapability() {
             synchronized (mLock) {
                 if (mTetheredSoftApCapability == null) {
                     mTetheredSoftApCapability = ApConfigUtil.updateCapabilityFromResource(mContext);
                     // Default country code
                     mTetheredSoftApCapability = updateSoftApCapabilityWithAvailableChannelList(
-                            mTetheredSoftApCapability);
+                            mTetheredSoftApCapability, mCountryCode.getCountryCode());
                 }
                 return mTetheredSoftApCapability;
             }
         }
 
         private SoftApCapability updateSoftApCapabilityWithAvailableChannelList(
-                @NonNull SoftApCapability softApCapability) {
+                @NonNull SoftApCapability softApCapability, @Nullable String countryCode) {
             if (!mIsBootComplete) {
-                // The available channel list is from wificond.
-                // It might be a failure or stuck during wificond init.
+                // The available channel list is from wificond or HAL.
+                // It might be a failure or stuck during wificond or HAL init.
                 return softApCapability;
             }
-            return ApConfigUtil.updateSoftApCapabilityWithAvailableChannelList(softApCapability,
-                    mContext, mWifiNative);
+            if (mCountryCode.getCurrentDriverCountryCode() != null) {
+                mTetheredSoftApCapability.setCountryCode(countryCode);
+            }
+            return ApConfigUtil.updateSoftApCapabilityWithAvailableChannelList(
+                    softApCapability, mContext, mWifiNative);
         }
 
-        public void updateAvailChannelListInSoftApCapability() {
+        public void updateAvailChannelListInSoftApCapability(@Nullable String countryCode) {
             onCapabilityChanged(updateSoftApCapabilityWithAvailableChannelList(
-                    getSoftApCapability()));
+                    getSoftApCapability(), countryCode));
         }
 
         public void updateSoftApCapabilityWhenCarrierConfigChanged(int subId) {
@@ -1944,6 +1986,7 @@ public class WifiServiceImpl extends BaseWifiService {
         private Map<String, List<WifiClient>> mLohsConnectedClientsMap = new HashMap();
         private Map<String, SoftApInfo> mLohsInfoMap = new HashMap();
         private boolean mIsBridgedMode = false;
+
         private final RemoteCallbackList<ISoftApCallback> mRegisteredLohsSoftApCallbacks =
                 new RemoteCallbackList<>();
 
@@ -1984,24 +2027,50 @@ public class WifiServiceImpl extends BaseWifiService {
             }
         }
 
+        public void notifyNewCountryCodeChangePending(@NonNull String countryCode) {
+            if (mLohsSoftApCapability == null) {
+                return;
+            }
+            // If country code not changed, no need to update.
+            if (!TextUtils.equals(mLohsSoftApCapability.getCountryCode(), countryCode)) {
+                // Country code changed when we can't update channels from HAL, invalidate the soft
+                // ap capability for supported channels.
+                SoftApCapability newSoftApCapability = new SoftApCapability(
+                        mLohsSoftApCapability);
+                for (int b : SoftApConfiguration.BAND_TYPES) {
+                    newSoftApCapability.setSupportedChannelList(b, new int[0]);
+                }
+                // Notify the capability change
+                onCapabilityChanged(newSoftApCapability);
+            }
+        }
+
         public SoftApCapability getSoftApCapability() {
             if (mLohsSoftApCapability == null) {
-                mLohsSoftApCapability =  ApConfigUtil.updateCapabilityFromResource(mContext);
+                mLohsSoftApCapability = ApConfigUtil.updateCapabilityFromResource(mContext);
                 mLohsSoftApCapability = updateSoftApCapabilityWithAvailableChannelList(
-                        mLohsSoftApCapability);
+                        mLohsSoftApCapability, mCountryCode.getCountryCode());
             }
             return mLohsSoftApCapability;
         }
 
         private SoftApCapability updateSoftApCapabilityWithAvailableChannelList(
-                @NonNull SoftApCapability softApCapability) {
+                @NonNull SoftApCapability softApCapability, @Nullable String countryCode) {
             if (!mIsBootComplete) {
-                // The available channel list is from wificond.
-                // It might be a failure or stuck during wificond init.
+                // The available channel list is from wificond or HAL.
+                // It might be a failure or stuck during wificond or HAL init.
                 return softApCapability;
+            }
+            if (mCountryCode.getCurrentDriverCountryCode() != null) {
+                softApCapability.setCountryCode(countryCode);
             }
             return ApConfigUtil.updateSoftApCapabilityWithAvailableChannelList(softApCapability,
                     mContext, mWifiNative);
+        }
+
+        public void updateAvailChannelListInSoftApCapability(@Nullable String countryCode) {
+            onCapabilityChanged(updateSoftApCapabilityWithAvailableChannelList(
+                    getSoftApCapability(), countryCode));
         }
 
         public void updateInterfaceIpState(String ifaceName, int mode) {
@@ -3013,10 +3082,10 @@ public class WifiServiceImpl extends BaseWifiService {
         }
 
         int targetConfigUid = Process.INVALID_UID; // don't expose any MAC addresses
-        if (isPrivileged || isDeviceOrProfileOwner) {
+        if (isPrivileged) {
             targetConfigUid = Process.WIFI_UID; // expose all MAC addresses
-        } else if (isCarrierApp) {
-            targetConfigUid = callingUid; // expose only those configs created by the Carrier App
+        } else if (isCarrierApp || isDeviceOrProfileOwner) {
+            targetConfigUid = callingUid; // expose only those configs created by the calling App
         }
         int finalTargetConfigUid = targetConfigUid;
         List<WifiConfiguration> configs = mWifiThreadRunner.call(
@@ -4584,7 +4653,7 @@ public class WifiServiceImpl extends BaseWifiService {
                 },
                 intentFilter,
                 null,
-                new Handler(mWifiHandlerThread.getLooper()));
+                new Handler(mWifiHandlerThread.getLooper()), Context.RECEIVER_NOT_EXPORTED);
     }
 
     private void registerForCarrierConfigChange() {
@@ -4606,7 +4675,7 @@ public class WifiServiceImpl extends BaseWifiService {
                 },
                 filter,
                 null,
-                new Handler(mWifiHandlerThread.getLooper()));
+                new Handler(mWifiHandlerThread.getLooper()), Context.RECEIVER_NOT_EXPORTED);
 
         WifiPhoneStateListener phoneStateListener = new WifiPhoneStateListener(
                 mWifiHandlerThread.getLooper());
@@ -4853,8 +4922,9 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     private boolean isVerboseLoggingEnabled() {
-        return mFrameworkFacade.isVerboseLoggingAlwaysOn(mVerboseAlwaysOnLevel, mBuildProperties)
-                ? true : WifiManager.VERBOSE_LOGGING_LEVEL_DISABLED != mVerboseLoggingLevel;
+        return mFrameworkFacade
+                .isVerboseLoggingAlwaysOn(getVerboseAlwaysOnLevel(), mBuildProperties)
+                || WifiManager.VERBOSE_LOGGING_LEVEL_DISABLED != mVerboseLoggingLevel;
     }
 
     private void enableVerboseLoggingInternal(int verbose) {
@@ -4882,6 +4952,7 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiMulticastLockManager.enableVerboseLogging(verboseEnabled);
         mWifiInjector.enableVerboseLogging(verboseEnabled, halVerboseEnabled);
         mWifiInjector.getSarManager().enableVerboseLogging(verboseEnabled);
+        ApConfigUtil.enableVerboseLogging(verboseEnabled);
     }
 
     @Override
@@ -6361,8 +6432,13 @@ public class WifiServiceImpl extends BaseWifiService {
     public List<WifiAvailableChannel> getUsableChannels(@WifiScanner.WifiBand int band,
             @WifiAvailableChannel.OpMode int mode, @WifiAvailableChannel.Filter int filter) {
         // Location mode must be enabled
-        if (!mWifiPermissionsUtil.isLocationModeEnabled()) {
-            throw new SecurityException("Location mode is disabled for the device");
+        long ident = Binder.clearCallingIdentity();
+        try {
+            if (!mWifiPermissionsUtil.isLocationModeEnabled()) {
+                throw new SecurityException("Location mode is disabled for the device");
+            }
+        } finally {
+            Binder.restoreCallingIdentity(ident);
         }
         final int uid = Binder.getCallingUid();
         if (isVerboseLoggingEnabled()) {

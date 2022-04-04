@@ -146,8 +146,10 @@ import android.net.wifi.IWifiConnectedNetworkScorer;
 import android.net.wifi.IWifiVerboseLoggingStatusChangedListener;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
+import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.SoftApInfo;
+import android.net.wifi.WifiAvailableChannel;
 import android.net.wifi.WifiClient;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiConfiguration.KeyMgmt;
@@ -2921,6 +2923,45 @@ public class WifiServiceImplTest extends WifiBaseTest {
     }
 
     /**
+     * Test that admin may retrieve all networks but mac address is set to default for networks
+     * they do not own.
+     */
+    @Test
+    public void testGetConfiguredNetworksAdmin_ReturnsNetworksWithDefaultMac() {
+        final int callerUid = Binder.getCallingUid();
+        WifiConfiguration callerNetwork = WifiConfigurationTestUtil.generateWifiConfig(
+                0, callerUid, "\"red\"", true, true, null, null, SECURITY_NONE);
+        WifiConfiguration nonCallerNetwork = WifiConfigurationTestUtil.generateWifiConfig(
+                2, 1200000, "\"blue\"", true, true, null, null, SECURITY_NONE);
+        callerNetwork.setRandomizedMacAddress(TEST_FACTORY_MAC_ADDR);
+
+        when(mWifiConfigManager.getSavedNetworks(callerUid)).thenReturn(Arrays.asList(
+                callerNetwork, nonCallerNetwork));
+
+        when(mWifiPermissionsUtil.isProfileOwner(Binder.getCallingUid(), TEST_PACKAGE_NAME))
+                .thenReturn(true);
+        when(mWifiPermissionsUtil.isAdmin(Binder.getCallingUid(), TEST_PACKAGE_NAME))
+                .thenReturn(true);
+
+        mLooper.startAutoDispatch();
+        ParceledListSlice<WifiConfiguration> configs =
+                mWifiServiceImpl.getConfiguredNetworks(TEST_PACKAGE_NAME, TEST_FEATURE_ID, false);
+        mLooper.stopAutoDispatchAndIgnoreExceptions();
+
+        WifiConfigurationTestUtil.assertConfigurationsEqualForBackup(
+                Arrays.asList(callerNetwork, nonCallerNetwork), configs.getList());
+
+        for (WifiConfiguration config : configs.getList()) {
+            if (config.getProfileKey().equals(callerNetwork.getProfileKey())) {
+                assertEquals(TEST_FACTORY_MAC, config.getRandomizedMacAddress().toString());
+            } else {
+                assertEquals(WifiInfo.DEFAULT_MAC_ADDRESS,
+                        config.getRandomizedMacAddress().toString());
+            }
+        }
+    }
+
+    /**
      * Test that privileged network list are exposed null to an app that targets T or later and does
      * not have nearby devices permission.
      */
@@ -5394,7 +5435,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mContext).registerReceiver(mBroadcastReceiverCaptor.capture(),
                 (IntentFilter) argThat(new IdleModeIntentMatcher()),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         // Tell the wifi service that the device became idle.
         when(mPowerManager.isDeviceIdleMode()).thenReturn(true);
@@ -5488,7 +5529,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                                 && filter.hasAction(Intent.ACTION_PACKAGE_REMOVED)
                                 && filter.hasAction(Intent.ACTION_PACKAGE_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
         int uid = TEST_UID;
         String packageName = TEST_PACKAGE_NAME;
         doThrow(new PackageManager.NameNotFoundException()).when(mPackageManager)
@@ -5522,7 +5563,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                                 && filter.hasAction(Intent.ACTION_PACKAGE_REMOVED)
                                 && filter.hasAction(Intent.ACTION_PACKAGE_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
         int uid = TEST_UID;
         String packageName = TEST_PACKAGE_NAME;
         // Send the broadcast
@@ -5554,7 +5595,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                                 && filter.hasAction(Intent.ACTION_PACKAGE_REMOVED)
                                 && filter.hasAction(Intent.ACTION_PACKAGE_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
         int uid = TEST_UID;
         String packageName = TEST_PACKAGE_NAME;
         mPackageInfo.applicationInfo = mApplicationInfo;
@@ -5586,7 +5627,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(Intent.ACTION_PACKAGE_FULLY_REMOVED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         String packageName = TEST_PACKAGE_NAME;
         // Send the broadcast
@@ -5611,7 +5652,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(Intent.ACTION_PACKAGE_FULLY_REMOVED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         int uid = TEST_UID;
         // Send the broadcast
@@ -5640,7 +5681,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(Intent.ACTION_USER_REMOVED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         UserHandle userHandle = UserHandle.of(TEST_USER_HANDLE);
         // Send the broadcast
@@ -5665,7 +5706,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                         filter.hasAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)
                                 && filter.hasAction(BluetoothAdapter.ACTION_STATE_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         {
             Intent intent = new Intent(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
@@ -5730,7 +5771,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(Intent.ACTION_USER_REMOVED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         UserHandle userHandle = UserHandle.of(TEST_USER_HANDLE);
         // Send the broadcast with wrong action
@@ -5894,7 +5935,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                         filter.hasAction(
                                 TelephonyManager.ACTION_DEFAULT_DATA_SUBSCRIPTION_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         Intent intent = new Intent(TelephonyManager.ACTION_DEFAULT_DATA_SUBSCRIPTION_CHANGED);
         intent.putExtra("subscription", 1);
@@ -7904,7 +7945,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
 
         // Send the broadcast
         Intent intent = new Intent(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED);
@@ -7924,7 +7965,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
         ArgumentCaptor<PhoneStateListener> phoneStateListenerCaptor =
                 ArgumentCaptor.forClass(PhoneStateListener.class);
         verify(mTelephonyManager).listen(phoneStateListenerCaptor.capture(),
@@ -8734,7 +8775,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(Intent.ACTION_LOCALE_CHANGED)),
                 isNull(),
-                any(Handler.class));
+                any(Handler.class), eq(Context.RECEIVER_NOT_EXPORTED));
         verify(mWifiNotificationManager).createNotificationChannels();
         clearInvocations(mWifiNotificationManager);
 
@@ -10276,5 +10317,56 @@ public class WifiServiceImplTest extends WifiBaseTest {
         assertEquals(WifiManager.WIFI_INTERFACE_TYPE_DIRECT,
                 intArrayCaptor.getAllValues().get(2)[0]);
         assertArrayEquals(packagesOther, stringArrayCaptor.getAllValues().get(2));
+    }
+
+    @Test
+    public void testTetheredSoftApTrackerWhenCountryCodeChanged() throws Exception {
+        // needed to mock this to call "handleBootCompleted"
+        when(mWifiInjector.getPasspointProvisionerHandlerThread())
+                .thenReturn(mock(HandlerThread.class));
+        mWifiServiceImpl.handleBootCompleted();
+        mLooper.dispatchAll();
+
+        registerSoftApCallbackAndVerify(mClientSoftApCallback);
+        reset(mClientSoftApCallback);
+        when(mWifiPermissionsUtil.checkCallersCoarseLocationPermission(
+                eq(TEST_PACKAGE_NAME), eq(TEST_FEATURE_ID), anyInt(), any())).thenReturn(true);
+        verifyRegisterDriverCountryCodeChangedListenerSucceededAndTriggerListener(
+                mIOnWifiDriverCountryCodeChangedListener);
+        reset(mIOnWifiDriverCountryCodeChangedListener);
+        ArgumentCaptor<SoftApCapability> capabilityArgumentCaptor = ArgumentCaptor.forClass(
+                SoftApCapability.class);
+        // Country code update with HAL started
+        when(mWifiNative.isHalStarted()).thenReturn(true);
+        // Channel 9 - 2452Mhz
+        WifiAvailableChannel channels2g = new WifiAvailableChannel(2452,
+                WifiAvailableChannel.OP_MODE_SAP);
+        when(mWifiNative.isHalSupported()).thenReturn(true);
+        when(mWifiNative.isHalStarted()).thenReturn(true);
+        when(mWifiNative.getUsableChannels(eq(WifiScanner.WIFI_BAND_24_GHZ), anyInt(), anyInt()))
+                .thenReturn(new ArrayList<>(Arrays.asList(channels2g)));
+        mWifiServiceImpl.mCountryCodeTracker.onCountryCodeChangePending(TEST_COUNTRY_CODE);
+        mLooper.dispatchAll();
+        mWifiServiceImpl.mCountryCodeTracker.onDriverCountryCodeChanged(TEST_COUNTRY_CODE);
+        mLooper.dispatchAll();
+        verify(mIOnWifiDriverCountryCodeChangedListener)
+                .onDriverCountryCodeChanged(TEST_COUNTRY_CODE);
+        verify(mClientSoftApCallback).onCapabilityChanged(capabilityArgumentCaptor.capture());
+        assertEquals(1, capabilityArgumentCaptor.getValue()
+                .getSupportedChannelList(SoftApConfiguration.BAND_2GHZ).length);
+        assertEquals(9, capabilityArgumentCaptor.getValue()
+                .getSupportedChannelList(SoftApConfiguration.BAND_2GHZ)[0]);
+        reset(mClientSoftApCallback);
+        // Country code update with HAL not started
+        when(mWifiNative.isHalStarted()).thenReturn(false);
+        mWifiServiceImpl.mCountryCodeTracker.onCountryCodeChangePending(TEST_NEW_COUNTRY_CODE);
+        mLooper.dispatchAll();
+        verify(mIOnWifiDriverCountryCodeChangedListener, never())
+                .onDriverCountryCodeChanged(TEST_NEW_COUNTRY_CODE);
+        verify(mClientSoftApCallback)
+                .onCapabilityChanged(capabilityArgumentCaptor.capture());
+        // The supported channels in soft AP capability got invalidated.
+        assertEquals(0, capabilityArgumentCaptor.getValue()
+                .getSupportedChannelList(SoftApConfiguration.BAND_2GHZ).length);
     }
 }

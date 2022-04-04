@@ -527,7 +527,7 @@ public class ActiveModeWarden {
                 // update to make sure we are in the correct mode
                 scanAlwaysModeChanged();
             }
-        }, new IntentFilter(LocationManager.MODE_CHANGED_ACTION));
+        }, new IntentFilter(LocationManager.MODE_CHANGED_ACTION), Context.RECEIVER_NOT_EXPORTED);
         mContext.registerReceiver(new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -541,7 +541,7 @@ public class ActiveModeWarden {
                     airplaneModeToggled();
                 }
             }
-        }, new IntentFilter(Intent.ACTION_AIRPLANE_MODE_CHANGED));
+        }, new IntentFilter(Intent.ACTION_AIRPLANE_MODE_CHANGED), Context.RECEIVER_NOT_EXPORTED);
         mContext.registerReceiver(new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -1147,10 +1147,11 @@ public class ActiveModeWarden {
     }
 
     /**
-     * Method to stop client mode manger.
+     * Method to stop client mode manager.
      */
     private void stopAdditionalClientModeManager(ClientModeManager clientModeManager) {
-        if (clientModeManager.getRole() == ROLE_CLIENT_PRIMARY
+        if (clientModeManager instanceof DefaultClientModeManager
+                || clientModeManager.getRole() == ROLE_CLIENT_PRIMARY
                 || clientModeManager.getRole() == ROLE_CLIENT_SCAN_ONLY) return;
         Log.d(TAG, "Shutting down additional client mode manager: " + clientModeManager);
         clientModeManager.stop();
@@ -1977,6 +1978,9 @@ public class ActiveModeWarden {
             private void handleAdditionalClientModeManagerRequest(
                     @NonNull AdditionalClientModeManagerRequestInfo requestInfo) {
                 ClientModeManager primaryManager = getPrimaryClientModeManager();
+                if (primaryManager instanceof DefaultClientModeManager) {
+                    primaryManager = null;
+                }
                 if (requestInfo.clientRole == ROLE_CLIENT_SECONDARY_TRANSIENT
                         && mDppManager.isSessionInProgress()) {
                     // When MBB is triggered, we could end up switching the primary interface
