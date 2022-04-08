@@ -16,8 +16,6 @@
 
 package android.net.wifi.rtt;
 
-import static junit.framework.Assert.fail;
-
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -85,7 +83,7 @@ public class WifiRttManagerTest {
         List<RangingResult> results = new ArrayList<>();
         results.add(
                 new RangingResult(RangingResult.STATUS_SUCCESS, MacAddress.BROADCAST_ADDRESS, 15, 5,
-                        10, 8, 5, null, null, null, 666, true));
+                        10, 8, 5, null, null, null, 666));
         RangingResultCallback callbackMock = mock(RangingResultCallback.class);
         ArgumentCaptor<IRttCallback> callbackCaptor = ArgumentCaptor.forClass(IRttCallback.class);
 
@@ -134,13 +132,10 @@ public class WifiRttManagerTest {
         // Note: not validating parcel code of ScanResult (assumed to work)
         ScanResult scanResult1 = new ScanResult();
         scanResult1.BSSID = "00:01:02:03:04:05";
-        scanResult1.setFlag(ScanResult.FLAG_80211mc_RESPONDER);
         ScanResult scanResult2 = new ScanResult();
         scanResult2.BSSID = "06:07:08:09:0A:0B";
-        scanResult2.setFlag(ScanResult.FLAG_80211mc_RESPONDER);
         ScanResult scanResult3 = new ScanResult();
         scanResult3.BSSID = "AA:BB:CC:DD:EE:FF";
-        scanResult3.setFlag(ScanResult.FLAG_80211mc_RESPONDER);
         List<ScanResult> scanResults2and3 = new ArrayList<>(2);
         scanResults2and3.add(scanResult2);
         scanResults2and3.add(scanResult3);
@@ -152,7 +147,6 @@ public class WifiRttManagerTest {
         builder.addAccessPoints(scanResults2and3);
         builder.addWifiAwarePeer(mac1);
         builder.addWifiAwarePeer(peerHandle1);
-        builder.setRttBurstSize(4);
         RangingRequest request = builder.build();
 
         Parcel parcelW = Parcel.obtain();
@@ -169,110 +163,19 @@ public class WifiRttManagerTest {
     }
 
     /**
-     * Validate the rtt burst size is set correctly when in range.
-     */
-    @Test
-    public void test802llmcCapableAccessPointFailsForNon11mcBuilderMethods() {
-        ScanResult scanResult1 = new ScanResult();
-        scanResult1.BSSID = "AA:BB:CC:DD:EE:FF";
-        scanResult1.setFlag(ScanResult.FLAG_80211mc_RESPONDER);
-
-        // create request for one AP
-        try {
-            RangingRequest.Builder builder = new RangingRequest.Builder();
-            builder.addNon80211mcCapableAccessPoint(scanResult1);
-            fail("Single Access Point was 11mc capable.");
-        } catch (IllegalArgumentException e) {
-            // expected
-        }
-
-        ScanResult scanResult2 = new ScanResult();
-        scanResult2.BSSID = "11:BB:CC:DD:EE:FF";
-        scanResult2.setFlag(ScanResult.FLAG_80211mc_RESPONDER);
-        List<ScanResult> scanResults = new ArrayList<>();
-        scanResults.add(scanResult1);
-        scanResults.add(scanResult2);
-
-        // create request for a list of 2 APs.
-        try {
-            RangingRequest.Builder builder = new RangingRequest.Builder();
-            builder.addNon80211mcCapableAccessPoints(scanResults);
-            fail("One Access Point in the List was 11mc capable.");
-        } catch (IllegalArgumentException e) {
-            // expected
-        }
-    }
-
-    /**
-     * Validate the rtt burst size is set correctly when in range.
-     */
-    @Test
-    public void testRangingRequestSetBurstSize() {
-        ScanResult scanResult = new ScanResult();
-        scanResult.BSSID = "AA:BB:CC:DD:EE:FF";
-        scanResult.setFlag(ScanResult.FLAG_80211mc_RESPONDER);
-
-        // create request
-        RangingRequest.Builder builder = new RangingRequest.Builder();
-        builder.setRttBurstSize(4);
-        builder.addAccessPoint(scanResult);
-        RangingRequest request = builder.build();
-
-        // confirm rtt burst size is set correctly to default value
-        assertEquals(request.getRttBurstSize(), 4);
-    }
-
-    /**
-     * Validate the rtt burst size cannot be smaller than the minimum.
-     */
-    @Test
-    public void testRangingRequestMinBurstSizeIsEnforced() {
-        ScanResult scanResult = new ScanResult();
-        scanResult.BSSID = "AA:BB:CC:DD:EE:FF";
-
-        // create request
-        try {
-            RangingRequest.Builder builder = new RangingRequest.Builder();
-            builder.setRttBurstSize(RangingRequest.getMinRttBurstSize() - 1);
-            fail("RTT burst size was smaller than min value.");
-        } catch (IllegalArgumentException e) {
-            // expected
-        }
-    }
-
-    /**
-     * Validate the rtt burst size cannot exceed the maximum.
-     */
-    @Test
-    public void testRangingRequestMaxBurstSizeIsEnforced() {
-        ScanResult scanResult = new ScanResult();
-        scanResult.BSSID = "AA:BB:CC:DD:EE:FF";
-
-        // create request
-        try {
-            RangingRequest.Builder builder = new RangingRequest.Builder();
-            builder.setRttBurstSize(RangingRequest.getMaxRttBurstSize() + 1);
-            fail("RTT Burst size exceeded max value.");
-        } catch (IllegalArgumentException e) {
-            // expected
-        }
-    }
-
-    /**
      * Validate that can request as many range operation as the upper limit on number of requests.
      */
     @Test
     public void testRangingRequestAtLimit() {
         ScanResult scanResult = new ScanResult();
         scanResult.BSSID = "AA:BB:CC:DD:EE:FF";
-        scanResult.setFlag(ScanResult.FLAG_80211mc_RESPONDER);
         List<ScanResult> scanResultList = new ArrayList<>();
         for (int i = 0; i < RangingRequest.getMaxPeers() - 3; ++i) {
             scanResultList.add(scanResult);
         }
         MacAddress mac1 = MacAddress.fromString("00:01:02:03:04:05");
 
-        // create request using max RTT Peers
+        // create request
         RangingRequest.Builder builder = new RangingRequest.Builder();
         builder.addAccessPoint(scanResult);
         builder.addAccessPoints(scanResultList);
@@ -282,18 +185,6 @@ public class WifiRttManagerTest {
 
         // verify request
         request.enforceValidity(true);
-        // confirm rtt burst size is set correctly to default value
-        assertEquals(request.getRttBurstSize(), RangingRequest.getDefaultRttBurstSize());
-        // confirm the number of peers in the request is the max number of peers
-        List<ResponderConfig> rttPeers = request.getRttResponders();
-        int numRttPeers = rttPeers.size();
-        assertEquals(RangingRequest.getMaxPeers(), numRttPeers);
-        // confirm each peer has the correct mac address
-        for (int i = 0; i < numRttPeers - 1; ++i) {
-            assertEquals("AA:BB:CC:DD:EE:FF", rttPeers.get(i).macAddress.toString().toUpperCase());
-            assertEquals("00:01:02:03:04:05",
-                    rttPeers.get(numRttPeers - 1).macAddress.toString().toUpperCase());
-        }
     }
 
     /**
@@ -354,8 +245,7 @@ public class WifiRttManagerTest {
 
         // RangingResults constructed with a MAC address
         RangingResult result = new RangingResult(status, mac, distanceCm, distanceStdDevCm, rssi,
-                numAttemptedMeasurements, numSuccessfulMeasurements, lci, lcr, null, timestamp,
-                true);
+                numAttemptedMeasurements, numSuccessfulMeasurements, lci, lcr, null, timestamp);
 
         Parcel parcelW = Parcel.obtain();
         result.writeToParcel(parcelW, 0);
@@ -404,11 +294,9 @@ public class WifiRttManagerTest {
         byte[] lcr = { };
 
         RangingResult rr1 = new RangingResult(status, mac, distanceCm, distanceStdDevCm, rssi,
-                numAttemptedMeasurements, numSuccessfulMeasurements, lci, lcr, null, timestamp,
-                true);
+                numAttemptedMeasurements, numSuccessfulMeasurements, lci, lcr, null, timestamp);
         RangingResult rr2 = new RangingResult(status, mac, distanceCm, distanceStdDevCm, rssi,
-                numAttemptedMeasurements, numSuccessfulMeasurements, null, null, null, timestamp,
-                true);
+                numAttemptedMeasurements, numSuccessfulMeasurements, null, null, null, timestamp);
 
         assertEquals(rr1, rr2);
     }
@@ -467,10 +355,6 @@ public class WifiRttManagerTest {
         ScanResult.InformationElement vsa = new ScanResult.InformationElement();
         vsa.id = ScanResult.InformationElement.EID_VSA;
 
-        ScanResult.InformationElement heCap = new ScanResult.InformationElement();
-        heCap.id = ScanResult.InformationElement.EID_EXTENSION_PRESENT;
-        heCap.idExt = ScanResult.InformationElement.EID_EXT_HE_CAPABILITIES;
-
         // no IE
         ScanResult scan = new ScanResult();
         scan.BSSID = "00:01:02:03:04:05";
@@ -507,24 +391,5 @@ public class WifiRttManagerTest {
         config = ResponderConfig.fromScanResult(scan);
 
         assertEquals(ResponderConfig.PREAMBLE_HT, config.preamble);
-
-        // IE with VHT and HE on 5G
-
-        scan.frequency = 5200;
-        scan.informationElements[0] = vhtCap;
-        scan.informationElements[1] = heCap;
-
-        config = ResponderConfig.fromScanResult(scan);
-
-        assertEquals(ResponderConfig.PREAMBLE_VHT, config.preamble);
-
-        // IE with VHT and HE on 6G
-        scan.frequency = 5935;
-        scan.informationElements[0] = vhtCap;
-        scan.informationElements[1] = heCap;
-
-        config = ResponderConfig.fromScanResult(scan);
-
-        assertEquals(ResponderConfig.PREAMBLE_HE, config.preamble);
     }
 }

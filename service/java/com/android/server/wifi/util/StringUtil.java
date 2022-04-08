@@ -16,9 +16,6 @@
 
 package com.android.server.wifi.util;
 
-import java.util.Random;
-import java.util.stream.Collectors;
-
 /** Basic string utilities */
 public class StringUtil {
     static final byte ASCII_PRINTABLE_MIN = ' ';
@@ -47,14 +44,5 @@ public class StringUtil {
         }
 
         return true;
-    }
-
-    /** Returns a random number string. */
-    public static String generateRandomNumberString(int length) {
-        final String pool = "0123456789";
-        return new Random(System.currentTimeMillis())
-                .ints(length, 0, pool.length())
-                .mapToObj(i -> Character.toString(pool.charAt(i)))
-                .collect(Collectors.joining());
     }
 }

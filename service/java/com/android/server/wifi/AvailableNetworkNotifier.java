@@ -24,8 +24,8 @@ import static com.android.server.wifi.ConnectToNetworkNotificationBuilder.AVAILA
 
 import android.annotation.IntDef;
 import android.annotation.NonNull;
-import android.annotation.Nullable;
 import android.app.Notification;
+import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -34,6 +34,7 @@ import android.database.ContentObserver;
 import android.net.wifi.IActionListener;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
+import android.os.Binder;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Process;
@@ -45,8 +46,8 @@ import android.util.ArraySet;
 import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
-import com.android.server.wifi.proto.nano.WifiMetricsProto.ConnectToNetworkNotificationAndActionCount;
-import com.android.server.wifi.util.ActionListenerWrapper;
+import com.android.server.wifi.proto.nano.WifiMetricsProto
+        .ConnectToNetworkNotificationAndActionCount;
 import com.android.server.wifi.util.ScanResultUtil;
 
 import java.io.FileDescriptor;
@@ -86,8 +87,7 @@ public class AvailableNetworkNotifier {
     /** No recommendation is made and no notifications are shown. */
     private static final int STATE_NO_NOTIFICATION = 0;
     /** The initial notification recommending a network to connect to is shown. */
-    @VisibleForTesting
-    static final int STATE_SHOWING_RECOMMENDATION_NOTIFICATION = 1;
+    private static final int STATE_SHOWING_RECOMMENDATION_NOTIFICATION = 1;
     /** The notification of status of connecting to the recommended network is shown. */
     private static final int STATE_CONNECTING_IN_NOTIFICATION = 2;
     /** The notification that the connection to the recommended network was successful is shown. */
@@ -96,8 +96,7 @@ public class AvailableNetworkNotifier {
     private static final int STATE_CONNECT_FAILED_NOTIFICATION = 4;
 
     /** Current state of the notification. */
-    @VisibleForTesting
-    @State int mState = STATE_NO_NOTIFICATION;
+    @State private int mState = STATE_NO_NOTIFICATION;
 
     /**
      * The {@link Clock#getWallClockMillis()} must be at least this value for us
@@ -117,22 +116,19 @@ public class AvailableNetworkNotifier {
     /** Whether the screen is on or not. */
     private boolean mScreenOn;
 
-    /** List of SSIDs blocklisted from recommendation. */
-    private final Set<String> mBlocklistedSsids = new ArraySet<>();
+    /** List of SSIDs blacklisted from recommendation. */
+    private final Set<String> mBlacklistedSsids = new ArraySet<>();
 
-    private final WifiContext mContext;
+    private final Context mContext;
     private final Handler mHandler;
     private final FrameworkFacade mFrameworkFacade;
     private final WifiMetrics mWifiMetrics;
     private final Clock mClock;
     private final WifiConfigManager mConfigManager;
-    private final ConnectHelper mConnectHelper;
+    private final ClientModeImpl mClientModeImpl;
     private final ConnectToNetworkNotificationBuilder mNotificationBuilder;
-    private final MakeBeforeBreakManager mMakeBeforeBreakManager;
-    private final WifiNotificationManager mWifiNotificationManager;
 
-    @VisibleForTesting
-    ScanResult mRecommendedNetwork;
+    private ScanResult mRecommendedNetwork;
 
     /** Tag used for logs and metrics */
     private final String mTag;
@@ -157,17 +153,15 @@ public class AvailableNetworkNotifier {
             String toggleSettingsName,
             int notificationIdentifier,
             int nominatorId,
-            WifiContext context,
+            Context context,
             Looper looper,
             FrameworkFacade framework,
             Clock clock,
             WifiMetrics wifiMetrics,
             WifiConfigManager wifiConfigManager,
             WifiConfigStore wifiConfigStore,
-            ConnectHelper connectHelper,
-            ConnectToNetworkNotificationBuilder connectToNetworkNotificationBuilder,
-            MakeBeforeBreakManager makeBeforeBreakManager,
-            WifiNotificationManager wifiNotificationManager) {
+            ClientModeImpl clientModeImpl,
+            ConnectToNetworkNotificationBuilder connectToNetworkNotificationBuilder) {
         mTag = tag;
         mStoreDataIdentifier = storeDataIdentifier;
         mToggleSettingsName = toggleSettingsName;
@@ -179,10 +173,8 @@ public class AvailableNetworkNotifier {
         mWifiMetrics = wifiMetrics;
         mClock = clock;
         mConfigManager = wifiConfigManager;
-        mConnectHelper = connectHelper;
+        mClientModeImpl = clientModeImpl;
         mNotificationBuilder = connectToNetworkNotificationBuilder;
-        mMakeBeforeBreakManager = makeBeforeBreakManager;
-        mWifiNotificationManager = wifiNotificationManager;
         mScreenOn = false;
         wifiConfigStore.registerStoreData(new SsidSetStoreData(mStoreDataIdentifier,
                 new AvailableNetworkNotifierStoreData()));
@@ -255,7 +247,7 @@ public class AvailableNetworkNotifier {
         }
 
         if (mState != STATE_NO_NOTIFICATION) {
-            mWifiNotificationManager.cancel(mSystemMessageNotificationId);
+            getNotificationManager().cancel(mSystemMessageNotificationId);
 
             if (mRecommendedNetwork != null) {
                 Log.d(mTag, "Notification with state="
@@ -316,7 +308,7 @@ public class AvailableNetworkNotifier {
 
     /**
      * Recommends a network to connect to from a list of available networks, while ignoring the
-     * SSIDs in the blocklist.
+     * SSIDs in the blacklist.
      *
      * @param networks List of networks to select from
      */
@@ -332,7 +324,7 @@ public class AvailableNetworkNotifier {
             }
         }
 
-        if (result != null && mBlocklistedSsids.contains(result.SSID)) {
+        if (result != null && mBlacklistedSsids.contains(result.SSID)) {
             result = null;
         }
         return result;
@@ -351,7 +343,7 @@ public class AvailableNetworkNotifier {
      * @param ssid The connected network's ssid
      */
     public void handleWifiConnected(String ssid) {
-        removeNetworkFromBlocklist(ssid);
+        removeNetworkFromBlacklist(ssid);
         if (mState != STATE_CONNECTING_IN_NOTIFICATION) {
             clearPendingNotification(true /* resetRepeatTime */);
             return;
@@ -397,6 +389,10 @@ public class AvailableNetworkNotifier {
                 TIME_TO_SHOW_FAILED_MILLIS);
     }
 
+    private NotificationManager getNotificationManager() {
+        return (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
+    }
+
     private void postInitialNotification(ScanResult recommendedNetwork) {
         if (mRecommendedNetwork != null
                 && TextUtils.equals(mRecommendedNetwork.SSID, recommendedNetwork.SSID)) {
@@ -418,7 +414,7 @@ public class AvailableNetworkNotifier {
     }
 
     private void postNotification(Notification notification) {
-        mWifiNotificationManager.notify(mSystemMessageNotificationId, notification);
+        getNotificationManager().notify(mSystemMessageNotificationId, notification);
     }
 
     private void handleConnectToNetworkAction() {
@@ -436,22 +432,14 @@ public class AvailableNetworkNotifier {
                 "User initiated connection to recommended network: "
                         + "\"" + mRecommendedNetwork.SSID + "\"");
         WifiConfiguration network = createRecommendedNetworkConfig(mRecommendedNetwork);
-        if (null == network) {
-            Log.e(mTag, "Cannot create the network from the scan result.");
-            return;
-        }
 
         NetworkUpdateResult result = mConfigManager.addOrUpdateNetwork(network, Process.WIFI_UID);
         if (result.isSuccess()) {
-            mWifiMetrics.setNominatorForNetwork(result.getNetworkId(), mNominatorId);
-            ConnectActionListener listener = new ConnectActionListener();
-            mMakeBeforeBreakManager.stopAllSecondaryTransientClientModeManagers(() ->
-                    mConnectHelper.connectToNetwork(
-                            // only keep netId, discard other fields
-                            new NetworkUpdateResult(result.getNetworkId()),
-                            new ActionListenerWrapper(listener),
-                            Process.SYSTEM_UID));
-            addNetworkToBlocklist(mRecommendedNetwork.SSID);
+            mWifiMetrics.setNominatorForNetwork(result.netId, mNominatorId);
+            ConnectActionListener connectActionListener = new ConnectActionListener();
+            mClientModeImpl.connect(null, result.netId, new Binder(), connectActionListener,
+                    connectActionListener.hashCode(), Process.SYSTEM_UID);
+            addNetworkToBlacklist(mRecommendedNetwork.SSID);
         }
 
         mState = STATE_CONNECTING_IN_NOTIFICATION;
@@ -464,28 +452,28 @@ public class AvailableNetworkNotifier {
                 TIME_TO_SHOW_CONNECTING_MILLIS);
     }
 
-    private void addNetworkToBlocklist(String ssid) {
-        mBlocklistedSsids.add(ssid);
-        mWifiMetrics.setNetworkRecommenderBlocklistSize(mTag, mBlocklistedSsids.size());
+    private void addNetworkToBlacklist(String ssid) {
+        mBlacklistedSsids.add(ssid);
+        mWifiMetrics.setNetworkRecommenderBlacklistSize(mTag, mBlacklistedSsids.size());
         mConfigManager.saveToStore(false /* forceWrite */);
-        Log.d(mTag, "Network is added to the network notification blocklist: "
+        Log.d(mTag, "Network is added to the network notification blacklist: "
                 + "\"" + ssid + "\"");
     }
 
-    private void removeNetworkFromBlocklist(String ssid) {
+    private void removeNetworkFromBlacklist(String ssid) {
         if (ssid == null) {
             return;
         }
-        if (!mBlocklistedSsids.remove(ssid)) {
+        if (!mBlacklistedSsids.remove(ssid)) {
             return;
         }
-        mWifiMetrics.setNetworkRecommenderBlocklistSize(mTag, mBlocklistedSsids.size());
+        mWifiMetrics.setNetworkRecommenderBlacklistSize(mTag, mBlacklistedSsids.size());
         mConfigManager.saveToStore(false /* forceWrite */);
-        Log.d(mTag, "Network is removed from the network notification blocklist: "
+        Log.d(mTag, "Network is removed from the network notification blacklist: "
                 + "\"" + ssid + "\"");
     }
 
-    @Nullable WifiConfiguration createRecommendedNetworkConfig(ScanResult recommendedNetwork) {
+    WifiConfiguration createRecommendedNetworkConfig(ScanResult recommendedNetwork) {
         return ScanResultUtil.createNetworkFromScanResult(recommendedNetwork);
     }
 
@@ -521,8 +509,8 @@ public class AvailableNetworkNotifier {
         mWifiMetrics.incrementConnectToNetworkNotificationAction(mTag, mState,
                 ConnectToNetworkNotificationAndActionCount.ACTION_USER_DISMISSED_NOTIFICATION);
         if (mState == STATE_SHOWING_RECOMMENDATION_NOTIFICATION) {
-            // blocklist dismissed network
-            addNetworkToBlocklist(mRecommendedNetwork.SSID);
+            // blacklist dismissed network
+            addNetworkToBlacklist(mRecommendedNetwork.SSID);
         }
         resetStateAndDelayNotification();
     }
@@ -540,19 +528,19 @@ public class AvailableNetworkNotifier {
         pw.println("currentTime: " + mClock.getWallClockMillis());
         pw.println("mNotificationRepeatTime: " + mNotificationRepeatTime);
         pw.println("mState: " + mState);
-        pw.println("mBlocklistedSsids: " + mBlocklistedSsids.toString());
+        pw.println("mBlacklistedSsids: " + mBlacklistedSsids.toString());
     }
 
     private class AvailableNetworkNotifierStoreData implements SsidSetStoreData.DataSource {
         @Override
         public Set<String> getSsids() {
-            return new ArraySet<>(mBlocklistedSsids);
+            return new ArraySet<>(mBlacklistedSsids);
         }
 
         @Override
         public void setSsids(Set<String> ssidList) {
-            mBlocklistedSsids.addAll(ssidList);
-            mWifiMetrics.setNetworkRecommenderBlocklistSize(mTag, mBlocklistedSsids.size());
+            mBlacklistedSsids.addAll(ssidList);
+            mWifiMetrics.setNetworkRecommenderBlacklistSize(mTag, mBlacklistedSsids.size());
         }
     }
 

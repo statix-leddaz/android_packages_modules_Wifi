@@ -16,9 +16,6 @@
 
 package com.android.server.wifi;
 
-import static android.net.wifi.WifiManager.WIFI_FEATURE_OWE;
-import static android.net.wifi.WifiManager.WIFI_FEATURE_WPA3_SAE;
-
 import static com.android.server.wifi.util.NativeUtil.removeEnclosingQuotes;
 
 import static org.junit.Assert.*;
@@ -31,16 +28,13 @@ import android.net.wifi.WifiConfiguration;
 
 import androidx.test.filters.SmallTest;
 
-import com.android.dx.mockito.inline.extended.ExtendedMockito;
 import com.android.net.module.util.MacAddressUtils;
 import com.android.wifi.resources.R;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.mockito.MockitoSession;
 
 /**
  * Unit tests for {@link com.android.server.wifi.WifiCandidates}.
@@ -53,11 +47,6 @@ public class WifiCandidatesTest extends WifiBaseTest {
     @Mock WifiScoreCard mWifiScoreCard;
     @Mock WifiScoreCard.PerBssid mPerBssid;
     @Mock Context mContext;
-    @Mock WifiInjector mWifiInjector;
-    @Mock WifiGlobals mWifiGlobals;
-    @Mock ActiveModeWarden mActiveModeWarden;
-    @Mock ClientModeManager mClientModeManager;
-    private MockitoSession mSession;
 
     ScanResult mScanResult1;
     ScanResult mScanResult2;
@@ -74,19 +63,6 @@ public class WifiCandidatesTest extends WifiBaseTest {
     @Before
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
-        // static mocking
-        mSession = ExtendedMockito.mockitoSession()
-                .mockStatic(WifiInjector.class, withSettings().lenient())
-                .startMocking();
-        when(WifiInjector.getInstance()).thenReturn(mWifiInjector);
-        when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
-        when(mWifiInjector.getActiveModeWarden()).thenReturn(mActiveModeWarden);
-        when(mActiveModeWarden.getPrimaryClientModeManager()).thenReturn(mClientModeManager);
-        when(mClientModeManager.getSupportedFeatures()).thenReturn(
-                WIFI_FEATURE_OWE | WIFI_FEATURE_WPA3_SAE);
-        when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(true);
-        when(mWifiGlobals.isOweUpgradeEnabled()).thenReturn(true);
-
         mWifiCandidates = new WifiCandidates(mWifiScoreCard, mContext);
         mConfig1 = WifiConfigurationTestUtil.createOpenNetwork();
 
@@ -107,17 +83,6 @@ public class WifiCandidatesTest extends WifiBaseTest {
         MockResources mResources = new MockResources();
         mResources.setBoolean(R.bool.config_wifiSaeUpgradeEnabled, true);
         doReturn(mResources).when(mContext).getResources();
-    }
-
-    /**
-    * Called after each test
-     */
-    @After
-    public void cleanup() {
-        validateMockitoUsage();
-        if (mSession != null) {
-            mSession.finishMocking();
-        }
     }
 
     /**
@@ -377,11 +342,11 @@ public class WifiCandidatesTest extends WifiBaseTest {
     @Test
     public void testMultiplePasspointCandidatesWithSameFQDN() {
         // Create a Passpoint WifiConfig
-        mScanResult2.SSID = mScanResult1.SSID;
+        WifiConfiguration config1 = WifiConfigurationTestUtil.createPasspointNetwork();
         mScanResult2.BSSID = mScanResult1.BSSID.replace('1', '2');
         // Add candidates with different scanDetail for same passpoint WifiConfig.
-        assertTrue(mWifiCandidates.add(mScanDetail1, mConfig1, 2, 0.0, false, 100));
-        assertTrue(mWifiCandidates.add(mScanDetail2, mConfig1, 2, 0.0, false, 100));
+        assertTrue(mWifiCandidates.add(mScanDetail1, config1, 2, 0.0, false, 100));
+        assertTrue(mWifiCandidates.add(mScanDetail2, config1, 2, 0.0, false, 100));
         // Both should survive and no faults.
         assertEquals(2, mWifiCandidates.size());
         assertEquals(0, mWifiCandidates.getFaultCount());

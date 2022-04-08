@@ -16,7 +16,6 @@
 
 package android.net.wifi.aware;
 
-import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.net.NetworkCapabilities;
 import android.net.TransportInfo;
@@ -47,22 +46,13 @@ import java.util.Objects;
  * Note: these are the peer's IPv6 and port information - not the local device's!
  */
 public final class WifiAwareNetworkInfo implements TransportInfo, Parcelable {
-    private final Inet6Address mIpv6Addr;
-    private final int mPort;
-    private final int mTransportProtocol;
-
-    /** @hide */
-    public WifiAwareNetworkInfo() {
-        mIpv6Addr = null;
-        mPort = 0; // a value of 0 is considered invalid
-        mTransportProtocol = -1;  // a value of -1 is considered invalid
-    }
+    private Inet6Address mIpv6Addr;
+    private int mPort = 0; // a value of 0 is considered invalid
+    private int mTransportProtocol = -1; // a value of -1 is considered invalid
 
     /** @hide */
     public WifiAwareNetworkInfo(Inet6Address ipv6Addr) {
         mIpv6Addr = ipv6Addr;
-        mPort = 0; // a value of 0 is considered invalid
-        mTransportProtocol = -1;  // a value of -1 is considered invalid
     }
 
     /** @hide */
@@ -70,12 +60,6 @@ public final class WifiAwareNetworkInfo implements TransportInfo, Parcelable {
         mIpv6Addr = ipv6Addr;
         mPort = port;
         mTransportProtocol = transportProtocol;
-    }
-
-    private WifiAwareNetworkInfo(@Nullable WifiAwareNetworkInfo source) {
-        mIpv6Addr = source != null ? source.mIpv6Addr : null;
-        mPort = source != null ? source.mPort : 0;
-        mTransportProtocol = source != null ? source.mTransportProtocol : -1;
     }
 
     /**
@@ -132,7 +116,7 @@ public final class WifiAwareNetworkInfo implements TransportInfo, Parcelable {
         dest.writeInt(mTransportProtocol);
     }
 
-    public static final @NonNull Creator<WifiAwareNetworkInfo> CREATOR =
+    public static final @android.annotation.NonNull Creator<WifiAwareNetworkInfo> CREATOR =
             new Creator<WifiAwareNetworkInfo>() {
                 @Override
                 public WifiAwareNetworkInfo createFromParcel(Parcel in) {
@@ -153,7 +137,7 @@ public final class WifiAwareNetworkInfo implements TransportInfo, Parcelable {
                         ipv6Addr = Inet6Address.getByAddress(null, addr, ni);
                     } catch (UnknownHostException e) {
                         e.printStackTrace();
-                        return new WifiAwareNetworkInfo();
+                        return new WifiAwareNetworkInfo(null);
                     }
                     return new WifiAwareNetworkInfo(ipv6Addr, port, transportProtocol);
                 }

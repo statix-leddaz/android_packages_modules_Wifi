@@ -25,7 +25,6 @@ import android.graphics.drawable.Icon;
 import android.net.wifi.ScanResult;
 import android.util.Log;
 
-import com.android.modules.utils.build.SdkLevel;
 import com.android.wifi.resources.R;
 
 /**
@@ -53,13 +52,16 @@ public class ConnectToNetworkNotificationBuilder {
     public static final String AVAILABLE_NETWORK_NOTIFIER_TAG =
             "com.android.server.wifi.ConnectToNetworkNotification.AVAILABLE_NETWORK_NOTIFIER_TAG";
 
-    private final WifiContext mContext;
-    private final FrameworkFacade mFrameworkFacade;
+    private WifiContext mContext;
+    private WifiInjector mWifiInjector;
+    private FrameworkFacade mFrameworkFacade;
 
     public ConnectToNetworkNotificationBuilder(
             WifiContext context,
+            WifiInjector wifiInjector,
             FrameworkFacade framework) {
         mContext = context;
+        mWifiInjector = wifiInjector;
         mFrameworkFacade = framework;
     }
 
@@ -85,29 +87,18 @@ public class ConnectToNetworkNotificationBuilder {
                         + notifierTag);
                 return null;
         }
-        Notification.Action.Builder connectActionBuilder =
-                new Notification.Action.Builder(null /* icon */,
+        Notification.Action connectAction = new Notification.Action.Builder(null /* icon */,
                 mContext.getResources().getText(R.string.wifi_available_action_connect),
-                getPrivateBroadcast(ACTION_CONNECT_TO_NETWORK, notifierTag));
-        // >= Android 12: Want the user to unlock before triggering connection.
-        if (SdkLevel.isAtLeastS()) {
-            connectActionBuilder.setAuthenticationRequired(true);
-        }
-        Notification.Action connectAction = connectActionBuilder.build();
+                getPrivateBroadcast(ACTION_CONNECT_TO_NETWORK, notifierTag)).build();
         Notification.Action allNetworksAction = new Notification.Action.Builder(null /* icon */,
                 mContext.getResources().getText(R.string.wifi_available_action_all_networks),
                 getPrivateBroadcast(ACTION_PICK_WIFI_NETWORK, notifierTag)).build();
-        Notification.Builder notificationBuilder =
-                createNotificationBuilder(title, network.SSID, notifierTag)
+        return createNotificationBuilder(title, network.SSID, notifierTag)
                 .setContentIntent(getPrivateBroadcast(ACTION_PICK_WIFI_NETWORK, notifierTag))
                 .addAction(connectAction)
-                .addAction(allNetworksAction);
-        // < Android 12: Hide the notification in lock screen since (setAuthenticationRequired) is
-        // not available.
-        if (!SdkLevel.isAtLeastS()) {
-            notificationBuilder.setVisibility(VISIBILITY_SECRET);
-        }
-        return notificationBuilder.build();
+                .addAction(allNetworksAction)
+                .setVisibility(VISIBILITY_SECRET)
+                .build();
     }
 
     /**
@@ -183,13 +174,14 @@ public class ConnectToNetworkNotificationBuilder {
     }
 
     private PendingIntent getPrivateBroadcast(String action, String extraData) {
-        Intent intent = new Intent(action).setPackage(mContext.getServiceWifiPackageName());
+        Intent intent = new Intent(action)
+                .setPackage(mWifiInjector.getWifiStackPackageName());
         int requestCode = 0;  // Makes the different kinds of notifications distinguishable
         if (extraData != null) {
             intent.putExtra(AVAILABLE_NETWORK_NOTIFIER_TAG, extraData);
             requestCode = getNotifierRequestCode(extraData);
         }
         return mFrameworkFacade.getBroadcast(mContext, requestCode, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                PendingIntent.FLAG_UPDATE_CURRENT);
     }
 }

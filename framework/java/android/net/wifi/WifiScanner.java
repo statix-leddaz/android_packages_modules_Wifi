@@ -27,7 +27,6 @@ import android.annotation.SystemApi;
 import android.annotation.SystemService;
 import android.content.Context;
 import android.os.Binder;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -35,18 +34,14 @@ import android.os.Message;
 import android.os.Messenger;
 import android.os.Parcel;
 import android.os.Parcelable;
-import android.os.Process;
 import android.os.RemoteException;
 import android.os.WorkSource;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.SparseArray;
 
-import androidx.annotation.RequiresApi;
-
 import com.android.internal.util.AsyncChannel;
 import com.android.internal.util.Protocol;
-import com.android.modules.utils.build.SdkLevel;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -73,9 +68,7 @@ public class WifiScanner {
     /** @hide */
     public static final int WIFI_BAND_INDEX_6_GHZ = 3;
     /** @hide */
-    public static final int WIFI_BAND_INDEX_60_GHZ = 4;
-    /** @hide */
-    public static final int WIFI_BAND_COUNT = 5;
+    public static final int WIFI_BAND_COUNT = 4;
 
     /** @hide */
     @Retention(RetentionPolicy.SOURCE)
@@ -83,8 +76,7 @@ public class WifiScanner {
             WIFI_BAND_INDEX_24_GHZ,
             WIFI_BAND_INDEX_5_GHZ,
             WIFI_BAND_INDEX_5_GHZ_DFS_ONLY,
-            WIFI_BAND_INDEX_6_GHZ,
-            WIFI_BAND_INDEX_60_GHZ})
+            WIFI_BAND_INDEX_6_GHZ})
     public @interface WifiBandIndex {}
 
     /** no band specified; use channel list instead */
@@ -97,8 +89,6 @@ public class WifiScanner {
     public static final int WIFI_BAND_5_GHZ_DFS_ONLY  = 1 << WIFI_BAND_INDEX_5_GHZ_DFS_ONLY;
     /** 6 GHz band */
     public static final int WIFI_BAND_6_GHZ = 1 << WIFI_BAND_INDEX_6_GHZ;
-    /** 60 GHz band */
-    public static final int WIFI_BAND_60_GHZ = 1 << WIFI_BAND_INDEX_60_GHZ;
 
     /**
      * Combination of bands
@@ -123,12 +113,6 @@ public class WifiScanner {
     /** 2.4 GHz band and 5 GHz band; with DFS channels and 6 GHz */
     public static final int WIFI_BAND_24_5_WITH_DFS_6_GHZ =
             WIFI_BAND_BOTH_WITH_DFS | WIFI_BAND_6_GHZ;
-    /** @hide */
-    public static final int WIFI_BAND_24_5_6_60_GHZ =
-            WIFI_BAND_24_5_6_GHZ | WIFI_BAND_60_GHZ;
-    /** @hide */
-    public static final int WIFI_BAND_24_5_WITH_DFS_6_60_GHZ =
-            WIFI_BAND_24_5_6_60_GHZ | WIFI_BAND_5_GHZ_DFS_ONLY;
 
     /** @hide */
     @Retention(RetentionPolicy.SOURCE)
@@ -143,10 +127,7 @@ public class WifiScanner {
             WIFI_BAND_BOTH_WITH_DFS,
             WIFI_BAND_6_GHZ,
             WIFI_BAND_24_5_6_GHZ,
-            WIFI_BAND_24_5_WITH_DFS_6_GHZ,
-            WIFI_BAND_60_GHZ,
-            WIFI_BAND_24_5_6_60_GHZ,
-            WIFI_BAND_24_5_WITH_DFS_6_60_GHZ})
+            WIFI_BAND_24_5_WITH_DFS_6_GHZ})
     public @interface WifiBand {}
 
     /**
@@ -177,42 +158,6 @@ public class WifiScanner {
     public static final String GET_AVAILABLE_CHANNELS_EXTRA = "Channels";
 
     /**
-     * This constant is used for {@link ScanSettings#setRnrSetting(int)}.
-     * <p>
-     * Scan 6Ghz APs co-located with 2.4/5Ghz APs using Reduced Neighbor Report (RNR) if the 6Ghz
-     * band is explicitly requested to be scanned. The 6Ghz band is explicitly requested if the
-     * ScanSetting.band parameter is set to one of:
-     * <li> {@link #WIFI_BAND_6_GHZ} </li>
-     * <li> {@link #WIFI_BAND_24_5_6_GHZ} </li>
-     * <li> {@link #WIFI_BAND_24_5_WITH_DFS_6_GHZ} </li>
-     * <li> {@link #WIFI_BAND_24_5_6_60_GHZ} </li>
-     * <li> {@link #WIFI_BAND_24_5_WITH_DFS_6_60_GHZ} </li>
-     * <li> {@link #WIFI_BAND_ALL} </li>
-     **/
-    public static final int WIFI_RNR_ENABLED_IF_WIFI_BAND_6_GHZ_SCANNED = 0;
-    /**
-     * This constant is used for {@link ScanSettings#setRnrSetting(int)}.
-     * <p>
-     * Request to scan 6Ghz APs co-located with 2.4/5Ghz APs using Reduced Neighbor Report (RNR).
-     **/
-    public static final int WIFI_RNR_ENABLED = 1;
-    /**
-     * This constant is used for {@link ScanSettings#setRnrSetting(int)}.
-     * <p>
-     * Do not request to scan 6Ghz APs co-located with 2.4/5Ghz APs using
-     * Reduced Neighbor Report (RNR)
-     **/
-    public static final int WIFI_RNR_NOT_NEEDED = 2;
-
-    /** @hide */
-    @Retention(RetentionPolicy.SOURCE)
-    @IntDef(prefix = {"RNR_"}, value = {
-            WIFI_RNR_ENABLED_IF_WIFI_BAND_6_GHZ_SCANNED,
-            WIFI_RNR_ENABLED,
-            WIFI_RNR_NOT_NEEDED})
-    public @interface RnrSetting {}
-
-    /**
      * Generic action callback invocation interface
      *  @hide
      */
@@ -224,18 +169,17 @@ public class WifiScanner {
 
     /**
      * Test if scan is a full scan. i.e. scanning all available bands.
-     * For backward compatibility, since some apps don't include 6GHz or 60Ghz in their requests
-     * yet, lacking 6GHz or 60Ghz band does not cause the result to be false.
+     * For backward compatibility, since some apps don't include 6GHz in their requests yet,
+     * lacking 6GHz band does not cause the result to be false.
      *
-     * @param bandsScanned bands that are fully scanned
+     * @param bandScanned bands that are fully scanned
      * @param excludeDfs when true, DFS band is excluded from the check
      * @return true if all bands are scanned, false otherwise
      *
      * @hide
      */
-    public static boolean isFullBandScan(@WifiBand int bandsScanned, boolean excludeDfs) {
-        return (bandsScanned | WIFI_BAND_6_GHZ | WIFI_BAND_60_GHZ
-                | (excludeDfs ? WIFI_BAND_5_GHZ_DFS_ONLY : 0))
+    public static boolean isFullBandScan(@WifiBand int bandScanned, boolean excludeDfs) {
+        return (bandScanned | WIFI_BAND_6_GHZ | (excludeDfs ? WIFI_BAND_5_GHZ_DFS_ONLY : 0))
                 == WIFI_BAND_ALL;
     }
 
@@ -355,16 +299,6 @@ public class WifiScanner {
 
         /** one of the WIFI_BAND values */
         public int band;
-        /**
-         * one of the {@code WIFI_RNR_*} values.
-         */
-        private int mRnrSetting = WIFI_RNR_ENABLED_IF_WIFI_BAND_6_GHZ_SCANNED;
-
-        /**
-         * See {@link #set6GhzPscOnlyEnabled}
-         */
-        private boolean mEnable6GhzPsc = false;
-
         /** list of channels; used when band is set to WIFI_BAND_UNSPECIFIED */
         public ChannelSpec[] channels;
         /**
@@ -470,69 +404,6 @@ public class WifiScanner {
         @SystemApi
         public boolean hideFromAppOps;
 
-        /**
-         * Configure whether it is needed to scan 6Ghz non Preferred Scanning Channels when scanning
-         * {@link #WIFI_BAND_6_GHZ}. If set to true and a band that contains
-         * {@link #WIFI_BAND_6_GHZ} is configured for scanning, then only scan 6Ghz PSC channels in
-         * addition to any other bands configured for scanning. Note, 6Ghz non-PSC channels that
-         * are co-located with 2.4/5Ghz APs could still be scanned via the
-         * {@link #setRnrSetting(int)} API.
-         *
-         * <p>
-         * For example, given a ScanSettings with band set to {@link #WIFI_BAND_24_5_WITH_DFS_6_GHZ}
-         * If this API is set to "true" then the ScanSettings is configured to scan all of 2.4Ghz
-         * + all of 5Ghz(DFS and non-DFS) + 6Ghz PSC channels. If this API is set to "false", then
-         * the ScanSetting is configured to scan all of 2.4Ghz + all of 5Ghz(DFS and non_DFS)
-         * + all of 6Ghz channels.
-         * @param enable true to only scan 6Ghz PSC channels, false to scan all 6Ghz channels.
-         */
-        @RequiresApi(Build.VERSION_CODES.S)
-        public void set6GhzPscOnlyEnabled(boolean enable) {
-            if (!SdkLevel.isAtLeastS()) {
-                throw new UnsupportedOperationException();
-            }
-            mEnable6GhzPsc = enable;
-        }
-
-        /**
-         * See {@link #set6GhzPscOnlyEnabled}
-         */
-        @RequiresApi(Build.VERSION_CODES.S)
-        public boolean is6GhzPscOnlyEnabled() {
-            if (!SdkLevel.isAtLeastS()) {
-                throw new UnsupportedOperationException();
-            }
-            return mEnable6GhzPsc;
-        }
-
-        /**
-         * Configure when to scan 6Ghz APs co-located with 2.4/5Ghz APs using Reduced
-         * Neighbor Report (RNR).
-         * @param rnrSetting one of the {@code WIFI_RNR_*} values
-         */
-        @RequiresApi(Build.VERSION_CODES.S)
-        public void setRnrSetting(@RnrSetting int rnrSetting) {
-            if (!SdkLevel.isAtLeastS()) {
-                throw new UnsupportedOperationException();
-            }
-            if (rnrSetting < WIFI_RNR_ENABLED_IF_WIFI_BAND_6_GHZ_SCANNED
-                    || rnrSetting > WIFI_RNR_NOT_NEEDED) {
-                throw new IllegalArgumentException("Invalid rnrSetting");
-            }
-            mRnrSetting = rnrSetting;
-        }
-
-        /**
-         * See {@link #setRnrSetting}
-         */
-        @RequiresApi(Build.VERSION_CODES.S)
-        public @RnrSetting int getRnrSetting() {
-            if (!SdkLevel.isAtLeastS()) {
-                throw new UnsupportedOperationException();
-            }
-            return mRnrSetting;
-        }
-
         /** Implement the Parcelable interface {@hide} */
         public int describeContents() {
             return 0;
@@ -551,8 +422,6 @@ public class WifiScanner {
             dest.writeInt(type);
             dest.writeInt(ignoreLocationSettings ? 1 : 0);
             dest.writeInt(hideFromAppOps ? 1 : 0);
-            dest.writeInt(mRnrSetting);
-            dest.writeBoolean(mEnable6GhzPsc);
             if (channels != null) {
                 dest.writeInt(channels.length);
                 for (int i = 0; i < channels.length; i++) {
@@ -585,8 +454,6 @@ public class WifiScanner {
                         settings.type = in.readInt();
                         settings.ignoreLocationSettings = in.readInt() == 1;
                         settings.hideFromAppOps = in.readInt() == 1;
-                        settings.mRnrSetting = in.readInt();
-                        settings.mEnable6GhzPsc = in.readBoolean();
                         int num_channels = in.readInt();
                         settings.channels = new ChannelSpec[num_channels];
                         for (int i = 0; i < num_channels; i++) {
@@ -612,7 +479,7 @@ public class WifiScanner {
     }
 
     /**
-     * All the information garnered from a single scan
+     * all the information garnered from a single scan
      */
     public static class ScanData implements Parcelable {
         /** scan identifier */
@@ -634,7 +501,7 @@ public class WifiScanner {
          * any of the bands.
          * {@hide}
          */
-        private int mScannedBands;
+        private int mBandScanned;
         /** all scan results discovered in this scan, sorted by timestamp in ascending order */
         private final List<ScanResult> mResults;
 
@@ -649,18 +516,18 @@ public class WifiScanner {
         }
 
         /** {@hide} */
-        public ScanData(int id, int flags, int bucketsScanned, int bandsScanned,
+        public ScanData(int id, int flags, int bucketsScanned, int bandScanned,
                         ScanResult[] results) {
-            this(id, flags, bucketsScanned, bandsScanned, new ArrayList<>(Arrays.asList(results)));
+            this(id, flags, bucketsScanned, bandScanned, new ArrayList<>(Arrays.asList(results)));
         }
 
         /** {@hide} */
-        public ScanData(int id, int flags, int bucketsScanned, int bandsScanned,
+        public ScanData(int id, int flags, int bucketsScanned, int bandScanned,
                         List<ScanResult> results) {
             mId = id;
             mFlags = flags;
             mBucketsScanned = bucketsScanned;
-            mScannedBands = bandsScanned;
+            mBandScanned = bandScanned;
             mResults = results;
         }
 
@@ -668,7 +535,7 @@ public class WifiScanner {
             mId = s.mId;
             mFlags = s.mFlags;
             mBucketsScanned = s.mBucketsScanned;
-            mScannedBands = s.mScannedBands;
+            mBandScanned = s.mBandScanned;
             mResults = new ArrayList<>();
             for (ScanResult scanResult : s.mResults) {
                 mResults.add(new ScanResult(scanResult));
@@ -688,37 +555,9 @@ public class WifiScanner {
             return mBucketsScanned;
         }
 
-        /**
-         * Retrieve the bands that were fully scanned for this ScanData instance. "fully" here
-         * refers to all the channels available in the band based on the current regulatory
-         * domain.
-         *
-         * @return Bitmask of {@link #WIFI_BAND_24_GHZ}, {@link #WIFI_BAND_5_GHZ},
-         * {@link #WIFI_BAND_5_GHZ_DFS_ONLY}, {@link #WIFI_BAND_6_GHZ} & {@link #WIFI_BAND_60_GHZ}
-         * values. Each bit is set only if all the channels in the corresponding band is scanned.
-         * Will be {@link #WIFI_BAND_UNSPECIFIED} if the list of channels do not fully cover
-         * any of the bands.
-         * <p>
-         * For ex:
-         * <li> Scenario 1:  Fully scanned 2.4Ghz band, partially scanned 5Ghz band
-         *      - Returns {@link #WIFI_BAND_24_GHZ}
-         * </li>
-         * <li> Scenario 2:  Partially scanned 2.4Ghz band and 5Ghz band
-         *      - Returns {@link #WIFI_BAND_UNSPECIFIED}
-         * </li>
-         * </p>
-         */
-        public @WifiBand int getScannedBands() {
-            return getScannedBandsInternal();
-        }
-
-        /**
-         * Same as {@link #getScannedBands()}. For use in the wifi stack without version check.
-         *
-         * {@hide}
-         */
-        public @WifiBand int getScannedBandsInternal() {
-            return mScannedBands;
+        /** {@hide} */
+        public int getBandScanned() {
+            return mBandScanned;
         }
 
         public ScanResult[] getResults() {
@@ -732,19 +571,6 @@ public class WifiScanner {
             }
         }
 
-        /** {@hide} */
-        public void addResults(@NonNull ScanData s) {
-            mScannedBands |= s.mScannedBands;
-            mFlags |= s.mFlags;
-            addResults(s.getResults());
-        }
-
-        /** {@hide} */
-        public boolean isFullBandScanResults() {
-            return (mScannedBands & WifiScanner.WIFI_BAND_24_GHZ) != 0
-                && (mScannedBands & WifiScanner.WIFI_BAND_5_GHZ) != 0;
-        }
-
         /** Implement the Parcelable interface {@hide} */
         public int describeContents() {
             return 0;
@@ -755,7 +581,7 @@ public class WifiScanner {
             dest.writeInt(mId);
             dest.writeInt(mFlags);
             dest.writeInt(mBucketsScanned);
-            dest.writeInt(mScannedBands);
+            dest.writeInt(mBandScanned);
             dest.writeParcelableList(mResults, 0);
         }
 
@@ -766,10 +592,10 @@ public class WifiScanner {
                         int id = in.readInt();
                         int flags = in.readInt();
                         int bucketsScanned = in.readInt();
-                        int bandsScanned = in.readInt();
+                        int bandScanned = in.readInt();
                         List<ScanResult> results = new ArrayList<>();
                         in.readParcelableList(results, ScanResult.class.getClassLoader());
-                        return new ScanData(id, flags, bucketsScanned, bandsScanned, results);
+                        return new ScanData(id, flags, bucketsScanned, bandScanned, results);
                     }
 
                     public ScanData[] newArray(int size) {
@@ -1068,8 +894,7 @@ public class WifiScanner {
     @RequiresPermission(Manifest.permission.NETWORK_STACK)
     public void setScanningEnabled(boolean enable) {
         validateChannel();
-        mAsyncChannel.sendMessage(enable ? CMD_ENABLE : CMD_DISABLE, Process.myTid(),
-                Binder.getCallingPid(), mContext.getOpPackageName());
+        mAsyncChannel.sendMessage(enable ? CMD_ENABLE : CMD_DISABLE);
     }
 
     /**
@@ -1414,7 +1239,7 @@ public class WifiScanner {
      * @param bssidInfos access points to watch
      */
     @Deprecated
-    @SuppressLint("RequiresPermission")
+    @SuppressLint("Doclava125")
     public void configureWifiChange(
             int rssiSampleSize,                             /* sample size for RSSI averaging */
             int lostApSampleSize,                           /* samples to confirm AP's loss */
@@ -1448,7 +1273,7 @@ public class WifiScanner {
      *                 provided on {@link #stopTrackingWifiChange}
      */
     @Deprecated
-    @SuppressLint("RequiresPermission")
+    @SuppressLint("Doclava125")
     public void startTrackingWifiChange(WifiChangeListener listener) {
         throw new UnsupportedOperationException();
     }
@@ -1459,7 +1284,7 @@ public class WifiScanner {
      * #stopTrackingWifiChange}
      */
     @Deprecated
-    @SuppressLint("RequiresPermission")
+    @SuppressLint("Doclava125")
     public void stopTrackingWifiChange(WifiChangeListener listener) {
         throw new UnsupportedOperationException();
     }
@@ -1467,7 +1292,7 @@ public class WifiScanner {
     /** @hide */
     @SystemApi
     @Deprecated
-    @SuppressLint("RequiresPermission")
+    @SuppressLint("Doclava125")
     public void configureWifiChange(WifiChangeSettings settings) {
         throw new UnsupportedOperationException();
     }
@@ -1523,7 +1348,7 @@ public class WifiScanner {
      *                 also be provided on {@link #stopTrackingBssids}
      */
     @Deprecated
-    @SuppressLint("RequiresPermission")
+    @SuppressLint("Doclava125")
     public void startTrackingBssids(BssidInfo[] bssidInfos,
                                     int apLostThreshold, BssidListener listener) {
         throw new UnsupportedOperationException();
@@ -1534,7 +1359,7 @@ public class WifiScanner {
      * @param listener same object provided in {@link #startTrackingBssids}
      */
     @Deprecated
-    @SuppressLint("RequiresPermission")
+    @SuppressLint("Doclava125")
     public void stopTrackingBssids(BssidListener listener) {
         throw new UnsupportedOperationException();
     }

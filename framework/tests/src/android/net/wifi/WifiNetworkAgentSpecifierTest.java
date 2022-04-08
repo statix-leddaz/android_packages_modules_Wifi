@@ -90,13 +90,13 @@ public class WifiNetworkAgentSpecifierTest {
         WifiConfiguration wifiConfiguration1 = createDefaultWifiConfiguration();
         WifiNetworkAgentSpecifier specifier1 =
                 new WifiNetworkAgentSpecifier(
-                        wifiConfiguration1, ScanResult.WIFI_BAND_24_GHZ, true);
+                        wifiConfiguration1);
 
         WifiConfiguration wifiConfiguration2 = new WifiConfiguration(wifiConfiguration1);
         wifiConfiguration2.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
         WifiNetworkAgentSpecifier specifier2 =
                 new WifiNetworkAgentSpecifier(
-                        wifiConfiguration2, ScanResult.WIFI_BAND_24_GHZ, true);
+                        wifiConfiguration2);
 
         assertFalse(specifier2.equals(specifier1));
     }
@@ -112,13 +112,13 @@ public class WifiNetworkAgentSpecifierTest {
         WifiConfiguration wifiConfiguration1 = createDefaultWifiConfiguration();
         WifiNetworkAgentSpecifier specifier1 =
                 new WifiNetworkAgentSpecifier(
-                        wifiConfiguration1, ScanResult.WIFI_BAND_5_GHZ, true);
+                        wifiConfiguration1);
 
         WifiConfiguration wifiConfiguration2 = new WifiConfiguration(wifiConfiguration1);
         wifiConfiguration2.SSID = TEST_SSID_1;
         WifiNetworkAgentSpecifier specifier2 =
                 new WifiNetworkAgentSpecifier(
-                        wifiConfiguration2, ScanResult.WIFI_BAND_5_GHZ, true);
+                        wifiConfiguration2);
 
         assertFalse(specifier2.equals(specifier1));
     }
@@ -134,13 +134,13 @@ public class WifiNetworkAgentSpecifierTest {
         WifiConfiguration wifiConfiguration1 = createDefaultWifiConfiguration();
         WifiNetworkAgentSpecifier specifier1 =
                 new WifiNetworkAgentSpecifier(
-                        wifiConfiguration1, ScanResult.WIFI_BAND_24_GHZ, false);
+                        wifiConfiguration1);
 
         WifiConfiguration wifiConfiguration2 = new WifiConfiguration(wifiConfiguration1);
         wifiConfiguration2.BSSID = TEST_BSSID_1;
         WifiNetworkAgentSpecifier specifier2 =
                 new WifiNetworkAgentSpecifier(
-                        wifiConfiguration2, ScanResult.WIFI_BAND_24_GHZ, false);
+                        wifiConfiguration2);
 
         assertFalse(specifier2.equals(specifier1));
     }
@@ -194,7 +194,6 @@ public class WifiNetworkAgentSpecifierTest {
         WifiNetworkSpecifier wifiNetworkSpecifier = new WifiNetworkSpecifier(
                 ssidPattern,
                 bssidPattern,
-                ScanResult.WIFI_BAND_5_GHZ,
                 wificonfigurationNetworkSpecifier);
 
         assertTrue(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
@@ -223,7 +222,6 @@ public class WifiNetworkAgentSpecifierTest {
         WifiNetworkSpecifier wifiNetworkSpecifier = new WifiNetworkSpecifier(
                 ssidPattern,
                 bssidPattern,
-                ScanResult.WIFI_BAND_5_GHZ,
                 wificonfigurationNetworkSpecifier);
 
         assertTrue(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
@@ -252,7 +250,6 @@ public class WifiNetworkAgentSpecifierTest {
         WifiNetworkSpecifier wifiNetworkSpecifier = new WifiNetworkSpecifier(
                 ssidPattern,
                 bssidPattern,
-                ScanResult.WIFI_BAND_5_GHZ,
                 wificonfigurationNetworkSpecifier);
 
         assertTrue(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
@@ -272,7 +269,7 @@ public class WifiNetworkAgentSpecifierTest {
         wifiConfigurationNetworkAgent.SSID = "\"" + TEST_SSID_1 + "\"";
         WifiNetworkAgentSpecifier wifiNetworkAgentSpecifier =
                 new WifiNetworkAgentSpecifier(
-                        wifiConfigurationNetworkAgent, ScanResult.WIFI_BAND_24_GHZ, true);
+                        wifiConfigurationNetworkAgent);
 
         PatternMatcher ssidPattern =
                 new PatternMatcher(TEST_SSID_PATTERN, PatternMatcher.PATTERN_PREFIX);
@@ -284,116 +281,8 @@ public class WifiNetworkAgentSpecifierTest {
         WifiNetworkSpecifier wifiNetworkSpecifier = new WifiNetworkSpecifier(
                 ssidPattern,
                 bssidPattern,
-                ScanResult.WIFI_BAND_24_GHZ,
                 wificonfigurationNetworkSpecifier);
 
-        assertFalse(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
-        assertFalse(wifiNetworkAgentSpecifier.canBeSatisfiedBy(wifiNetworkSpecifier));
-    }
-
-    /**
-     * Validate {@link WifiNetworkAgentSpecifier} with {@link WifiNetworkSpecifier} band matching.
-     */
-    @Test
-    public void testWifiNetworkAgentSpecifierBandMatching() {
-        WifiConfiguration wifiConfigurationNetworkAgent = createDefaultWifiConfiguration();
-        wifiConfigurationNetworkAgent.SSID = "\"" + TEST_SSID + "\"";
-        WifiNetworkAgentSpecifier wifiNetworkAgentSpecifier =
-                new WifiNetworkAgentSpecifier(
-                        wifiConfigurationNetworkAgent, ScanResult.WIFI_BAND_5_GHZ, true);
-
-        PatternMatcher ssidPattern =
-                new PatternMatcher(TEST_SSID_PATTERN, PatternMatcher.PATTERN_PREFIX);
-        Pair<MacAddress, MacAddress> bssidPattern =
-                Pair.create(MacAddress.fromString(TEST_BSSID_OUI_BASE_ADDRESS),
-                        MacAddress.fromString(TEST_BSSID_OUI_MASK));
-        WifiConfiguration wificonfigurationNetworkSpecifier = new WifiConfiguration();
-        wificonfigurationNetworkSpecifier.allowedKeyManagement
-                .set(WifiConfiguration.KeyMgmt.WPA_PSK);
-
-        // Same band matches.
-        WifiNetworkSpecifier wifiNetworkSpecifier = new WifiNetworkSpecifier(
-                ssidPattern,
-                bssidPattern,
-                ScanResult.WIFI_BAND_5_GHZ,
-                wificonfigurationNetworkSpecifier);
-        assertTrue(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
-        assertTrue(wifiNetworkAgentSpecifier.canBeSatisfiedBy(wifiNetworkSpecifier));
-
-        // Different band does not match.
-        wifiNetworkSpecifier = new WifiNetworkSpecifier(
-                ssidPattern,
-                bssidPattern,
-                ScanResult.WIFI_BAND_24_GHZ,
-                wificonfigurationNetworkSpecifier);
-        assertFalse(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
-        assertFalse(wifiNetworkAgentSpecifier.canBeSatisfiedBy(wifiNetworkSpecifier));
-
-        // UNSPECIFIED matches a specified band.
-        wifiNetworkSpecifier = new WifiNetworkSpecifier(
-                ssidPattern,
-                bssidPattern,
-                ScanResult.UNSPECIFIED,
-                wificonfigurationNetworkSpecifier);
-        assertTrue(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
-        assertTrue(wifiNetworkAgentSpecifier.canBeSatisfiedBy(wifiNetworkSpecifier));
-    }
-
-    /**
-     * Validate {@link WifiNetworkAgentSpecifier} local-only matching.
-     */
-    @Test
-    public void testWifiNetworkAgentSpecifierLocalOnlyMatching() {
-        WifiConfiguration wifiConfigurationNetworkAgent = createDefaultWifiConfiguration();
-        wifiConfigurationNetworkAgent.SSID = "\"" + TEST_SSID_1 + "\"";
-
-        PatternMatcher ssidPattern =
-                new PatternMatcher(TEST_SSID_PATTERN, PatternMatcher.PATTERN_PREFIX);
-        Pair<MacAddress, MacAddress> bssidPattern =
-                Pair.create(MacAddress.fromString(TEST_BSSID_OUI_BASE_ADDRESS),
-                        MacAddress.fromString(TEST_BSSID_OUI_MASK));
-        WifiConfiguration wificonfigurationNetworkSpecifier = new WifiConfiguration();
-        wificonfigurationNetworkSpecifier.allowedKeyManagement
-                .set(WifiConfiguration.KeyMgmt.WPA_PSK);
-
-        // There is no match because the SSID pattern does not match.
-        WifiNetworkAgentSpecifier wifiNetworkAgentSpecifier =
-                new WifiNetworkAgentSpecifier(
-                        wifiConfigurationNetworkAgent, ScanResult.WIFI_BAND_5_GHZ, true);
-        WifiNetworkSpecifier wifiNetworkSpecifier = new WifiNetworkSpecifier(
-                ssidPattern,
-                bssidPattern,
-                ScanResult.WIFI_BAND_5_GHZ,
-                wificonfigurationNetworkSpecifier);
-        assertFalse(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
-        assertFalse(wifiNetworkAgentSpecifier.canBeSatisfiedBy(wifiNetworkSpecifier));
-
-        // If the WifiNetworkAgentSpecifier is not a local-only specifier, then it matches, because
-        // the SSID pattern is ignored.
-        // TODO: this should also fail to match. An app setting a specifier with a SSID or BSSID
-        // pattern should not match any peer-to-peer network.
-        wifiNetworkAgentSpecifier =
-                new WifiNetworkAgentSpecifier(
-                        wifiConfigurationNetworkAgent, ScanResult.WIFI_BAND_5_GHZ, false);
-        assertTrue(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
-        assertTrue(wifiNetworkAgentSpecifier.canBeSatisfiedBy(wifiNetworkSpecifier));
-
-        // If the band doesn't match, then there is no match.
-        wifiNetworkSpecifier = new WifiNetworkSpecifier(
-                ssidPattern,
-                bssidPattern,
-                ScanResult.WIFI_BAND_24_GHZ,
-                wificonfigurationNetworkSpecifier);
-        assertFalse(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
-        assertFalse(wifiNetworkAgentSpecifier.canBeSatisfiedBy(wifiNetworkSpecifier));
-
-        // An UNSPECIFIED band also doesn't match anything.
-        // TODO: this is also likely incorrect.
-        wifiNetworkSpecifier = new WifiNetworkSpecifier(
-                ssidPattern,
-                bssidPattern,
-                ScanResult.UNSPECIFIED,
-                wificonfigurationNetworkSpecifier);
         assertFalse(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
         assertFalse(wifiNetworkAgentSpecifier.canBeSatisfiedBy(wifiNetworkSpecifier));
     }
@@ -411,7 +300,7 @@ public class WifiNetworkAgentSpecifierTest {
         wifiConfigurationNetworkAgent.BSSID = TEST_BSSID_1;
         WifiNetworkAgentSpecifier wifiNetworkAgentSpecifier =
                 new WifiNetworkAgentSpecifier(
-                        wifiConfigurationNetworkAgent, ScanResult.WIFI_BAND_5_GHZ, true);
+                        wifiConfigurationNetworkAgent);
 
         PatternMatcher ssidPattern =
                 new PatternMatcher(".*", PatternMatcher.PATTERN_SIMPLE_GLOB);
@@ -424,7 +313,6 @@ public class WifiNetworkAgentSpecifierTest {
         WifiNetworkSpecifier wifiNetworkSpecifier = new WifiNetworkSpecifier(
                 ssidPattern,
                 bssidPattern,
-                ScanResult.WIFI_BAND_5_GHZ,
                 wificonfigurationNetworkSpecifier);
 
         assertFalse(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
@@ -444,7 +332,7 @@ public class WifiNetworkAgentSpecifierTest {
         wifiConfigurationNetworkAgent.BSSID = TEST_BSSID_1;
         WifiNetworkAgentSpecifier wifiNetworkAgentSpecifier =
                 new WifiNetworkAgentSpecifier(
-                        wifiConfigurationNetworkAgent, ScanResult.WIFI_BAND_24_GHZ, true);
+                        wifiConfigurationNetworkAgent);
 
         PatternMatcher ssidPattern =
                 new PatternMatcher(TEST_SSID_PATTERN, PatternMatcher.PATTERN_PREFIX);
@@ -457,7 +345,6 @@ public class WifiNetworkAgentSpecifierTest {
         WifiNetworkSpecifier wifiNetworkSpecifier = new WifiNetworkSpecifier(
                 ssidPattern,
                 bssidPattern,
-                ScanResult.WIFI_BAND_24_GHZ,
                 wificonfigurationNetworkSpecifier);
 
         assertFalse(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
@@ -485,12 +372,12 @@ public class WifiNetworkAgentSpecifierTest {
         WifiNetworkSpecifier wifiNetworkSpecifier = new WifiNetworkSpecifier(
                 ssidPattern,
                 bssidPattern,
-                ScanResult.UNSPECIFIED,
                 wificonfigurationNetworkSpecifier);
 
         assertFalse(wifiNetworkSpecifier.canBeSatisfiedBy(wifiNetworkAgentSpecifier));
         assertFalse(wifiNetworkAgentSpecifier.canBeSatisfiedBy(wifiNetworkSpecifier));
     }
+
 
     private WifiConfiguration createDefaultWifiConfiguration() {
         WifiConfiguration wifiConfiguration = new WifiConfiguration();
@@ -502,8 +389,7 @@ public class WifiNetworkAgentSpecifierTest {
     }
 
     private WifiNetworkAgentSpecifier createDefaultNetworkAgentSpecifier() {
-        return new WifiNetworkAgentSpecifier(createDefaultWifiConfiguration(),
-                ScanResult.WIFI_BAND_5_GHZ, true);
+        return new WifiNetworkAgentSpecifier(createDefaultWifiConfiguration());
     }
 
 }

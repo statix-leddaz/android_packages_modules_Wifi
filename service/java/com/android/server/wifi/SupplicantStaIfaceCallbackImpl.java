@@ -21,7 +21,6 @@ import static com.android.server.wifi.hotspot2.anqp.Constants.ANQPElementType.AN
 import static com.android.server.wifi.hotspot2.anqp.Constants.ANQPElementType.ANQPNAIRealm;
 import static com.android.server.wifi.hotspot2.anqp.Constants.ANQPElementType.ANQPRoamingConsortium;
 import static com.android.server.wifi.hotspot2.anqp.Constants.ANQPElementType.ANQPVenueName;
-import static com.android.server.wifi.hotspot2.anqp.Constants.ANQPElementType.ANQPVenueUrl;
 import static com.android.server.wifi.hotspot2.anqp.Constants.ANQPElementType.HSConnCapability;
 import static com.android.server.wifi.hotspot2.anqp.Constants.ANQPElementType.HSFriendlyName;
 import static com.android.server.wifi.hotspot2.anqp.Constants.ANQPElementType.HSOSUProviders;
@@ -29,7 +28,6 @@ import static com.android.server.wifi.hotspot2.anqp.Constants.ANQPElementType.HS
 
 import android.annotation.NonNull;
 import android.hardware.wifi.supplicant.V1_0.ISupplicantStaIfaceCallback;
-import android.net.wifi.SecurityParams;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
@@ -59,7 +57,6 @@ abstract class SupplicantStaIfaceCallbackImpl extends ISupplicantStaIfaceCallbac
     private final WifiMonitor mWifiMonitor;
     // Used to help check for PSK password mismatch & EAP connection failure.
     private int mStateBeforeDisconnect = State.INACTIVE;
-    private String mCurrentSsid = null;
 
     SupplicantStaIfaceCallbackImpl(@NonNull SupplicantStaIfaceHal staIfaceHal,
             @NonNull String ifaceName,
@@ -147,14 +144,14 @@ abstract class SupplicantStaIfaceCallbackImpl extends ISupplicantStaIfaceCallbac
     @Override
     public void onNetworkAdded(int id) {
         synchronized (mLock) {
-            mStaIfaceHal.logCallback("onNetworkAdded id=" + id);
+            mStaIfaceHal.logCallback("onNetworkAdded");
         }
     }
 
     @Override
     public void onNetworkRemoved(int id) {
         synchronized (mLock) {
-            mStaIfaceHal.logCallback("onNetworkRemoved id=" + id);
+            mStaIfaceHal.logCallback("onNetworkRemoved");
             // Reset state since network has been removed.
             mStateBeforeDisconnect = State.INACTIVE;
         }
@@ -177,18 +174,10 @@ abstract class SupplicantStaIfaceCallbackImpl extends ISupplicantStaIfaceCallbac
                 // cache to track the state before the disconnect.
                 mStateBeforeDisconnect = newState;
             }
-
-            if (newState == State.ASSOCIATING || newState == State.ASSOCIATED
-                    || newState == State.COMPLETED) {
-                mStaIfaceHal.updateOnLinkedNetworkRoaming(mIfaceName, id);
-            }
-
             if (newState == State.COMPLETED) {
                 mWifiMonitor.broadcastNetworkConnectionEvent(
                         mIfaceName, mStaIfaceHal.getCurrentNetworkId(mIfaceName), filsHlpSent,
-                        wifiSsid, bssidStr);
-            } else if (newState == State.ASSOCIATING) {
-                mCurrentSsid = NativeUtil.encodeSsid(ssid);
+                        bssidStr);
             }
             mWifiMonitor.broadcastSupplicantStateChangeEvent(
                     mIfaceName, mStaIfaceHal.getCurrentNetworkId(mIfaceName), wifiSsid,
@@ -201,35 +190,26 @@ abstract class SupplicantStaIfaceCallbackImpl extends ISupplicantStaIfaceCallbac
         onStateChanged(newState, bssid, id, ssid, false);
     }
 
-    public void onAnqpQueryDone(byte[/* 6 */] bssid,
-            ISupplicantStaIfaceCallback.AnqpData data,
-            ISupplicantStaIfaceCallback.Hs20AnqpData hs20Data,
-            android.hardware.wifi.supplicant.V1_4.ISupplicantStaIfaceCallback.AnqpData dataV14) {
-        Map<Constants.ANQPElementType, ANQPElement> elementsMap = new HashMap<>();
-        addAnqpElementToMap(elementsMap, ANQPVenueName, data.venueName);
-        addAnqpElementToMap(elementsMap, ANQPRoamingConsortium, data.roamingConsortium);
-        addAnqpElementToMap(
-                elementsMap, ANQPIPAddrAvailability, data.ipAddrTypeAvailability);
-        addAnqpElementToMap(elementsMap, ANQPNAIRealm, data.naiRealm);
-        addAnqpElementToMap(elementsMap, ANQP3GPPNetwork, data.anqp3gppCellularNetwork);
-        addAnqpElementToMap(elementsMap, ANQPDomName, data.domainName);
-        if (dataV14 != null) {
-            addAnqpElementToMap(elementsMap, ANQPVenueUrl, dataV14.venueUrl);
-        }
-        addAnqpElementToMap(elementsMap, HSFriendlyName, hs20Data.operatorFriendlyName);
-        addAnqpElementToMap(elementsMap, HSWANMetrics, hs20Data.wanMetrics);
-        addAnqpElementToMap(elementsMap, HSConnCapability, hs20Data.connectionCapability);
-        addAnqpElementToMap(elementsMap, HSOSUProviders, hs20Data.osuProvidersList);
-        mWifiMonitor.broadcastAnqpDoneEvent(
-                mIfaceName, new AnqpEvent(NativeUtil.macAddressToLong(bssid), elementsMap));
-    }
     @Override
     public void onAnqpQueryDone(byte[/* 6 */] bssid,
                                 ISupplicantStaIfaceCallback.AnqpData data,
                                 ISupplicantStaIfaceCallback.Hs20AnqpData hs20Data) {
         synchronized (mLock) {
             mStaIfaceHal.logCallback("onAnqpQueryDone");
-            onAnqpQueryDone(bssid, data, hs20Data, null /* v1.4 element */);
+            Map<Constants.ANQPElementType, ANQPElement> elementsMap = new HashMap<>();
+            addAnqpElementToMap(elementsMap, ANQPVenueName, data.venueName);
+            addAnqpElementToMap(elementsMap, ANQPRoamingConsortium, data.roamingConsortium);
+            addAnqpElementToMap(
+                    elementsMap, ANQPIPAddrAvailability, data.ipAddrTypeAvailability);
+            addAnqpElementToMap(elementsMap, ANQPNAIRealm, data.naiRealm);
+            addAnqpElementToMap(elementsMap, ANQP3GPPNetwork, data.anqp3gppCellularNetwork);
+            addAnqpElementToMap(elementsMap, ANQPDomName, data.domainName);
+            addAnqpElementToMap(elementsMap, HSFriendlyName, hs20Data.operatorFriendlyName);
+            addAnqpElementToMap(elementsMap, HSWANMetrics, hs20Data.wanMetrics);
+            addAnqpElementToMap(elementsMap, HSConnCapability, hs20Data.connectionCapability);
+            addAnqpElementToMap(elementsMap, HSOSUProviders, hs20Data.osuProvidersList);
+            mWifiMonitor.broadcastAnqpDoneEvent(
+                    mIfaceName, new AnqpEvent(NativeUtil.macAddressToLong(bssid), elementsMap));
         }
     }
 
@@ -251,8 +231,7 @@ abstract class SupplicantStaIfaceCallbackImpl extends ISupplicantStaIfaceCallbac
             mStaIfaceHal.logCallback("onHs20SubscriptionRemediation");
             mWifiMonitor.broadcastWnmEvent(
                     mIfaceName,
-                    WnmData.createRemediationEvent(NativeUtil.macAddressToLong(bssid), url,
-                            osuMethod));
+                    new WnmData(NativeUtil.macAddressToLong(bssid), url, osuMethod));
         }
     }
 
@@ -263,7 +242,7 @@ abstract class SupplicantStaIfaceCallbackImpl extends ISupplicantStaIfaceCallbac
             mStaIfaceHal.logCallback("onHs20DeauthImminentNotice");
             mWifiMonitor.broadcastWnmEvent(
                     mIfaceName,
-                    WnmData.createDeauthImminentEvent(NativeUtil.macAddressToLong(bssid), url,
+                    new WnmData(NativeUtil.macAddressToLong(bssid), url,
                             reasonCode == WnmData.ESS, reAuthDelayInSec));
         }
     }
@@ -292,69 +271,49 @@ abstract class SupplicantStaIfaceCallbackImpl extends ISupplicantStaIfaceCallbac
                 }
             }
             mWifiMonitor.broadcastNetworkDisconnectionEvent(
-                    mIfaceName, locallyGenerated, reasonCode, mCurrentSsid,
+                    mIfaceName, locallyGenerated ? 1 : 0, reasonCode,
                     NativeUtil.macAddressFromByteArray(bssid));
         }
-    }
-
-    private void handleAssocRejectEvent(AssocRejectEventInfo assocRejectInfo) {
-        boolean isWrongPwd = false;
-        WifiConfiguration curConfiguration =
-                mStaIfaceHal.getCurrentNetworkLocalConfig(mIfaceName);
-        if (curConfiguration != null) {
-            if (!assocRejectInfo.timedOut) {
-                Log.d(TAG, "flush PMK cache due to association rejection for config id "
-                        + curConfiguration.networkId + ".");
-                mStaIfaceHal.removePmkCacheEntry(curConfiguration.networkId);
-            }
-            // Special handling for WPA3-Personal networks. If the password is
-            // incorrect, the AP will send association rejection, with status code 1
-            // (unspecified failure). In SAE networks, the password authentication
-            // is not related to the 4-way handshake. In this case, we will send an
-            // authentication failure event up.
-            if (assocRejectInfo.statusCode == StatusCode.UNSPECIFIED_FAILURE) {
-                // Network Selection status is guaranteed to be initialized
-                SecurityParams params = curConfiguration.getNetworkSelectionStatus()
-                        .getCandidateSecurityParams();
-                if (params != null
-                        && params.getSecurityType() == WifiConfiguration.SECURITY_TYPE_SAE) {
-                    // If this is ever connected, the password should be correct.
-                    isWrongPwd = !curConfiguration.getNetworkSelectionStatus().hasEverConnected();
-                    if (isWrongPwd) {
-                        mStaIfaceHal.logCallback("SAE incorrect password");
-                    } else {
-                        mStaIfaceHal.logCallback("SAE association rejection");
-                    }
-                }
-            } else if (assocRejectInfo.statusCode == StatusCode.CHALLENGE_FAIL
-                    && WifiConfigurationUtil.isConfigForWepNetwork(curConfiguration)) {
-                mStaIfaceHal.logCallback("WEP incorrect password");
-                isWrongPwd = true;
-            }
-        }
-
-        if (isWrongPwd) {
-            mWifiMonitor.broadcastAuthenticationFailureEvent(
-                    mIfaceName, WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD, -1);
-        }
-        mWifiMonitor.broadcastAssociationRejectionEvent(mIfaceName, assocRejectInfo);
-        mStateBeforeDisconnect = State.INACTIVE;
-    }
-
-    public void onAssociationRejected(android.hardware.wifi.supplicant.V1_4
-            .ISupplicantStaIfaceCallback.AssociationRejectionData assocRejectData) {
-        AssocRejectEventInfo assocRejectInfo = new AssocRejectEventInfo(assocRejectData);
-        handleAssocRejectEvent(assocRejectInfo);
     }
 
     @Override
     public void onAssociationRejected(byte[/* 6 */] bssid, int statusCode, boolean timedOut) {
         synchronized (mLock) {
-            AssocRejectEventInfo assocRejectInfo = new AssocRejectEventInfo(
-                    mCurrentSsid,
-                    NativeUtil.macAddressFromByteArray(bssid),
-                    statusCode, timedOut);
-            handleAssocRejectEvent(assocRejectInfo);
+            mStaIfaceHal.logCallback("onAssociationRejected");
+            boolean isWrongPwd = false;
+            WifiConfiguration curConfiguration =
+                    mStaIfaceHal.getCurrentNetworkLocalConfig(mIfaceName);
+            if (curConfiguration != null) {
+                if (!timedOut) {
+                    Log.d(TAG, "flush PMK cache due to association rejection for config id "
+                            + curConfiguration.networkId + ".");
+                    mStaIfaceHal.removePmkCacheEntry(curConfiguration.networkId);
+                }
+                // Special handling for WPA3-Personal networks. If the password is
+                // incorrect, the AP will send association rejection, with status code 1
+                // (unspecified failure). In SAE networks, the password authentication
+                // is not related to the 4-way handshake. In this case, we will send an
+                // authentication failure event up.
+                if (statusCode == StatusCode.UNSPECIFIED_FAILURE
+                        && WifiConfigurationUtil.isConfigForSaeNetwork(curConfiguration)) {
+                    mStaIfaceHal.logCallback("SAE incorrect password");
+                    isWrongPwd = true;
+                } else if (statusCode == StatusCode.CHALLENGE_FAIL
+                        && WifiConfigurationUtil.isConfigForWepNetwork(curConfiguration)) {
+                    mStaIfaceHal.logCallback("WEP incorrect password");
+                    isWrongPwd = true;
+                }
+            }
+
+            if (isWrongPwd) {
+                mWifiMonitor.broadcastAuthenticationFailureEvent(
+                        mIfaceName, WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD, -1);
+            }
+            mWifiMonitor
+                    .broadcastAssociationRejectionEvent(
+                            mIfaceName, statusCode, timedOut,
+                            NativeUtil.macAddressFromByteArray(bssid));
+            mStateBeforeDisconnect = State.INACTIVE;
         }
     }
 

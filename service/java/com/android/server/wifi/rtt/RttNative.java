@@ -388,6 +388,13 @@ public class RttNative {
         // Skipping any configurations which have an error (printing out a message).
         // The caller will only get results for valid configurations.
         for (ResponderConfig responder: request.mRttPeers) {
+            if (!isCalledFromPrivilegedContext) {
+                if (!responder.supports80211mc) {
+                    Log.e(TAG, "Invalid responder: does not support 802.11mc");
+                    continue;
+                }
+            }
+
             RttConfig config = new RttConfig();
 
             System.arraycopy(responder.macAddress.toByteArray(), 0, config.addr, 0,
@@ -415,7 +422,7 @@ public class RttNative {
                     config.mustRequestLcr = false;
                     config.burstPeriod = 0;
                     config.numBurst = 0;
-                    config.numFramesPerBurst = request.mRttBurstSize;
+                    config.numFramesPerBurst = 5;
                     config.numRetriesPerRttFrame = 0; // irrelevant for 2-sided RTT
                     config.numRetriesPerFtmr = 3;
                     config.burstDuration = 9;
@@ -424,7 +431,7 @@ public class RttNative {
                     config.mustRequestLcr = true;
                     config.burstPeriod = 0;
                     config.numBurst = 0;
-                    config.numFramesPerBurst = request.mRttBurstSize;
+                    config.numFramesPerBurst = 8;
                     config.numRetriesPerRttFrame = (config.type == RttType.TWO_SIDED ? 0 : 3);
                     config.numRetriesPerFtmr = 3;
                     config.burstDuration = 9;
@@ -470,6 +477,12 @@ public class RttNative {
         // Skipping any configurations which have an error (printing out a message).
         // The caller will only get results for valid configurations.
         for (ResponderConfig responder: request.mRttPeers) {
+            if (!isCalledFromPrivilegedContext) {
+                if (!responder.supports80211mc) {
+                    Log.e(TAG, "Invalid responder: does not support 802.11mc");
+                    continue;
+                }
+            }
 
             android.hardware.wifi.V1_4.RttConfig config =
                     new android.hardware.wifi.V1_4.RttConfig();
@@ -498,7 +511,7 @@ public class RttNative {
                     config.mustRequestLcr = false;
                     config.burstPeriod = 0;
                     config.numBurst = 0;
-                    config.numFramesPerBurst = request.mRttBurstSize;
+                    config.numFramesPerBurst = 5;
                     config.numRetriesPerRttFrame = 0; // irrelevant for 2-sided RTT
                     config.numRetriesPerFtmr = 3;
                     config.burstDuration = 9;
@@ -507,7 +520,7 @@ public class RttNative {
                     config.mustRequestLcr = true;
                     config.burstPeriod = 0;
                     config.numBurst = 0;
-                    config.numFramesPerBurst = request.mRttBurstSize;
+                    config.numFramesPerBurst = 8;
                     config.numRetriesPerRttFrame = (config.type == RttType.TWO_SIDED ? 0 : 3);
                     config.numRetriesPerFtmr = 3;
                     config.burstDuration = 9;
@@ -766,8 +779,7 @@ public class RttNative {
                     rttResult.distanceInMm, rttResult.distanceSdInMm,
                     rttResult.rssi / -2, rttResult.numberPerBurstPeer,
                     rttResult.successNumber, lci, lcr, responderLocation,
-                    rttResult.timeStampInUs / CONVERSION_US_TO_MS,
-                    rttResult.type == RttType.TWO_SIDED));
+                    rttResult.timeStampInUs / CONVERSION_US_TO_MS));
         }
         return rangingResults;
     }
@@ -803,8 +815,7 @@ public class RttNative {
                     rttResult.distanceInMm, rttResult.distanceSdInMm,
                     rttResult.rssi / -2, rttResult.numberPerBurstPeer,
                     rttResult.successNumber, lci, lcr, responderLocation,
-                    rttResult.timeStampInUs / CONVERSION_US_TO_MS,
-                    rttResult.type == RttType.TWO_SIDED));
+                    rttResult.timeStampInUs / CONVERSION_US_TO_MS));
         }
         return rangingResults;
     }

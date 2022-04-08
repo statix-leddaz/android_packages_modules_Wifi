@@ -100,7 +100,6 @@ public class ThroughputPredictor {
     private static final int MAX_NUM_SPATIAL_STREAM_11N = 4;
     private static final int MAX_NUM_SPATIAL_STREAM_LEGACY = 1;
 
-    private static final int B_MODE_MAX_MBPS = 11;
     private final Context mContext;
 
     ThroughputPredictor(Context context) {
@@ -122,8 +121,7 @@ public class ThroughputPredictor {
      * @return predicted maximum Tx throughput in Mbps
      */
     public int predictMaxTxThroughput(@NonNull WifiNative.ConnectionCapabilities capabilities) {
-        return predictThroughputInternal(capabilities.wifiStandard, capabilities.is11bMode,
-                capabilities.channelBandwidth,
+        return predictThroughputInternal(capabilities.wifiStandard, capabilities.channelBandwidth,
                 WifiInfo.MAX_RSSI, capabilities.maxNumberTxSpatialStreams, MIN_CHANNEL_UTILIZATION);
     }
 
@@ -133,8 +131,7 @@ public class ThroughputPredictor {
      * @return predicted maximum Rx throughput in Mbps
      */
     public int predictMaxRxThroughput(@NonNull WifiNative.ConnectionCapabilities capabilities) {
-        return predictThroughputInternal(capabilities.wifiStandard, capabilities.is11bMode,
-                capabilities.channelBandwidth,
+        return predictThroughputInternal(capabilities.wifiStandard, capabilities.channelBandwidth,
                 WifiInfo.MAX_RSSI, capabilities.maxNumberRxSpatialStreams, MIN_CHANNEL_UTILIZATION);
     }
 
@@ -146,8 +143,7 @@ public class ThroughputPredictor {
             int rssiDbm, int frequency, int channelUtilization) {
         int channelUtilizationFinal = getValidChannelUtilization(frequency,
                 INVALID, channelUtilization, false);
-        return predictThroughputInternal(capabilities.wifiStandard, capabilities.is11bMode,
-                capabilities.channelBandwidth,
+        return predictThroughputInternal(capabilities.wifiStandard, capabilities.channelBandwidth,
                 rssiDbm, capabilities.maxNumberTxSpatialStreams, channelUtilizationFinal);
     }
 
@@ -159,8 +155,7 @@ public class ThroughputPredictor {
             int rssiDbm, int frequency, int channelUtilization) {
         int channelUtilizationFinal = getValidChannelUtilization(frequency,
                 INVALID, channelUtilization, false);
-        return predictThroughputInternal(capabilities.wifiStandard, capabilities.is11bMode,
-                capabilities.channelBandwidth,
+        return predictThroughputInternal(capabilities.wifiStandard, capabilities.channelBandwidth,
                 rssiDbm, capabilities.maxNumberRxSpatialStreams, channelUtilizationFinal);
     }
 
@@ -262,11 +257,11 @@ public class ThroughputPredictor {
                 channelUtilizationLinkLayerStats,
                 isBluetoothConnected);
 
-        return predictThroughputInternal(wifiStandard, false/* is11bMode */, channelWidth,
-                rssiDbm, maxNumSpatialStream, channelUtilization);
+        return predictThroughputInternal(wifiStandard, channelWidth, rssiDbm, maxNumSpatialStream,
+                channelUtilization);
     }
 
-    private int predictThroughputInternal(@WifiStandard int wifiStandard, boolean is11bMode,
+    private int predictThroughputInternal(@WifiStandard int wifiStandard,
             int channelWidth, int rssiDbm, int maxNumSpatialStream,  int channelUtilization) {
 
         // channel bandwidth in MHz = 20MHz * (2 ^ channelWidthFactor);
@@ -281,7 +276,6 @@ public class ThroughputPredictor {
         if (wifiStandard == ScanResult.WIFI_STANDARD_UNKNOWN) {
             return WifiInfo.LINK_SPEED_UNKNOWN;
         } else if (wifiStandard == ScanResult.WIFI_STANDARD_LEGACY) {
-            // For simplicity, use legacy OFDM parameters to predict 11b rate
             numTonePerSym = NUM_TONE_PER_SYM_LEGACY;
             channelWidthFactor = 0;
             maxNumSpatialStream = MAX_NUM_SPATIAL_STREAM_LEGACY;
@@ -350,9 +344,6 @@ public class ThroughputPredictor {
 
         int throughputMbps = (phyRateMbps * airTimeFraction) / MAX_CHANNEL_UTILIZATION;
 
-        if (is11bMode) {
-            throughputMbps = Math.min(throughputMbps, B_MODE_MAX_MBPS);
-        }
         if (mVerboseLoggingEnabled) {
             StringBuilder sb = new StringBuilder();
             Log.d(TAG, sb.append(" BW: ").append(channelWidth)

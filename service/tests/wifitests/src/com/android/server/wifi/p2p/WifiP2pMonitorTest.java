@@ -17,6 +17,7 @@
 package com.android.server.wifi.p2p;
 
 import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 
@@ -27,13 +28,14 @@ import android.os.test.TestLooper;
 import androidx.test.filters.SmallTest;
 
 import com.android.server.wifi.WifiBaseTest;
+import com.android.server.wifi.WifiInjector;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * Unit tests for {@link com.android.server.wifi.p2p.WifiP2pMonitor}.
+ * Unit tests for {@link com.android.server.wifi.WifiP2pMonitor}.
  */
 @SmallTest
 public class WifiP2pMonitorTest extends WifiBaseTest {
@@ -46,7 +48,7 @@ public class WifiP2pMonitorTest extends WifiBaseTest {
 
     @Before
     public void setUp() throws Exception {
-        mWifiP2pMonitor = new WifiP2pMonitor();
+        mWifiP2pMonitor = new WifiP2pMonitor(mock(WifiInjector.class));
         mLooper = new TestLooper();
         mHandlerSpy = spy(new Handler(mLooper.getLooper()));
         mSecondHandlerSpy = spy(new Handler(mLooper.getLooper()));

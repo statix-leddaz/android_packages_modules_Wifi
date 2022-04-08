@@ -16,8 +16,6 @@
 
 package com.android.server.wifi;
 
-import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
-
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,13 +26,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.withSettings;
 
 import android.content.Context;
 import android.database.ContentObserver;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
-import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiScanner;
 import android.os.Handler;
@@ -43,21 +39,16 @@ import android.provider.Settings;
 
 import androidx.test.filters.SmallTest;
 
-import com.android.server.wifi.ActiveModeWarden.PrimaryClientModeManagerChangedCallback;
 import com.android.server.wifi.util.ScanResultUtil;
 import com.android.server.wifi.util.WifiConfigStoreEncryptionUtil;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
-import org.mockito.MockitoSession;
-import org.mockito.quality.Strictness;
 import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.ByteArrayOutputStream;
@@ -76,8 +67,6 @@ public class WakeupControllerTest extends WifiBaseTest {
 
     private static final String SAVED_SSID = "test scan ssid";
     private static final int DFS_CHANNEL_FREQ = 5540;
-    private static final int TEST_PRIORITY_GROUP =
-            WifiNetworkSuggestionsManager.DEFAULT_PRIORITY_GROUP;
 
     @Mock private Context mContext;
     @Mock private WakeupLock mWakeupLock;
@@ -94,41 +83,24 @@ public class WakeupControllerTest extends WifiBaseTest {
     @Mock private ActiveModeWarden mActiveModeWarden;
     @Mock private WifiNative mWifiNative;
     @Mock private Clock mClock;
-    @Mock private ConcreteClientModeManager mPrimaryClientModeManager;
-    @Mock private WifiGlobals mWifiGlobals;
-
-    @Captor private ArgumentCaptor<PrimaryClientModeManagerChangedCallback> mPrimaryChangedCaptor;
 
     private TestLooper mLooper;
     private WakeupController mWakeupController;
     private WakeupConfigStoreData mWakeupConfigStoreData;
     private WifiScanner.ScanData[] mTestScanDatas;
     private ScanResult mTestScanResult;
-    private MockitoSession mSession;
 
     /** Initialize objects before each test run. */
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
-        // static mocking
-        mSession = mockitoSession()
-                .mockStatic(WifiInjector.class, withSettings().lenient())
-                .strictness(Strictness.LENIENT)
-                .startMocking();
 
-        when(WifiInjector.getInstance()).thenReturn(mWifiInjector);
         when(mWifiInjector.getWifiScanner()).thenReturn(mWifiScanner);
         when(mWifiInjector.getWifiSettingsStore()).thenReturn(mWifiSettingsStore);
         when(mWifiInjector.getActiveModeWarden()).thenReturn(mActiveModeWarden);
-        when(mActiveModeWarden.getPrimaryClientModeManager()).thenReturn(mPrimaryClientModeManager);
-        when(mPrimaryClientModeManager.getSupportedFeatures()).thenReturn(
-                WifiManager.WIFI_FEATURE_WPA3_SAE | WifiManager.WIFI_FEATURE_OWE);
         when(mWifiInjector.getWifiNative()).thenReturn(mWifiNative);
         when(mWifiNative.getChannelsForBand(WifiScanner.WIFI_BAND_5_GHZ_DFS_ONLY))
                 .thenReturn(new int[]{DFS_CHANNEL_FREQ});
-        when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
-        when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(true);
-        when(mWifiGlobals.isOweUpgradeEnabled()).thenReturn(true);
 
         when(mWifiSettingsStore.handleWifiToggled(anyBoolean())).thenReturn(true);
         // Saved network needed to start wake.
@@ -149,16 +121,6 @@ public class WakeupControllerTest extends WifiBaseTest {
         int scanBand = WifiScanner.WIFI_BAND_ALL & ~WifiScanner.WIFI_BAND_5_GHZ_DFS_ONLY;
         mTestScanDatas[0] = new WifiScanner.ScanData(0 /* id */, 0 /* flags */,
                 0 /* bucketsScanned */, scanBand /* bandScanned */, scanResults);
-    }
-
-    /**
-     * Called after each test
-     */
-    @After
-    public void cleanup() {
-        if (mSession != null) {
-            mSession.finishMocking();
-        }
     }
 
     /** Initializes the wakeupcontroller in the given {@code enabled} state. */
@@ -182,10 +144,7 @@ public class WakeupControllerTest extends WifiBaseTest {
                 mWifiWakeMetrics,
                 mWifiInjector,
                 mFrameworkFacade,
-                mClock, mActiveModeWarden);
-
-        verify(mActiveModeWarden).registerPrimaryClientModeManagerChangedCallback(
-                mPrimaryChangedCaptor.capture());
+                mClock);
 
         ArgumentCaptor<WakeupConfigStoreData> captor =
                 ArgumentCaptor.forClass(WakeupConfigStoreData.class);
@@ -371,7 +330,7 @@ public class WakeupControllerTest extends WifiBaseTest {
         metricsInOrder.verify(mWifiWakeMetrics).recordStartEvent(anyInt());
 
         mWakeupController.stop();
-        mPrimaryChangedCaptor.getValue().onChange(null, mPrimaryClientModeManager);
+        mWakeupController.reset();
         metricsInOrder.verify(mWifiWakeMetrics).recordResetEvent(0 /* numScans */);
 
         mWakeupController.start();
@@ -401,7 +360,7 @@ public class WakeupControllerTest extends WifiBaseTest {
         ScanResult savedScanResult = createOpenScanResult(ssid1, 2412 /* frequency */);
         ScanResult unsavedScanResult = createOpenScanResult(ssid2, 2412 /* frequency */);
 
-        when(mWifiConfigManager.getMostRecentScanResultsForConfiguredNetworks(anyInt()))
+        when(mWifiScanner.getSingleScanResults())
                 .thenReturn(Arrays.asList(savedScanResult, unsavedScanResult));
 
         // intersection of most recent scan + saved configs
@@ -427,12 +386,10 @@ public class WakeupControllerTest extends WifiBaseTest {
         // suggestions
         WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork(quotedSsid);
         WifiNetworkSuggestion openNetworkSuggestion =
-                new WifiNetworkSuggestion(openNetwork, null, false, false, true, true,
-                        TEST_PRIORITY_GROUP);
+                new WifiNetworkSuggestion(openNetwork, null, false, false, true, true);
         WifiConfiguration wepNetwork = WifiConfigurationTestUtil.createWepNetwork();
         WifiNetworkSuggestion wepNetworkSuggestion =
-                new WifiNetworkSuggestion(wepNetwork, null, false, false, true, true,
-                        TEST_PRIORITY_GROUP);
+                new WifiNetworkSuggestion(wepNetwork, null, false, false, true, true);
         when(mWifiNetworkSuggestionsManager.getAllApprovedNetworkSuggestions())
                 .thenReturn(new HashSet<>(Arrays.asList(
                         openNetworkSuggestion, wepNetworkSuggestion)));
@@ -441,7 +398,7 @@ public class WakeupControllerTest extends WifiBaseTest {
         ScanResult savedScanResult = createOpenScanResult(ssid1, 2412 /* frequency */);
         ScanResult unsavedScanResult = createOpenScanResult(ssid2, 2412 /* frequency */);
 
-        when(mWifiConfigManager.getMostRecentScanResultsForConfiguredNetworks(anyInt()))
+        when(mWifiScanner.getSingleScanResults())
                 .thenReturn(Arrays.asList(savedScanResult, unsavedScanResult));
 
         // intersection of most recent scan + saved configs
@@ -474,8 +431,7 @@ public class WakeupControllerTest extends WifiBaseTest {
 
         WifiConfiguration oweNetwork = WifiConfigurationTestUtil.createOweNetwork(quotedSsid2);
         WifiNetworkSuggestion oweNetworkSuggestion =
-                new WifiNetworkSuggestion(oweNetwork, null, false, false, true, true,
-                        TEST_PRIORITY_GROUP);
+                new WifiNetworkSuggestion(oweNetwork, null, false, false, true, true);
         when(mWifiNetworkSuggestionsManager.getAllApprovedNetworkSuggestions())
                 .thenReturn(new HashSet<>(Arrays.asList(oweNetworkSuggestion)));
 
@@ -484,7 +440,7 @@ public class WakeupControllerTest extends WifiBaseTest {
         ScanResult suggestionScanResult = createOweScanResult(ssid2, 2412 /* frequency */);
         ScanResult unknownScanResult = createOpenScanResult(ssid3, 2412 /* frequency */);
 
-        when(mWifiConfigManager.getMostRecentScanResultsForConfiguredNetworks(anyInt()))
+        when(mWifiScanner.getSingleScanResults())
                 .thenReturn(Arrays.asList(savedScanResult, suggestionScanResult,
                         unknownScanResult));
 
@@ -498,48 +454,6 @@ public class WakeupControllerTest extends WifiBaseTest {
         mWakeupController.start();
         verify(mWakeupLock).setLock(eq(expectedMatchInfos));
         verify(mWifiWakeMetrics).recordStartEvent(expectedMatchInfos.size());
-    }
-
-    /**
-     * Verify that saved networks suggestions ignore captive portal without validated network.
-     */
-    @Test
-    public void getGoodSavedNetworksAndSuggestionsIgnoreInvalidatedCaptivePortal() {
-        String ssid1 = "ssid 1";
-        String quotedSsid1 = ScanResultUtil.createQuotedSSID(ssid1);
-
-        // saved captive portal config without validated network
-        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork(quotedSsid1);
-        openNetwork.getNetworkSelectionStatus().setHasEverConnected(true);
-        openNetwork.getNetworkSelectionStatus().setHasNeverDetectedCaptivePortal(false);
-        openNetwork.validatedInternetAccess = false;
-        when(mWifiConfigManager.getSavedNetworks(anyInt()))
-                .thenReturn(Arrays.asList(openNetwork));
-
-        initializeWakeupController(true);
-        mWakeupController.start();
-        verify(mWifiInjector, never()).getWifiScanner();
-    }
-
-    /**
-     * Verify that saved networks suggestions include captive portal with validated network.
-     */
-    @Test
-    public void getGoodSavedNetworksAndSuggestionsIncludeValidatedCaptivePortal() {
-        String ssid1 = "ssid 1";
-        String quotedSsid1 = ScanResultUtil.createQuotedSSID(ssid1);
-
-        // saved captive portal config with validated network
-        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork(quotedSsid1);
-        openNetwork.getNetworkSelectionStatus().setHasEverConnected(true);
-        openNetwork.getNetworkSelectionStatus().setHasNeverDetectedCaptivePortal(false);
-        openNetwork.validatedInternetAccess = true;
-        when(mWifiConfigManager.getSavedNetworks(anyInt()))
-                .thenReturn(Arrays.asList(openNetwork));
-
-        initializeWakeupController(true);
-        mWakeupController.start();
-        verify(mWifiInjector).getWifiScanner();
     }
 
     /**
@@ -565,7 +479,7 @@ public class WakeupControllerTest extends WifiBaseTest {
         ScanResult scanResultDfs = createOpenScanResult(ssidDfs, DFS_CHANNEL_FREQ);
         ScanResult scanResult24 = createOpenScanResult(ssid24, 2412 /* frequency */);
 
-        when(mWifiConfigManager.getMostRecentScanResultsForConfiguredNetworks(anyInt()))
+        when(mWifiScanner.getSingleScanResults())
                 .thenReturn(Arrays.asList(scanResultDfs, scanResult24));
 
         // should filter out scanResultDfs
@@ -615,8 +529,7 @@ public class WakeupControllerTest extends WifiBaseTest {
         WifiConfiguration openNetwork = WifiConfigurationTestUtil
                 .createOpenNetwork(ScanResultUtil.createQuotedSSID(SAVED_SSID));
         WifiNetworkSuggestion openNetworkSuggestion =
-                new WifiNetworkSuggestion(openNetwork, null, false, false, true, true,
-                        TEST_PRIORITY_GROUP);
+                new WifiNetworkSuggestion(openNetwork, null, false, false, true, true);
         when(mWifiNetworkSuggestionsManager.getAllApprovedNetworkSuggestions())
                 .thenReturn(new HashSet<>(Collections.singletonList(openNetworkSuggestion)));
 
@@ -816,20 +729,19 @@ public class WakeupControllerTest extends WifiBaseTest {
         when(mClock.getElapsedSinceBootMillis()).thenReturn(0L,
                 (long) (0.8 * WakeupController.LAST_DISCONNECT_TIMEOUT_MILLIS));
         ScanResultMatchInfo matchInfo = ScanResultMatchInfo.fromScanResult(mTestScanResult);
-        when(mWifiConfigManager.getMostRecentScanResultsForConfiguredNetworks(anyInt()))
-                .thenReturn(Collections.emptyList());
+        when(mWifiScanner.getSingleScanResults()).thenReturn(Collections.emptyList());
         initializeWakeupController(true);
 
         mWakeupController.setLastDisconnectInfo(matchInfo);
         mWakeupController.start();
 
-        verify(mWakeupLock).setLock(Set.of(matchInfo));
+        verify(mWakeupLock).setLock(eq(Collections.singleton(matchInfo)));
 
         mWakeupController.stop();
-        mPrimaryChangedCaptor.getValue().onChange(null, mPrimaryClientModeManager);
+        mWakeupController.reset();
         mWakeupController.start();
 
-        verify(mWakeupLock).setLock(Set.of());
+        verify(mWakeupLock).setLock(eq(Collections.emptySet()));
     }
 
     /**
@@ -842,8 +754,7 @@ public class WakeupControllerTest extends WifiBaseTest {
         when(mClock.getElapsedSinceBootMillis()).thenReturn(0L,
                 (long) (1.2 * WakeupController.LAST_DISCONNECT_TIMEOUT_MILLIS));
         ScanResultMatchInfo matchInfo = ScanResultMatchInfo.fromScanResult(mTestScanResult);
-        when(mWifiConfigManager.getMostRecentScanResultsForConfiguredNetworks(anyInt()))
-                .thenReturn(Collections.emptyList());
+        when(mWifiScanner.getSingleScanResults()).thenReturn(Collections.emptyList());
         initializeWakeupController(true);
 
         mWakeupController.setLastDisconnectInfo(matchInfo);

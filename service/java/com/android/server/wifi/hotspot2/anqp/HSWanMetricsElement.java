@@ -58,7 +58,7 @@ public class HSWanMetricsElement extends ANQPElement {
 
     private final int mStatus;
     private final boolean mSymmetric;
-    private final boolean mAtCapacity;
+    private final boolean mCapped;
     private final long mDownlinkSpeed;
     private final long mUplinkSpeed;
     private final int mDownlinkLoad;
@@ -66,12 +66,12 @@ public class HSWanMetricsElement extends ANQPElement {
     private final int mLMD;     // Load Measurement Duration.
 
     @VisibleForTesting
-    public HSWanMetricsElement(int status, boolean symmetric, boolean atCapacity,
-            long downlinkSpeed, long uplinkSpeed, int downlinkLoad, int uplinkLoad, int lmd) {
+    public HSWanMetricsElement(int status, boolean symmetric, boolean capped, long downlinkSpeed,
+            long uplinkSpeed, int downlinkLoad, int uplinkLoad, int lmd) {
         super(Constants.ANQPElementType.HSWANMetrics);
         mStatus = status;
         mSymmetric = symmetric;
-        mAtCapacity = atCapacity;
+        mCapped = capped;
         mDownlinkSpeed = downlinkSpeed;
         mUplinkSpeed = uplinkSpeed;
         mDownlinkLoad = downlinkLoad;
@@ -115,8 +115,8 @@ public class HSWanMetricsElement extends ANQPElement {
         return mSymmetric;
     }
 
-    public boolean isAtCapacity() {
-        return mAtCapacity;
+    public boolean isCapped() {
+        return mCapped;
     }
 
     public long getDownlinkSpeed() {
@@ -139,21 +139,6 @@ public class HSWanMetricsElement extends ANQPElement {
         return mLMD;
     }
 
-    /**
-     * Check if the WAN Metrics ANQP-element contains values other than all 0's
-     *
-     * @return true if element contains non-0 values, false otherwise
-     */
-    public boolean isElementInitialized() {
-        // Check if the WAN Metrics ANQP element is initialized with values other than 0's
-        if (mStatus == LINK_STATUS_RESERVED && !mAtCapacity && !mSymmetric && mDownlinkLoad == 0
-                && mDownlinkSpeed == 0 && mUplinkLoad == 0 && mUplinkSpeed == 0 && mLMD == 0) {
-            // WAN Metrics ANQP element is not initialized in this network. Ignore it.
-            return false;
-        }
-        return true;
-    }
-
     @Override
     public boolean equals(Object thatObject) {
         if (this == thatObject) {
@@ -165,7 +150,7 @@ public class HSWanMetricsElement extends ANQPElement {
         HSWanMetricsElement that = (HSWanMetricsElement) thatObject;
         return mStatus == that.mStatus
                 && mSymmetric == that.mSymmetric
-                && mAtCapacity == that.mAtCapacity
+                && mCapped == that.mCapped
                 && mDownlinkSpeed == that.mDownlinkSpeed
                 && mUplinkSpeed == that.mUplinkSpeed
                 && mDownlinkLoad == that.mDownlinkLoad
@@ -181,9 +166,9 @@ public class HSWanMetricsElement extends ANQPElement {
 
     @Override
     public String toString() {
-        return String.format("HSWanMetrics{mStatus=%s, mSymmetric=%s, mAtCapacity=%s, "
-                        + "mDlSpeed=%d, mUlSpeed=%d, mDlLoad=%f, mUlLoad=%f, mLMD=%d}",
-                mStatus, mSymmetric, mAtCapacity,
+        return String.format("HSWanMetrics{mStatus=%s, mSymmetric=%s, mCapped=%s, " +
+                "mDlSpeed=%d, mUlSpeed=%d, mDlLoad=%f, mUlLoad=%f, mLMD=%d}",
+                mStatus, mSymmetric, mCapped,
                 mDownlinkSpeed, mUplinkSpeed,
                 mDownlinkLoad * 100.0 / MAX_LOAD,
                 mUplinkLoad * 100.0 / MAX_LOAD,

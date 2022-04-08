@@ -19,10 +19,7 @@ package com.android.server.wifi;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.os.UserHandle;
-
-import androidx.annotation.NonNull;
-
-import com.android.server.wifi.util.WifiPermissionsUtil;
+import android.os.UserManager;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -38,12 +35,12 @@ public class ConfigurationMap {
     private final Map<ScanResultMatchInfo, WifiConfiguration>
             mScanResultMatchInfoMapForCurrentUser = new HashMap<>();
 
-    @NonNull private final WifiPermissionsUtil mWifiPermissionsUtil;
+    private final UserManager mUserManager;
 
     private int mCurrentUserId = UserHandle.SYSTEM.getIdentifier();
 
-    ConfigurationMap(@NonNull WifiPermissionsUtil wifiPermissionsUtil) {
-        mWifiPermissionsUtil = wifiPermissionsUtil;
+    ConfigurationMap(UserManager userManager) {
+        mUserManager = userManager;
     }
 
     /** Dump internal state for debugging. */
@@ -58,13 +55,14 @@ public class ConfigurationMap {
     // RW methods:
     public WifiConfiguration put(WifiConfiguration config) {
         final WifiConfiguration current = mPerID.put(config.networkId, config);
-        if (config.shared || mWifiPermissionsUtil
-                .doesUidBelongToCurrentUserOrDeviceOwner(config.creatorUid)) {
+        final UserHandle currentUser = UserHandle.of(mCurrentUserId);
+        final UserHandle creatorUser = UserHandle.getUserHandleForUid(config.creatorUid);
+        if (config.shared || currentUser.equals(creatorUser)
+                || mUserManager.isSameProfileGroup(currentUser, creatorUser)) {
             mPerIDForCurrentUser.put(config.networkId, config);
             // TODO (b/142035508): Add a more generic fix. This cache should only hold saved
             // networks.
-            if (!config.fromWifiNetworkSpecifier && !config.fromWifiNetworkSuggestion
-                    && !config.isPasspoint()) {
+            if (!config.fromWifiNetworkSpecifier) {
                 mScanResultMatchInfoMapForCurrentUser.put(
                         ScanResultMatchInfo.fromWifiConfiguration(config), config);
             }
@@ -128,7 +126,7 @@ public class ConfigurationMap {
             return null;
         }
         for (WifiConfiguration config : mPerIDForCurrentUser.values()) {
-            if (config.getProfileKey().equals(key)) {
+            if (config.getKey().equals(key)) {
                 return config;
             }
         }

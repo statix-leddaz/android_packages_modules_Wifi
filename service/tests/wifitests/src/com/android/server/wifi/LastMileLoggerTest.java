@@ -28,6 +28,8 @@ import androidx.test.filters.SmallTest;
 
 import com.android.server.wifi.util.FileUtils;
 
+import libcore.io.IoUtils;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -35,21 +37,14 @@ import org.mockito.MockitoAnnotations;
 import org.mockito.Spy;
 
 import java.io.File;
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 
 /**
  * Unit tests for {@link LastMileLogger}.
  */
 @SmallTest
 public class LastMileLoggerTest extends WifiBaseTest {
-
-    private static final String WLAN0 = "wlan0";
-    private static final String WLAN1 = "wlan1";
-
     @Mock WifiInjector mWifiInjector;
     @Spy FakeWifiLog mLog;
 
@@ -68,10 +63,6 @@ public class LastMileLoggerTest extends WifiBaseTest {
                 mTraceEnableFile.getPath(),  mTraceReleaseFile.getPath());
     }
 
-    private static String readFileAsString(File file) throws IOException {
-        return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
-    }
-
     @Test
     public void ctorDoesNotCrash() throws Exception {
         new LastMileLogger(mWifiInjector, mTraceDataFile.getPath(), mTraceEnableFile.getPath(),
@@ -81,14 +72,14 @@ public class LastMileLoggerTest extends WifiBaseTest {
 
     @Test
     public void connectionEventStartedEnablesTracing() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
-        assertEquals("1", readFileAsString(mTraceEnableFile));
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
+        assertEquals("1", IoUtils.readFileAsString(mTraceEnableFile.getPath()));
     }
 
     @Test
     public void connectionEventStartedDoesNotCrashIfReleaseFileIsMissing() throws Exception {
         mTraceReleaseFile.delete();
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
         verify(mLog).warn(contains("Failed to open free_buffer"));
     }
 
@@ -96,13 +87,13 @@ public class LastMileLoggerTest extends WifiBaseTest {
     public void connectionEventStartedDoesNotEnableTracingIfReleaseFileIsMissing()
             throws Exception {
         mTraceReleaseFile.delete();
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
-        assertEquals("0", readFileAsString(mTraceEnableFile));
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
+        assertEquals("0", IoUtils.readFileAsString(mTraceEnableFile.getPath()));
     }
 
     @Test
     public void connectionEventStartedDoesNotAttemptToReopenReleaseFile() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
 
         // This is a rather round-about way of verifying that we don't attempt to re-open
         // the file. Namely: if we delete the |release| file, and CONNECTION_EVENT_STARTED
@@ -113,96 +104,78 @@ public class LastMileLoggerTest extends WifiBaseTest {
         // A more direct test would require the use of a factory for the creation of the
         // FileInputStream.
         mTraceReleaseFile.delete();
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
         verifyZeroInteractions(mLog);
     }
 
     @Test
     public void connectionEventStartedDoesNotCrashIfEnableFileIsMissing() throws Exception {
         mTraceEnableFile.delete();
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
     }
 
     @Test
     public void connectionEventStartedDoesNotCrashOnRepeatedCalls() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
     }
 
     @Test
     public void connectionEventSucceededDisablesTracing() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_SUCCEEDED);
-        assertEquals("0", readFileAsString(mTraceEnableFile));
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_SUCCEEDED);
+        assertEquals("0", IoUtils.readFileAsString(mTraceEnableFile.getPath()));
     }
 
     @Test
     public void connectionEventSucceededDoesNotCrashIfEnableFileIsMissing() throws Exception {
         mTraceEnableFile.delete();
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_SUCCEEDED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_SUCCEEDED);
     }
 
     @Test
     public void connectionEventSucceededDoesNotCrashOnRepeatedCalls() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_SUCCEEDED);
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_SUCCEEDED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_SUCCEEDED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_SUCCEEDED);
     }
 
     @Test
     public void connectionEventFailedDisablesTracingWhenPendingFails() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_FAILED);
-        assertEquals("0", readFileAsString(mTraceEnableFile));
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_FAILED);
+        assertEquals("0", IoUtils.readFileAsString(mTraceEnableFile.getPath()));
     }
 
     @Test
-    public void connectionEventTimeoutDisablesTracing() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_TIMEOUT);
-        assertEquals("0", readFileAsString(mTraceEnableFile));
-    }
-
-    @Test
-    public void multipleIfaces() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
-        assertEquals("1", readFileAsString(mTraceEnableFile));
-
-        mLastMileLogger.reportConnectionEvent(WLAN1, WifiDiagnostics.CONNECTION_EVENT_STARTED);
-        assertEquals("1", readFileAsString(mTraceEnableFile));
-
-        FileUtils.stringToFile(mTraceDataFile.getPath(), "rdev_connect");
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_TIMEOUT);
-        assertEquals("1", readFileAsString(mTraceEnableFile));
-        String dumpString = getDumpString();
-        assertTrue(dumpString.contains("--- Last failed"));
-        assertTrue(dumpString.contains("rdev_connect"));
-
-        mLastMileLogger.reportConnectionEvent(WLAN1, WifiDiagnostics.CONNECTION_EVENT_SUCCEEDED);
-        assertEquals("0", readFileAsString(mTraceEnableFile));
+    public void connectionEventTimeoutDisablesTracing()
+            throws Exception {
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_TIMEOUT);
+        assertEquals("0", IoUtils.readFileAsString(mTraceEnableFile.getPath()));
     }
 
     @Test
     public void connectionEventFailedDoesNotCrashIfEnableFileIsMissing() throws Exception {
         mTraceEnableFile.delete();
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_FAILED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_FAILED);
     }
 
     @Test
     public void connectionEventFailedDoesNotCrashIfDataFileIsMissing() throws Exception {
         mTraceDataFile.delete();
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_FAILED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_FAILED);
     }
 
     @Test
     public void connectionEventFailedDoesNotCrashOnRepeatedCalls() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_FAILED);
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_FAILED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_FAILED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_FAILED);
     }
 
     @Test
     public void dumpShowsFailureTrace() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
         FileUtils.stringToFile(mTraceDataFile.getPath(), "rdev_connect");
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_FAILED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_FAILED);
         assertTrue(getDumpString().contains("--- Last failed"));
         assertTrue(getDumpString().contains("rdev_connect"));
     }
@@ -210,7 +183,7 @@ public class LastMileLoggerTest extends WifiBaseTest {
 
     @Test
     public void dumpShowsPendingConnectionTrace() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
         FileUtils.stringToFile(mTraceDataFile.getPath(), "rdev_connect");
         assertTrue(getDumpString().contains("No last mile log for \"Last failed"));
         assertTrue(getDumpString().contains("--- Latest"));
@@ -219,10 +192,10 @@ public class LastMileLoggerTest extends WifiBaseTest {
 
     @Test
     public void dumpShowsLastFailureTraceAndPendingConnectionTrace() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
         FileUtils.stringToFile(mTraceDataFile.getPath(), "rdev_connect try #1");
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_FAILED);
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_FAILED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
         FileUtils.stringToFile(mTraceDataFile.getPath(), "rdev_connect try #2");
 
         String dumpString = getDumpString();
@@ -232,12 +205,12 @@ public class LastMileLoggerTest extends WifiBaseTest {
 
     @Test
     public void dumpShowsLastFailureTraceAndCurrentConnectionTrace() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
         FileUtils.stringToFile(mTraceDataFile.getPath(), "rdev_connect try #1");
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_FAILED);
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_FAILED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
         FileUtils.stringToFile(mTraceDataFile.getPath(), "rdev_connect try #2");
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_SUCCEEDED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_SUCCEEDED);
 
         String dumpString = getDumpString();
         assertTrue(dumpString.contains("rdev_connect try #1"));
@@ -246,9 +219,9 @@ public class LastMileLoggerTest extends WifiBaseTest {
 
     @Test
     public void dumpDoesNotClearLastFailureData() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
         FileUtils.stringToFile(mTraceDataFile.getPath(), "rdev_connect");
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_FAILED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_FAILED);
 
         getDumpString();
         String dumpString = getDumpString();
@@ -257,7 +230,7 @@ public class LastMileLoggerTest extends WifiBaseTest {
 
     @Test
     public void dumpDoesNotClearPendingConnectionTrace() throws Exception {
-        mLastMileLogger.reportConnectionEvent(WLAN0, WifiDiagnostics.CONNECTION_EVENT_STARTED);
+        mLastMileLogger.reportConnectionEvent(BaseWifiDiagnostics.CONNECTION_EVENT_STARTED);
         FileUtils.stringToFile(mTraceDataFile.getPath(), "rdev_connect");
 
         getDumpString();

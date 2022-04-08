@@ -35,8 +35,6 @@ import com.android.wifi.resources.R;
 
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
 import org.mockito.Mock;
 
 import java.util.ArrayList;
@@ -51,16 +49,11 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
     @Mock WifiInjector mWifiInjector;
     @Mock WifiMetrics mWifiMetrics;
     @Mock SelfRecovery mSelfRecovery;
-    @Mock WifiDiagnostics mWifiDiagnostics;
+    @Mock ClientModeImpl mClientModeImpl;
     @Mock Clock mClock;
     @Mock WifiInfo mWifiInfo;
     @Mock Context mContext;
     @Mock DeviceConfigFacade mDeviceConfigFacade;
-    @Mock WifiMonitor mWifiMonitor;
-    @Mock ActiveModeWarden mActiveModeWarden;
-    @Mock ClientModeManager mClientModeManager;
-
-    @Captor ArgumentCaptor<Handler> mHandlerCaptor;
 
     private WifiLastResortWatchdog mLastResortWatchdog;
     private MockResources mResources;
@@ -68,27 +61,20 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
     private String[] mBssids = {"aa:bb:cc:dd:ee:ff", "00:11:22:33:44:55", "a0:b0:c0:d0:e0:f0",
             "01:23:45:67:89:ab"};
     private int[] mFrequencies = {2437, 5180, 5180, 2437};
-    private String[] mCaps = {"[WPA2-EAP/SHA1-CCMP][ESS]", "[WPA2-EAP/SHA1-CCMP][ESS]",
-            "[WPA2-EAP/SHA1-CCMP][ESS]", "[WPA2-EAP/SHA1-CCMP][ESS]"};
+    private String[] mCaps = {"[WPA2-EAP-CCMP][ESS]", "[WPA2-EAP-CCMP][ESS]",
+            "[WPA2-EAP-CCMP][ESS]", "[WPA2-EAP-CCMP][ESS]"};
     private int[] mLevels = {-60, -86, -50, -62};
     private boolean[] mIsEphemeral = {false, false, false, false};
     private boolean[] mHasEverConnected = {false, false, false, false};
     private TestLooper mLooper;
     private static final String TEST_NETWORK_SSID = "\"test_ssid\"";
     private static final int DEFAULT_ABNORMAL_CONNECTION_DURATION_MS = 30000;
-    private static final int TEST_NETWORK_ID = 47;
-    private static final int TEST_NETWORK_ID_2 = 54;
-    private static final WifiSsid TEST_WIFI_SSID =
-            WifiSsid.createFromByteArray(new byte[]{'a', 'b', 'c'});
 
     @Before
     public void setUp() throws Exception {
         initMocks(this);
         mLooper = new TestLooper();
         when(mWifiInjector.getSelfRecovery()).thenReturn(mSelfRecovery);
-        when(mWifiInjector.getActiveModeWarden()).thenReturn(mActiveModeWarden);
-        when(mActiveModeWarden.getPrimaryClientModeManager()).thenReturn(mClientModeManager);
-        when(mClientModeManager.syncRequestConnectionInfo()).thenReturn(mWifiInfo);
         when(mDeviceConfigFacade.isAbnormalConnectionBugreportEnabled()).thenReturn(true);
         when(mDeviceConfigFacade.getAbnormalConnectionDurationMs()).thenReturn(
                         DEFAULT_ABNORMAL_CONNECTION_DURATION_MS);
@@ -96,18 +82,15 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         mResources.setBoolean(R.bool.config_wifi_watchdog_enabled, true);
         when(mContext.getResources()).thenReturn(mResources);
         createWifiLastResortWatchdog();
+        when(mClientModeImpl.getWifiInfo()).thenReturn(mWifiInfo);
         when(mWifiInfo.getSSID()).thenReturn(TEST_NETWORK_SSID);
-
-        mLastResortWatchdog.registerForWifiMonitorEvents("wlan0");
-        verify(mWifiMonitor, atLeastOnce())
-                .registerHandler(eq("wlan0"), anyInt(), mHandlerCaptor.capture());
     }
 
     private void createWifiLastResortWatchdog() {
         WifiThreadRunner wifiThreadRunner = new WifiThreadRunner(new Handler(mLooper.getLooper()));
         mLastResortWatchdog = new WifiLastResortWatchdog(mWifiInjector, mContext, mClock,
-                mWifiMetrics, mWifiDiagnostics, mLooper.getLooper(), mDeviceConfigFacade,
-                wifiThreadRunner, mWifiMonitor);
+                mWifiMetrics, mClientModeImpl, mLooper.getLooper(), mDeviceConfigFacade,
+                wifiThreadRunner);
         mLastResortWatchdog.setBugReportProbability(1);
     }
 
@@ -334,21 +317,21 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(i + 1, mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).associationRejection);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             assertEquals(i + 1, mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).authenticationFailure);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             assertEquals(i + 1, mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).dhcpFailure);
         }
@@ -386,21 +369,21 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).associationRejection, i + 1);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             assertEquals(mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).authenticationFailure, i + 1);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             assertEquals(mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).dhcpFailure, i + 1);
         }
@@ -436,17 +419,17 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(badSsid, mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(badSsid, mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(badSsid, mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
 
         // Ensure all networks still have zero failure count
@@ -480,17 +463,17 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], badBssid,
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], badBssid,
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], badBssid,
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
 
         // Ensure all networks still have zero failure count
@@ -526,19 +509,19 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                     ssids[0], WifiLastResortWatchdog.BSSID_ANY,
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                     ssids[0], WifiLastResortWatchdog.BSSID_ANY,
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                     ssids[0], WifiLastResortWatchdog.BSSID_ANY,
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
         assertFailureCountEquals(mBssids[0], associationRejections, authenticationFailures,
                 dhcpFailures);
@@ -575,19 +558,19 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                     badSsid, WifiLastResortWatchdog.BSSID_ANY,
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                     badSsid, WifiLastResortWatchdog.BSSID_ANY,
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                     badSsid, WifiLastResortWatchdog.BSSID_ANY,
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
         // Check that all network failure counts are still zero
         for (int i = 0; i < mSsids.length; i++) {
@@ -620,17 +603,17 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
         assertEquals(true, mLastResortWatchdog.isOverFailureThreshold(mBssids[0]));
         assertEquals(true, mLastResortWatchdog.isOverFailureThreshold(mBssids[1]));
@@ -663,17 +646,17 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
         assertEquals(false, mLastResortWatchdog.isOverFailureThreshold(mBssids[0]));
         assertEquals(false, mLastResortWatchdog.isOverFailureThreshold(mBssids[1]));
@@ -708,21 +691,21 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(i + 1, mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).associationRejection);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             assertEquals(i + 1, mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).authenticationFailure);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             assertEquals(i + 1, mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).dhcpFailure);
         }
@@ -772,21 +755,21 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(i + 1, mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).associationRejection);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             assertEquals(i + 1, mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).authenticationFailure);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             assertEquals(i + 1, mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).dhcpFailure);
         }
@@ -845,17 +828,17 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(null, mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], null,
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(null, null,
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
 
         // Ensure new networks have zero'ed failure counts
@@ -882,10 +865,9 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
                 "ff:ee:dd:cc:bb:aa", "66:77:88:99:aa:bb", "cc:dd:ee:ff:00:01", "02:03:04:05:06:07",
                 "08:09:aa:bb:cc:dd"};
         int[] frequencies = {2437, 5180, 5180, 2437, 2437, 5180, 5180, 2437};
-        String[] caps = {"[WPA2-EAP/SHA1-CCMP][ESS]", "[WPA2-EAP/SHA1-CCMP][ESS]",
-                "[WPA2-EAP/SHA1-CCMP][ESS]", "[WPA2-EAP/SHA1-CCMP][ESS]",
-                "[WPA2-EAP/SHA1-CCMP][ESS]", "[WPA2-EAP/SHA1-CCMP][ESS]",
-                "[WPA2-EAP/SHA1-CCMP][ESS]", "[WPA2-EAP/SHA1-CCMP][ESS]"};
+        String[] caps = {"[WPA2-EAP-CCMP][ESS]", "[WPA2-EAP-CCMP][ESS]",
+                "[WPA2-EAP-CCMP][ESS]", "[WPA2-EAP-CCMP][ESS]", "[WPA2-EAP-CCMP][ESS]",
+                "[WPA2-EAP-CCMP][ESS]", "[WPA2-EAP-CCMP][ESS]", "[WPA2-EAP-CCMP][ESS]"};
         int[] levels = {-60, -86, -50, -62, -60, -86, -50, -62};
         boolean[] isEphemeral = {false, false, false, false, false, false, false, false};
         boolean[] hasEverConnected = {false, false, false, false, false, false, false,
@@ -905,23 +887,23 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         //Increment failure count for the first test network ssid & bssid
         for (int i = 0; i < firstNetFails; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
         //Increment failure count for the first test network ssid & BSSID_ANY
         for (int i = 0; i < secondNetFails; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                     ssids[1], WifiLastResortWatchdog.BSSID_ANY,
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                     ssids[1], WifiLastResortWatchdog.BSSID_ANY,
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                     ssids[1], WifiLastResortWatchdog.BSSID_ANY,
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
         assertFailureCountEquals(bssids[0], firstNetFails, firstNetFails, firstNetFails);
         assertFailureCountEquals(bssids[1], secondNetFails, secondNetFails, secondNetFails);
@@ -963,21 +945,21 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(i + 1, mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).associationRejection);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             assertEquals(i + 1, mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).authenticationFailure);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             assertEquals(i + 1, mLastResortWatchdog.getRecentAvailableNetworks()
                     .get(mBssids[net]).dhcpFailure);
         }
@@ -1007,17 +989,17 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
 
         // Check that we have Failures
@@ -1059,20 +1041,19 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
-                    false);
+                mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             assertEquals(false, watchdogTriggered);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             assertEquals(false, watchdogTriggered);
         }
 
@@ -1084,7 +1065,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         // Add one more failure to one of the already over threshold networks, assert that it
         // does not trigger
         watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         assertEquals(false, watchdogTriggered);
     }
 
@@ -1114,21 +1095,19 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
-                    false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             assertEquals(false, watchdogTriggered);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             assertEquals(false, watchdogTriggered);
         }
 
@@ -1136,22 +1115,19 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         net = 3;
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD - 1; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
         // Increment failure count once more, check that watchdog triggered this time
         watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         mLastResortWatchdog.updateAvailableNetworks(candidates);
         assertEquals(true, watchdogTriggered);
 
         // Increment failure count 5 more times, watchdog should not trigger
         for (int i = 0; i < 5; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                        mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                        mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
     }
@@ -1182,21 +1158,19 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
-                    false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             assertEquals(false, watchdogTriggered);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             assertEquals(false, watchdogTriggered);
         }
 
@@ -1204,22 +1178,19 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         net = 3;
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD - 1; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
         // Increment failure count once more, check that watchdog triggered this time
         watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         mLastResortWatchdog.updateAvailableNetworks(candidates);
         assertEquals(true, watchdogTriggered);
 
         // Increment failure count 5 more times, watchdog should not trigger
         for (int i = 0; i < 5; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                        mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                        mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
     }
@@ -1248,28 +1219,25 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
-                    false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             assertEquals(false, watchdogTriggered);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             assertEquals(false, watchdogTriggered);
         }
         net = 3;
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD + 1; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
     }
@@ -1301,28 +1269,25 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
         net = 1;
         for (int i = 0; i < authenticationFailures; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
-                    false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             assertEquals(false, watchdogTriggered);
         }
         net = 2;
         for (int i = 0; i < dhcpFailures; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             assertEquals(false, watchdogTriggered);
         }
         net = 3;
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD + 1; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                    mSsids[net], mBssids[net], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
     }
@@ -1334,22 +1299,21 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
             for (int j = 0; j < ssids.length - 1; j++) {
                 watchdogTriggered = mLastResortWatchdog
                         .noteConnectionFailureAndTriggerIfNeeded(ssids[j], bssids[j],
-                        WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                        WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
                 assertEquals(false, watchdogTriggered);
             }
         }
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD - 1; i++) {
             watchdogTriggered = mLastResortWatchdog
                     .noteConnectionFailureAndTriggerIfNeeded(ssids[ssids.length - 1],
-                    bssids[ssids.length - 1], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                            false);
+                    bssids[ssids.length - 1], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
 
         // Increment failure count once more, check that watchdog triggered this time
         watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                     ssids[ssids.length - 1], bssids[ssids.length - 1],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         assertEquals(true, watchdogTriggered);
         verify(mSelfRecovery).trigger(eq(SelfRecovery.REASON_LAST_RESORT_WATCHDOG));
         reset(mSelfRecovery);
@@ -1378,8 +1342,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         // Increment failure count 5 more times, watchdog should not trigger
         for (int i = 0; i < 5; i++) {
             boolean watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                        mSsids[3], mBssids[3], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                        mSsids[3], mBssids[3], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
     }
@@ -1408,8 +1371,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         // Increment failure count 5 more times, ensure trigger is deactivated
         for (int i = 0; i < 5; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                        mSsids[3], mBssids[3], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                        mSsids[3], mBssids[3], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             mLastResortWatchdog.updateAvailableNetworks(candidates);
             assertEquals(false, watchdogTriggered);
         }
@@ -1421,26 +1383,25 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         // Fail 3/4 networks until they're over threshold
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD + 1; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[1], mBssids[1], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
-                    false);
+                    mSsids[1], mBssids[1], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             assertEquals(false, watchdogTriggered);
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[2], mBssids[2], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    mSsids[2], mBssids[2], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             assertEquals(false, watchdogTriggered);
         }
 
         // Bring the remaining unfailed network upto 1 less than the failure threshold
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD - 1; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[3], mBssids[3], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    mSsids[3], mBssids[3], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             assertEquals(false, watchdogTriggered);
         }
         // Increment failure count once more, check that watchdog triggered this time
         watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[3], mBssids[3], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    mSsids[3], mBssids[3], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         assertEquals(true, watchdogTriggered);
     }
 
@@ -1479,8 +1440,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         // Increment failure count 5 more times, ensure trigger is deactivated
         for (int i = 0; i < 5; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                        mSsids[2], mBssids[2], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
-                    false);
+                        mSsids[2], mBssids[2], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
             mLastResortWatchdog.updateAvailableNetworks(candidates);
             assertEquals(false, watchdogTriggered);
         }
@@ -1516,9 +1476,8 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         String[] bssids = {"aa:bb:cc:dd:ee:ff", "00:11:22:33:44:55", "a0:b0:c0:d0:e0:f0",
                 "01:23:45:67:89:ab", "00:01:02:03:04:05"};
         int[] frequencies = {2437, 5180, 5180, 2437, 2437};
-        String[] caps = {"[WPA2-EAP/SHA1-CCMP][ESS]", "[WPA2-EAP/SHA1-CCMP][ESS]",
-                "[WPA2-EAP/SHA1-CCMP][ESS]", "[WPA2-EAP/SHA1-CCMP][ESS]",
-                "[WPA2-EAP/SHA1-CCMP][ESS]"};
+        String[] caps = {"[WPA2-EAP-CCMP][ESS]", "[WPA2-EAP-CCMP][ESS]",
+                "[WPA2-EAP-CCMP][ESS]", "[WPA2-EAP-CCMP][ESS]", "[WPA2-EAP-CCMP][ESS]"};
         int[] levels = {-60, -86, -50, -62, -60};
         boolean[] isEphemeral = {false, false, false, false, false};
         boolean[] hasEverConnected = {true, false, false, false, false};
@@ -1540,17 +1499,17 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         //Increment failure counts
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[1], bssids[1], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    ssids[1], bssids[1], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[2], bssids[2], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    ssids[2], bssids[2], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[3], bssids[3], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    ssids[3], bssids[3], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[4], bssids[4], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    ssids[4], bssids[4], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[4], bssids[4], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    ssids[4], bssids[4], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
 
         // Verify relevant WifiMetrics calls were made once with appropriate arguments
@@ -1579,7 +1538,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
 
         // Verify takeBugReport is called
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics, times(1)).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl, times(1)).takeBugReport(anyString(), anyString());
 
         // Simulate wifi disconnecting
         mLastResortWatchdog.connectedStateTransition(false);
@@ -1589,7 +1548,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         verify(mWifiMetrics, times(1)).setWatchdogSuccessTimeDurationMs(eq(expectedDuration));
         // Verify takeBugReport not called again
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics, times(1)).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl, times(1)).takeBugReport(anyString(), anyString());
 
         // Remove the fifth network from candidates
         candidates = createFilteredQnsCandidates(Arrays.copyOfRange(mSsids, 0, 4),
@@ -1612,13 +1571,13 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         //Increment failure counts
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[1], bssids[1], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    ssids[1], bssids[1], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[2], bssids[2], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    ssids[2], bssids[2], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[3], bssids[3], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    ssids[3], bssids[3], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
 
         // increment the timer to enable Watchdog
@@ -1673,8 +1632,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         boolean watchdogTriggered = false;
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
-                    false);
+                    mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         assertEquals(true, watchdogTriggered);
     }
@@ -1706,8 +1664,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         boolean watchdogTriggered = false;
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
-                    false);
+                    mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         assertEquals(false, watchdogTriggered);
 
@@ -1724,7 +1681,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         mLastResortWatchdog.updateAvailableNetworks(candidates);
 
         watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         assertEquals(true, watchdogTriggered);
     }
 
@@ -1755,8 +1712,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         boolean watchdogTriggered = false;
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
-                    false);
+                    mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         assertEquals(true, watchdogTriggered);
 
@@ -1774,8 +1730,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
 
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             watchdogTriggered = mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
-                    false);
+                    mSsids[0], mBssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         assertEquals(false, watchdogTriggered);
     }
@@ -1829,7 +1784,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         String[] ssids = {"\"test1\""};
         String[] bssids = {"04:03:02:01:00:0f"};
         int[] frequencies = {2437};
-        String[] caps = {"[WPA2-EAP/SHA1-CCMP][ESS]"};
+        String[] caps = {"[WPA2-EAP-CCMP][ESS]"};
         int[] levels = {-60};
         boolean[] isEphemeral = {false};
         boolean[] hasEverConnected = {true};
@@ -1845,7 +1800,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         //Increment failure counts
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
 
         // Verify relevant WifiMetrics calls were made once with appropriate arguments
@@ -1856,7 +1811,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
 
         // Fail 1 more time and verify this time it's counted
         mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         verify(mWifiMetrics, times(1)).incrementWatchdogTotalConnectionFailureCountAfterTrigger();
     }
 
@@ -1874,7 +1829,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         String[] ssids = {"\"test1\""};
         String[] bssids = {"04:03:02:01:00:0f"};
         int[] frequencies = {2437};
-        String[] caps = {"[WPA2-EAP/SHA1-CCMP][ESS]"};
+        String[] caps = {"[WPA2-EAP-CCMP][ESS]"};
         int[] levels = {-60};
         boolean[] isEphemeral = {false};
         boolean[] hasEverConnected = {true};
@@ -1890,7 +1845,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         //Increment failure counts
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
 
         // Verify watchdog has triggered a restart
@@ -1898,13 +1853,13 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
 
         // Fail 1 more time and verify this time it's counted
         mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
 
         // Simulate wifi connecting after triggering
         mLastResortWatchdog.connectedStateTransition(true);
         // Verify takeBugReport is not called again
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics, never()).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl, never()).takeBugReport(anyString(), anyString());
         verify(mWifiMetrics, never()).incrementNumLastResortWatchdogSuccesses();
 
         // Simulate wifi disconnecting
@@ -1920,7 +1875,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         }
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
 
         // Verify watchdog has triggered a restart
@@ -1929,7 +1884,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         mLastResortWatchdog.connectedStateTransition(true);
         // Verify takeBugReport is not called again
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics, times(1)).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl, times(1)).takeBugReport(anyString(), anyString());
         verify(mWifiMetrics, times(1)).incrementNumLastResortWatchdogSuccesses();
     }
 
@@ -1947,7 +1902,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         String[] ssids = {"\"test1\""};
         String[] bssids = {"04:03:02:01:00:0f"};
         int[] frequencies = {2437};
-        String[] caps = {"[WPA2-EAP/SHA1-CCMP][ESS]"};
+        String[] caps = {"[WPA2-EAP-CCMP][ESS]"};
         int[] levels = {-60};
         boolean[] isEphemeral = {false};
         boolean[] hasEverConnected = {true};
@@ -1963,7 +1918,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         //Increment failure counts
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
 
         // Verify watchdog has triggered a restart
@@ -1976,7 +1931,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         mLastResortWatchdog.connectedStateTransition(true);
         // Verify takeBugReport is not called again
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics, never()).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl, never()).takeBugReport(anyString(), anyString());
         verify(mWifiMetrics, never()).incrementNumLastResortWatchdogSuccesses();
     }
 
@@ -2005,29 +1960,29 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         int net = 0;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         net = 1;
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
         net = 2;
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(mSsids[net], mBssids[net],
-                    WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
 
         assertEquals(true, mLastResortWatchdog.isOverFailureThreshold(mBssids[0]));
@@ -2051,7 +2006,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         String[] ssids = {"\"test1\""};
         String[] bssids = {"04:03:02:01:00:0f"};
         int[] frequencies = {2437};
-        String[] caps = {"[WPA2-EAP/SHA1-CCMP][ESS]"};
+        String[] caps = {"[WPA2-EAP-CCMP][ESS]"};
         int[] levels = {-60};
         boolean[] isEphemeral = {false};
         boolean[] hasEverConnected = {true};
@@ -2070,11 +2025,11 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         //Increment failure counts
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
         for (int i = 0; i < dhcpFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_DHCP, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_DHCP);
         }
 
         // Verify relevant WifiMetrics calls were made once with appropriate arguments
@@ -2103,7 +2058,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         String[] ssids = {"\"test1\""};
         String[] bssids = {"04:03:02:01:00:0f"};
         int[] frequencies = {2437};
-        String[] caps = {"[WPA2-EAP/SHA1-CCMP][ESS]"};
+        String[] caps = {"[WPA2-EAP-CCMP][ESS]"};
         int[] levels = {-60};
         boolean[] isEphemeral = {false};
         boolean[] hasEverConnected = {true};
@@ -2146,7 +2101,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         // Increment failure counts
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
 
         // Watchdog should not be triggerred since time based logic.
@@ -2166,7 +2121,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         String[] ssids = {"\"test1\""};
         String[] bssids = {"04:03:02:01:00:0f"};
         int[] frequencies = {2437};
-        String[] caps = {"[WPA2-EAP/SHA1-CCMP][ESS]"};
+        String[] caps = {"[WPA2-EAP-CCMP][ESS]"};
         int[] levels = {-60};
         boolean[] isEphemeral = {false};
         boolean[] hasEverConnected = {true};
@@ -2182,7 +2137,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         //Increment failure counts
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
 
         // Verify watchdog has triggered a restart
@@ -2192,7 +2147,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         mLastResortWatchdog.connectedStateTransition(true);
         // Verify takeBugReport is not called because connected on different SSID
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics, never()).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl, never()).takeBugReport(anyString(), anyString());
         verify(mWifiMetrics, never()).incrementNumLastResortWatchdogSuccesses();
 
         // Simulate wifi disconnecting
@@ -2208,7 +2163,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         }
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
 
         // Verify watchdog has triggered a restart
@@ -2217,7 +2172,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         mLastResortWatchdog.connectedStateTransition(true);
         // Verify takeBugReport is called because connected back on same SSID
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics, times(1)).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl, times(1)).takeBugReport(anyString(), anyString());
         verify(mWifiMetrics, times(1)).incrementNumLastResortWatchdogSuccesses();
     }
 
@@ -2231,65 +2186,34 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         // first verifies that bugreports are not taken when connection takes less than
         // DEFAULT_ABNORMAL_CONNECTION_DURATION_MS
         when(mClock.getElapsedSinceBootMillis()).thenReturn(1L);
-        mLastResortWatchdog.noteStartConnectTime(TEST_NETWORK_ID);
+        mLastResortWatchdog.noteStartConnectTime();
         mLooper.dispatchAll();
         when(mClock.getElapsedSinceBootMillis()).thenReturn(
                 (long) DEFAULT_ABNORMAL_CONNECTION_DURATION_MS);
-        Handler handler = mHandlerCaptor.getValue();
-        handler.sendMessage(handler.obtainMessage(
-                WifiMonitor.NETWORK_CONNECTION_EVENT,
-                new NetworkConnectionEventInfo(TEST_NETWORK_ID, TEST_WIFI_SSID, null, false)));
+        Handler handler = mLastResortWatchdog.getHandler();
+        handler.sendMessage(
+                handler.obtainMessage(WifiMonitor.NETWORK_CONNECTION_EVENT, 0, 0, null));
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics, never()).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl, never()).takeBugReport(anyString(), anyString());
 
         // Now verify that bugreport is taken
-        mLastResortWatchdog.noteStartConnectTime(TEST_NETWORK_ID);
+        mLastResortWatchdog.noteStartConnectTime();
         mLooper.dispatchAll();
         when(mClock.getElapsedSinceBootMillis()).thenReturn(
                 2L * DEFAULT_ABNORMAL_CONNECTION_DURATION_MS + 1);
-        handler.sendMessage(handler.obtainMessage(
-                WifiMonitor.NETWORK_CONNECTION_EVENT,
-                new NetworkConnectionEventInfo(TEST_NETWORK_ID, TEST_WIFI_SSID, null, false)));
+        handler.sendMessage(
+                handler.obtainMessage(WifiMonitor.NETWORK_CONNECTION_EVENT, 0, 0, null));
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl).takeBugReport(anyString(), anyString());
 
         // Verify additional connections (without more TYPE_CMD_START_CONNECT) don't trigger more
         // bugreports.
         when(mClock.getElapsedSinceBootMillis()).thenReturn(
                 4L * DEFAULT_ABNORMAL_CONNECTION_DURATION_MS);
-        handler.sendMessage(handler.obtainMessage(
-                WifiMonitor.NETWORK_CONNECTION_EVENT,
-                new NetworkConnectionEventInfo(TEST_NETWORK_ID, TEST_WIFI_SSID, null, false)));
+        handler.sendMessage(
+                handler.obtainMessage(WifiMonitor.NETWORK_CONNECTION_EVENT, 0, 0, null));
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics).takeBugReport(anyString(), anyString());
-    }
-
-    /** Verifies abnormal connection time works on a per-network basis. */
-    @Test
-    public void testAbnormalConnectionTime_perNetwork() throws Exception {
-        when(mClock.getElapsedSinceBootMillis()).thenReturn(
-                (long) DEFAULT_ABNORMAL_CONNECTION_DURATION_MS);
-        Handler handler = mHandlerCaptor.getValue();
-
-        // start connection for network1
-        mLastResortWatchdog.noteStartConnectTime(TEST_NETWORK_ID);
-        mLooper.dispatchAll();
-
-        // network2 connected after a long time, shouldn't trigger BR
-        when(mClock.getElapsedSinceBootMillis()).thenReturn(
-                2L * DEFAULT_ABNORMAL_CONNECTION_DURATION_MS + 1);
-        handler.sendMessage(handler.obtainMessage(
-                WifiMonitor.NETWORK_CONNECTION_EVENT,
-                new NetworkConnectionEventInfo(TEST_NETWORK_ID_2, TEST_WIFI_SSID, null, false)));
-        mLooper.dispatchAll();
-        verify(mWifiDiagnostics, never()).takeBugReport(anyString(), anyString());
-
-        // network1 connected after a long time, should trigger BR
-        handler.sendMessage(handler.obtainMessage(
-                WifiMonitor.NETWORK_CONNECTION_EVENT,
-                new NetworkConnectionEventInfo(TEST_NETWORK_ID, TEST_WIFI_SSID, null, false)));
-        mLooper.dispatchAll();
-        verify(mWifiDiagnostics).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl).takeBugReport(anyString(), anyString());
     }
 
     /**
@@ -2304,15 +2228,14 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
 
         // verifies that bugreport is taken for connections that take longer than |testDurationMs|.
         when(mClock.getElapsedSinceBootMillis()).thenReturn(1L);
-        mLastResortWatchdog.noteStartConnectTime(TEST_NETWORK_ID);
+        mLastResortWatchdog.noteStartConnectTime();
         mLooper.dispatchAll();
         when(mClock.getElapsedSinceBootMillis()).thenReturn((long) testDurationMs + 2);
-        Handler handler = mHandlerCaptor.getValue();
-        handler.sendMessage(handler.obtainMessage(
-                WifiMonitor.NETWORK_CONNECTION_EVENT,
-                new NetworkConnectionEventInfo(TEST_NETWORK_ID, TEST_WIFI_SSID, null, false)));
+        Handler handler = mLastResortWatchdog.getHandler();
+        handler.sendMessage(
+                handler.obtainMessage(WifiMonitor.NETWORK_CONNECTION_EVENT, 0, 0, null));
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl).takeBugReport(anyString(), anyString());
     }
 
     /**
@@ -2326,16 +2249,15 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
 
         // verifies that bugreports are not taken.
         when(mClock.getElapsedSinceBootMillis()).thenReturn(1L);
-        mLastResortWatchdog.noteStartConnectTime(TEST_NETWORK_ID);
+        mLastResortWatchdog.noteStartConnectTime();
         mLooper.dispatchAll();
         when(mClock.getElapsedSinceBootMillis()).thenReturn(
                 (long) DEFAULT_ABNORMAL_CONNECTION_DURATION_MS + 2);
-        Handler handler = mHandlerCaptor.getValue();
-        handler.sendMessage(handler.obtainMessage(
-                WifiMonitor.NETWORK_CONNECTION_EVENT,
-                new NetworkConnectionEventInfo(TEST_NETWORK_ID, TEST_WIFI_SSID, null, false)));
+        Handler handler = mLastResortWatchdog.getHandler();
+        handler.sendMessage(
+                handler.obtainMessage(WifiMonitor.NETWORK_CONNECTION_EVENT, 0, 0, null));
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics, never()).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl, never()).takeBugReport(anyString(), anyString());
     }
 
     /**
@@ -2349,8 +2271,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         String[] ssids = {"\"test1\"", "\"test1\"", "\"test1\""};
         String[] bssids =  {"aa:bb:cc:dd:ee:ff", "00:11:22:33:44:55", "a0:b0:c0:d0:e0:f0"};
         int[] frequencies = {2437, 5180, 5180};
-        String[] caps = {"[WPA2-EAP/SHA1-CCMP][ESS]", "[WPA2-EAP/SHA1-CCMP][ESS]",
-                "[WPA2-EAP/SHA1-CCMP][ESS]"};
+        String[] caps = {"[WPA2-EAP-CCMP][ESS]", "[WPA2-EAP-CCMP][ESS]", "[WPA2-EAP-CCMP][ESS]"};
         int[] levels = {-60, -86, -50};
         boolean[] isEphemeral = {false, false, false};
         boolean[] hasEverConnected = {true, true, true};
@@ -2371,11 +2292,11 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         //Increment failure counts
         for (int i = 0; i < associationRejections; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(ssids[1], bssids[1],
-                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
         for (int i = 0; i < authenticationFailures; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(ssids[2], bssids[2],
-                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION, false);
+                    WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION);
         }
 
         // Verify watchdog has triggered a restart
@@ -2391,7 +2312,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         // Verify takeBugReport is not called
         mLooper.dispatchAll();
         verify(mWifiMetrics, never()).incrementNumLastResortWatchdogSuccesses();
-        verify(mWifiDiagnostics, never()).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl, never()).takeBugReport(anyString(), anyString());
     }
 
     /**
@@ -2402,7 +2323,7 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         String[] ssids = {"\"test1\""};
         String[] bssids = {"04:03:02:01:00:0f"};
         int[] frequencies = {2437};
-        String[] caps = {"[WPA2-EAP/SHA1-CCMP][ESS]"};
+        String[] caps = {"[WPA2-EAP-CCMP][ESS]"};
         int[] levels = {-60};
         boolean[] isEphemeral = {false};
         boolean[] hasEverConnected = {true};
@@ -2423,13 +2344,13 @@ public class WifiLastResortWatchdogTest extends WifiBaseTest {
         // Increment failure counts
         for (int i = 0; i < WifiLastResortWatchdog.FAILURE_THRESHOLD; i++) {
             mLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
-                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION, false);
+                    ssids[0], bssids[0], WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION);
         }
 
         // Verify watchdog never trigger recovery
         verify(mWifiMetrics, never()).incrementNumLastResortWatchdogTriggers();
         // Verify watchdog still trigger bugreport
         mLooper.dispatchAll();
-        verify(mWifiDiagnostics, times(1)).takeBugReport(anyString(), anyString());
+        verify(mClientModeImpl, times(1)).takeBugReport(anyString(), anyString());
     }
 }

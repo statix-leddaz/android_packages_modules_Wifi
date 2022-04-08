@@ -1,18 +1,17 @@
 {
-  "presubmit-large": [
+  "presubmit": [
+    {
+      "name": "FrameworksWifiApiTests"
+    },
     {
       // run service unit tests for API changes (since API changes can break service, but not the
       // other way around)
       "name": "FrameworksWifiTests"
     }
   ],
-  "presubmit": [
-    {
-      "name": "FrameworksWifiApiTests"
-    }
-  ],
   "mainline-presubmit": [
     {
+      // Install com.google.android.wifi.apex and run FrameworksWifiApiTests.
       "name": "FrameworksWifiApiTests[com.google.android.wifi.apex]"
     },
     {

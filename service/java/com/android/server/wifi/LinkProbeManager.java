@@ -238,8 +238,9 @@ public class LinkProbeManager {
                             Log.d(TAG, "link probing success, elapsedTimeMs="
                                     + elapsedTimeMs);
                         }
-                        mWifiMetrics.logLinkProbeSuccess(interfaceName,
-                                timeSinceLastTxSuccessIncreaseMs, rssi, linkSpeed, elapsedTimeMs);
+                        mWifiMetrics.logLinkProbeSuccess(
+                                timeSinceLastTxSuccessIncreaseMs, rssi, linkSpeed,
+                                elapsedTimeMs);
                     }
 
                     @Override
@@ -247,7 +248,7 @@ public class LinkProbeManager {
                         if (mVerboseLoggingEnabled) {
                             Log.d(TAG, "link probing failure, reason=" + reason);
                         }
-                        mWifiMetrics.logLinkProbeFailure(interfaceName,
+                        mWifiMetrics.logLinkProbeFailure(
                                 timeSinceLastTxSuccessIncreaseMs, rssi, linkSpeed, reason);
                     }
                 },

@@ -73,10 +73,6 @@ public class WifiSettingsStore {
         return !mAirplaneModeOn && getPersistedScanAlwaysAvailable();
     }
 
-    public synchronized boolean isWifiScoringEnabled() {
-        return getPersistedWifiScoringEnabled();
-    }
-
     public synchronized boolean handleWifiToggled(boolean wifiEnabled) {
         // Can Wi-Fi be toggled in airplane mode ?
         if (mAirplaneModeOn && !isAirplaneToggleable()) {
@@ -125,16 +121,9 @@ public class WifiSettingsStore {
         persistScanAlwaysAvailableState(isAvailable);
     }
 
-    synchronized boolean handleWifiScoringEnabled(boolean enabled) {
-        persistWifiScoringEnabledState(enabled);
-        return true;
-    }
-
     void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
-        pw.println("WifiState " + getPersistedWifiState());
-        pw.println("AirplaneModeOn " + getPersistedAirplaneModeOn());
-        pw.println("ScanAlwaysAvailable " + getPersistedScanAlwaysAvailable());
-        pw.println("WifiScoringState " + getPersistedWifiScoringEnabled());
+        pw.println("mPersistWifiState " + mPersistWifiState);
+        pw.println("mAirplaneModeOn " + mAirplaneModeOn);
     }
 
     private void persistWifiState(int state) {
@@ -146,11 +135,6 @@ public class WifiSettingsStore {
     private void persistScanAlwaysAvailableState(boolean isAvailable) {
         mSettingsConfigStore.put(
                 WifiSettingsConfigStore.WIFI_SCAN_ALWAYS_AVAILABLE, isAvailable);
-    }
-
-    private void persistWifiScoringEnabledState(boolean enabled) {
-        mSettingsConfigStore.put(
-                WifiSettingsConfigStore.WIFI_SCORING_ENABLED, enabled);
     }
 
     /* Does Wi-Fi need to be disabled when airplane mode is on ? */
@@ -187,10 +171,5 @@ public class WifiSettingsStore {
     private boolean getPersistedScanAlwaysAvailable() {
         return mSettingsConfigStore.get(
                 WifiSettingsConfigStore.WIFI_SCAN_ALWAYS_AVAILABLE);
-    }
-
-    private boolean getPersistedWifiScoringEnabled() {
-        return mSettingsConfigStore.get(
-                WifiSettingsConfigStore.WIFI_SCORING_ENABLED);
     }
 }

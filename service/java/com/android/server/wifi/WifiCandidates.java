@@ -21,12 +21,12 @@ import android.annotation.Nullable;
 import android.content.Context;
 import android.net.MacAddress;
 import android.net.wifi.ScanResult;
-import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiConfiguration;
 import android.util.ArrayMap;
 
 import com.android.internal.util.Preconditions;
 import com.android.server.wifi.proto.WifiScoreCardProto;
+import com.android.wifi.resources.R;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -90,14 +90,6 @@ public class WifiCandidates {
          * Returns true for a trusted network.
          */
         boolean isTrusted();
-        /**
-         * Returns true for a oem paid network.
-         */
-        boolean isOemPaid();
-        /**
-         * Returns true for a oem private network.
-         */
-        boolean isOemPrivate();
         /**
          * Returns true if suggestion came from a carrier or privileged app.
          */
@@ -181,8 +173,6 @@ public class WifiCandidates {
         private final boolean mPasspoint;
         private final boolean mEphemeral;
         private final boolean mTrusted;
-        private final boolean mOemPaid;
-        private final boolean mOemPrivate;
         private final boolean mCarrierOrPrivileged;
         private final int mPredictedThroughputMbps;
         private final int mEstimatedPercentInternetAvailability;
@@ -213,8 +203,6 @@ public class WifiCandidates {
             this.mPasspoint = config.isPasspoint();
             this.mEphemeral = config.isEphemeral();
             this.mTrusted = config.trusted;
-            this.mOemPaid = config.oemPaid;
-            this.mOemPrivate = config.oemPrivate;
             this.mCarrierOrPrivileged = isCarrierOrPrivileged;
             this.mPredictedThroughputMbps = predictedThroughputMbps;
             this.mEstimatedPercentInternetAvailability = perBssid == null ? 50 :
@@ -249,16 +237,6 @@ public class WifiCandidates {
         @Override
         public boolean isTrusted() {
             return mTrusted;
-        }
-
-        @Override
-        public boolean isOemPaid() {
-            return mOemPaid;
-        }
-
-        @Override
-        public boolean isOemPrivate() {
-            return mOemPrivate;
         }
 
         @Override
@@ -355,8 +333,6 @@ public class WifiCandidates {
                     + (isCurrentNetwork() ? "current, " : "")
                     + (isEphemeral() ? "ephemeral" : "saved") + ", "
                     + (isTrusted() ? "trusted, " : "")
-                    + (isOemPaid() ? "oemPaid, " : "")
-                    + (isOemPrivate() ? "oemPrivate, " : "")
                     + (isCarrierOrPrivileged() ? "priv, " : "")
                     + (isMetered() ? "metered, " : "")
                     + (hasNoInternetAccess() ? "noInternet, " : "")
@@ -421,7 +397,6 @@ public class WifiCandidates {
         public final ScanResultMatchInfo matchInfo; // Contains the SSID and security type
         public final MacAddress bssid;
         public final int networkId;                 // network configuration id
-        public final @WifiConfiguration.SecurityType int securityType;
 
         public Key(ScanResultMatchInfo matchInfo,
                    MacAddress bssid,
@@ -429,18 +404,6 @@ public class WifiCandidates {
             this.matchInfo = matchInfo;
             this.bssid = bssid;
             this.networkId = networkId;
-            // If security type is not set, use the default security params.
-            this.securityType = matchInfo.getDefaultSecurityParams().getSecurityType();
-        }
-
-        public Key(ScanResultMatchInfo matchInfo,
-                   MacAddress bssid,
-                   int networkId,
-                   int securityType) {
-            this.matchInfo = matchInfo;
-            this.bssid = bssid;
-            this.networkId = networkId;
-            this.securityType = securityType;
         }
 
         @Override
@@ -449,13 +412,12 @@ public class WifiCandidates {
             Key that = (Key) other;
             return (this.matchInfo.equals(that.matchInfo)
                     && this.bssid.equals(that.bssid)
-                    && this.networkId == that.networkId
-                    && this.securityType == that.securityType);
+                    && this.networkId == that.networkId);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(matchInfo, bssid, networkId, securityType);
+            return Objects.hash(matchInfo, bssid, networkId);
         }
     }
 
@@ -506,14 +468,9 @@ public class WifiCandidates {
     public @Nullable Key keyFromScanDetailAndConfig(ScanDetail scanDetail,
             WifiConfiguration config) {
         if (!validConfigAndScanDetail(config, scanDetail)) return null;
-
         ScanResult scanResult = scanDetail.getScanResult();
-        SecurityParams params = ScanResultMatchInfo.fromScanResult(scanResult)
-                .matchForNetworkSelection(ScanResultMatchInfo.fromWifiConfiguration(config));
-        if (null == params) return null;
         MacAddress bssid = MacAddress.fromString(scanResult.BSSID);
-        return new Key(ScanResultMatchInfo.fromScanResult(scanResult), bssid, config.networkId,
-                params.getSecurityType());
+        return new Key(ScanResultMatchInfo.fromScanResult(scanResult), bssid, config.networkId);
     }
 
     /**
@@ -540,8 +497,7 @@ public class WifiCandidates {
                 key.matchInfo.networkSsid,
                 key.bssid.toString());
         perBssid.setSecurityType(
-                WifiScoreCardProto.SecurityType.forNumber(
-                    key.matchInfo.getDefaultSecurityParams().getSecurityType()));
+                WifiScoreCardProto.SecurityType.forNumber(key.matchInfo.networkType));
         perBssid.setNetworkConfigId(config.networkId);
         CandidateImpl candidate = new CandidateImpl(key, config, perBssid, nominatorId,
                 scanRssi,
@@ -578,7 +534,8 @@ public class WifiCandidates {
         ScanResultMatchInfo key1 = ScanResultMatchInfo.fromScanResult(scanResult);
         if (!config.isPasspoint()) {
             ScanResultMatchInfo key2 = ScanResultMatchInfo.fromWifiConfiguration(config);
-            if (!key1.equals(key2)) {
+            if (!key1.matchForNetworkSelection(key2, mContext.getResources()
+                    .getBoolean(R.bool.config_wifiSaeUpgradeEnabled))) {
                 return failure(key1, key2);
             }
         }

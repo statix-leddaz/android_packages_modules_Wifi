@@ -314,13 +314,13 @@ public class LogcatLogTest extends WifiBaseTest {
     }
 
     @Test
-    public void traceLogMessageReturnsNoLogMessageByDefault() {
-        assertThat(mLogger.trace("%"), instanceOf(NoLogMessage.class));
+    public void traceLogMessageReturnsDummyLogMessageByDefault() {
+        assertThat(mLogger.trace("%"), instanceOf(DummyLogMessage.class));
     }
 
     @Test
-    public void dumpLogMessageReturnsNoLogMessageByDefault() {
-        assertThat(mLogger.dump("%"), instanceOf(NoLogMessage.class));
+    public void dumpLogMessageReturnsDummyLogMessageByDefault() {
+        assertThat(mLogger.dump("%"), instanceOf(DummyLogMessage.class));
     }
 
     private WifiLog.LogMessage traceHelper(String format) {

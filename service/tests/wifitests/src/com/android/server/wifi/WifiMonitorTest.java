@@ -18,10 +18,8 @@ package com.android.server.wifi;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -41,7 +39,6 @@ import androidx.test.filters.SmallTest;
 import com.android.server.wifi.MboOceController.BtmFrameData;
 import com.android.server.wifi.hotspot2.AnqpEvent;
 import com.android.server.wifi.hotspot2.IconEvent;
-import com.android.server.wifi.hotspot2.WnmData;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -59,8 +56,6 @@ public class WifiMonitorTest extends WifiBaseTest {
     private static final String BSSID = "fe:45:23:12:12:0a";
     private static final int NETWORK_ID = 5;
     private static final String SSID = "\"test124\"";
-    private static final long BSSID_LONG = 0xf3452312120aL;
-    private static final String PASSPOINT_URL = "https://www.google.com/";
     private WifiMonitor mWifiMonitor;
     private TestLooper mLooper;
     private Handler mHandlerSpy;
@@ -68,7 +63,7 @@ public class WifiMonitorTest extends WifiBaseTest {
 
     @Before
     public void setUp() throws Exception {
-        mWifiMonitor = new WifiMonitor();
+        mWifiMonitor = new WifiMonitor(mock(WifiInjector.class));
         mLooper = new TestLooper();
         mHandlerSpy = spy(new Handler(mLooper.getLooper()));
         mSecondHandlerSpy = spy(new Handler(mLooper.getLooper()));
@@ -89,11 +84,8 @@ public class WifiMonitorTest extends WifiBaseTest {
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(mHandlerSpy).handleMessage(messageCaptor.capture());
-
-        Message message = messageCaptor.getValue();
-        assertEquals(WifiMonitor.WPS_FAIL_EVENT, message.what);
-        assertEquals(WifiManager.WPS_TKIP_ONLY_PROHIBITED, message.arg1);
-        assertEquals(WLAN_IFACE_NAME, message.getData().getString(WifiMonitor.KEY_IFACE));
+        assertEquals(WifiMonitor.WPS_FAIL_EVENT, messageCaptor.getValue().what);
+        assertEquals(WifiManager.WPS_TKIP_ONLY_PROHIBITED, messageCaptor.getValue().arg1);
     }
 
     /**
@@ -393,27 +385,16 @@ public class WifiMonitorTest extends WifiBaseTest {
         mWifiMonitor.registerHandler(
                 WLAN_IFACE_NAME, WifiMonitor.ASSOCIATION_REJECTION_EVENT, mHandlerSpy);
         int status = 5;
-        int deltaRssi = 10;
-        int retryDelay = 25;
-        AssocRejectEventInfo assocRejectInfo = new AssocRejectEventInfo(
-                SSID,
-                BSSID,
-                status, false);
-        mWifiMonitor.broadcastAssociationRejectionEvent(WLAN_IFACE_NAME, assocRejectInfo);
+        String bssid = BSSID;
+        mWifiMonitor.broadcastAssociationRejectionEvent(WLAN_IFACE_NAME, status, false, bssid);
         mLooper.dispatchAll();
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(mHandlerSpy).handleMessage(messageCaptor.capture());
         assertEquals(WifiMonitor.ASSOCIATION_REJECTION_EVENT, messageCaptor.getValue().what);
-        AssocRejectEventInfo assocRejectEventInfo =
-                (AssocRejectEventInfo) messageCaptor.getValue().obj;
-        assertNotNull(assocRejectEventInfo);
-        assertEquals(status, assocRejectEventInfo.statusCode);
-        assertFalse(assocRejectEventInfo.timedOut);
-        assertEquals(SSID, assocRejectEventInfo.ssid);
-        assertEquals(BSSID, assocRejectEventInfo.bssid);
-        assertNull(assocRejectEventInfo.oceRssiBasedAssocRejectInfo);
-        assertNull(assocRejectEventInfo.mboAssocDisallowedInfo);
+        assertEquals(0, messageCaptor.getValue().arg1);
+        assertEquals(status, messageCaptor.getValue().arg2);
+        assertEquals(bssid, (String) messageCaptor.getValue().obj);
     }
 
     /**
@@ -441,20 +422,16 @@ public class WifiMonitorTest extends WifiBaseTest {
         mWifiMonitor.registerHandler(
                 WLAN_IFACE_NAME, WifiMonitor.NETWORK_CONNECTION_EVENT, mHandlerSpy);
         int networkId = NETWORK_ID;
-        WifiSsid wifiSsid = WifiSsid.createFromByteArray(new byte[]{'a', 'b', 'c'});
         String bssid = BSSID;
-        mWifiMonitor.broadcastNetworkConnectionEvent(WLAN_IFACE_NAME, networkId, false,
-                wifiSsid, bssid);
+        mWifiMonitor.broadcastNetworkConnectionEvent(WLAN_IFACE_NAME, networkId, false, bssid);
         mLooper.dispatchAll();
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(mHandlerSpy).handleMessage(messageCaptor.capture());
         assertEquals(WifiMonitor.NETWORK_CONNECTION_EVENT, messageCaptor.getValue().what);
-        NetworkConnectionEventInfo info = (NetworkConnectionEventInfo) messageCaptor.getValue().obj;
-        assertEquals(networkId, info.networkId);
-        assertFalse(info.isFilsConnection);
-        assertEquals(wifiSsid, info.wifiSsid);
-        assertEquals(bssid, info.bssid);
+        assertEquals(networkId, messageCaptor.getValue().arg1);
+        assertEquals(0, messageCaptor.getValue().arg2);
+        assertEquals(bssid, (String) messageCaptor.getValue().obj);
     }
 
     /**
@@ -464,24 +441,18 @@ public class WifiMonitorTest extends WifiBaseTest {
     public void testBroadcastNetworkDisconnectionEvent() {
         mWifiMonitor.registerHandler(
                 WLAN_IFACE_NAME, WifiMonitor.NETWORK_DISCONNECTION_EVENT, mHandlerSpy);
-        boolean local = true;
+        int local = 1;
         int reason  = 5;
-        String ssid = SSID;
         String bssid = BSSID;
-        mWifiMonitor.broadcastNetworkDisconnectionEvent(
-                WLAN_IFACE_NAME, local, reason, ssid, bssid);
+        mWifiMonitor.broadcastNetworkDisconnectionEvent(WLAN_IFACE_NAME, local, reason, bssid);
         mLooper.dispatchAll();
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(mHandlerSpy).handleMessage(messageCaptor.capture());
         assertEquals(WifiMonitor.NETWORK_DISCONNECTION_EVENT, messageCaptor.getValue().what);
-        DisconnectEventInfo disconnectEventInfo =
-                (DisconnectEventInfo) messageCaptor.getValue().obj;
-        assertNotNull(disconnectEventInfo);
-        assertEquals(local, disconnectEventInfo.locallyGenerated);
-        assertEquals(reason, disconnectEventInfo.reasonCode);
-        assertEquals(ssid, disconnectEventInfo.ssid);
-        assertEquals(bssid, disconnectEventInfo.bssid);
+        assertEquals(local, messageCaptor.getValue().arg1);
+        assertEquals(reason, messageCaptor.getValue().arg2);
+        assertEquals(bssid, (String) messageCaptor.getValue().obj);
     }
 
     /**
@@ -505,43 +476,69 @@ public class WifiMonitorTest extends WifiBaseTest {
         StateChangeResult result = (StateChangeResult) messageCaptor.getValue().obj;
         assertEquals(networkId, result.networkId);
         assertEquals(wifiSsid, result.wifiSsid);
-        assertEquals(bssid, result.bssid);
+        assertEquals(bssid, result.BSSID);
         assertEquals(newState, result.state);
     }
 
+    /**
+     * Broadcast supplicant connection test.
+     */
+    @Test
+    public void testBroadcastSupplicantConnectionEvent() {
+        mWifiMonitor.registerHandler(
+                WLAN_IFACE_NAME, WifiMonitor.SUP_CONNECTION_EVENT, mHandlerSpy);
+        mWifiMonitor.broadcastSupplicantConnectionEvent(WLAN_IFACE_NAME);
+        mLooper.dispatchAll();
+
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(mHandlerSpy).handleMessage(messageCaptor.capture());
+        assertEquals(WifiMonitor.SUP_CONNECTION_EVENT, messageCaptor.getValue().what);
+    }
+    /**
+     * Broadcast supplicant disconnection test.
+     */
+    @Test
+    public void testBroadcastSupplicantDisconnectionEvent() {
+        mWifiMonitor.registerHandler(
+                WLAN_IFACE_NAME, WifiMonitor.SUP_DISCONNECTION_EVENT, mHandlerSpy);
+        mWifiMonitor.broadcastSupplicantDisconnectionEvent(WLAN_IFACE_NAME);
+        mLooper.dispatchAll();
+
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(mHandlerSpy).handleMessage(messageCaptor.capture());
+        assertEquals(WifiMonitor.SUP_DISCONNECTION_EVENT, messageCaptor.getValue().what);
+    }
     /**
      * Broadcast message to two handlers test.
      */
     @Test
     public void testBroadcastEventToTwoHandlers() {
         mWifiMonitor.registerHandler(
-                WLAN_IFACE_NAME, WifiMonitor.SUP_REQUEST_SIM_AUTH, mHandlerSpy);
+                WLAN_IFACE_NAME, WifiMonitor.SUP_CONNECTION_EVENT, mHandlerSpy);
         mWifiMonitor.registerHandler(
-                WLAN_IFACE_NAME, WifiMonitor.SUP_REQUEST_SIM_AUTH, mSecondHandlerSpy);
-        mWifiMonitor.broadcastNetworkGsmAuthRequestEvent(
-                WLAN_IFACE_NAME, NETWORK_ID, SSID, GSM_AUTH_DATA);
+                WLAN_IFACE_NAME, WifiMonitor.SUP_CONNECTION_EVENT, mSecondHandlerSpy);
+        mWifiMonitor.broadcastSupplicantConnectionEvent(WLAN_IFACE_NAME);
         mLooper.dispatchAll();
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(mHandlerSpy).handleMessage(messageCaptor.capture());
-        assertEquals(WifiMonitor.SUP_REQUEST_SIM_AUTH, messageCaptor.getValue().what);
+        assertEquals(WifiMonitor.SUP_CONNECTION_EVENT, messageCaptor.getValue().what);
         verify(mSecondHandlerSpy).handleMessage(messageCaptor.capture());
-        assertEquals(WifiMonitor.SUP_REQUEST_SIM_AUTH, messageCaptor.getValue().what);
+        assertEquals(WifiMonitor.SUP_CONNECTION_EVENT, messageCaptor.getValue().what);
     }
-
     /**
      * Broadcast message when iface is null.
      */
     @Test
     public void testBroadcastEventWhenIfaceIsNull() {
         mWifiMonitor.registerHandler(
-                WLAN_IFACE_NAME, WifiMonitor.SUP_REQUEST_SIM_AUTH, mHandlerSpy);
-        mWifiMonitor.broadcastNetworkGsmAuthRequestEvent(null, NETWORK_ID, SSID, GSM_AUTH_DATA);
+                WLAN_IFACE_NAME, WifiMonitor.SUP_DISCONNECTION_EVENT, mHandlerSpy);
+        mWifiMonitor.broadcastSupplicantDisconnectionEvent(null);
         mLooper.dispatchAll();
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(mHandlerSpy).handleMessage(messageCaptor.capture());
-        assertEquals(WifiMonitor.SUP_REQUEST_SIM_AUTH, messageCaptor.getValue().what);
+        assertEquals(WifiMonitor.SUP_DISCONNECTION_EVENT, messageCaptor.getValue().what);
     }
     /**
      * Broadcast message when iface handler is null.
@@ -549,14 +546,13 @@ public class WifiMonitorTest extends WifiBaseTest {
     @Test
     public void testBroadcastEventWhenIfaceHandlerIsNull() {
         mWifiMonitor.registerHandler(
-                WLAN_IFACE_NAME, WifiMonitor.SUP_REQUEST_SIM_AUTH, mHandlerSpy);
-        mWifiMonitor.broadcastNetworkGsmAuthRequestEvent(
-                WLAN_IFACE_NAME, NETWORK_ID, SSID, GSM_AUTH_DATA);
+                WLAN_IFACE_NAME, WifiMonitor.SUP_DISCONNECTION_EVENT, mHandlerSpy);
+        mWifiMonitor.broadcastSupplicantDisconnectionEvent(SECOND_WLAN_IFACE_NAME);
         mLooper.dispatchAll();
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(mHandlerSpy).handleMessage(messageCaptor.capture());
-        assertEquals(WifiMonitor.SUP_REQUEST_SIM_AUTH, messageCaptor.getValue().what);
+        assertEquals(WifiMonitor.SUP_DISCONNECTION_EVENT, messageCaptor.getValue().what);
     }
 
     @Test
@@ -614,113 +610,15 @@ public class WifiMonitorTest extends WifiBaseTest {
         mWifiMonitor.registerHandler(
                 WLAN_IFACE_NAME, WifiMonitor.NETWORK_CONNECTION_EVENT, mHandlerSpy);
         int networkId = NETWORK_ID;
-        WifiSsid wifiSsid = WifiSsid.createFromByteArray(new byte[]{'a', 'b', 'c'});
         String bssid = BSSID;
-        mWifiMonitor.broadcastNetworkConnectionEvent(WLAN_IFACE_NAME, networkId, true,
-                wifiSsid, bssid);
+        mWifiMonitor.broadcastNetworkConnectionEvent(WLAN_IFACE_NAME, networkId, true, bssid);
         mLooper.dispatchAll();
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(mHandlerSpy).handleMessage(messageCaptor.capture());
         assertEquals(WifiMonitor.NETWORK_CONNECTION_EVENT, messageCaptor.getValue().what);
-        NetworkConnectionEventInfo info = (NetworkConnectionEventInfo) messageCaptor.getValue().obj;
-        assertEquals(networkId, info.networkId);
-        assertTrue(info.isFilsConnection);
-        assertEquals(wifiSsid, info.wifiSsid);
-        assertEquals(bssid, info.bssid);
-    }
-
-    /**
-     * Broadcast Passpoint remediation event test.
-     */
-    @Test
-    public void testBroadcastPasspointRemediationEvent() {
-        mWifiMonitor.registerHandler(
-                WLAN_IFACE_NAME, WifiMonitor.HS20_REMEDIATION_EVENT, mHandlerSpy);
-        WnmData wnmData = WnmData.createRemediationEvent(BSSID_LONG, PASSPOINT_URL, 0);
-        mWifiMonitor.broadcastWnmEvent(WLAN_IFACE_NAME, wnmData);
-
-        mLooper.dispatchAll();
-
-        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(mHandlerSpy).handleMessage(messageCaptor.capture());
-        assertEquals(WifiMonitor.HS20_REMEDIATION_EVENT, messageCaptor.getValue().what);
-        assertTrue(wnmData.equals(messageCaptor.getValue().obj));
-    }
-
-    /**
-     * Broadcast Passpoint deauth imminent event test.
-     */
-    @Test
-    public void testBroadcastPasspointDeauthImminentEvent() {
-        mWifiMonitor.registerHandler(
-                WLAN_IFACE_NAME, WifiMonitor.HS20_DEAUTH_IMMINENT_EVENT, mHandlerSpy);
-        WnmData wnmData = WnmData.createDeauthImminentEvent(BSSID_LONG, PASSPOINT_URL, true, 10);
-        mWifiMonitor.broadcastWnmEvent(WLAN_IFACE_NAME, wnmData);
-
-        mLooper.dispatchAll();
-
-        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(mHandlerSpy).handleMessage(messageCaptor.capture());
-        assertEquals(WifiMonitor.HS20_DEAUTH_IMMINENT_EVENT, messageCaptor.getValue().what);
-        assertTrue(wnmData.equals(messageCaptor.getValue().obj));
-    }
-
-    /**
-     * Broadcast Passpoint terms & conditions acceptance required event test.
-     */
-    @Test
-    public void testBroadcastPasspointTermsAndConditionsRequiredEvent() {
-        mWifiMonitor.registerHandler(
-                WLAN_IFACE_NAME, WifiMonitor.HS20_TERMS_AND_CONDITIONS_ACCEPTANCE_REQUIRED_EVENT,
-                mHandlerSpy);
-        WnmData wnmData =
-                WnmData.createTermsAndConditionsAccetanceRequiredEvent(BSSID_LONG, PASSPOINT_URL);
-        mWifiMonitor.broadcastWnmEvent(WLAN_IFACE_NAME, wnmData);
-
-        mLooper.dispatchAll();
-
-        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(mHandlerSpy).handleMessage(messageCaptor.capture());
-        assertEquals(WifiMonitor.HS20_TERMS_AND_CONDITIONS_ACCEPTANCE_REQUIRED_EVENT,
-                messageCaptor.getValue().what);
-        assertTrue(wnmData.equals(messageCaptor.getValue().obj));
-    }
-
-    /**
-     * Broadcast message when iface handler is null.
-     */
-    @Test
-    public void testBroadcastTransitionDisableEvent() {
-        final int indication = WifiMonitor.TDI_USE_WPA3_PERSONAL
-                | WifiMonitor.TDI_USE_SAE_PK;
-        mWifiMonitor.registerHandler(
-                WLAN_IFACE_NAME, WifiMonitor.TRANSITION_DISABLE_INDICATION, mHandlerSpy);
-        mWifiMonitor.broadcastTransitionDisableEvent(
-                WLAN_IFACE_NAME, NETWORK_ID, indication);
-        mLooper.dispatchAll();
-
-        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(mHandlerSpy).handleMessage(messageCaptor.capture());
-        assertEquals(WifiMonitor.TRANSITION_DISABLE_INDICATION, messageCaptor.getValue().what);
-        assertEquals(NETWORK_ID, messageCaptor.getValue().arg1);
-        assertEquals(indication, messageCaptor.getValue().arg2);
-    }
-
-    /**
-     * Broadcast Network not found event test.
-     */
-    @Test
-    public void testBroadcastNetworkNotFoundEvent() {
-        mWifiMonitor.registerHandler(
-                WLAN_IFACE_NAME, WifiMonitor.NETWORK_NOT_FOUND_EVENT, mHandlerSpy);
-        mWifiMonitor.broadcastNetworkNotFoundEvent(WLAN_IFACE_NAME, SSID);
-        mLooper.dispatchAll();
-
-        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(mHandlerSpy).handleMessage(messageCaptor.capture());
-        assertEquals(WifiMonitor.NETWORK_NOT_FOUND_EVENT, messageCaptor.getValue().what);
-        String ssid = (String) messageCaptor.getValue().obj;
-        assertEquals(SSID, ssid);
+        assertEquals(networkId, messageCaptor.getValue().arg1);
+        assertEquals(1, messageCaptor.getValue().arg2);
+        assertEquals(bssid, (String) messageCaptor.getValue().obj);
     }
 }

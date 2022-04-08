@@ -61,7 +61,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -759,7 +758,7 @@ public class WifiConfigStore {
             // There can only be 1 store data matching the tag, O indicates a previous StoreData
             // module that no longer exists (ignore this XML section).
             StoreData storeData = storeDataList.stream()
-                    .filter(s -> s.getSectionsToParse().contains(headerName[0]))
+                    .filter(s -> s.getName().equals(headerName[0]))
                     .findAny()
                     .orElse(null);
             if (storeData == null) {
@@ -767,8 +766,8 @@ public class WifiConfigStore {
                         + storeDataList);
                 continue;
             }
-            storeData.deserializeDataForSection(in, rootTagDepth + 1, version,
-                    storeFile.getEncryptionUtil(), headerName[0]);
+            storeData.deserializeData(in, rootTagDepth + 1, version,
+                    storeFile.getEncryptionUtil());
             storeDatasInvoked.add(storeData);
         }
         // Inform all the other registered store data clients that there is nothing in the store
@@ -814,7 +813,6 @@ public class WifiConfigStore {
         pw.println("Dump of WifiConfigStore");
         pw.println("WifiConfigStore - Store File Begin ----");
         Stream.of(mSharedStores, mUserStores)
-                .filter(Objects::nonNull)
                 .flatMap(List::stream)
                 .forEach((storeFile) -> {
                     pw.print("Name: " + storeFile.mFileName);
@@ -992,16 +990,6 @@ public class WifiConfigStore {
                 throws XmlPullParserException, IOException;
 
         /**
-         * By default we will call the default deserializeData function. If some module needs to
-         * parse data with non-default structure(for migration purposes), then override this method.
-         */
-        default void deserializeDataForSection(@Nullable XmlPullParser in, int outerTagDepth,
-                @Version int version, @Nullable WifiConfigStoreEncryptionUtil encryptionUtil,
-                @NonNull String sectionName) throws XmlPullParserException, IOException {
-            deserializeData(in, outerTagDepth, version, encryptionUtil);
-        }
-
-        /**
          * Reset configuration data.
          */
         void resetData();
@@ -1020,16 +1008,6 @@ public class WifiConfigStore {
          * @return The name of the store data
          */
         String getName();
-
-        /**
-         * By default, we parse the section the module writes. If some module needs to parse other
-         * sections (for migration purposes), then override this method.
-         * @return a set of section headers
-         */
-        default HashSet<String> getSectionsToParse() {
-            //
-            return new HashSet<String>() {{ add(getName()); }};
-        }
 
         /**
          * File Id where this data needs to be written to.

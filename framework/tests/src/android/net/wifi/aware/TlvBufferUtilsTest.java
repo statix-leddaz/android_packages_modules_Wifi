@@ -267,42 +267,42 @@ public class TlvBufferUtilsTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void testTlvItInvalidSizeT1L0() {
-        final byte[] testTlv = {
+        final byte[] dummy = {
                 0, 1, 2 };
-        final int testLength = 3;
-        TlvBufferUtils.TlvIterable tlvIt10 = new TlvBufferUtils.TlvIterable(1, 0, testTlv);
+        final int dummyLength = 3;
+        TlvBufferUtils.TlvIterable tlvIt10 = new TlvBufferUtils.TlvIterable(1, 0, dummy);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testTlvItInvalidSizeTm3L2() {
-        final byte[] testTlv = {
+        final byte[] dummy = {
                 0, 1, 2 };
-        final int testLength = 3;
-        TlvBufferUtils.TlvIterable tlvIt10 = new TlvBufferUtils.TlvIterable(-3, 2, testTlv);
+        final int dummyLength = 3;
+        TlvBufferUtils.TlvIterable tlvIt10 = new TlvBufferUtils.TlvIterable(-3, 2, dummy);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testTlvItInvalidSizeT1Lm2() {
-        final byte[] testTlv = {
+        final byte[] dummy = {
                 0, 1, 2 };
-        final int testLength = 3;
-        TlvBufferUtils.TlvIterable tlvIt10 = new TlvBufferUtils.TlvIterable(1, -2, testTlv);
+        final int dummyLength = 3;
+        TlvBufferUtils.TlvIterable tlvIt10 = new TlvBufferUtils.TlvIterable(1, -2, dummy);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testTlvItInvalidSizeT1L3() {
-        final byte[] testTlv = {
+        final byte[] dummy = {
                 0, 1, 2 };
-        final int testLength = 3;
-        TlvBufferUtils.TlvIterable tlvIt10 = new TlvBufferUtils.TlvIterable(1, 3, testTlv);
+        final int dummyLength = 3;
+        TlvBufferUtils.TlvIterable tlvIt10 = new TlvBufferUtils.TlvIterable(1, 3, dummy);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testTlvItInvalidSizeT3L1() {
-        final byte[] testTlv = {
+        final byte[] dummy = {
                 0, 1, 2 };
-        final int testLength = 3;
-        TlvBufferUtils.TlvIterable tlvIt10 = new TlvBufferUtils.TlvIterable(3, 1, testTlv);
+        final int dummyLength = 3;
+        TlvBufferUtils.TlvIterable tlvIt10 = new TlvBufferUtils.TlvIterable(3, 1, dummy);
     }
 
     /**

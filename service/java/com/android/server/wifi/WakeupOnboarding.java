@@ -20,6 +20,7 @@ import static com.android.server.wifi.WakeupNotificationFactory.ACTION_DISMISS_N
 import static com.android.server.wifi.WakeupNotificationFactory.ACTION_OPEN_WIFI_PREFERENCES;
 import static com.android.server.wifi.WakeupNotificationFactory.ACTION_TURN_OFF_WIFI_WAKE;
 
+import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -50,9 +51,9 @@ public class WakeupOnboarding {
     static final long REQUIRED_NOTIFICATION_DELAY = DateUtils.DAY_IN_MILLIS;
     private static final long NOT_SHOWN_TIMESTAMP = -1;
 
-    private final WifiContext mContext;
+    private final Context mContext;
     private final WakeupNotificationFactory mWakeupNotificationFactory;
-    private final WifiNotificationManager mNotificationManager;
+    private NotificationManager mNotificationManager;
     private final Handler mHandler;
     private final WifiConfigManager mWifiConfigManager;
     private final IntentFilter mIntentFilter;
@@ -89,18 +90,16 @@ public class WakeupOnboarding {
     };
 
     public WakeupOnboarding(
-            WifiContext context,
+            Context context,
             WifiConfigManager wifiConfigManager,
             Handler handler,
             FrameworkFacade frameworkFacade,
-            WakeupNotificationFactory wakeupNotificationFactory,
-            WifiNotificationManager wifiNotificationManager) {
+            WakeupNotificationFactory wakeupNotificationFactory) {
         mContext = context;
         mWifiConfigManager = wifiConfigManager;
         mHandler = handler;
         mFrameworkFacade = frameworkFacade;
         mWakeupNotificationFactory = wakeupNotificationFactory;
-        mNotificationManager = wifiNotificationManager;
 
         mIntentFilter = new IntentFilter();
         mIntentFilter.addAction(ACTION_TURN_OFF_WIFI_WAKE);
@@ -131,7 +130,7 @@ public class WakeupOnboarding {
 
         mContext.registerReceiver(mBroadcastReceiver, mIntentFilter,
                 null /* broadcastPermission */, mHandler);
-        mNotificationManager.notify(WakeupNotificationFactory.ONBOARD_ID,
+        getNotificationManager().notify(WakeupNotificationFactory.ONBOARD_ID,
                 mWakeupNotificationFactory.createOnboardingNotification());
     }
 
@@ -172,7 +171,7 @@ public class WakeupOnboarding {
         }
 
         mContext.unregisterReceiver(mBroadcastReceiver);
-        mNotificationManager.cancel(WakeupNotificationFactory.ONBOARD_ID);
+        getNotificationManager().cancel(WakeupNotificationFactory.ONBOARD_ID);
         mIsNotificationShowing = false;
     }
 
@@ -184,6 +183,14 @@ public class WakeupOnboarding {
         Log.d(TAG, "Setting user as onboarded.");
         mIsOnboarded = true;
         mWifiConfigManager.saveToStore(false /* forceWrite */);
+    }
+
+    private NotificationManager getNotificationManager() {
+        if (mNotificationManager == null) {
+            mNotificationManager = (NotificationManager)
+                    mContext.getSystemService(Context.NOTIFICATION_SERVICE);
+        }
+        return mNotificationManager;
     }
 
     /** Returns the {@link WakeupConfigStoreData.DataSource} for the onboarded status. */

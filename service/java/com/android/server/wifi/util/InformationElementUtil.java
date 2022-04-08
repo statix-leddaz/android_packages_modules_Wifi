@@ -36,7 +36,6 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
-import java.util.Locale;
 
 public class InformationElementUtil {
     private static final String TAG = "InformationElementUtil";
@@ -281,7 +280,7 @@ public class InformationElementUtil {
             if (mCenterFreqIndex1 == 0 || mChannelMode == 0) {
                 return 0;
             } else {
-                return ScanResult.convertChannelToFrequencyMhzIfSupported(mCenterFreqIndex1,
+                return ScanResult.convertChannelToFrequencyMhz(mCenterFreqIndex1,
                         WifiScanner.WIFI_BAND_5_GHZ);
             }
         }
@@ -296,7 +295,7 @@ public class InformationElementUtil {
             if (mCenterFreqIndex2 == 0 || mChannelMode == 0) {
                 return 0;
             } else {
-                return ScanResult.convertChannelToFrequencyMhzIfSupported(mCenterFreqIndex2,
+                return ScanResult.convertChannelToFrequencyMhz(mCenterFreqIndex2,
                         WifiScanner.WIFI_BAND_5_GHZ);
             }
         }
@@ -394,7 +393,7 @@ public class InformationElementUtil {
          * Only applicable for 6GHz channels
          */
         public int getPrimaryFreq() {
-            return ScanResult.convertChannelToFrequencyMhzIfSupported(mPrimaryChannel,
+            return ScanResult.convertChannelToFrequencyMhz(mPrimaryChannel,
                         WifiScanner.WIFI_BAND_6_GHZ);
         }
 
@@ -407,7 +406,7 @@ public class InformationElementUtil {
                 if (mCenterFreqSeg0 == 0) {
                     return 0;
                 } else {
-                    return ScanResult.convertChannelToFrequencyMhzIfSupported(mCenterFreqSeg0,
+                    return ScanResult.convertChannelToFrequencyMhz(mCenterFreqSeg0,
                             WifiScanner.WIFI_BAND_6_GHZ);
                 }
             } else {
@@ -424,7 +423,7 @@ public class InformationElementUtil {
                 if (mCenterFreqSeg1 == 0) {
                     return 0;
                 } else {
-                    return ScanResult.convertChannelToFrequencyMhzIfSupported(mCenterFreqSeg1,
+                    return ScanResult.convertChannelToFrequencyMhz(mCenterFreqSeg1,
                             WifiScanner.WIFI_BAND_6_GHZ);
                 }
             } else {
@@ -931,26 +930,15 @@ public class InformationElementUtil {
         private static final int RSN_CIPHER_CCMP = 0x04ac0f00;
         private static final int RSN_CIPHER_NO_GROUP_ADDRESSED = 0x07ac0f00;
         private static final int RSN_CIPHER_GCMP_256 = 0x09ac0f00;
-        private static final int RSN_CIPHER_GCMP_128 = 0x08ac0f00;
-        private static final int RSN_CIPHER_BIP_GMAC_128 = 0x0bac0f00;
-        private static final int RSN_CIPHER_BIP_GMAC_256 = 0x0cac0f00;
-        private static final int RSN_CIPHER_BIP_CMAC_256 = 0x0dac0f00;
-
-        // RSN capability bit definition
-        private static final int RSN_CAP_MANAGEMENT_FRAME_PROTECTION_REQUIRED = 1 << 6;
-        private static final int RSN_CAP_MANAGEMENT_FRAME_PROTECTION_CAPABLE = 1 << 7;
 
         public List<Integer> protocol;
         public List<List<Integer>> keyManagement;
         public List<List<Integer>> pairwiseCipher;
         public List<Integer> groupCipher;
-        public List<Integer> groupManagementCipher;
         public boolean isESS;
         public boolean isIBSS;
         public boolean isPrivacy;
         public boolean isWPS;
-        public boolean isManagementFrameProtectionRequired;
-        public boolean isManagementFrameProtectionCapable;
 
         public Capabilities() {
         }
@@ -1041,7 +1029,7 @@ public class InformationElementUtil {
                             rsnKeyManagement.add(ScanResult.KEY_MGMT_FILS_SHA384);
                             break;
                         default:
-                            rsnKeyManagement.add(ScanResult.KEY_MGMT_UNKNOWN);
+                            // do nothing
                             break;
                     }
                 }
@@ -1050,28 +1038,6 @@ public class InformationElementUtil {
                     rsnKeyManagement.add(ScanResult.KEY_MGMT_EAP);
                 }
                 keyManagement.add(rsnKeyManagement);
-
-                // RSN capabilities (optional),
-                // see section 9.4.2.25 - RSNE - In IEEE Std 802.11-2016
-                if (buf.remaining() < 2) return;
-                int rsnCaps = buf.getShort();
-
-                if (buf.remaining() < 2) return;
-                // PMKID, it's not used, drop it if exists (optional).
-                int rsnPmkIdCount = buf.getShort();
-                for (int i = 0; i < rsnPmkIdCount; i++) {
-                    // Each PMKID element length in the PMKID List is 16 bytes
-                    byte[] tmp = new byte[16];
-                    buf.get(tmp);
-                }
-
-                // Group management cipher suite (optional).
-                if (buf.remaining() < 4) return;
-                groupManagementCipher.add(parseRsnCipher(buf.getInt()));
-                isManagementFrameProtectionRequired = !groupManagementCipher.isEmpty()
-                        && 0 != (RSN_CAP_MANAGEMENT_FRAME_PROTECTION_REQUIRED & rsnCaps);
-                isManagementFrameProtectionCapable = !groupManagementCipher.isEmpty()
-                        && 0 != (RSN_CAP_MANAGEMENT_FRAME_PROTECTION_CAPABLE & rsnCaps);
             } catch (BufferUnderflowException e) {
                 Log.e("IE_Capabilities", "Couldn't parse RSNE, buffer underflow");
             }
@@ -1104,14 +1070,6 @@ public class InformationElementUtil {
                     return ScanResult.CIPHER_GCMP_256;
                 case RSN_CIPHER_NO_GROUP_ADDRESSED:
                     return ScanResult.CIPHER_NO_GROUP_ADDRESSED;
-                case RSN_CIPHER_GCMP_128:
-                    return ScanResult.CIPHER_GCMP_128;
-                case RSN_CIPHER_BIP_GMAC_128:
-                    return ScanResult.CIPHER_BIP_GMAC_128;
-                case RSN_CIPHER_BIP_GMAC_256:
-                    return ScanResult.CIPHER_BIP_GMAC_256;
-                case RSN_CIPHER_BIP_CMAC_256:
-                    return ScanResult.CIPHER_BIP_CMAC_256;
                 default:
                     Log.w("IE_Capabilities", "Unknown RSN cipher suite: "
                             + Integer.toHexString(cipher));
@@ -1201,7 +1159,7 @@ public class InformationElementUtil {
                             wpaKeyManagement.add(ScanResult.KEY_MGMT_PSK);
                             break;
                         default:
-                            wpaKeyManagement.add(ScanResult.KEY_MGMT_UNKNOWN);
+                            // do nothing
                             break;
                     }
                 }
@@ -1222,35 +1180,20 @@ public class InformationElementUtil {
          * @param ies            -- Information Element array
          * @param beaconCap      -- 16-bit Beacon Capability Information field
          * @param isOweSupported -- Boolean flag to indicate if OWE is supported by the device
-         * @param freq           -- Frequency on which frame/beacon was transmitted.
-         *                          Some parsing may be affected such as DMG parameters in
-         *                          DMG (60GHz) beacon.
          */
 
-        public void from(InformationElement[] ies, int beaconCap, boolean isOweSupported,
-                int freq) {
+        public void from(InformationElement[] ies, int beaconCap, boolean isOweSupported) {
             protocol = new ArrayList<>();
             keyManagement = new ArrayList<>();
             groupCipher = new ArrayList<>();
             pairwiseCipher = new ArrayList<>();
-            groupManagementCipher = new ArrayList<>();
 
             if (ies == null) {
                 return;
             }
+            isESS = (beaconCap & NativeScanResult.BSS_CAPABILITY_ESS) != 0;
+            isIBSS = (beaconCap & NativeScanResult.BSS_CAPABILITY_IBSS) != 0;
             isPrivacy = (beaconCap & NativeScanResult.BSS_CAPABILITY_PRIVACY) != 0;
-            if (ScanResult.is60GHz(freq)) {
-                /* In DMG, bits 0 and 1 are parsed together, where ESS=0x3 and IBSS=0x1 */
-                if ((beaconCap & NativeScanResult.BSS_CAPABILITY_DMG_ESS)
-                        == NativeScanResult.BSS_CAPABILITY_DMG_ESS) {
-                    isESS = true;
-                } else if ((beaconCap & NativeScanResult.BSS_CAPABILITY_DMG_IBSS) != 0) {
-                    isIBSS = true;
-                }
-            } else {
-                isESS = (beaconCap & NativeScanResult.BSS_CAPABILITY_ESS) != 0;
-                isIBSS = (beaconCap & NativeScanResult.BSS_CAPABILITY_IBSS) != 0;
-            }
             for (InformationElement ie : ies) {
                 WifiNl80211Manager.OemSecurityType oemSecurityType =
                         WifiNl80211Manager.parseOemSecurityTypeElement(
@@ -1338,13 +1281,13 @@ public class InformationElementUtil {
                 case ScanResult.KEY_MGMT_PSK:
                     return "PSK";
                 case ScanResult.KEY_MGMT_EAP:
-                    return "EAP/SHA1";
+                    return "EAP";
                 case ScanResult.KEY_MGMT_FT_EAP:
                     return "FT/EAP";
                 case ScanResult.KEY_MGMT_FT_PSK:
                     return "FT/PSK";
                 case ScanResult.KEY_MGMT_EAP_SHA256:
-                    return "EAP/SHA256";
+                    return "EAP-SHA256";
                 case ScanResult.KEY_MGMT_PSK_SHA256:
                     return "PSK-SHA256";
                 case ScanResult.KEY_MGMT_OWE:
@@ -1418,14 +1361,6 @@ public class InformationElementUtil {
             }
             if (isWPS) {
                 capabilities.append("[WPS]");
-            }
-            if (!groupManagementCipher.isEmpty()) {
-                if (isManagementFrameProtectionRequired) {
-                    capabilities.append("[MFPR]");
-                }
-                if (isManagementFrameProtectionCapable) {
-                    capabilities.append("[MFPC]");
-                }
             }
 
             return capabilities.toString();
@@ -1703,60 +1638,6 @@ public class InformationElementUtil {
                 sbuf.append(String.format("%.1f", (double) rate / 1000000) + ", ");
             }
             return sbuf.toString();
-        }
-    }
-
-    /**
-     * This util class determines country related information in beacon/probe response
-     */
-    public static class Country {
-        private boolean mValid = false;
-        public String mCountryCode = "00";
-
-        /**
-         * Parse the Information Element Country Information field. Note that element ID and length
-         * fields are already removed.
-         *
-         * Country IE format (size unit: byte)
-         *
-         * ElementID | Length | country string | triplet | padding
-         *      1          1          3            Q*x       0 or 1
-         * First two bytes of country string are country code
-         * See 802.11 spec dot11CountryString definition.
-         */
-        public void from(InformationElement ie) {
-            mValid = false;
-            if (ie == null || ie.bytes == null || ie.bytes.length < 3) return;
-            ByteBuffer data = ByteBuffer.wrap(ie.bytes).order(ByteOrder.LITTLE_ENDIAN);
-            try {
-                char letter1 = (char) (data.get() & Constants.BYTE_MASK);
-                char letter2 = (char) (data.get() & Constants.BYTE_MASK);
-                char letter3 = (char) (data.get() & Constants.BYTE_MASK);
-                // See 802.11 spec dot11CountryString definition.
-                // ' ', 'O', 'I' are for all operation, outdoor, indoor environments, respectively.
-                mValid = (letter3 == ' ' || letter3 == 'O' || letter3 == 'I')
-                        && Character.isLetterOrDigit((int) letter1)
-                        && Character.isLetterOrDigit((int) letter2);
-                if (mValid) {
-                    mCountryCode = (String.valueOf(letter1) + letter2).toUpperCase(Locale.US);
-                }
-            } catch (BufferUnderflowException e) {
-                return;
-            }
-        }
-
-        /**
-         * Is this a valid country information element.
-         */
-        public boolean isValid() {
-            return mValid;
-        }
-
-        /**
-         * @return country code indicated in beacon/probe response frames
-         */
-        public String getCountryCode() {
-            return mCountryCode;
         }
     }
 }

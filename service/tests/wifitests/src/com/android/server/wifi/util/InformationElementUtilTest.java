@@ -294,36 +294,6 @@ public class InformationElementUtilTest extends WifiBaseTest {
                 testByteArray[3], results[0].bytes[0]);
     }
 
-    private void verifyCapabilityStringFromIes(
-            InformationElement[] ies, int beaconCap, boolean isOweSupported,
-            String capsStr) {
-        InformationElementUtil.Capabilities capabilities =
-                new InformationElementUtil.Capabilities();
-        capabilities.from(ies, beaconCap, isOweSupported, 2400);
-        String result = capabilities.generateCapabilitiesString();
-
-        assertEquals(capsStr, result);
-    }
-
-    private void verifyCapabilityStringFromIe(
-            InformationElement ie, int beaconCap, boolean isOweSupported,
-            String capsStr) {
-        InformationElement[] ies = new InformationElement[] { ie };
-        verifyCapabilityStringFromIes(new InformationElement[] { ie },
-                beaconCap, isOweSupported, capsStr);
-
-    }
-
-    private void verifyCapabilityStringFromIeWithoutOweSupported(
-            InformationElement ie, String capsStr) {
-        verifyCapabilityStringFromIe(ie, 0x1 << 4, false, capsStr);
-    }
-
-    private void verifyCapabilityStringFromIeWithOweSupported(
-            InformationElement ie, String capsStr) {
-        verifyCapabilityStringFromIe(ie, 0x1 << 4, true, capsStr);
-    }
-
     /**
      * Test Capabilities.generateCapabilitiesString() with a RSN IE.
      * Expect the function to return a string with the proper security information.
@@ -338,168 +308,16 @@ public class InformationElementUtilTest extends WifiBaseTest {
                                 (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x02,
                                 (byte) 0x01, (byte) 0x00, (byte) 0x00, (byte) 0x0F,
                                 (byte) 0xAC, (byte) 0x02, (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIeWithoutOweSupported(ie,
-                "[WPA2-PSK-CCMP+TKIP][RSN-PSK-CCMP+TKIP]");
-    }
 
-    /**
-     * Test Capabilities.generateCapabilitiesString() with a RSN IE which contains
-     * an unknown AKM.
-     * Expect the function to return a string with the proper security information.
-     */
-    @Test
-    public void buildCapabilities_rsnElementWithUnknownAkm() {
-        InformationElement ie = new InformationElement();
-        ie.id = InformationElement.EID_RSN;
-        ie.bytes = new byte[] { (byte) 0x01, (byte) 0x00, // Version
-                                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x02, // TKIP
-                                (byte) 0x02, (byte) 0x00, // Pairwise cipher count
-                                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x04, // CCMP
-                                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x02, // TKIP
-                                (byte) 0x01, (byte) 0x00, // AKM count
-                                (byte) 0x00, (byte) 0x0F, (byte) 0x99, (byte) 0x99, // Unknown AKM
-                                (byte) 0x00, (byte) 0x00 // RSN capabilities
-        };
-        verifyCapabilityStringFromIeWithoutOweSupported(ie,
-                "[RSN-?-CCMP+TKIP]");
-    }
+        InformationElement[] ies = new InformationElement[] { ie };
+        int beaconCap = 0x1 << 4;
 
-    /**
-     * Test Capabilities.generateCapabilitiesString() with a RSN IE.
-     * Expect the function to return a string with the proper security information.
-     */
-    @Test
-    public void buildCapabilities_rsnElementWithGroupManagementCipher() {
-        InformationElement ie = new InformationElement();
-        ie.id = InformationElement.EID_RSN;
-        ie.bytes = new byte[] {
-                // Version
-                (byte) 0x01, (byte) 0x00,
-                // Group cipher suite: TKIP
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x02,
-                // Pairwise cipher count
-                (byte) 0x02, (byte) 0x00,
-                // Pairwise cipher suite: CCMP
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x04,
-                // Pairwise cipher suite: TKIP
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x02,
-                // AKM count
-                (byte) 0x01, (byte) 0x00,
-                // AMK suite: EAP/SHA1
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x01,
-                // RSN capabilities
-                (byte) 0x40, (byte) 0x00,
-                // PMKID count
-                (byte) 0x01, (byte) 0x00,
-                // PMKID
-                (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
-                (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
-                (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
-                (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00,
-                // Group mgmt cipher suite: BIP_GMAC_256
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x0c,
-        };
-        verifyCapabilityStringFromIeWithoutOweSupported(ie,
-                "[WPA2-EAP/SHA1-CCMP+TKIP][RSN-EAP/SHA1-CCMP+TKIP][MFPR]");
-    }
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
 
-    /**
-     * Test Capabilities.generateCapabilitiesString() with a RSN IE.
-     * Expect the function to return a string with the proper security information.
-     */
-    @Test
-    public void buildCapabilities_rsnElementWithWpa3EnterpriseOnlyNetwork() {
-        InformationElement ie = new InformationElement();
-        ie.id = InformationElement.EID_RSN;
-        ie.bytes = new byte[] {
-                // Version
-                (byte) 0x01, (byte) 0x00,
-                // Group cipher suite: TKIP
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x02,
-                // Pairwise cipher count
-                (byte) 0x01, (byte) 0x00,
-                // Pairwise cipher suite: CCMP
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x04,
-                // AKM count
-                (byte) 0x01, (byte) 0x00,
-                // AMK suite: EAP/SHA256
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x05,
-                // RSN capabilities
-                (byte) 0xc0, (byte) 0x00,
-                // PMKID count
-                (byte) 0x00, (byte) 0x00,
-                // Group mgmt cipher suite: BIP_GMAC_256
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x0c,
-        };
-        verifyCapabilityStringFromIeWithoutOweSupported(ie,
-                "[WPA2-EAP/SHA256-CCMP]"
-                        + "[RSN-EAP/SHA256-CCMP][MFPR][MFPC]");
-    }
-
-    /**
-     * Test Capabilities.generateCapabilitiesString() with a RSN IE.
-     * Expect the function to return a string with the proper security information.
-     */
-    @Test
-    public void buildCapabilities_rsnElementWithWpa3EnterpriseTransitionNetwork() {
-        InformationElement ie = new InformationElement();
-        ie.id = InformationElement.EID_RSN;
-        ie.bytes = new byte[] {
-                // Version
-                (byte) 0x01, (byte) 0x00,
-                // Group cipher suite: TKIP
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x02,
-                // Pairwise cipher count
-                (byte) 0x01, (byte) 0x00,
-                // Pairwise cipher suite: CCMP
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x04,
-                // AKM count
-                (byte) 0x02, (byte) 0x00,
-                // AMK suite: EAP/SHA1
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x01,
-                // AMK suite: EAP/SHA256
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x05,
-                // RSN capabilities
-                (byte) 0x80, (byte) 0x00,
-                // PMKID count
-                (byte) 0x00, (byte) 0x00,
-                // Group mgmt cipher suite: BIP_GMAC_256
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x0c,
-        };
-        verifyCapabilityStringFromIeWithoutOweSupported(ie,
-                "[WPA2-EAP/SHA1+EAP/SHA256-CCMP]"
-                        + "[RSN-EAP/SHA1+EAP/SHA256-CCMP][MFPC]");
-    }
-
-    /**
-     * Test Capabilities.generateCapabilitiesString() with a RSN IE.
-     * Expect the function to return a string with the proper security information.
-     * If there is no group management cipher set, ignore the MFPR capability.
-     */
-    @Test
-    public void buildCapabilities_rsnElementWithoutGroupManagementCipherButSetMfpr() {
-        InformationElement ie = new InformationElement();
-        ie.id = InformationElement.EID_RSN;
-        ie.bytes = new byte[] {
-                // Version
-                (byte) 0x01, (byte) 0x00,
-                // Group cipher suite: TKIP
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x02,
-                // Pairwise cipher count
-                (byte) 0x02, (byte) 0x00,
-                // Pairwise cipher suite: CCMP
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x04,
-                // Pairwise cipher suite: TKIP
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x02,
-                // AKM count
-                (byte) 0x01, (byte) 0x00,
-                // AMK suite: EAP/SHA1
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x01,
-                // RSN capabilities
-                (byte) 0x40, (byte) 0x00,
-        };
-        verifyCapabilityStringFromIeWithoutOweSupported(ie,
-                "[WPA2-EAP/SHA1-CCMP+TKIP][RSN-EAP/SHA1-CCMP+TKIP]");
+        assertEquals("[WPA2-PSK-CCMP+TKIP][RSN-PSK-CCMP+TKIP]", result);
     }
 
     /**
@@ -514,7 +332,16 @@ public class InformationElementUtilTest extends WifiBaseTest {
         ie.bytes = new byte[] { (byte) 0x01, (byte) 0x00, (byte) 0x00, (byte) 0x0F,
                 (byte) 0xAC, (byte) 0x02, (byte) 0x02, (byte) 0x00,
                 (byte) 0x00, (byte) 0x0F, (byte) 0xAC };
-        verifyCapabilityStringFromIeWithoutOweSupported(ie, "[RSN]");
+
+        InformationElement[] ies = new InformationElement[] { ie };
+        int beaconCap = 0x1 << 4;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[RSN]", result);
     }
 
     /**
@@ -532,28 +359,16 @@ public class InformationElementUtilTest extends WifiBaseTest {
                                 (byte) 0x00, (byte) 0x50, (byte) 0xF2, (byte) 0x02,
                                 (byte) 0x01, (byte) 0x00, (byte) 0x00, (byte) 0x50,
                                 (byte) 0xF2, (byte) 0x02, (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIeWithoutOweSupported(ie, "[WPA-PSK-CCMP+TKIP]");
-    }
 
-    /**
-     * Test Capabilities.generateCapabilitiesString() with a WPA type 1 IE which
-     * contains an unknown AKM.
-     * Expect the function to return a string with the proper security information.
-     */
-    @Test
-    public void buildCapabilities_wpa1ElementWithUnknownAkm() {
-        InformationElement ie = new InformationElement();
-        ie.id = InformationElement.EID_VSA;
-        ie.bytes = new byte[] { (byte) 0x00, (byte) 0x50, (byte) 0xF2, (byte) 0x01, // OUI & type
-                                (byte) 0x01, (byte) 0x00, // Version
-                                (byte) 0x00, (byte) 0x50, (byte) 0xF2, (byte) 0x02, // TKIP
-                                (byte) 0x02, (byte) 0x00, // Pairwise cipher count
-                                (byte) 0x00, (byte) 0x50, (byte) 0xF2, (byte) 0x04, // CCMP
-                                (byte) 0x00, (byte) 0x50, (byte) 0xF2, (byte) 0x02, // TKIP
-                                (byte) 0x01, (byte) 0x00, // AKM count
-                                (byte) 0x00, (byte) 0x50, (byte) 0x99, (byte) 0x99, // Unknown AKM
-                                (byte) 0x00, (byte) 0x00};
-        verifyCapabilityStringFromIeWithoutOweSupported(ie, "[WPA-?-CCMP+TKIP]");
+        InformationElement[] ies = new InformationElement[] { ie };
+        int beaconCap = 0x1 << 4;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[WPA-PSK-CCMP+TKIP]", result);
     }
 
     /**
@@ -567,7 +382,16 @@ public class InformationElementUtilTest extends WifiBaseTest {
         ie.id = InformationElement.EID_VSA;
         ie.bytes = new byte[] { (byte) 0x00, (byte) 0x50, (byte) 0xF2, (byte) 0x01,
                 (byte) 0x01, (byte) 0x00 };
-        verifyCapabilityStringFromIeWithoutOweSupported(ie, "[WPA]");
+
+        InformationElement[] ies = new InformationElement[] { ie };
+        int beaconCap = 0x1 << 4;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[WPA]", result);
     }
 
     /**
@@ -596,10 +420,14 @@ public class InformationElementUtilTest extends WifiBaseTest {
                                    (byte) 0xF2, (byte) 0x02, (byte) 0x00, (byte) 0x00 };
 
         InformationElement[] ies = new InformationElement[] { ieWpa, ieRsn };
-        verifyCapabilityStringFromIes(ies,
-                0x1 << 4,
-                false,
-                "[WPA-PSK-CCMP+TKIP][WPA2-PSK-CCMP+TKIP][RSN-PSK-CCMP+TKIP]");
+        int beaconCap = 0x1 << 4;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[WPA-PSK-CCMP+TKIP][WPA2-PSK-CCMP+TKIP][RSN-PSK-CCMP+TKIP]", result);
     }
 
     /**
@@ -627,8 +455,16 @@ public class InformationElementUtilTest extends WifiBaseTest {
                 (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x08,
                 // Padding
                 (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIeWithOweSupported(ieRsn,
-                "[WPA2-PSK-CCMP][RSN-PSK+SAE-CCMP]");
+
+        InformationElement[] ies = new InformationElement[] { ieRsn };
+        int beaconCap = 0x1 << 4;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, true);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[WPA2-PSK-CCMP][RSN-PSK+SAE-CCMP]", result);
     }
 
     /**
@@ -656,8 +492,16 @@ public class InformationElementUtilTest extends WifiBaseTest {
                 (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x09,
                 // Padding
                 (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIeWithOweSupported(ieRsn,
-                "[RSN-SAE+FT/SAE-CCMP]");
+
+        InformationElement[] ies = new InformationElement[] { ieRsn };
+        int beaconCap = 0x1 << 4;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, true);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[RSN-SAE+FT/SAE-CCMP]", result);
     }
 
     /**
@@ -683,8 +527,16 @@ public class InformationElementUtilTest extends WifiBaseTest {
                 (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x12,
                 // Padding
                 (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIeWithOweSupported(ieRsn,
-                "[RSN-OWE-CCMP]");
+
+        InformationElement[] ies = new InformationElement[] { ieRsn };
+        int beaconCap = 0x1 << 4;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, true);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[RSN-OWE-CCMP]", result);
     }
 
     /**
@@ -700,8 +552,17 @@ public class InformationElementUtilTest extends WifiBaseTest {
                 (byte) 0x50, (byte) 0x6F, (byte) 0x9A, (byte) 0x1C,
                 // OWE IE contains BSSID, SSID and channel of other BSS, but we don't parse it.
                 (byte) 0x00, (byte) 0x000, (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIe(ieOwe, 0x1 << 0, true,
-                "[RSN-OWE_TRANSITION-CCMP][ESS]");
+
+        InformationElement[] ies = new InformationElement[] { ieOwe };
+
+        int beaconCap = 0x1 << 0;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, true);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[RSN-OWE_TRANSITION-CCMP][ESS]", result);
     }
 
     /**
@@ -717,8 +578,17 @@ public class InformationElementUtilTest extends WifiBaseTest {
                 (byte) 0x50, (byte) 0x6F, (byte) 0x9A, (byte) 0x1C,
                 // OWE IE contains BSSID, SSID and channel of other BSS, but we don't parse it.
                 (byte) 0x00, (byte) 0x000, (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIe(ieOwe, 0x1 << 0, false,
-                "[ESS]");
+
+        InformationElement[] ies = new InformationElement[] { ieOwe };
+
+        int beaconCap = 0x1 << 0;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[ESS]", result);
     }
 
     /**
@@ -742,15 +612,18 @@ public class InformationElementUtilTest extends WifiBaseTest {
                 (byte) 0x01, (byte) 0x00,
                 // SUITE_B_192 AKM
                 (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x0C,
-                // RSN capabilities
-                (byte) 0x40, (byte) 0x00,
-                // PMKID count
-                (byte) 0x00, (byte) 0x00,
-                // Group mgmt cipher suite: BIP_GMAC_256
-                (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x0c,
-        };
-        verifyCapabilityStringFromIeWithoutOweSupported(ieRsn,
-                "[RSN-EAP_SUITE_B_192-GCMP-256][MFPR]");
+                // Padding
+                (byte) 0x00, (byte) 0x00 };
+
+        InformationElement[] ies = new InformationElement[] { ieRsn };
+        int beaconCap = 0x1 << 4;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[RSN-EAP_SUITE_B_192-GCMP-256]", result);
     }
 
     /**
@@ -781,9 +654,17 @@ public class InformationElementUtilTest extends WifiBaseTest {
                 (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x0E,
                 // RSN capabilities
                 (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIeWithOweSupported(ieRsn,
-                "[WPA2-EAP/SHA1+EAP/SHA256+EAP-FILS-SHA256-CCMP]"
-                        + "[RSN-EAP/SHA1+EAP/SHA256+EAP-FILS-SHA256-CCMP]");
+
+        InformationElement[] ies = new InformationElement[] { ieRsn };
+        int beaconCap = 0x1 << 4;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, true);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[WPA2-EAP+EAP-SHA256+EAP-FILS-SHA256-CCMP]"
+                + "[RSN-EAP+EAP-SHA256+EAP-FILS-SHA256-CCMP]", result);
     }
 
     /**
@@ -814,9 +695,17 @@ public class InformationElementUtilTest extends WifiBaseTest {
                 (byte) 0x00, (byte) 0x0F, (byte) 0xAC, (byte) 0x0F,
                 // RSN capabilities
                 (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIeWithOweSupported(ieRsn,
-                "[WPA2-EAP/SHA1+EAP/SHA256+EAP-FILS-SHA384-CCMP]"
-                    + "[RSN-EAP/SHA1+EAP/SHA256+EAP-FILS-SHA384-CCMP]");
+
+        InformationElement[] ies = new InformationElement[] { ieRsn };
+        int beaconCap = 0x1 << 4;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, true);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[WPA2-EAP+EAP-SHA256+EAP-FILS-SHA384-CCMP]"
+                + "[RSN-EAP+EAP-SHA256+EAP-FILS-SHA384-CCMP]", result);
     }
 
     /**
@@ -837,11 +726,16 @@ public class InformationElementUtilTest extends WifiBaseTest {
                 (byte) 0x01, (byte) 0x00, (byte) 0x00, (byte) 0x50,
                 (byte) 0xF2, (byte) 0x02, (byte) 0x02, (byte) 0x00,
                 (byte) 0x00, (byte) 0x50 };
+
         InformationElement[] ies = new InformationElement[] { ieWpa, ieRsn };
-        verifyCapabilityStringFromIes(ies,
-                0x1 << 4,
-                false,
-                "[WPA][RSN]");
+        int beaconCap = 0x1 << 4;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[WPA][RSN]", result);
     }
 
     /**
@@ -865,10 +759,15 @@ public class InformationElementUtilTest extends WifiBaseTest {
         ieWps.bytes = new byte[] { (byte) 0x00, (byte) 0x50, (byte) 0xF2, (byte) 0x04 };
 
         InformationElement[] ies = new InformationElement[] { ieWpa, ieWps };
-        verifyCapabilityStringFromIes(ies,
-                0x1 << 4,
-                false,
-                "[WPA-PSK-CCMP+TKIP][WPS]");
+        int beaconCap = 0x1 << 4;
+
+
+        InformationElementUtil.Capabilities capabilities =
+                 new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("[WPA-PSK-CCMP+TKIP][WPS]", result);
     }
 
     /**
@@ -885,7 +784,17 @@ public class InformationElementUtilTest extends WifiBaseTest {
         ie.bytes = new byte[] { (byte) 0x00, (byte) 0x04, (byte) 0x0E, (byte) 0x01,
                                 (byte) 0x01, (byte) 0x02, (byte) 0x01, (byte) 0x00,
                                 (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIeWithoutOweSupported(ie, "[WEP]");
+
+        InformationElement[] ies = new InformationElement[] { ie };
+        int beaconCap = 0x1 << 4;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
+
+
+        assertEquals("[WEP]", result);
     }
 
     /**
@@ -902,7 +811,17 @@ public class InformationElementUtilTest extends WifiBaseTest {
         ie.bytes = new byte[] { (byte) 0x00, (byte) 0x04, (byte) 0x0E, (byte) 0x01,
                                 (byte) 0x01, (byte) 0x02, (byte) 0x01, (byte) 0x00,
                                 (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIe(ie, 0, false, "");
+
+        InformationElement[] ies = new InformationElement[] { ie };
+        int beaconCap = 0;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
+
+
+        assertEquals("", result);
     }
 
     /**
@@ -918,7 +837,17 @@ public class InformationElementUtilTest extends WifiBaseTest {
         ie.bytes = new byte[] { (byte) 0x00, (byte) 0x04, (byte) 0x0E, (byte) 0x01,
                                 (byte) 0x01, (byte) 0x02, (byte) 0x01, (byte) 0x00,
                                 (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIe(ie, 0x1 << 0, false, "[ESS]");
+
+        InformationElement[] ies = new InformationElement[] { ie };
+        int beaconCap = 0x1 << 0;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
+
+
+        assertEquals("[ESS]", result);
     }
 
     /**
@@ -935,7 +864,16 @@ public class InformationElementUtilTest extends WifiBaseTest {
         ie.bytes = new byte[] { (byte) 0x00, (byte) 0x04, (byte) 0x0E, (byte) 0x01,
                                 (byte) 0x01, (byte) 0x02, (byte) 0x01, (byte) 0x00,
                                 (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00 };
-        verifyCapabilityStringFromIe(ie, 0, false, "");
+
+        InformationElement[] ies = new InformationElement[] { ie };
+        int beaconCap = 0;
+
+        InformationElementUtil.Capabilities capabilities =
+                new InformationElementUtil.Capabilities();
+        capabilities.from(ies, beaconCap, false);
+        String result = capabilities.generateCapabilitiesString();
+
+        assertEquals("", result);
     }
 
     /**
@@ -949,44 +887,10 @@ public class InformationElementUtilTest extends WifiBaseTest {
 
         InformationElementUtil.Capabilities capabilities =
                 new InformationElementUtil.Capabilities();
-        capabilities.from(new InformationElement[0], beaconCap, false, 2400);
+        capabilities.from(new InformationElement[0], beaconCap, false);
         String result = capabilities.generateCapabilitiesString();
 
         assertEquals("[IBSS]", result);
-    }
-
-    /**
-     * Test Capabilities.generateCapabilitiesString() with the IBSS capability bit set for DMG.
-     *
-     * Expect the function to return a string with [IBSS] there.
-     */
-    @Test
-    public void buildCapabilities_DmgIbssCapabilitySet() {
-        int beaconCap = 0x1;
-
-        InformationElementUtil.Capabilities capabilities =
-                new InformationElementUtil.Capabilities();
-        capabilities.from(new InformationElement[0], beaconCap, false, 58320);
-        String result = capabilities.generateCapabilitiesString();
-
-        assertEquals("[IBSS]", result);
-    }
-
-    /**
-     * Test Capabilities.generateCapabilitiesString() with the ESS capability bit set for DMG.
-     *
-     * Expect the function to return a string with [IBSS] there.
-     */
-    @Test
-    public void buildCapabilities_DmgEssCapabilitySet() {
-        int beaconCap = 0x3;
-
-        InformationElementUtil.Capabilities capabilities =
-                new InformationElementUtil.Capabilities();
-        capabilities.from(new InformationElement[0], beaconCap, false, 58320);
-        String result = capabilities.generateCapabilitiesString();
-
-        assertEquals("[ESS]", result);
     }
 
     /**
@@ -1836,22 +1740,5 @@ public class InformationElementUtilTest extends WifiBaseTest {
                       2412, 72000000, true, true, true, false));
     }
 
-    /**
-     * Verify that the country code is parsed correctly from country IE
-     */
-    @Test
-    public void getCountryCodeWithCountryIE() throws Exception {
-        InformationElement ie = new InformationElement();
-        ie.id = InformationElement.EID_EXTENSION_PRESENT;
-        /** Country IE format (size unit: byte)
-         *
-         * |ElementID | Length | country string | triplet | padding
-         *      1          1          3            Q*x       0 or 1
-         */
-        ie.bytes = new byte[]{(byte) 0x75, (byte) 0x73, (byte) 0x49};
-        InformationElementUtil.Country country = new InformationElementUtil.Country();
-        country.from(ie);
-        assertEquals("US", country.getCountryCode());
-    }
     // TODO: SAE, OWN, SUITE_B
 }

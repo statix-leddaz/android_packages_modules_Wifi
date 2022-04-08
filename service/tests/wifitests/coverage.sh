@@ -66,8 +66,7 @@ bash <<END_OF_BUILD_SCRIPT || { exit 1; }
   m FrameworksWifiTests jacoco-cli
 END_OF_BUILD_SCRIPT
 
-APK_NAME="$(find $BUILD_OUT_DIR/target/product -name FrameworksWifiTests.apk | \
-              grep -v /symbols/)"
+APK_NAME="$(find $BUILD_OUT_DIR/target -name FrameworksWifiTests.apk)"
 REPORTER_JAR="$(find $BUILD_OUT_DIR/host -name jacoco-cli.jar)"
 
 echo "Running tests and generating coverage report"

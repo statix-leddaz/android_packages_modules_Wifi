@@ -16,14 +16,11 @@
 
 package android.net.wifi;
 
-import static org.junit.Assert.assertEquals;
-
-import android.net.MacAddress;
 import android.os.Parcel;
 
-import androidx.test.filters.SmallTest;
+import static org.junit.Assert.assertEquals;
 
-import com.android.modules.utils.build.SdkLevel;
+import androidx.test.filters.SmallTest;
 
 import org.junit.Test;
 
@@ -32,24 +29,15 @@ import org.junit.Test;
  */
 @SmallTest
 public class SoftApInfoTest {
-    private static final String TEST_AP_INSTANCE = "wlan1";
-    private static final int TEST_FREQUENCY = 2412;
-    private static final int TEST_BANDWIDTH = SoftApInfo.CHANNEL_WIDTH_20MHZ;
-    private static final int TEST_WIFI_STANDARD = ScanResult.WIFI_STANDARD_LEGACY;
-    private static final MacAddress TEST_AP_MAC = MacAddress.fromString("aa:bb:cc:dd:ee:ff");
-    private static final long TEST_SHUTDOWN_TIMEOUT_MILLIS = 100_000;
+
     /**
      * Verifies copy constructor.
      */
     @Test
     public void testCopyOperator() throws Exception {
         SoftApInfo info = new SoftApInfo();
-        info.setFrequency(TEST_FREQUENCY);
-        info.setBandwidth(TEST_BANDWIDTH);
-        info.setBssid(TEST_AP_MAC);
-        info.setWifiStandard(TEST_WIFI_STANDARD);
-        info.setApInstanceIdentifier(TEST_AP_INSTANCE);
-
+        info.setFrequency(2412);
+        info.setBandwidth(SoftApInfo.CHANNEL_WIDTH_20MHZ);
 
         SoftApInfo copiedInfo = new SoftApInfo(info);
 
@@ -63,11 +51,8 @@ public class SoftApInfoTest {
     @Test
     public void testParcelOperation() throws Exception {
         SoftApInfo info = new SoftApInfo();
-        info.setFrequency(TEST_FREQUENCY);
-        info.setBandwidth(TEST_BANDWIDTH);
-        info.setBssid(TEST_AP_MAC);
-        info.setWifiStandard(TEST_WIFI_STANDARD);
-        info.setApInstanceIdentifier(TEST_AP_INSTANCE);
+        info.setFrequency(2412);
+        info.setBandwidth(SoftApInfo.CHANNEL_WIDTH_20MHZ);
 
         Parcel parcelW = Parcel.obtain();
         info.writeToParcel(parcelW, 0);
@@ -81,44 +66,6 @@ public class SoftApInfoTest {
 
         assertEquals(info, fromParcel);
         assertEquals(info.hashCode(), fromParcel.hashCode());
-    }
-
-
-    /**
-     * Verifies the initial value same as expected.
-     */
-    @Test
-    public void testInitialValue() throws Exception {
-        SoftApInfo info = new SoftApInfo();
-        assertEquals(info.getFrequency(), 0);
-        assertEquals(info.getBandwidth(), SoftApInfo.CHANNEL_WIDTH_INVALID);
-        if (SdkLevel.isAtLeastS()) {
-            assertEquals(info.getBssid(), null);
-            assertEquals(info.getWifiStandard(), ScanResult.WIFI_STANDARD_UNKNOWN);
-            assertEquals(info.getApInstanceIdentifier(), null);
-        }
-    }
-
-    /**
-     * Verifies the set/get method same as expected.
-     */
-    @Test
-    public void testGetXXXAlignedWithSetXXX() throws Exception {
-        SoftApInfo info = new SoftApInfo();
-        info.setFrequency(TEST_FREQUENCY);
-        info.setBandwidth(TEST_BANDWIDTH);
-        info.setBssid(TEST_AP_MAC);
-        info.setWifiStandard(TEST_WIFI_STANDARD);
-        info.setApInstanceIdentifier(TEST_AP_INSTANCE);
-        info.setAutoShutdownTimeoutMillis(TEST_SHUTDOWN_TIMEOUT_MILLIS);
-        assertEquals(info.getFrequency(), TEST_FREQUENCY);
-        assertEquals(info.getBandwidth(), TEST_BANDWIDTH);
-        if (SdkLevel.isAtLeastS()) {
-            assertEquals(info.getBssid(), TEST_AP_MAC);
-            assertEquals(info.getWifiStandard(), TEST_WIFI_STANDARD);
-            assertEquals(info.getApInstanceIdentifier(), TEST_AP_INSTANCE);
-        }
-        assertEquals(info.getAutoShutdownTimeoutMillis(), TEST_SHUTDOWN_TIMEOUT_MILLIS);
     }
 
 }

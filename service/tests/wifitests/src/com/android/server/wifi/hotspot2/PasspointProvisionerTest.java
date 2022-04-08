@@ -224,7 +224,7 @@ public class PasspointProvisionerTest extends WifiBaseTest {
         when(mOsuServerConnection.validateProvider(
                 anyMap())).thenReturn(true);
         when(mOsuServerConnection.canValidateServer()).thenReturn(true);
-        mPasspointProvisioner.enableVerboseLogging(true);
+        mPasspointProvisioner.enableVerboseLogging(1);
         mOsuProvider = PasspointProvisioningTestUtil.generateOsuProvider(true);
         mDelegate = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         mDelegate.init(PasspointProvisioningTestUtil.createFakeKeyStore());

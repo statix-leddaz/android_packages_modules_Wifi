@@ -43,16 +43,6 @@
             </Node>
           </Node>
         </Node>
-        <Node>
-          <NodeName>WBA</NodeName>
-          <Node>
-            <NodeName>NAI</NodeName>
-            <Node>
-              <NodeName>DecoratedPrefix</NodeName>
-              <Value>androidwifi.dev!</Value>
-            </Node>
-          </Node>
-        </Node>
       </Node>
       <Node>
         <NodeName>HomeSP</NodeName>
@@ -368,7 +358,7 @@
         </Node>
         <Node>
           <NodeName>UpdateMethod</NodeName>
-          <Value>SPP-ClientInitiated</Value>
+          <Value>SSP-ClientInitiated</Value>
         </Node>
         <Node>
           <NodeName>Restriction</NodeName>

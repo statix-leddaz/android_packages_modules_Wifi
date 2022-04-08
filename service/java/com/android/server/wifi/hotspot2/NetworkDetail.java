@@ -115,7 +115,6 @@ public class NetworkDetail {
     private final int mAnqpOICount;
     private final long[] mRoamingConsortiums;
     private int mDtimInterval = -1;
-    private String mCountryCode;
 
     private final InformationElementUtil.ExtendedCapabilities mExtendedCapabilities;
 
@@ -168,9 +167,6 @@ public class NetworkDetail {
         InformationElementUtil.ExtendedCapabilities extendedCapabilities =
                 new InformationElementUtil.ExtendedCapabilities();
 
-        InformationElementUtil.Country country =
-                new InformationElementUtil.Country();
-
         InformationElementUtil.TrafficIndicationMap trafficIndicationMap =
                 new InformationElementUtil.TrafficIndicationMap();
 
@@ -215,9 +211,6 @@ public class NetworkDetail {
                         break;
                     case ScanResult.InformationElement.EID_EXTENDED_CAPS:
                         extendedCapabilities.from(ie);
-                        break;
-                    case ScanResult.InformationElement.EID_COUNTRY:
-                        country.from(ie);
                         break;
                     case ScanResult.InformationElement.EID_TIM:
                         trafficIndicationMap.from(ie);
@@ -308,7 +301,7 @@ public class NetworkDetail {
         //set up channel info
         mPrimaryFreq = freq;
         int channelWidth = ScanResult.UNSPECIFIED;
-        int centerFreq0 = mPrimaryFreq;
+        int centerFreq0 = 0;
         int centerFreq1 = 0;
 
         // First check if HE Operation IE is present
@@ -345,19 +338,9 @@ public class NetworkDetail {
                 centerFreq0 = htOperation.getCenterFreq0(mPrimaryFreq);
             }
         }
-
-        if (channelWidth == ScanResult.UNSPECIFIED) {
-            // Failed to obtain channel info from HE, VHT, HT IEs (possibly a 802.11a/b/g legacy AP)
-            channelWidth = ScanResult.CHANNEL_WIDTH_20MHZ;
-        }
-
         mChannelWidth = channelWidth;
         mCenterfreq0 = centerFreq0;
         mCenterfreq1 = centerFreq1;
-
-        if (country.isValid()) {
-            mCountryCode = country.getCountryCode();
-        }
 
         // If trafficIndicationMap is not valid, mDtimPeriod will be negative
         if (trafficIndicationMap.isValid()) {
@@ -437,7 +420,6 @@ public class NetworkDetail {
         mCenterfreq0 = base.mCenterfreq0;
         mCenterfreq1 = base.mCenterfreq1;
         mDtimInterval = base.mDtimInterval;
-        mCountryCode = base.mCountryCode;
         mWifiMode = base.mWifiMode;
         mMaxRate = base.mMaxRate;
         mMaxNumberSpatialStreams = base.mMaxNumberSpatialStreams;
@@ -562,10 +544,6 @@ public class NetworkDetail {
 
     public int getDtimInterval() {
         return mDtimInterval;
-    }
-
-    public String getCountryCode() {
-        return mCountryCode;
     }
 
     public boolean is80211McResponderSupport() {

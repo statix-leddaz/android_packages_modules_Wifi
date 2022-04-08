@@ -23,7 +23,6 @@ import android.net.wifi.SoftApConfiguration;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.RemoteException;
-import android.os.WorkSource;
 
 import com.android.internal.util.Preconditions;
 
@@ -36,7 +35,6 @@ class LocalOnlyHotspotRequestInfo implements IBinder.DeathRecipient {
     static final int HOTSPOT_NO_ERROR = -1;
 
     private final int mPid;
-    private final WorkSource mWs;
     private final ILocalOnlyHotspotCallback mCallback;
     private final RequestingApplicationDeathCallback mDeathCallback;
     private final SoftApConfiguration mCustomConfig;
@@ -51,11 +49,10 @@ class LocalOnlyHotspotRequestInfo implements IBinder.DeathRecipient {
         void onLocalOnlyHotspotRequestorDeath(LocalOnlyHotspotRequestInfo requestor);
     }
 
-    LocalOnlyHotspotRequestInfo(@NonNull WorkSource ws, @NonNull ILocalOnlyHotspotCallback callback,
+    LocalOnlyHotspotRequestInfo(@NonNull ILocalOnlyHotspotCallback callback,
             @NonNull RequestingApplicationDeathCallback deathCallback,
             @Nullable SoftApConfiguration customConfig) {
         mPid = Binder.getCallingPid();
-        mWs = Preconditions.checkNotNull(ws);
         mCallback = Preconditions.checkNotNull(callback);
         mDeathCallback = Preconditions.checkNotNull(deathCallback);
         mCustomConfig = customConfig;
@@ -115,10 +112,6 @@ class LocalOnlyHotspotRequestInfo implements IBinder.DeathRecipient {
 
     public int getPid() {
         return mPid;
-    }
-
-    public @NonNull WorkSource getWorkSource() {
-        return mWs;
     }
 
     public SoftApConfiguration getCustomConfig() {

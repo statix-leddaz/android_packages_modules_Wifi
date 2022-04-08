@@ -185,7 +185,6 @@ public class WifiMetricsTestUtil {
         probe.type = StaEvent.TYPE_LINK_PROBE;
         probe.linkProbeWasSuccess = true;
         probe.linkProbeSuccessElapsedTimeMs = elapsedTimeMs;
-        probe.interfaceName = WifiMetricsTest.TEST_IFACE_NAME;
         return probe;
     }
 
@@ -197,7 +196,6 @@ public class WifiMetricsTestUtil {
         probe.type = StaEvent.TYPE_LINK_PROBE;
         probe.linkProbeWasSuccess = false;
         probe.linkProbeFailureReason = reason;
-        probe.interfaceName = WifiMetricsTest.TEST_IFACE_NAME;
         return probe;
     }
 

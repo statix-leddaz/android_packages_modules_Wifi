@@ -16,33 +16,25 @@
 
 package com.android.server.wifi;
 
-import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.when;
 
 import android.content.pm.UserInfo;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
-import android.net.wifi.WifiManager;
 import android.os.UserHandle;
+import android.os.UserManager;
 import android.util.SparseArray;
 
 import androidx.test.filters.SmallTest;
 
-import com.android.server.wifi.util.WifiPermissionsUtil;
-
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.mockito.MockitoSession;
-import org.mockito.stubbing.Answer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -57,26 +49,19 @@ import java.util.Set;
 @SmallTest
 public class ConfigurationMapTest extends WifiBaseTest {
     private static final int SYSTEM_MANAGE_PROFILE_USER_ID = 12;
-    private static final String TEST_BSSID = "0a:08:5c:67:89:01";
     private static final List<WifiConfiguration> CONFIGS = Arrays.asList(
             WifiConfigurationTestUtil.generateWifiConfig(
-                    0, 1000000, "\"red\"", true, true, null, null,
-                    WifiConfigurationTestUtil.SECURITY_NONE),
+                    0, 1000000, "\"red\"", true, true, null, null),
             WifiConfigurationTestUtil.generateWifiConfig(
-                    1, 1000001, "\"green\"", true, false, "example.com", "Green",
-                    WifiConfigurationTestUtil.SECURITY_NONE),
+                    1, 1000001, "\"green\"", true, false, "example.com", "Green"),
             WifiConfigurationTestUtil.generateWifiConfig(
-                    2, 1200000, "\"blue\"", false, true, null, null,
-                    WifiConfigurationTestUtil.SECURITY_NONE),
+                    2, 1200000, "\"blue\"", false, true, null, null),
             WifiConfigurationTestUtil.generateWifiConfig(
-                    3, 1100000, "\"cyan\"", true, true, null, null,
-                    WifiConfigurationTestUtil.SECURITY_NONE),
+                    3, 1100000, "\"cyan\"", true, true, null, null),
             WifiConfigurationTestUtil.generateWifiConfig(
-                    4, 1100001, "\"yellow\"", true, true, "example.org", "Yellow",
-                    WifiConfigurationTestUtil.SECURITY_NONE),
+                    4, 1100001, "\"yellow\"", true, true, "example.org", "Yellow"),
             WifiConfigurationTestUtil.generateWifiConfig(
-                    5, 1100002, "\"magenta\"", false, false, null, null,
-                    WifiConfigurationTestUtil.SECURITY_NONE));
+                    5, 1100002, "\"magenta\"", false, false, null, null));
 
     private static final SparseArray<List<UserInfo>> USER_PROFILES = new SparseArray<>();
     static {
@@ -87,12 +72,7 @@ public class ConfigurationMapTest extends WifiBaseTest {
         USER_PROFILES.put(11, Arrays.asList(new UserInfo(11, "Bob", 0)));
     }
 
-    @Mock WifiPermissionsUtil mWifiPermissionsUtil;
-    @Mock WifiInjector mWifiInjector;
-    @Mock ActiveModeWarden mActiveModeWarden;
-    @Mock ClientModeManager mPrimaryClientModeManager;
-    @Mock WifiGlobals mWifiGlobals;
-    private MockitoSession mStaticMockSession = null;
+    @Mock UserManager mUserManager;
 
     private int mCurrentUserId = UserHandle.USER_SYSTEM;
     private ConfigurationMap mConfigs;
@@ -103,45 +83,17 @@ public class ConfigurationMapTest extends WifiBaseTest {
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
-        mStaticMockSession = mockitoSession()
-                .mockStatic(WifiInjector.class)
-                .startMocking();
-        lenient().when(WifiInjector.getInstance()).thenReturn(mWifiInjector);
-        when(mWifiInjector.getActiveModeWarden()).thenReturn(mActiveModeWarden);
-        when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
-        when(mActiveModeWarden.getPrimaryClientModeManager()).thenReturn(mPrimaryClientModeManager);
-        when(mPrimaryClientModeManager.getSupportedFeatures()).thenReturn(
-                WifiManager.WIFI_FEATURE_WPA3_SAE | WifiManager.WIFI_FEATURE_OWE);
-        when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(true);
-        when(mWifiGlobals.isOweUpgradeEnabled()).thenReturn(true);
 
-        when(mWifiPermissionsUtil.doesUidBelongToCurrentUserOrDeviceOwner(anyInt()))
-                .thenAnswer((Answer<Boolean>) invocation -> {
-                    Object[] args = invocation.getArguments();
-                    int userId = UserHandle.getUserId((int) args[0]);
-                    // Current userId matches input userId
-                    if (userId == mCurrentUserId) {
-                        return true;
-                    }
-                    // Current userId and input userId belong to the same profile group
-                    if (userId == UserHandle.USER_SYSTEM
-                            && mCurrentUserId == SYSTEM_MANAGE_PROFILE_USER_ID) {
-                        return true;
-                    }
-                    if (userId == SYSTEM_MANAGE_PROFILE_USER_ID
-                            && mCurrentUserId == UserHandle.USER_SYSTEM) {
-                        return true;
-                    }
-                    return false;
-                });
-        mConfigs = new ConfigurationMap(mWifiPermissionsUtil);
-    }
-
-    @After
-    public void cleanUp() throws Exception {
-        if (null != mStaticMockSession) {
-            mStaticMockSession.finishMocking();
-        }
+        // by default, return false
+        when(mUserManager.isSameProfileGroup(any(), any())).thenReturn(false);
+        // return true for these 2 userids
+        when(mUserManager.isSameProfileGroup(UserHandle.SYSTEM,
+                UserHandle.of(SYSTEM_MANAGE_PROFILE_USER_ID)))
+                .thenReturn(true);
+        when(mUserManager.isSameProfileGroup(UserHandle.of(SYSTEM_MANAGE_PROFILE_USER_ID),
+                UserHandle.SYSTEM))
+                .thenReturn(true);
+        mConfigs = new ConfigurationMap(mUserManager);
     }
 
     private void switchUser(int newUserId) {
@@ -184,8 +136,10 @@ public class ConfigurationMapTest extends WifiBaseTest {
         // user. Also, check that *ForAllUsers() methods can be used to access all network
         // configurations, irrespective of their visibility to the current user.
         for (WifiConfiguration config : configs) {
-            if (config.shared || mWifiPermissionsUtil
-                    .doesUidBelongToCurrentUserOrDeviceOwner(config.creatorUid)) {
+            final UserHandle currentUser = UserHandle.of(mCurrentUserId);
+            final UserHandle creatorUser = UserHandle.getUserHandleForUid(config.creatorUid);
+            if (config.shared || currentUser.equals(creatorUser)
+                    || mUserManager.isSameProfileGroup(currentUser, creatorUser)) {
                 configsForCurrentUser.add(config);
                 if (config.status != WifiConfiguration.Status.DISABLED) {
                     enabledConfigsForCurrentUser.add(config);
@@ -201,8 +155,7 @@ public class ConfigurationMapTest extends WifiBaseTest {
         // visible to the current user.
         for (WifiConfiguration config : configsForCurrentUser) {
             assertEquals(config, mConfigs.getForCurrentUser(config.networkId));
-            assertEquals(config, mConfigs.getByConfigKeyForCurrentUser(
-                    config.getProfileKey()));
+            assertEquals(config, mConfigs.getByConfigKeyForCurrentUser(config.getKey()));
             final boolean wasEphemeral = config.ephemeral;
             config.ephemeral = false;
             assertNull(getEphemeralForCurrentUser(config.SSID));
@@ -215,7 +168,7 @@ public class ConfigurationMapTest extends WifiBaseTest {
         // visible to the current user.
         for (WifiConfiguration config : configsNotForCurrentUser) {
             assertNull(mConfigs.getForCurrentUser(config.networkId));
-            assertNull(mConfigs.getByConfigKeyForCurrentUser(config.getProfileKey()));
+            assertNull(mConfigs.getByConfigKeyForCurrentUser(config.getKey()));
             final boolean wasEphemeral = config.ephemeral;
             config.ephemeral = false;
             assertNull(getEphemeralForCurrentUser(config.SSID));
@@ -235,7 +188,7 @@ public class ConfigurationMapTest extends WifiBaseTest {
     }
 
     private ScanResult createScanResultForNetwork(WifiConfiguration config) {
-        return WifiConfigurationTestUtil.createScanDetailForNetwork(config, TEST_BSSID, 0, 0, 0, 0)
+        return WifiConfigurationTestUtil.createScanDetailForNetwork(config, "", 0, 0, 0, 0)
                 .getScanResult();
     }
 
@@ -249,7 +202,7 @@ public class ConfigurationMapTest extends WifiBaseTest {
         WifiConfiguration retrievedConfig =
                 mConfigs.getByScanResultForCurrentUser(scanResult);
         assertNotNull(retrievedConfig);
-        assertEquals(config.getProfileKey(), retrievedConfig.getProfileKey());
+        assertEquals(config.getKey(), retrievedConfig.getKey());
     }
 
     /**
@@ -339,7 +292,8 @@ public class ConfigurationMapTest extends WifiBaseTest {
         WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
         ScanResult scanResult = createScanResultForNetwork(config);
         // Change the network security type and the old scan result should not match now.
-        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+        config.allowedKeyManagement.clear();
+        config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
         mConfigs.put(config);
         assertNull(mConfigs.getByScanResultForCurrentUser(scanResult));
     }
@@ -395,35 +349,6 @@ public class ConfigurationMapTest extends WifiBaseTest {
         // cache entry.
         config.ephemeral = true;
         config.fromWifiNetworkSpecifier = true;
-        mConfigs.put(config);
-        assertNull(mConfigs.getByScanResultForCurrentUser(scanResult));
-    }
-
-    @Test
-    public void testScanResultDoesNotMatchForWifiNetworkSuggestion() {
-        // Add regular saved network, this should create a scan result match info cache entry.
-        WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
-        ScanResult scanResult = createScanResultForNetwork(config);
-        config.networkId = 5;
-        mConfigs.put(config);
-        assertNotNull(mConfigs.getByScanResultForCurrentUser(scanResult));
-
-        mConfigs.clear();
-
-        // Create WifiNetworkSuggestion network, this should not create a scan result match info
-        // cache entry.
-        config.ephemeral = true;
-        config.fromWifiNetworkSuggestion = true;
-        mConfigs.put(config);
-        assertNull(mConfigs.getByScanResultForCurrentUser(scanResult));
-    }
-
-    @Test
-    public void testScanResultDoesNotMatchForPasspoint() {
-        // Add passpoint network, this should not create a scan result match info cache entry.
-        WifiConfiguration config = WifiConfigurationTestUtil.createPasspointNetwork();
-        ScanResult scanResult = createScanResultForNetwork(config);
-        config.networkId = 5;
         mConfigs.put(config);
         assertNull(mConfigs.getByScanResultForCurrentUser(scanResult));
     }

@@ -18,6 +18,7 @@ package com.android.server.wifi;
 
 import android.app.AlertDialog;
 import android.app.Notification;
+import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -37,29 +38,28 @@ import com.android.wifi.resources.R;
 public class ConnectionFailureNotifier {
     private static final String TAG = "ConnectionFailureNotifier";
 
-    private final WifiContext mContext;
-    private final FrameworkFacade mFrameworkFacade;
-    private final WifiConfigManager mWifiConfigManager;
-    private final WifiConnectivityManager mWifiConnectivityManager;
-    private final WifiNotificationManager mNotificationManager;
-    private final Handler mHandler;
-    private final ConnectionFailureNotificationBuilder mConnectionFailureNotificationBuilder;
+    private Context mContext;
+    private WifiInjector mWifiInjector;
+    private FrameworkFacade mFrameworkFacade;
+    private WifiConfigManager mWifiConfigManager;
+    private WifiConnectivityManager mWifiConnectivityManager;
+    private NotificationManager mNotificationManager;
+    private Handler mHandler;
+    private ConnectionFailureNotificationBuilder mConnectionFailureNotificationBuilder;
 
     public ConnectionFailureNotifier(
-            WifiContext context,
-            FrameworkFacade framework,
-            WifiConfigManager wifiConfigManager,
-            WifiConnectivityManager wifiConnectivityManager,
-            Handler handler,
-            WifiNotificationManager notificationManager,
-            ConnectionFailureNotificationBuilder connectionFailureNotificationBuilder) {
+            Context context, WifiInjector wifiInjector, FrameworkFacade framework,
+            WifiConfigManager wifiConfigManager, WifiConnectivityManager wifiConnectivityManager,
+            Handler handler) {
         mContext = context;
+        mWifiInjector = wifiInjector;
         mFrameworkFacade = framework;
         mWifiConfigManager = wifiConfigManager;
         mWifiConnectivityManager = wifiConnectivityManager;
-        mNotificationManager = notificationManager;
+        mNotificationManager = mWifiInjector.getNotificationManager();
         mHandler = handler;
-        mConnectionFailureNotificationBuilder = connectionFailureNotificationBuilder;
+        mConnectionFailureNotificationBuilder =
+                mWifiInjector.getConnectionFailureNotificationBuilder();
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(ConnectionFailureNotificationBuilder

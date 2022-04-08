@@ -39,7 +39,6 @@ public class Capabilities {
     public int maxQueuedTransmitMessages;
     public int maxSubscribeInterfaceAddresses;
     public int supportedCipherSuites;
-    public boolean isInstantCommunicationModeSupported;
 
     /**
      * Converts the internal capabilities to a parcelable & potentially app-facing
@@ -53,8 +52,6 @@ public class Capabilities {
         bundle.putInt(Characteristics.KEY_MAX_MATCH_FILTER_LENGTH, maxMatchFilterLen);
         bundle.putInt(Characteristics.KEY_SUPPORTED_CIPHER_SUITES,
                 toPublicCipherSuites(supportedCipherSuites));
-        bundle.putBoolean(Characteristics.KEY_IS_INSTANT_COMMUNICATION_MODE_SUPPORTED,
-                isInstantCommunicationModeSupported);
         return new Characteristics(bundle);
     }
 
@@ -84,7 +81,6 @@ public class Capabilities {
                 + ", maxQueuedTransmitMessages=" + maxQueuedTransmitMessages
                 + ", maxSubscribeInterfaceAddresses=" + maxSubscribeInterfaceAddresses
                 + ", supportedCipherSuites=" + supportedCipherSuites
-                + ", isInstantCommunicationModeSupport=" + isInstantCommunicationModeSupported
                 + "]";
     }
 }

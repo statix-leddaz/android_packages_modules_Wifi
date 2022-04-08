@@ -17,8 +17,6 @@
 package com.android.server.wifi.hotspot2.anqp;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 
 import androidx.test.filters.SmallTest;
 
@@ -70,15 +68,6 @@ public class HSWanMetricsElementTest extends WifiBaseTest {
         return buffer;
     }
 
-    private ByteBuffer getUninitializedBuffer() {
-        // Setup an uninitialized WAN Metrics element (or initialized with 0's)
-        ByteBuffer buffer = ByteBuffer.allocate(HSWanMetricsElement.EXPECTED_BUFFER_SIZE)
-                .order(ByteOrder.LITTLE_ENDIAN);
-        buffer.put(new byte[HSWanMetricsElement.EXPECTED_BUFFER_SIZE]);
-        buffer.position(0);
-        return buffer;
-    }
-
     @Test
     public void testGetStatus() {
         assertEquals(TEST_LINK_STATUS, TEST_ELEMENT.getStatus());
@@ -90,8 +79,8 @@ public class HSWanMetricsElementTest extends WifiBaseTest {
     }
 
     @Test
-    public void testIsAtCapacity() {
-        assertEquals(TEST_AT_CAPACITY, TEST_ELEMENT.isAtCapacity());
+    public void testIsCapped() {
+        assertEquals(TEST_AT_CAPACITY, TEST_ELEMENT.isCapped());
     }
 
     @Test
@@ -171,18 +160,5 @@ public class HSWanMetricsElementTest extends WifiBaseTest {
                 TEST_DOWNLINK_SPEED, TEST_UPLINK_SPEED, TEST_DOWNLINK_LOAD,
                 TEST_UPLINK_LOAD, TEST_LMD);
         assertEquals(expectedElement, HSWanMetricsElement.parse(buffer));
-        assertTrue(expectedElement.isElementInitialized());
-    }
-
-    /**
-     * Verify that an element with all 0's (uninitialized) is detected as uninitialized.
-     *
-     * @throws Exception
-     */
-    @Test
-    public void testIsInitialized() throws Exception {
-        ByteBuffer buffer = getUninitializedBuffer();
-        HSWanMetricsElement parsedElement = HSWanMetricsElement.parse(buffer);
-        assertFalse(parsedElement.isElementInitialized());
     }
 }
