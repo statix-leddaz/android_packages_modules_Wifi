@@ -17,6 +17,7 @@
 package com.android.server.wifi.util;
 
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
+import static android.Manifest.permission.ENTER_CAR_MODE_PRIORITIZED;
 import static android.Manifest.permission.NEARBY_WIFI_DEVICES;
 import static android.Manifest.permission.RENOUNCE_PERMISSIONS;
 import static android.Manifest.permission.REQUEST_COMPANION_PROFILE_AUTOMOTIVE_PROJECTION;
@@ -264,12 +265,18 @@ public class WifiPermissionsUtil {
             Log.w(TAG, "Could not find package for disavowal check: " + packageName);
         }
         // App did not disavow location. Check for location permission and location mode.
-        if (!isLocationModeEnabled()) {
-            if (mVerboseLoggingEnabled) {
-                Log.v(TAG, "enforceCanAccessScanResults(pkg=" + packageName + ", uid=" + uid + "): "
-                        + "location is disabled");
+        long ident = Binder.clearCallingIdentity();
+        try {
+            if (!isLocationModeEnabled()) {
+                if (mVerboseLoggingEnabled) {
+                    Log.v(TAG, "enforceNearbyDevicesPermission(pkg=" + packageName + ", uid=" + uid
+                            + "): "
+                            + "location is disabled");
+                }
+                throw new SecurityException("Location mode is disabled for the device");
             }
-            throw new SecurityException("Location mode is disabled for the device");
+        } finally {
+            Binder.restoreCallingIdentity(ident);
         }
         if (mPermissionManager.checkPermissionForDataDelivery(
                 ACCESS_FINE_LOCATION, attributionSource, message)
@@ -721,6 +728,14 @@ public class WifiPermissionsUtil {
     }
 
     /**
+     * Returns true if the |uid| holds ENTER_CAR_MODE_PRIORITIZED permission.
+     */
+    public boolean checkEnterCarModePrioritized(int uid) {
+        return mWifiPermissionsWrapper.getUidPermission(ENTER_CAR_MODE_PRIORITIZED, uid)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
      * Returns true if the |uid| holds MANAGE_WIFI_INTERFACES permission.
      */
     public boolean checkManageWifiInterfacesPermission(int uid) {
@@ -730,11 +745,11 @@ public class WifiPermissionsUtil {
     }
 
     /**
-     * Returns true if the |uid| holds MANAGE_WIFI_AUTO_JOIN permission.
+     * Returns true if the |uid| holds MANAGE_WIFI_NETWORK_SELECTION permission.
      */
-    public boolean checkManageWifiAutoJoinPermission(int uid) {
+    public boolean checkManageWifiNetworkSelectionPermission(int uid) {
         return mWifiPermissionsWrapper.getUidPermission(
-                android.Manifest.permission.MANAGE_WIFI_AUTO_JOIN, uid)
+                android.Manifest.permission.MANAGE_WIFI_NETWORK_SELECTION, uid)
                 == PackageManager.PERMISSION_GRANTED;
     }
 
@@ -978,7 +993,7 @@ public class WifiPermissionsUtil {
                 .getStringArray(R.array.config_oemPrivilegedWifiAdminPackages));
         PackageManager pm = mContext.getPackageManager();
         String[] packages = pm.getPackagesForUid(uid);
-        if (Arrays.stream(packages).noneMatch(oemPrivilegedAdmins::contains)) {
+        if (packages == null || Arrays.stream(packages).noneMatch(oemPrivilegedAdmins::contains)) {
             return false;
         }
 
@@ -1069,6 +1084,20 @@ public class WifiPermissionsUtil {
                     "Non foreground user trying to modify wifi configuration");
         }
         return isCurrentProfile || isDeviceOwner(uid);
+    }
+
+    /**
+     * Check if the current user is a guest user
+     * @return true if the current user is a guest user, false otherwise.
+     */
+    public boolean isGuestUser() {
+        UserManager userManager = mContext.createContextAsUser(
+                UserHandle.of(mWifiPermissionsWrapper.getCurrentUser()), 0)
+                .getSystemService(UserManager.class);
+        if (userManager == null) {
+            return true;
+        }
+        return userManager.isGuestUser();
     }
 
     /**

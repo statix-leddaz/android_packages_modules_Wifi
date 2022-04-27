@@ -54,6 +54,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -168,12 +169,12 @@ public class WifiNetworkSelector {
          * @param untrustedNetworkAllowed  a flag to indicate if untrusted networks are allowed
          * @param oemPaidNetworkAllowed    a flag to indicate if oem paid networks are allowed
          * @param oemPrivateNetworkAllowed a flag to indicate if oem private networks are allowed
-         * @param restrictedNetworkAllowed a flag to indicate if restrictednetworks are allowed
+         * @param restrictedNetworkAllowedUids a set of Uids are allowed for restricted network
          * @param onConnectableListener    callback to record all of the connectable networks
          */
         void nominateNetworks(List<ScanDetail> scanDetails,
                 boolean untrustedNetworkAllowed, boolean oemPaidNetworkAllowed,
-                boolean oemPrivateNetworkAllowed, boolean restrictedNetworkAllowed,
+                boolean oemPrivateNetworkAllowed, Set<Integer> restrictedNetworkAllowedUids,
                 OnConnectableListener onConnectableListener);
 
         /**
@@ -715,12 +716,23 @@ public class WifiNetworkSelector {
         WifiConfiguration originalCandidate = candidate;
         ScanResult scanResultCandidate = candidate.getNetworkSelectionStatus().getCandidate();
 
+        Set<String> seenNetworks = new HashSet<>();
+        seenNetworks.add(candidate.getProfileKey());
+
         while (tempConfig.getNetworkSelectionStatus().getConnectChoice() != null) {
             String key = tempConfig.getNetworkSelectionStatus().getConnectChoice();
             int userSelectedRssi = tempConfig.getNetworkSelectionStatus().getConnectChoiceRssi();
             tempConfig = mWifiConfigManager.getConfiguredNetwork(key);
 
             if (tempConfig != null) {
+                if (seenNetworks.contains(tempConfig.getProfileKey())) {
+                    Log.wtf(TAG, "user connected network is a loop, use candidate:"
+                            + candidate);
+                    mWifiConfigManager.setLegacyUserConnectChoice(candidate,
+                            candidate.getNetworkSelectionStatus().getCandidate().level);
+                    break;
+                }
+                seenNetworks.add(tempConfig.getProfileKey());
                 WifiConfiguration.NetworkSelectionStatus tempStatus =
                         tempConfig.getNetworkSelectionStatus();
                 boolean noInternetButInternetIsExpected = !tempConfig.isNoInternetAccessExpected()
@@ -890,7 +902,7 @@ public class WifiNetworkSelector {
      * @param untrustedNetworkAllowed  True if untrusted networks are allowed for connection
      * @param oemPaidNetworkAllowed    True if oem paid networks are allowed for connection
      * @param oemPrivateNetworkAllowed True if oem private networks are allowed for connection
-     * @param restrictedNetworkAllowed True if restricted networks are allowed for connection
+     * @param restrictedNetworkAllowedUids a set of Uids are allowed for restricted network
      * @param multiInternetNetworkAllowed True if multi internet networks are allowed for
      *                                    connection.
      * @return list of valid Candidate(s)
@@ -899,7 +911,7 @@ public class WifiNetworkSelector {
             @NonNull List<ScanDetail> scanDetails, @NonNull Set<String> bssidBlocklist,
             @NonNull List<ClientModeManagerState> cmmStates, boolean untrustedNetworkAllowed,
             boolean oemPaidNetworkAllowed, boolean oemPrivateNetworkAllowed,
-            boolean restrictedNetworkAllowed, boolean multiInternetNetworkAllowed) {
+            Set<Integer> restrictedNetworkAllowedUids, boolean multiInternetNetworkAllowed) {
         mFilteredNetworks.clear();
         mConnectableNetworks.clear();
         if (scanDetails.size() == 0) {
@@ -957,6 +969,7 @@ public class WifiNetworkSelector {
                         NetworkNominator.NOMINATOR_ID_CURRENT,
                         cmmState.wifiInfo.getRssi(),
                         cmmState.wifiInfo.getFrequency(),
+                        ScanResult.CHANNEL_WIDTH_20MHZ, // channel width not available in WifiInfo
                         calculateLastSelectionWeight(currentNetwork.networkId),
                         WifiConfiguration.isMetered(currentNetwork, cmmState.wifiInfo),
                         isFromCarrierOrPrivilegedApp(currentNetwork),
@@ -972,7 +985,7 @@ public class WifiNetworkSelector {
             registeredNominator.nominateNetworks(
                     new ArrayList<>(mFilteredNetworks),
                     untrustedNetworkAllowed, oemPaidNetworkAllowed, oemPrivateNetworkAllowed,
-                    restrictedNetworkAllowed, (scanDetail, config) -> {
+                    restrictedNetworkAllowedUids, (scanDetail, config) -> {
                         WifiCandidates.Key key = wifiCandidates.keyFromScanDetailAndConfig(
                                 scanDetail, config);
                         if (key != null) {
@@ -988,6 +1001,7 @@ public class WifiNetworkSelector {
                                     registeredNominator.getId(),
                                     scanDetail.getScanResult().level,
                                     scanDetail.getScanResult().frequency,
+                                    scanDetail.getScanResult().channelWidth,
                                     calculateLastSelectionWeight(config.networkId),
                                     metered,
                                     isFromCarrierOrPrivilegedApp(config),
@@ -1114,7 +1128,7 @@ public class WifiNetworkSelector {
      * @param network the target network.
      * @param scanDetail the target scan detail.
      */
-    public void updateNetworkCandidateSecurityParams(
+    private void updateNetworkCandidateSecurityParams(
             WifiConfiguration network, ScanDetail scanDetail) {
         if (network == null) return;
         if (scanDetail == null) return;
@@ -1379,7 +1393,13 @@ public class WifiNetworkSelector {
         }
     }
 
-    private static boolean isFromCarrierOrPrivilegedApp(WifiConfiguration config) {
+    /**
+     * Indicate whether or not a configuration is from carrier or privileged app.
+     *
+     * @param config The network configuration
+     * @return true if this configuration is from carrier or privileged app; false otherwise.
+     */
+    public static boolean isFromCarrierOrPrivilegedApp(WifiConfiguration config) {
         if (config.fromWifiNetworkSuggestion
                 && config.carrierId != TelephonyManager.UNKNOWN_CARRIER_ID) {
             // Privileged carrier suggestion
