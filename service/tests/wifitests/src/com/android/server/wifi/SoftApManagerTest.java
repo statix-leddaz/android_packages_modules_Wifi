@@ -358,6 +358,7 @@ public class SoftApManagerTest extends WifiBaseTest {
                 SoftApConfiguration.BAND_2GHZ, TEST_SUPPORTED_24G_CHANNELS);
         mTestSoftApCapability.setSupportedChannelList(
                 SoftApConfiguration.BAND_5GHZ, TEST_SUPPORTED_5G_CHANNELS);
+        mTestSoftApCapability.setCountryCode(TEST_COUNTRY_CODE);
         when(mWifiApConfigStore.getApConfiguration()).thenReturn(mDefaultApConfig);
         when(mWifiNative.isHalStarted()).thenReturn(true);
 
@@ -3188,7 +3189,7 @@ public class SoftApManagerTest extends WifiBaseTest {
     }
 
     @Test
-    public void testFallbackToSingleModeDueToCurrentConcurrencyCombo()
+    public void testFallbackToSingleModeDueToUnableToCreateBridgedAp()
             throws Exception {
         assumeTrue(SdkLevel.isAtLeastS());
         Builder configBuilder = new SoftApConfiguration.Builder(
@@ -3200,7 +3201,27 @@ public class SoftApManagerTest extends WifiBaseTest {
         // Reset band to 2.4G | 5G to generate expected configuration since it should fallback to
         // single AP mode
         configBuilder.setBand(SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ);
+        when(mWifiNative.isHalStarted()).thenReturn(true);
         when(mWifiNative.isItPossibleToCreateBridgedApIface(any())).thenReturn(false);
+        startSoftApAndVerifyEnabled(apConfig, TEST_COUNTRY_CODE, configBuilder.build());
+    }
+
+    @Test
+    public void testFallbackToSingleModeIfBridgedApWillTearDownExistingIface()
+            throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
+        Builder configBuilder = new SoftApConfiguration.Builder(
+                generateBridgedModeSoftApConfig(null));
+
+        SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
+                WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
+                mTestSoftApCapability);
+        // Reset band to 2.4G | 5G to generate expected configuration since it should fallback to
+        // single AP mode
+        configBuilder.setBand(SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ);
+        when(mWifiNative.isHalStarted()).thenReturn(true);
+        when(mWifiNative.isItPossibleToCreateBridgedApIface(any())).thenReturn(true);
+        when(mWifiNative.shouldDowngradeToSingleApForConcurrency(any())).thenReturn(true);
         startSoftApAndVerifyEnabled(apConfig, TEST_COUNTRY_CODE, configBuilder.build());
     }
 
@@ -3244,8 +3265,7 @@ public class SoftApManagerTest extends WifiBaseTest {
         verify(mContext).registerReceiver(mBroadcastReceiverCaptor.capture(),
                 argThat((IntentFilter filter) ->
                         filter.hasAction(Intent.ACTION_POWER_CONNECTED)
-                                && filter.hasAction(Intent.ACTION_POWER_DISCONNECTED)),
-                eq(Context.RECEIVER_NOT_EXPORTED));
+                                && filter.hasAction(Intent.ACTION_POWER_DISCONNECTED)));
         mBroadcastReceiverCaptor.getValue().onReceive(mContext,
                 new Intent(Intent.ACTION_POWER_CONNECTED));
         mLooper.dispatchAll();
@@ -3275,5 +3295,24 @@ public class SoftApManagerTest extends WifiBaseTest {
                                   + TEST_SECOND_INSTANCE_NAME),
                         any(), any());
     }
+
+    @Test
+    public void testForceToEnableBridgedModeWhenCountryCodeIsPendingToChanged()
+            throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
+        int[] dual_bands = {SoftApConfiguration.BAND_2GHZ,
+                SoftApConfiguration.BAND_5GHZ};
+        SoftApCapability testCapability = new SoftApCapability(mTestSoftApCapability);
+        testCapability.setCountryCode(null);
+        Builder configBuilder = new SoftApConfiguration.Builder();
+        configBuilder.setSsid(TEST_SSID);
+        configBuilder.setBands(dual_bands);
+
+        SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
+                WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
+                testCapability);
+        startSoftApAndVerifyEnabled(apConfig, TEST_COUNTRY_CODE, configBuilder.build());
+    }
+
 }
 

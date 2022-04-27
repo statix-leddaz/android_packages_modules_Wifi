@@ -296,8 +296,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                         mWifiInjector, mWifiPermissionsUtil, mWifiConfigManager, mWifiConfigStore,
                         mWifiMetrics, mWifiCarrierInfoManager, mWifiKeyStore,
                         mLruConnectionTracker, mClock);
-        verify(mContext).registerReceiver(mBroadcastReceiverCaptor.capture(), any(), any(), any(),
-                eq(Context.RECEIVER_NOT_EXPORTED));
+        verify(mContext).registerReceiver(mBroadcastReceiverCaptor.capture(), any(), any(), any());
 
         ArgumentCaptor<NetworkSuggestionStoreData.DataSource> dataSourceArgumentCaptor =
                 ArgumentCaptor.forClass(NetworkSuggestionStoreData.DataSource.class);
@@ -4129,7 +4128,6 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 .thenReturn(true);
         verify(mPasspointManager).enableAutojoin(anyString(), any(), eq(true));
         verify(mWifiConfigManager).addOrUpdateNetwork(any(), anyInt(), anyString());
-        verify(mWifiConfigManager).allowAutojoin(anyInt(), eq(true));
         matchedSuggestions = mWifiNetworkSuggestionsManager
                 .getNetworkSuggestionsForScanDetail(createScanDetailForNetwork(eapSimConfig));
 
