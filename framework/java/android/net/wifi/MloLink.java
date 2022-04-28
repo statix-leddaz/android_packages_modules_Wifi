@@ -21,9 +21,11 @@ import static android.net.wifi.WifiScanner.WIFI_BAND_5_GHZ;
 import static android.net.wifi.WifiScanner.WIFI_BAND_6_GHZ;
 
 import android.annotation.IntDef;
+import android.annotation.IntRange;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.net.MacAddress;
+import android.net.NetworkCapabilities;
 import android.os.Parcel;
 import android.os.Parcelable;
 
@@ -90,6 +92,7 @@ public final class MloLink implements Parcelable {
     public @interface MloLinkState {};
 
     private int mLinkId;
+    private MacAddress mApMacAddress;
     private MacAddress mStaMacAddress;
     private @MloLinkState int mState;
     private @WifiAnnotations.WifiBandBasic int mBand;
@@ -102,8 +105,29 @@ public final class MloLink implements Parcelable {
         mBand = WifiScanner.WIFI_BAND_UNSPECIFIED;
         mChannel = 0;
         mState = MLO_LINK_STATE_UNASSOCIATED;
+        mApMacAddress = null;
         mStaMacAddress = null;
         mLinkId = INVALID_MLO_LINK_ID;
+    }
+
+    /**
+     * Copy Constructor
+     *
+     * @hide
+     */
+    public MloLink(MloLink source, long redactions) {
+        mBand = source.mBand;
+        mChannel = source.mChannel;
+        mLinkId = source.mLinkId;
+        mState = source.mState;
+
+        mStaMacAddress = ((redactions & NetworkCapabilities.REDACT_FOR_LOCAL_MAC_ADDRESS) != 0)
+                || source.mStaMacAddress == null
+                ? null :  MacAddress.fromString(source.mStaMacAddress.toString());
+
+        mApMacAddress = ((redactions & NetworkCapabilities.REDACT_FOR_ACCESS_FINE_LOCATION) != 0)
+                || source.mApMacAddress == null
+                ? null : MacAddress.fromString(source.mApMacAddress.toString());
     }
 
     /** Returns the Wi-Fi band of this link as one of:
@@ -116,7 +140,11 @@ public final class MloLink implements Parcelable {
         return mBand;
     }
 
-    /** Returns the channel number of this link. */
+    /**
+     * Returns the channel number of this link.
+     * A valid value is based on the 802.11 specification in sections 19.3.15 and 27.3.23
+     */
+    @IntRange(from = 1)
     public int getChannel() {
         return mChannel;
     }
@@ -127,6 +155,7 @@ public final class MloLink implements Parcelable {
      *
      * @return {@link #INVALID_MLO_LINK_ID} or a valid value (0-15).
      */
+    @IntRange(from = INVALID_MLO_LINK_ID, to = MAX_MLO_LINK_ID)
     public int getLinkId() {
         return mLinkId;
     }
@@ -141,7 +170,25 @@ public final class MloLink implements Parcelable {
         return mState;
     }
 
-    /** Returns the STA MAC address of this link. */
+    /**
+     * Returns the AP MAC address of this link.
+     *
+     * @return AP MAC address for this link or null when the caller has insufficient
+     * permissions to access the access point MAC Address.
+     */
+    public @Nullable MacAddress getApMacAddress() {
+        return mApMacAddress;
+    }
+
+    /**
+     * Returns the STA MAC address of this link.
+     *
+     * @return STA MAC address assigned for this link, or null in the following cases:
+     * <ul>
+     *     <li> The caller has insufficient permissions to access the STA MAC Address </li>
+     *     <li> Link is not associated, hence no MAC address is assigned to it by STA </li>
+     * </ul>
+     */
     public @Nullable MacAddress getStaMacAddress() {
         return mStaMacAddress;
     }
@@ -183,6 +230,15 @@ public final class MloLink implements Parcelable {
     }
 
     /**
+     * set the AP MAC Address for this link
+     *
+     * @hide
+     */
+    public void setApMacAddress(MacAddress address) {
+        mApMacAddress = address;
+    }
+
+    /**
      * set the STA MAC Address for this link
      *
      * @hide
@@ -199,13 +255,14 @@ public final class MloLink implements Parcelable {
         return mBand == that.mBand
                 && mChannel == that.mChannel
                 && mLinkId == that.mLinkId
+                && Objects.equals(mApMacAddress, that.mApMacAddress)
                 && Objects.equals(mStaMacAddress, that.mStaMacAddress)
                 && mState == that.mState;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(mBand, mChannel, mLinkId, mStaMacAddress, mState);
+        return Objects.hash(mBand, mChannel, mLinkId, mApMacAddress, mStaMacAddress, mState);
     }
 
     private String getStateString(@MloLinkState int state) {
@@ -252,8 +309,11 @@ public final class MloLink implements Parcelable {
         sb.append(", channel: ").append(mChannel);
         sb.append(", id: ").append(mLinkId);
         sb.append(", state: ").append(getStateString(mState));
+        if (mApMacAddress != null) {
+            sb.append(", AP MAC Address: ").append(mApMacAddress.toString());
+        }
         if (mStaMacAddress != null) {
-            sb.append(", MAC Address: ").append(mStaMacAddress.toString());
+            sb.append(", STA MAC Address: ").append(mStaMacAddress.toString());
         }
         sb.append('}');
         return sb.toString();
@@ -272,6 +332,7 @@ public final class MloLink implements Parcelable {
         dest.writeInt(mChannel);
         dest.writeInt(mLinkId);
         dest.writeInt(mState);
+        dest.writeParcelable(mApMacAddress, flags);
         dest.writeParcelable(mStaMacAddress, flags);
     }
 
@@ -284,6 +345,7 @@ public final class MloLink implements Parcelable {
                     link.mChannel = in.readInt();
                     link.mLinkId = in.readInt();
                     link.mState = in.readInt();
+                    link.mApMacAddress = in.readParcelable(MacAddress.class.getClassLoader());
                     link.mStaMacAddress = in.readParcelable(MacAddress.class.getClassLoader());
                     return link;
                 }
