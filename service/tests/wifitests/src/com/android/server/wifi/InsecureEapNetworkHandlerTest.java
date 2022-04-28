@@ -33,7 +33,6 @@ import static org.mockito.Mockito.when;
 
 import android.app.Notification;
 import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiContext;
@@ -52,6 +51,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+
+import java.security.cert.X509Certificate;
 
 /**
  * Unit tests for {@link com.android.server.wifi.InsecureEapNetworkHandlerTest}.
@@ -117,11 +118,12 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
     public void verifyTrustOnFirstUseAcceptWhenConnectByUser() throws Exception {
         assumeTrue(SdkLevel.isAtLeastT());
         boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = true;
+        boolean needUserApproval = true;
 
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
-        verifyTrustOnFirstUserFlow(config, ACTION_ACCEPT, isTrustOnFirstUseSupported,
-                isUserSelected, true);
+        verifyTrustOnFirstUseFlowWithDefaultCerts(config, ACTION_ACCEPT,
+                isTrustOnFirstUseSupported, isUserSelected, needUserApproval);
     }
 
     /**
@@ -133,11 +135,12 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
     public void verifyTrustOnFirstUseRejectWhenConnectByUser() throws Exception {
         assumeTrue(SdkLevel.isAtLeastT());
         boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = true;
+        boolean needUserApproval = true;
 
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
-        verifyTrustOnFirstUserFlow(config, ACTION_REJECT, isTrustOnFirstUseSupported,
-                isUserSelected, true);
+        verifyTrustOnFirstUseFlowWithDefaultCerts(config, ACTION_REJECT,
+                isTrustOnFirstUseSupported, isUserSelected, needUserApproval);
     }
 
     /**
@@ -149,11 +152,12 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
     public void verifyTrustOnFirstUseAcceptWhenConnectByAutoConnect() throws Exception {
         assumeTrue(SdkLevel.isAtLeastT());
         boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = false;
+        boolean needUserApproval = true;
 
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
-        verifyTrustOnFirstUserFlow(config, ACTION_ACCEPT, isTrustOnFirstUseSupported,
-                isUserSelected, true);
+        verifyTrustOnFirstUseFlowWithDefaultCerts(config, ACTION_ACCEPT,
+                isTrustOnFirstUseSupported, isUserSelected, needUserApproval);
     }
 
     /**
@@ -165,11 +169,12 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
     public void verifyTrustOnFirstUseRejectWhenConnectByAutoConnect() throws Exception {
         assumeTrue(SdkLevel.isAtLeastT());
         boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = false;
+        boolean needUserApproval = true;
 
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
-        verifyTrustOnFirstUserFlow(config, ACTION_REJECT, isTrustOnFirstUseSupported,
-                isUserSelected, true);
+        verifyTrustOnFirstUseFlowWithDefaultCerts(config, ACTION_REJECT,
+                isTrustOnFirstUseSupported, isUserSelected, needUserApproval);
     }
 
     /**
@@ -181,11 +186,12 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
     public void verifyTrustOnFirstUseTapWhenConnectByAutoConnect() throws Exception {
         assumeTrue(SdkLevel.isAtLeastT());
         boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = false;
+        boolean needUserApproval = true;
 
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
-        verifyTrustOnFirstUserFlow(config, ACTION_TAP, isTrustOnFirstUseSupported,
-                isUserSelected, true);
+        verifyTrustOnFirstUseFlowWithDefaultCerts(config, ACTION_TAP,
+                isTrustOnFirstUseSupported, isUserSelected, needUserApproval);
     }
 
     /**
@@ -227,11 +233,12 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
     public void verifyLegacyEapNetworkAcceptWhenConnectByUser() throws Exception {
         assumeFalse(SdkLevel.isAtLeastT());
         boolean isAtLeastT = false, isTrustOnFirstUseSupported = false, isUserSelected = true;
+        boolean needUserApproval = true;
 
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
-        verifyTrustOnFirstUserFlow(config, ACTION_ACCEPT, isTrustOnFirstUseSupported,
-                isUserSelected, true);
+        verifyTrustOnFirstUseFlowWithDefaultCerts(config, ACTION_ACCEPT,
+                isTrustOnFirstUseSupported, isUserSelected, needUserApproval);
     }
 
     /**
@@ -244,11 +251,12 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
     public void verifyLegacyEapNetworkRejectWhenConnectByUser() throws Exception {
         assumeFalse(SdkLevel.isAtLeastT());
         boolean isAtLeastT = false, isTrustOnFirstUseSupported = false, isUserSelected = true;
+        boolean needUserApproval = true;
 
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
-        verifyTrustOnFirstUserFlow(config, ACTION_REJECT, isTrustOnFirstUseSupported,
-                isUserSelected, true);
+        verifyTrustOnFirstUseFlowWithDefaultCerts(config, ACTION_REJECT,
+                isTrustOnFirstUseSupported, isUserSelected, needUserApproval);
     }
 
     /**
@@ -260,11 +268,12 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
     public void verifyLegacyEapNetworkAcceptWhenAutoConnect() throws Exception {
         assumeFalse(SdkLevel.isAtLeastT());
         boolean isAtLeastT = false, isTrustOnFirstUseSupported = false, isUserSelected = false;
+        boolean needUserApproval = true;
 
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
-        verifyTrustOnFirstUserFlow(config, ACTION_ACCEPT, isTrustOnFirstUseSupported,
-                isUserSelected, true);
+        verifyTrustOnFirstUseFlowWithDefaultCerts(config, ACTION_ACCEPT,
+                isTrustOnFirstUseSupported, isUserSelected, needUserApproval);
     }
 
     /**
@@ -277,11 +286,12 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
     public void verifyLegacyEapNetworkRejectWhenAutoConnect() throws Exception {
         assumeFalse(SdkLevel.isAtLeastT());
         boolean isAtLeastT = false, isTrustOnFirstUseSupported = false, isUserSelected = false;
+        boolean needUserApproval = true;
 
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
-        verifyTrustOnFirstUserFlow(config, ACTION_REJECT, isTrustOnFirstUseSupported,
-                isUserSelected, true);
+        verifyTrustOnFirstUseFlowWithDefaultCerts(config, ACTION_REJECT,
+                isTrustOnFirstUseSupported, isUserSelected, needUserApproval);
     }
 
     /**
@@ -293,11 +303,12 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
     public void verifyLegacyEapNetworkOpenLinkWhenConnectByUser() throws Exception {
         assumeFalse(SdkLevel.isAtLeastT());
         boolean isAtLeastT = false, isTrustOnFirstUseSupported = false, isUserSelected = true;
+        boolean needUserApproval = true;
 
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
-        verifyTrustOnFirstUserFlow(config, ACTION_TAP, isTrustOnFirstUseSupported,
-                isUserSelected, true);
+        verifyTrustOnFirstUseFlowWithDefaultCerts(config, ACTION_TAP,
+                isTrustOnFirstUseSupported, isUserSelected, needUserApproval);
     }
 
     private WifiConfiguration prepareWifiConfiguration(boolean isAtLeastT) {
@@ -333,23 +344,98 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
                     mBroadcastReceiverCaptor.capture(),
                     argThat(f -> f.hasAction(InsecureEapNetworkHandler.ACTION_CERT_NOTIF_TAP)),
                     eq(null),
-                    eq(mHandler), eq(Context.RECEIVER_NOT_EXPORTED));
+                    eq(mHandler));
         } else {
             verify(mContext, atLeastOnce()).registerReceiver(
                     mBroadcastReceiverCaptor.capture(),
                     argThat(f -> f.hasAction(InsecureEapNetworkHandler.ACTION_CERT_NOTIF_ACCEPT)
                             && f.hasAction(InsecureEapNetworkHandler.ACTION_CERT_NOTIF_REJECT)),
                     eq(null),
-                    eq(mHandler), eq(Context.RECEIVER_NOT_EXPORTED));
+                    eq(mHandler));
         }
     }
 
-    private void verifyTrustOnFirstUserFlow(WifiConfiguration config,
+    /**
+     * Verify Trust On First Use flow with a minimal cert chain
+     * - This network is selected by a user.
+     * - Accept the connection.
+     */
+    @Test
+    public void verifyTrustOnFirstUseAcceptWhenConnectByUserWithMinimalChain() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = true;
+        boolean needUserApproval = true;
+
+        WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
+        setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
+
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 1, FakeKeys.CA_CERT0);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, FakeKeys.CLIENT_CERT);
+
+        verifyTrustOnFirstUseFlow(config, ACTION_ACCEPT, isTrustOnFirstUseSupported,
+                isUserSelected, needUserApproval, FakeKeys.CA_CERT0, FakeKeys.CLIENT_CERT);
+    }
+
+    /**
+     * Verify Trust On First Use flow with a reversal cert chain
+     * - This network is selected by a user.
+     * - Accept the connection.
+     */
+    @Test
+    public void verifyTrustOnFirstUseAcceptWhenConnectByUserWithReversalOrderChain()
+            throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = true;
+        boolean needUserApproval = true;
+
+        WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
+        setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
+
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, FakeKeys.CLIENT_CERT);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 1, FakeKeys.CA_CERT1);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 2, FakeKeys.CA_CERT0);
+
+        verifyTrustOnFirstUseFlow(config, ACTION_ACCEPT, isTrustOnFirstUseSupported,
+                isUserSelected, needUserApproval, FakeKeys.CA_CERT0, FakeKeys.CLIENT_CERT);
+    }
+
+    /**
+     * Verify Trust On First Use flow with a self-signed CA cert.
+     * - This network is selected by a user.
+     * - Accept the connection.
+     */
+    @Test
+    public void verifyTrustOnFirstUseAcceptWhenConnectByUserWithSelfSignedCaCert()
+            throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = true;
+        boolean needUserApproval = true;
+
+        WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
+        setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
+
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, FakeKeys.CA_CERT0);
+
+        verifyTrustOnFirstUseFlow(config, ACTION_ACCEPT, isTrustOnFirstUseSupported,
+                isUserSelected, needUserApproval, FakeKeys.CA_CERT0, FakeKeys.CA_CERT0);
+    }
+
+    private void verifyTrustOnFirstUseFlowWithDefaultCerts(WifiConfiguration config,
             int action, boolean isTrustOnFirstUseSupported, boolean isUserSelected,
             boolean needUserApproval) throws Exception {
         if (isTrustOnFirstUseSupported) {
-            mInsecureEapNetworkHandler.setPendingCaCertificate(config.SSID, FakeKeys.CA_CERT0);
+            mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 2, FakeKeys.CA_CERT0);
+            mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 1, FakeKeys.CA_CERT1);
+            mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, FakeKeys.CLIENT_CERT);
         }
+        verifyTrustOnFirstUseFlow(config, action, isTrustOnFirstUseSupported,
+                isUserSelected, needUserApproval, FakeKeys.CA_CERT0, FakeKeys.CLIENT_CERT);
+    }
+
+    private void verifyTrustOnFirstUseFlow(WifiConfiguration config,
+            int action, boolean isTrustOnFirstUseSupported, boolean isUserSelected,
+            boolean needUserApproval, X509Certificate expectedCaCert,
+            X509Certificate expectedServerCert) throws Exception {
         assertEquals(needUserApproval,
                 mInsecureEapNetworkHandler.startUserApprovalIfNecessary(isUserSelected));
 
@@ -404,10 +490,10 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
             verify(mWifiConfigManager).allowAutojoin(eq(config.networkId), eq(true));
             if (isTrustOnFirstUseSupported) {
                 verify(mWifiConfigManager).updateCaCertificate(
-                        eq(config.networkId), eq(FakeKeys.CA_CERT0));
+                        eq(config.networkId), eq(expectedCaCert), eq(expectedServerCert));
             } else {
                 verify(mWifiConfigManager, never()).updateCaCertificate(
-                        anyInt(), any());
+                        anyInt(), any(), any());
             }
             verify(mCallbacks).onAccept(eq(config.SSID));
         } else if (action == ACTION_REJECT) {
