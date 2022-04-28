@@ -17,6 +17,7 @@
 package com.android.server.wifi.util;
 
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
+import static android.Manifest.permission.ENTER_CAR_MODE_PRIORITIZED;
 import static android.Manifest.permission.NEARBY_WIFI_DEVICES;
 import static android.Manifest.permission.RENOUNCE_PERMISSIONS;
 import static android.Manifest.permission.REQUEST_COMPANION_PROFILE_AUTOMOTIVE_PROJECTION;
@@ -727,6 +728,14 @@ public class WifiPermissionsUtil {
     }
 
     /**
+     * Returns true if the |uid| holds ENTER_CAR_MODE_PRIORITIZED permission.
+     */
+    public boolean checkEnterCarModePrioritized(int uid) {
+        return mWifiPermissionsWrapper.getUidPermission(ENTER_CAR_MODE_PRIORITIZED, uid)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
      * Returns true if the |uid| holds MANAGE_WIFI_INTERFACES permission.
      */
     public boolean checkManageWifiInterfacesPermission(int uid) {
@@ -984,7 +993,7 @@ public class WifiPermissionsUtil {
                 .getStringArray(R.array.config_oemPrivilegedWifiAdminPackages));
         PackageManager pm = mContext.getPackageManager();
         String[] packages = pm.getPackagesForUid(uid);
-        if (Arrays.stream(packages).noneMatch(oemPrivilegedAdmins::contains)) {
+        if (packages == null || Arrays.stream(packages).noneMatch(oemPrivilegedAdmins::contains)) {
             return false;
         }
 
@@ -1075,6 +1084,20 @@ public class WifiPermissionsUtil {
                     "Non foreground user trying to modify wifi configuration");
         }
         return isCurrentProfile || isDeviceOwner(uid);
+    }
+
+    /**
+     * Check if the current user is a guest user
+     * @return true if the current user is a guest user, false otherwise.
+     */
+    public boolean isGuestUser() {
+        UserManager userManager = mContext.createContextAsUser(
+                UserHandle.of(mWifiPermissionsWrapper.getCurrentUser()), 0)
+                .getSystemService(UserManager.class);
+        if (userManager == null) {
+            return true;
+        }
+        return userManager.isGuestUser();
     }
 
     /**
