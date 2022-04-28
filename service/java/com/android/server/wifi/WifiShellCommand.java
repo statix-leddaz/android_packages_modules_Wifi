@@ -46,6 +46,7 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.wifi.IActionListener;
+import android.net.wifi.IDppCallback;
 import android.net.wifi.ILocalOnlyHotspotCallback;
 import android.net.wifi.IPnoScanResultsCallback;
 import android.net.wifi.IScoreUpdateObserver;
@@ -235,6 +236,115 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         }
     }
 
+    /**
+     * Used for shell command testing of DPP feature.
+     */
+    public static class DppCallbackProxy extends IDppCallback.Stub {
+        private final PrintWriter mPrintWriter;
+        private final CountDownLatch mCountDownLatch;
+        private static final int STATUS_SUCCESS = 0;
+        private static final int STATUS_PROGRESS = 1;
+        private static final int STATUS_FAILURE = 2;
+
+        DppCallbackProxy(PrintWriter printWriter, CountDownLatch countDownLatch) {
+            mPrintWriter = printWriter;
+            mCountDownLatch = countDownLatch;
+        }
+
+        @Override
+        public void onSuccessConfigReceived(int networkId) {
+            mPrintWriter.println("onSuccessConfigReceived. netId=" + networkId);
+            mCountDownLatch.countDown();
+        }
+
+        @Override
+        public void onSuccess(int status) {
+            mPrintWriter.println("onSuccess status=" + statusToString(STATUS_SUCCESS, status));
+            mCountDownLatch.countDown();
+        }
+
+        @Override
+        public void onFailure(int status, String ssid, String channelList, int[] bandArray) {
+            mPrintWriter.println("onFailure. status=" + statusToString(STATUS_FAILURE, status)
+                    + "ssid=" + ssid + "channelList=" + channelList);
+            mCountDownLatch.countDown();
+        }
+
+        @Override
+        public void onProgress(int status) {
+            mPrintWriter.println("onProgress status=" + statusToString(STATUS_PROGRESS, status));
+        }
+
+        @Override
+        public void onBootstrapUriGenerated(String uri) {
+            mPrintWriter.println("onBootstrapUriGenerated URI = " + uri);
+        }
+
+        private String statusToString(int type, int status) {
+            switch (type) {
+                case STATUS_SUCCESS: {
+                    switch (status) {
+                        case 0:
+                            return "CONFIGURATION_SENT";
+                        case 1:
+                            return "CONFIGURATION_APPLIED";
+                        default:
+                            return "Unknown success code";
+                    }
+                }
+                case STATUS_PROGRESS: {
+                    switch (status) {
+                        case 0:
+                            return "AUTHENTICATION_SUCCESS";
+                        case 1:
+                            return "RESPONSE_PENDING";
+                        case 2:
+                            return "CONFIGURATION_SENT_WAITING_RESPONSE";
+                        case 3:
+                            return "CONFIGURATION_ACCEPTED";
+                        default:
+                            return "Unknown progress code";
+                    }
+                }
+                case STATUS_FAILURE: {
+                    switch (status) {
+                        case -1:
+                            return "INVALID_URI";
+                        case -2:
+                            return "AUTHENTICATION";
+                        case -3:
+                            return "NOT_COMPATIBLE";
+                        case -4:
+                            return "CONFIGURATION";
+                        case -5:
+                            return "BUSY";
+                        case -6:
+                            return "TIMEOUT";
+                        case -7:
+                            return "GENERIC";
+                        case -8:
+                            return "NOT_SUPPORTED";
+                        case -9:
+                            return "INVALID_NETWORK";
+                        case -10:
+                            return "CANNOT_FIND_NETWORK";
+                        case -11:
+                            return "ENROLLEE_AUTHENTICATION";
+                        case -12:
+                            return "ENROLLEE_REJECTED_CONFIGURATION";
+                        case -13:
+                            return "URI_GENERATION";
+                        case -14:
+                            return "ENROLLEE_FAILED_TO_SCAN_NETWORK_CHANNEL";
+                        default:
+                            return "Unknown failure code";
+                    }
+                }
+                default :
+                    return "Unknown status type";
+            }
+        }
+    }
 
     /**
      * Used for shell command testing of scorer.
@@ -763,7 +873,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         }
                     };
                     WifiConfiguration config = buildWifiConfiguration(pw);
-                    mWifiService.connect(config, -1, actionListener);
+                    mWifiService.connect(config, -1, actionListener, SHELL_PACKAGE_NAME);
                     // wait for status.
                     countDownLatch.await(500, TimeUnit.MILLISECONDS);
                     setAutoJoin(pw, config.SSID, config.allowAutojoin);
@@ -785,7 +895,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         }
                     };
                     WifiConfiguration config = buildWifiConfiguration(pw);
-                    mWifiService.save(config, actionListener);
+                    mWifiService.save(config, actionListener, SHELL_PACKAGE_NAME);
                     // wait for status.
                     countDownLatch.await(500, TimeUnit.MILLISECONDS);
                     setAutoJoin(pw, config.SSID, config.allowAutojoin);
@@ -1269,11 +1379,34 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         }
                     }
                     return 0;
-                case "launch-dialog-p2p-invitation-sent":
-                    mWifiDialogManager.createP2pInvitationSentDialog(
-                            getNextArgRequired(), getNextArgRequired()).launchDialog();
+                case "launch-dialog-p2p-invitation-sent": {
+                    int displayId = Display.DEFAULT_DISPLAY;
+                    String deviceName = getNextArgRequired();
+                    String displayPin = getNextArgRequired();
+                    String cmdOption = getNextOption();
+                    if (cmdOption != null && cmdOption.equals("-i")) {
+                        String displayIdStr = getNextArgRequired();
+                        try {
+                            displayId = Integer.parseInt(displayIdStr);
+                        } catch (NumberFormatException e) {
+                            pw.println("Invalid <display-id> argument to "
+                                    + "'launch-dialog-p2p-invitation-sent' "
+                                    + "- must be an integer: "
+                                    + displayIdStr);
+                            return -1;
+                        }
+                        DisplayManager dm = mContext.getSystemService(DisplayManager.class);
+                        Display[] displays = dm.getDisplays();
+                        for (Display display : displays) {
+                            pw.println("Display: id=" + display.getDisplayId() + ", info="
+                                    + display.getDeviceProductInfo());
+                        }
+                    }
+                    mWifiDialogManager.createP2pInvitationSentDialog(deviceName, displayPin,
+                            displayId).launchDialog();
                     pw.println("Launched dialog.");
                     return 0;
+                }
                 case "launch-dialog-p2p-invitation-received": {
                     String deviceName = getNextArgRequired();
                     boolean isPinRequested = false;
@@ -1448,6 +1581,41 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     }
                     return 0;
                 }
+                case "start-dpp-enrollee-responder": {
+                    CountDownLatch countDownLatch = new CountDownLatch(1);
+                    String option = getNextOption();
+                    String info = null;
+                    int curve = 0;
+                    while (option != null) {
+                        if (option.equals("-i")) {
+                            info = getNextArgRequired();
+                        } else if (option.equals("-c")) {
+                            curve = Integer.parseInt(getNextArgRequired());
+                        } else {
+                            pw.println("Ignoring unknown option " + option);
+                        }
+                        option = getNextOption();
+                    }
+                    mWifiService.startDppAsEnrolleeResponder(new Binder(), info, curve,
+                            new DppCallbackProxy(pw, countDownLatch));
+                    // Wait for DPP callback
+                    countDownLatch.await(10000, TimeUnit.MILLISECONDS);
+                    return 0;
+                }
+                case "start-dpp-configurator-initiator": {
+                    CountDownLatch countDownLatch = new CountDownLatch(1);
+                    int netId = Integer.parseInt(getNextArgRequired());
+                    int role = Integer.parseInt(getNextArgRequired());
+                    String enrolleeUri = getNextArgRequired();
+                    mWifiService.startDppAsConfiguratorInitiator(new Binder(), SHELL_PACKAGE_NAME,
+                            enrolleeUri, netId, role, new DppCallbackProxy(pw, countDownLatch));
+                    // Wait for DPP callback
+                    countDownLatch.await(10000, TimeUnit.MILLISECONDS);
+                    return 0;
+                }
+                case "stop-dpp":
+                    mWifiService.stopDppSession();
+                    return 0;
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -1491,6 +1659,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             configuration.setSecurityParams(WifiConfiguration.SECURITY_TYPE_OWE);
         } else if (TextUtils.equals(type, "open")) {
             configuration.setSecurityParams(WifiConfiguration.SECURITY_TYPE_OPEN);
+        } else if (TextUtils.equals(type, "dpp")) {
+            configuration.setSecurityParams(WifiConfiguration.SECURITY_TYPE_DPP);
         } else {
             throw new IllegalArgumentException("Unknown network type " + type);
         }
@@ -2073,7 +2243,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    Turns on the default connected scorer.");
         pw.println("    Note: Will clear any external scorer set.");
         pw.println("  start-softap <ssid> (open|wpa2|wpa3|wpa3_transition|owe|owe_transition) "
-                + "<passphrase> [-b 2|5|6|any]");
+                + "<passphrase> [-b 2|5|6|any|bridged]");
         pw.println("    Start softap with provided params");
         pw.println("    Note that the shell command doesn't activate internet tethering. In some "
                 + "devices, internet sharing is possible when Wi-Fi STA is also enabled and is"
@@ -2115,7 +2285,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    -n - Negative Button Text");
         pw.println("    -x - Neutral Button Text");
         pw.println("    -c - Optional timeout in milliseconds");
-        pw.println("  launch-dialog-p2p-invitation-sent <device_name> <pin>");
+        pw.println("  launch-dialog-p2p-invitation-sent <device_name> <pin> [-i <display_id>]");
         pw.println("    Launches a P2P Invitation Sent dialog.");
         pw.println("    <device_name> - Name of the device the invitation was sent to");
         pw.println("    <pin> - PIN for the invited device to input");
@@ -2212,6 +2382,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    or left for normal   operation.");
         pw.println("  force-country-code enabled <two-letter code> | disabled ");
         pw.println("    Sets country code to <two-letter code> or left for normal value");
+        pw.println("    or '00' for forcing to world mode country code");
         pw.println("  set-wifi-watchdog enabled|disabled");
         pw.println("    Sets whether wifi watchdog should trigger recovery");
         pw.println("  get-wifi-watchdog");
@@ -2335,6 +2506,16 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    Requests to include a non-quoted UTF-8 SSID in PNO scans");
         pw.println("  clear-pno-request");
         pw.println("    Clear the PNO scan request.");
+        pw.println("  start-dpp-enrollee-responder [-i <info>] [-c <curve>]");
+        pw.println("    Start DPP Enrollee responder mode.");
+        pw.println("    -i - Device Info to be used in DPP Bootstrapping URI");
+        pw.println("    -c - Cryptography Curve integer 1:p256v1, 2:s384r1, etc");
+        pw.println("  start-dpp-configurator-initiator <networkId> <netRole> <enrolleeURI>");
+        pw.println("    Start DPP Configurator Initiator mode.");
+        pw.println("    netRole - 0: STA, 1: AP");
+        pw.println("    enrolleeURI - Bootstrapping URI received from Enrollee");
+        pw.println("  stop-dpp");
+        pw.println("    Stop DPP session.");
     }
 
     @Override
