@@ -16,6 +16,10 @@
 
 package com.android.server.wifi;
 
+import static com.android.server.wifi.HalDeviceManagerUtil.jsonToStaticChipInfo;
+import static com.android.server.wifi.HalDeviceManagerUtil.staticChipInfoToJson;
+import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_STATIC_CHIP_INFO;
+
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -34,9 +38,13 @@ import android.hardware.wifi.V1_0.IfaceType;
 import android.hardware.wifi.V1_0.WifiDebugRingBufferStatus;
 import android.hardware.wifi.V1_0.WifiStatus;
 import android.hardware.wifi.V1_0.WifiStatusCode;
+import android.hardware.wifi.V1_5.WifiBand;
 import android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombination;
 import android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombinationLimit;
 import android.hardware.wifi.V1_6.IfaceConcurrencyType;
+import android.hardware.wifi.V1_6.WifiRadioCombination;
+import android.hardware.wifi.V1_6.WifiRadioCombinationMatrix;
+import android.hardware.wifi.V1_6.WifiRadioConfiguration;
 import android.hidl.manager.V1_0.IServiceNotification;
 import android.hidl.manager.V1_2.IServiceManager;
 import android.net.wifi.WifiContext;
@@ -44,17 +52,23 @@ import android.os.Handler;
 import android.os.IHwBinder.DeathRecipient;
 import android.os.RemoteException;
 import android.os.WorkSource;
+import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
+import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.build.SdkLevel;
+import com.android.server.wifi.HalDeviceManagerUtil.StaticChipInfo;
 import com.android.server.wifi.util.GeneralUtil.Mutable;
 import com.android.server.wifi.util.WorkSourceHelper;
 import com.android.wifi.resources.R;
+
+import org.json.JSONArray;
+import org.json.JSONException;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -80,6 +94,11 @@ public class HalDeviceManager {
 
     public static final long CHIP_CAPABILITY_ANY = 0L;
     private static final long CHIP_CAPABILITY_UNINITIALIZED = -1L;
+
+    private static final int DBS_24G_5G_MASK =
+            (1 << WifiBand.BAND_24GHZ) | (1 << WifiBand.BAND_5GHZ);
+    private static final int DBS_5G_6G_MASK =
+            (1 << WifiBand.BAND_5GHZ) | (1 << WifiBand.BAND_6GHZ);
 
     private static final int START_HAL_RETRY_INTERVAL_MS = 20;
     // Number of attempts a start() is re-tried. A value of 0 means no retries after a single
@@ -163,7 +182,10 @@ public class HalDeviceManager {
         mServiceManagerDeathRecipient = new ServiceManagerDeathRecipient();
     }
 
-    /* package */ void enableVerboseLogging(boolean verboseEnabled) {
+    /**
+     * Enables verbose logging.
+     */
+    public void enableVerboseLogging(boolean verboseEnabled) {
         mDbg = verboseEnabled;
 
         if (VDBG) {
@@ -390,6 +412,22 @@ public class HalDeviceManager {
         return success;
     }
 
+    private InterfaceCacheEntry getInterfaceCacheEntry(IWifiIface iface) {
+        String name = getName(iface);
+        int type = getType(iface);
+        if (VDBG) Log.d(TAG, "getInterfaceCacheEntry: iface(name)=" + name);
+
+        synchronized (mLock) {
+            InterfaceCacheEntry cacheEntry = mInterfaceInfoCache.get(Pair.create(name, type));
+            if (cacheEntry == null) {
+                Log.e(TAG, "getInterfaceCacheEntry: no entry for iface(name)=" + name);
+                return null;
+            }
+
+            return cacheEntry;
+        }
+    }
+
     /**
      * Returns the IWifiChip corresponding to the specified interface (or null on error).
      *
@@ -398,19 +436,68 @@ public class HalDeviceManager {
      * other functions - e.g. calling the debug/trace methods.
      */
     public IWifiChip getChip(IWifiIface iface) {
-        String name = getName(iface);
-        int type = getType(iface);
-        if (VDBG) Log.d(TAG, "getChip: iface(name)=" + name);
-
         synchronized (mLock) {
-            InterfaceCacheEntry cacheEntry = mInterfaceInfoCache.get(Pair.create(name, type));
-            if (cacheEntry == null) {
-                Log.e(TAG, "getChip: no entry for iface(name)=" + name);
-                return null;
-            }
-
-            return cacheEntry.chip;
+            InterfaceCacheEntry cacheEntry = getInterfaceCacheEntry(iface);
+            return (cacheEntry == null) ? null : cacheEntry.chip;
         }
+    }
+
+    private WifiChipInfo getChipInfo(IWifiIface iface) {
+        synchronized (mLock) {
+            InterfaceCacheEntry cacheEntry = getInterfaceCacheEntry(iface);
+            if (null == cacheEntry) return null;
+
+            WifiChipInfo[] chipInfos = getAllChipInfoCached();
+            if (null == chipInfos) return null;
+
+            for (WifiChipInfo info: chipInfos) {
+                if (info.chipId == cacheEntry.chipId) {
+                    return info;
+                }
+            }
+            return null;
+        }
+    }
+
+    private boolean isDbsSupported(IWifiIface iface, int dbsMask) {
+        synchronized (mLock) {
+            WifiChipInfo info = getChipInfo(iface);
+            if (null == info) return false;
+            // If there is no radio combination information, cache it.
+            if (null == info.radioCombinationMatrix) {
+                IWifiChip chip = getChip(iface);
+                if (null == chip) return false;
+
+                info.radioCombinationMatrix = getChipSupportedRadioCombinationsMatrix(chip);
+                info.radioCombinationLookupTable = convertRadioCombinationMatrixToLookupTable(
+                        info.radioCombinationMatrix);
+                if (mDbg) {
+                    Log.d(TAG, "radioCombinationMatrix=" + info.radioCombinationMatrix
+                            + "radioCombinationLookupTable=" + info.radioCombinationLookupTable);
+                }
+            }
+            return info.radioCombinationLookupTable.get(dbsMask);
+        }
+    }
+
+    /**
+     * Indicate whether or not 2.4GHz/5GHz DBS is supported.
+     *
+     * @param iface The interface on the chip.
+     * @return true if supported; false, otherwise;
+     */
+    public boolean is24g5gDbsSupported(IWifiIface iface) {
+        return isDbsSupported(iface, DBS_24G_5G_MASK);
+    }
+
+    /**
+     * Indicate whether or not 5GHz/6GHz DBS is supported.
+     *
+     * @param iface The interface on the chip.
+     * @return true if supported; false, otherwise;
+     */
+    public boolean is5g6gDbsSupported(IWifiIface iface) {
+        return isDbsSupported(iface, DBS_5G_6G_MASK);
     }
 
     /**
@@ -597,43 +684,44 @@ public class HalDeviceManager {
      *
      * @param createTypeCombo SparseArray keyed in by @HdmIfaceTypeForCreation to number of ifaces
      *                         needed.
-     * @param requiredChipCapabilities The bitmask of Capabilities which are required.
-     *                                 See IWifiChip.hal for documentation.
      * @return true if the device supports the provided combo, false otherwise.
      */
-    public boolean canSupportCreateTypeCombo(SparseArray<Integer> createTypeCombo,
-            long requiredChipCapabilities) {
+    public boolean canDeviceSupportCreateTypeCombo(SparseArray<Integer> createTypeCombo) {
         if (VDBG) {
-            Log.d(TAG, "canSupportCreateTypeCombo: createTypeCombo=" + createTypeCombo
-                    + ", requiredChipCapabilities=" + requiredChipCapabilities);
+            Log.d(TAG, "canDeviceSupportCreateTypeCombo: createTypeCombo=" + createTypeCombo);
         }
 
         synchronized (mLock) {
-            if (mWifi == null) return false;
-            int[] createTypeComboArray =
-                    new int[CREATE_TYPES_BY_PRIORITY.length];
+            int[] requestedCombo = new int[CREATE_TYPES_BY_PRIORITY.length];
             for (int createType : CREATE_TYPES_BY_PRIORITY) {
-                createTypeComboArray[createType] = createTypeCombo.get(createType, 0);
+                requestedCombo[createType] = createTypeCombo.get(createType, 0);
             }
-            WifiChipInfo[] chipInfos = getAllChipInfoCached();
-            if (chipInfos == null) return false;
-            return isItPossibleToCreateCreateTypeCombo(
-                    chipInfos, requiredChipCapabilities, createTypeComboArray);
+            for (StaticChipInfo staticChipInfo : getStaticChipInfos()) {
+                SparseArray<List<int[][]>> expandedCreateTypeCombosPerChipModeId =
+                        getExpandedCreateTypeCombosPerChipModeId(
+                                staticChipInfo.getAvailableModes());
+                for (int i = 0; i < expandedCreateTypeCombosPerChipModeId.size(); i++) {
+                    int chipModeId = expandedCreateTypeCombosPerChipModeId.keyAt(i);
+                    for (int[][] expandedCreateTypeCombo
+                            : expandedCreateTypeCombosPerChipModeId.get(chipModeId)) {
+                        for (int[] supportedCombo : expandedCreateTypeCombo) {
+                            if (canCreateTypeComboSupportRequestedCreateTypeCombo(
+                                    supportedCombo, requestedCombo)) {
+                                if (VDBG) {
+                                    Log.d(TAG, "Device can support createTypeCombo="
+                                            + createTypeCombo);
+                                }
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            if (VDBG) {
+                Log.d(TAG, "Device cannot support createTypeCombo=" + createTypeCombo);
+            }
+            return false;
         }
-    }
-
-    /**
-     * Returns whether the provided @HdmIfaceTypeForCreation combo can be supported by the device.
-     * Note: This only returns an answer based on the create type combination exposed by the HAL.
-     * The actual iface creation/deletion rules depend on the iface priorities set in
-     * {@link #allowedToDeleteIfaceTypeForRequestedType(int, WorkSource, int, WifiIfaceInfo[][])}
-     *
-     * @param createTypeCombo SparseArray keyed in by @HdmIfaceTypeForCreation to number of ifaces
-     *                         needed.
-     * @return true if the device supports the provided combo, false otherwise.
-     */
-    public boolean canSupportCreateTypeCombo(SparseArray<Integer> createTypeCombo) {
-        return canSupportCreateTypeCombo(createTypeCombo, CHIP_CAPABILITY_ANY);
     }
 
     /**
@@ -850,12 +938,14 @@ public class HalDeviceManager {
 
     private class WifiChipInfo {
         public IWifiChip chip;
-        public int chipId;
+        public int chipId = -1;
         public ArrayList<android.hardware.wifi.V1_6.IWifiChip.ChipMode> availableModes;
-        public boolean currentModeIdValid;
-        public int currentModeId;
+        public boolean currentModeIdValid = false;
+        public int currentModeId = -1;
         public WifiIfaceInfo[][] ifaces = new WifiIfaceInfo[IFACE_TYPES_BY_PRIORITY.length][];
         public long chipCapabilities;
+        public WifiRadioCombinationMatrix radioCombinationMatrix = null;
+        public SparseBooleanArray radioCombinationLookupTable = new SparseBooleanArray();
 
         @Override
         public String toString() {
@@ -1535,6 +1625,61 @@ public class HalDeviceManager {
         return newChipModes;
     }
 
+    @Nullable
+    private StaticChipInfo[] mCachedStaticChipInfos = null;
+
+    @NonNull
+    private StaticChipInfo[] getStaticChipInfos() {
+        if (mCachedStaticChipInfos == null) {
+            mCachedStaticChipInfos = loadStaticChipInfoFromStore();
+        }
+        return mCachedStaticChipInfos;
+    }
+
+    private void saveStaticChipInfoToStore(StaticChipInfo[] staticChipInfos) {
+        try {
+            JSONArray staticChipInfosJson = new JSONArray();
+            for (StaticChipInfo staticChipInfo : staticChipInfos) {
+                staticChipInfosJson.put(staticChipInfoToJson(staticChipInfo));
+            }
+            mWifiInjector.getSettingsConfigStore().put(WIFI_STATIC_CHIP_INFO,
+                    staticChipInfosJson.toString());
+        } catch (JSONException e) {
+            Log.e(TAG, "JSONException while converting StaticChipInfo to JSON: " + e);
+        }
+    }
+
+    private StaticChipInfo[] loadStaticChipInfoFromStore() {
+        StaticChipInfo[] staticChipInfos = new StaticChipInfo[0];
+        String configString = mWifiInjector.getSettingsConfigStore().get(WIFI_STATIC_CHIP_INFO);
+        if (TextUtils.isEmpty(configString)) {
+            return staticChipInfos;
+        }
+        try {
+            JSONArray staticChipInfosJson = new JSONArray(
+                    mWifiInjector.getSettingsConfigStore().get(WIFI_STATIC_CHIP_INFO));
+            staticChipInfos = new StaticChipInfo[staticChipInfosJson.length()];
+            for (int i = 0; i < staticChipInfosJson.length(); i++) {
+                staticChipInfos[i] = jsonToStaticChipInfo(staticChipInfosJson.getJSONObject(i));
+            }
+        } catch (JSONException e) {
+            Log.e(TAG, "Failed to load static chip info from store: " + e);
+        }
+        return staticChipInfos;
+    }
+
+    private StaticChipInfo[] convertWifiChipInfoToStaticChipInfos(WifiChipInfo[] chipInfos) {
+        StaticChipInfo[] staticChipInfos = new StaticChipInfo[chipInfos.length];
+        for (int i = 0; i < chipInfos.length; i++) {
+            WifiChipInfo chipInfo = chipInfos[i];
+            staticChipInfos[i] = new StaticChipInfo(
+                    chipInfo.chipId,
+                    chipInfo.chipCapabilities,
+                    chipInfo.availableModes);
+        }
+        return staticChipInfos;
+    }
+
     /**
      * Checks the local state of this object (the cached state) against the input 'chipInfos'
      * state (which is a live representation of the Wi-Fi firmware status - read through the HAL).
@@ -1623,6 +1768,14 @@ public class HalDeviceManager {
                             if (triedCount != 0) {
                                 Log.d(TAG, "start IWifi succeeded after trying "
                                          + triedCount + " times");
+                            }
+                            WifiChipInfo[] wifiChipInfos = getAllChipInfo();
+                            if (wifiChipInfos != null) {
+                                mCachedStaticChipInfos =
+                                        convertWifiChipInfoToStaticChipInfos(getAllChipInfo());
+                                saveStaticChipInfoToStore(mCachedStaticChipInfos);
+                            } else {
+                                Log.e(TAG, "Started wifi but could not get current chip info.");
                             }
                             return true;
                         } else if (status.code == WifiStatusCode.ERROR_NOT_AVAILABLE) {
@@ -1843,15 +1996,13 @@ public class HalDeviceManager {
         }
     }
 
-    private static boolean isChipCapabilitiesSupported(@NonNull WifiChipInfo chipInfo,
+    private static boolean isChipCapabilitiesSupported(long currentChipCapabilities,
             long requiredChipCapabilities) {
-        if (chipInfo == null) return false;
-
         if (requiredChipCapabilities == CHIP_CAPABILITY_ANY) return true;
 
-        if (CHIP_CAPABILITY_UNINITIALIZED == chipInfo.chipCapabilities) return true;
+        if (CHIP_CAPABILITY_UNINITIALIZED == currentChipCapabilities) return true;
 
-        return (chipInfo.chipCapabilities & requiredChipCapabilities)
+        return (currentChipCapabilities & requiredChipCapabilities)
                 == requiredChipCapabilities;
     }
 
@@ -1869,10 +2020,13 @@ public class HalDeviceManager {
         synchronized (mLock) {
             IfaceCreationData bestIfaceCreationProposal = null;
             for (WifiChipInfo chipInfo : chipInfos) {
-                if (!isChipCapabilitiesSupported(chipInfo, requiredChipCapabilities)) continue;
+                if (!isChipCapabilitiesSupported(
+                        chipInfo.chipCapabilities, requiredChipCapabilities)) {
+                    continue;
+                }
 
                 SparseArray<List<int[][]>> expandedCreateTypeCombosPerChipModeId =
-                        getExpandedCreateTypeCombosPerChipModeId(chipInfo);
+                        getExpandedCreateTypeCombosPerChipModeId(chipInfo.availableModes);
                 for (int i = 0; i < expandedCreateTypeCombosPerChipModeId.size(); i++) {
                     int chipModeId = expandedCreateTypeCombosPerChipModeId.keyAt(i);
                     for (int[][] expandedCreateTypeCombo :
@@ -1895,15 +2049,13 @@ public class HalDeviceManager {
     }
 
     /**
-     * Returns a SparseArray indexed by ChipModeId, containing Lists of I
-     * @param chipInfo
-     * @return
+     * Returns a SparseArray indexed by ChipModeId, containing Lists of expanded create type combos
+     * supported by that id.
      */
     private SparseArray<List<int[][]>> getExpandedCreateTypeCombosPerChipModeId(
-            WifiChipInfo chipInfo) {
+            ArrayList<android.hardware.wifi.V1_6.IWifiChip.ChipMode> chipModes) {
         SparseArray<List<int[][]>> combosPerChipModeId = new SparseArray<>();
-        for (android.hardware.wifi.V1_6.IWifiChip.ChipMode chipMode
-                : chipInfo.availableModes) {
+        for (android.hardware.wifi.V1_6.IWifiChip.ChipMode chipMode : chipModes) {
             List<int[][]> expandedCreateTypeCombos = new ArrayList<>();
             for (ChipConcurrencyCombination chipConcurrencyCombo
                     : chipMode.availableCombinations) {
@@ -2061,15 +2213,13 @@ public class HalDeviceManager {
         // priority than the requested interface
         if (isChipModeChangeProposed) {
             for (int type: IFACE_TYPES_BY_PRIORITY) {
-                if (chipInfo.ifaces[type].length != 0) {
-                    if (!allowedToDeleteIfaceTypeForRequestedType(
-                            ifaceTypeOfRequest, requestorWs, type, chipInfo.ifaces)) {
-                        if (VDBG) {
-                            Log.d(TAG, "Couldn't delete existing type " + type
-                                    + " interfaces for requested type");
-                        }
-                        return null;
+                if (selectInterfacesToDelete(chipInfo.ifaces[type].length,
+                        ifaceTypeOfRequest, requestorWs, type, chipInfo.ifaces[type]) == null) {
+                    if (VDBG) {
+                        Log.d(TAG, "Couldn't delete existing type " + type
+                                + " interfaces for requested type");
                     }
+                    return null;
                 }
             }
 
@@ -2103,18 +2253,16 @@ public class HalDeviceManager {
             }
 
             if (tooManyInterfaces > 0) { // may need to delete some
-                if (!allowedToDeleteIfaceTypeForRequestedType(
-                        ifaceTypeOfRequest, requestorWs, existingIfaceType, chipInfo.ifaces)) {
+                List<WifiIfaceInfo> selectedIfacesToDelete =
+                        selectInterfacesToDelete(tooManyInterfaces, ifaceTypeOfRequest, requestorWs,
+                                existingIfaceType, chipInfo.ifaces[existingIfaceType]);
+                if (selectedIfacesToDelete == null) {
                     if (VDBG) {
                         Log.d(TAG, "Would need to delete some higher priority interfaces");
                     }
                     return null;
                 }
-
-                // delete the most recently created interfaces
-                interfacesToBeRemovedFirst.addAll(selectInterfacesToDelete(
-                        tooManyInterfaces, ifaceTypeOfRequest, requestorWs, existingIfaceType,
-                        chipInfo.ifaces[existingIfaceType]));
+                interfacesToBeRemovedFirst.addAll(selectedIfacesToDelete);
             }
         }
 
@@ -2177,29 +2325,29 @@ public class HalDeviceManager {
         return false;
     }
 
-    private static final int PRIORITY_PRIVILEGED = 0;
-    private static final int PRIORITY_SYSTEM = 1;
-    private static final int PRIORITY_FG_APP = 2;
-    private static final int PRIORITY_FG_SERVICE = 3;
-    private static final int PRIORITY_BG = 4;
-    private static final int PRIORITY_INTERNAL = 5;
+    private static final int PRIORITY_INTERNAL = 0;
+    private static final int PRIORITY_BG = 1;
+    private static final int PRIORITY_FG_SERVICE = 2;
+    private static final int PRIORITY_FG_APP = 3;
+    private static final int PRIORITY_SYSTEM = 4;
+    private static final int PRIORITY_PRIVILEGED = 5;
     // Keep these in sync with any additions/deletions to above buckets.
-    private static final int PRIORITY_MIN = PRIORITY_PRIVILEGED;
-    private static final int PRIORITY_MAX = PRIORITY_INTERNAL;
+    private static final int PRIORITY_MIN = PRIORITY_INTERNAL;
+    private static final int PRIORITY_MAX = PRIORITY_PRIVILEGED;
     @IntDef(prefix = { "PRIORITY_" }, value = {
-            PRIORITY_PRIVILEGED,
-            PRIORITY_SYSTEM,
-            PRIORITY_FG_APP,
-            PRIORITY_FG_SERVICE,
-            PRIORITY_BG,
             PRIORITY_INTERNAL,
+            PRIORITY_BG,
+            PRIORITY_FG_SERVICE,
+            PRIORITY_FG_APP,
+            PRIORITY_SYSTEM,
+            PRIORITY_PRIVILEGED,
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface RequestorWsPriority {}
 
     /**
      * Returns integer priority level for the provided |ws| based on rules mentioned in
-     * {@link #allowedToDeleteIfaceTypeForRequestedType(int, WorkSource, int, WifiIfaceInfo[][])}.
+     * {@link #selectInterfacesToDelete(int, int, WorkSource, int, WifiIfaceInfo[])}.
      */
     private static @RequestorWsPriority int getRequestorWsPriority(WorkSourceHelper ws) {
         if (ws.hasAnyPrivilegedAppRequest()) return PRIORITY_PRIVILEGED;
@@ -2215,7 +2363,7 @@ public class HalDeviceManager {
      * interface request from |existingRequestorWsPriority|.
      *
      * Rule:
-     *  - If |newRequestorWsPriority| < |existingRequestorWsPriority|, then YES.
+     *  - If |newRequestorWsPriority| > |existingRequestorWsPriority|, then YES.
      *  - If they are at the same priority level, then
      *      - If both are privileged and not for the same interface type, then YES.
      *      - Else, NO.
@@ -2229,7 +2377,7 @@ public class HalDeviceManager {
         // If the new request is higher priority than existing priority, then the new requestor
         // wins. This is because at all other priority levels (except privileged), existing caller
         // wins if both the requests are at the same priority level.
-        if (newRequestorWsPriority < existingRequestorWsPriority) {
+        if (newRequestorWsPriority > existingRequestorWsPriority) {
             return true;
         }
         if (newRequestorWsPriority == existingRequestorWsPriority) {
@@ -2238,8 +2386,13 @@ public class HalDeviceManager {
             if (requestedIfaceType == existingIfaceType) {
                 return false;
             }
-            // If both the requests are privileged, the new requestor wins.
+            // If both the requests are privileged, the new requestor wins. The exception is for
+            // backwards compatibility with P2P Settings, prefer SoftAP over P2P for when the user
+            // enables SoftAP with P2P Settings open.
             if (newRequestorWsPriority == PRIORITY_PRIVILEGED) {
+                if (requestedIfaceType == IfaceType.P2P && existingIfaceType == IfaceType.AP) {
+                    return false;
+                }
                 return true;
             }
         }
@@ -2281,10 +2434,11 @@ public class HalDeviceManager {
     }
 
     /**
-     * Returns true if we're allowed to delete the existing interface type for the requested
-     * interface type.
+     * Selects the interfaces of a given type and quantity to delete for a requested interface.
+     * If the specified quantity of interfaces cannot be deleted, returns null.
      *
-     * General rules:
+     * Only interfaces with lower priority than the requestor will be selected, in ascending order
+     * of priority. Priority is determined by the following rules:
      * 1. Requests for interfaces have the following priority which are based on corresponding
      * requesting  app's context. Priorities in decreasing order (i.e (i) has the highest priority,
      * (v) has the lowest priority).
@@ -2306,58 +2460,18 @@ public class HalDeviceManager {
      * existing requests.
      * For ex: User turns on wifi, then hotspot on legacy devices which do not support STA + AP, we
      * want the last request from the user (i.e hotspot) to be honored.
-     */
-    private boolean allowedToDeleteIfaceTypeForRequestedType(
-            int requestedIfaceType, WorkSource requestorWs, int existingIfaceType,
-            WifiIfaceInfo[][] existingIfaces) {
-        WorkSourceHelper newRequestorWsHelper = mWifiInjector.makeWsHelper(requestorWs);
-        WifiIfaceInfo[] ifaceInfosForExistingIfaceType = existingIfaces[existingIfaceType];
-        // No ifaces of the existing type, error!
-        if (ifaceInfosForExistingIfaceType.length == 0) {
-            Log.wtf(TAG, "allowedToDeleteIfaceTypeForRequestedType: Num existings ifaces is 0!");
-            return false;
-        }
-        for (WifiIfaceInfo ifaceInfo : ifaceInfosForExistingIfaceType) {
-            int newRequestorWsPriority = getRequestorWsPriority(newRequestorWsHelper);
-            int existingRequestorWsPriority = getRequestorWsPriority(ifaceInfo.requestorWsHelper);
-            boolean isAllowedToDelete = allowedToDelete(requestedIfaceType, newRequestorWsPriority,
-                    existingIfaceType, existingRequestorWsPriority);
-            if (mDbg) {
-                Log.d(TAG, "allowedToDeleteIfaceTypeForRequestedType = " + isAllowedToDelete
-                        + " requestedIfaceType=" + requestedIfaceType
-                        + " existingIfaceType=" + existingIfaceType
-                        + ", newRequestorWsPriority=" + newRequestorWsPriority
-                        + ", existingRequestorWsPriority=" + existingRequestorWsPriority);
-            }
-            if (isAllowedToDelete) return true;
-        }
-        return false;
-    }
-
-    /**
-     * Selects the interfaces to delete.
      *
-     * Rule:
-     *  - Select interfaces that are lower priority than the request priority.
-     *  - If they are at the same priority level, then
-     *      - If both are privileged and different iface type, then delete existing interfaces.
-     *      - Else, not allowed to delete.
-     *  - Delete ifaces based on the descending requestor priority
-     *    (i.e bg app requests are deleted first, privileged app requests are deleted last)
-     *  - If there are > 1 ifaces within the same priority group to delete, later created iface
-     *    is deleted first.
-     *
-     * @param excessInterfaces Number of interfaces which need to be selected.
+     * @param requestedQuantity Number of interfaces which need to be selected.
      * @param requestedIfaceType Requested iface type.
      * @param requestorWs Requestor worksource.
      * @param existingIfaceType Existing iface type.
      * @param interfaces Array of interfaces.
      */
-    private List<WifiIfaceInfo> selectInterfacesToDelete(int excessInterfaces,
+    private List<WifiIfaceInfo> selectInterfacesToDelete(int requestedQuantity,
             int requestedIfaceType, WorkSource requestorWs, int existingIfaceType,
             WifiIfaceInfo[] interfaces) {
         if (VDBG) {
-            Log.d(TAG, "selectInterfacesToDelete: excessInterfaces=" + excessInterfaces
+            Log.d(TAG, "selectInterfacesToDelete: requestedQuantity=" + requestedQuantity
                     + ", requestedIfaceType=" + requestedIfaceType
                     + ", requestorWs=" + requestorWs
                     + ", existingIfaceType=" + existingIfaceType
@@ -2397,29 +2511,33 @@ public class HalDeviceManager {
             }
         }
 
+        List<WifiIfaceInfo> ifacesToDelete;
         if (lookupError) {
             Log.e(TAG, "selectInterfacesToDelete: falling back to arbitrary selection");
-            return Arrays.asList(Arrays.copyOf(interfaces, excessInterfaces));
+            ifacesToDelete = Arrays.asList(Arrays.copyOf(interfaces, requestedQuantity));
         } else {
             int numIfacesToDelete = 0;
-            List<WifiIfaceInfo> ifacesToDelete = new ArrayList<>(excessInterfaces);
+            ifacesToDelete = new ArrayList<>(requestedQuantity);
             // Iterate from lowest priority to highest priority ifaces.
-            for (int i = PRIORITY_MAX; i >= PRIORITY_MIN; i--) {
+            for (int i = PRIORITY_MIN; i <= PRIORITY_MAX; i++) {
                 List<WifiIfaceInfo> ifacesToDeleteListWithinPriority =
                         ifacesToDeleteMap.getOrDefault(i, new ArrayList<>());
                 int numIfacesToDeleteWithinPriority =
-                        Math.min(excessInterfaces - numIfacesToDelete,
+                        Math.min(requestedQuantity - numIfacesToDelete,
                                 ifacesToDeleteListWithinPriority.size());
                 ifacesToDelete.addAll(
                         ifacesToDeleteListWithinPriority.subList(
                                 0, numIfacesToDeleteWithinPriority));
                 numIfacesToDelete += numIfacesToDeleteWithinPriority;
-                if (numIfacesToDelete == excessInterfaces) {
+                if (numIfacesToDelete == requestedQuantity) {
                     break;
                 }
             }
-            return ifacesToDelete;
         }
+        if (ifacesToDelete.size() < requestedQuantity) {
+            return null;
+        }
+        return ifacesToDelete;
     }
 
     /**
@@ -2440,37 +2558,6 @@ public class HalDeviceManager {
             }
         }
         return true;
-    }
-
-    // Is it possible to create a @HdmIfaceTypeForCreation combo just looking at the device
-    // capabilities.
-    private boolean isItPossibleToCreateCreateTypeCombo(WifiChipInfo[] chipInfos,
-            long requiredChipCapabilities, int[] requestedCombo) {
-        if (VDBG) {
-            Log.d(TAG, "isItPossibleToCreateCreateTypeCombo: chipInfos="
-                    + Arrays.deepToString(chipInfos)
-                    + ", requestedCombo=" + Arrays.toString(requestedCombo)
-                    + ", requiredChipCapabilities=" + requiredChipCapabilities);
-        }
-
-        for (WifiChipInfo chipInfo: chipInfos) {
-            if (!isChipCapabilitiesSupported(chipInfo, requiredChipCapabilities)) continue;
-            SparseArray<List<int[][]>> expandedCreateTypeCombosPerChipModeId =
-                    getExpandedCreateTypeCombosPerChipModeId(chipInfo);
-            for (int i = 0; i < expandedCreateTypeCombosPerChipModeId.size(); i++) {
-                int chipModeId = expandedCreateTypeCombosPerChipModeId.keyAt(i);
-                for (int[][] expandedCreateTypeCombo
-                        : expandedCreateTypeCombosPerChipModeId.get(chipModeId)) {
-                    for (int[] createTypeCombo : expandedCreateTypeCombo) {
-                        if (canCreateTypeComboSupportRequestedCreateTypeCombo(
-                                createTypeCombo, requestedCombo)) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-        return false;
     }
 
     /**
@@ -3031,6 +3118,25 @@ public class HalDeviceManager {
         return false;
     }
 
+    private static SparseBooleanArray convertRadioCombinationMatrixToLookupTable(
+            WifiRadioCombinationMatrix matrix) {
+        SparseBooleanArray lookupTable = new SparseBooleanArray();
+        if (null == matrix) return lookupTable;
+
+        for (WifiRadioCombination combination: matrix.radioCombinations) {
+            int bandMask = 0;
+            for (WifiRadioConfiguration config: combination.radioConfigurations) {
+                bandMask |= 1 << config.bandInfo;
+            }
+            if ((bandMask & DBS_24G_5G_MASK) == DBS_24G_5G_MASK) {
+                lookupTable.put(DBS_24G_5G_MASK, true);
+            } else if ((bandMask & DBS_5G_6G_MASK) == DBS_5G_6G_MASK) {
+                lookupTable.put(DBS_5G_6G_MASK, true);
+            }
+        }
+        return lookupTable;
+    }
+
     /**
      * Get the chip capabilities
      *
@@ -3062,6 +3168,46 @@ public class HalDeviceManager {
             return 0;
         }
         return featureSet;
+    }
+
+    /**
+     * Get the supported radio combination matrix.
+     *
+     * This is called after creating an interface and need at least v1.6 HAL.
+     *
+     * @param wifiChip WifiChip
+     * @return Wifi radio combinmation matrix
+     */
+    private WifiRadioCombinationMatrix getChipSupportedRadioCombinationsMatrix(
+            @NonNull IWifiChip wifiChip) {
+        synchronized (mLock) {
+            if (null == wifiChip) return null;
+            android.hardware.wifi.V1_6.IWifiChip chipV16 =
+                    getWifiChipForV1_6Mockable(wifiChip);
+            if (null == chipV16) return null;
+
+            Mutable<WifiRadioCombinationMatrix> radioCombinationMatrixResp =
+                    new Mutable<>();
+            radioCombinationMatrixResp.value = null;
+            try {
+                chipV16.getSupportedRadioCombinationsMatrix((WifiStatus status,
+                            WifiRadioCombinationMatrix matrix) -> {
+                    if (status.code == WifiStatusCode.SUCCESS) {
+                        radioCombinationMatrixResp.value = matrix;
+                        if (mDbg) {
+                            Log.d(TAG, "radioCombinationMatrix=" + matrix);
+                        }
+                    } else {
+                        Log.e(TAG, "getSupportedRadioCombinationsMatrix failed: "
+                                + statusString(status));
+                    }
+                });
+            } catch (RemoteException e) {
+                Log.e(TAG, "Exception on getSupportedRadioCombinationsMatrix: " + e);
+                radioCombinationMatrixResp.value = null;
+            }
+            return radioCombinationMatrixResp.value;
+        }
     }
 
     /**
