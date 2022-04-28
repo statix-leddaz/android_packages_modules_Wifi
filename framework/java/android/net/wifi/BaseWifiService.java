@@ -90,7 +90,7 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
-    public void setScreenOnScanSchedule(int[] scanSchedule, int[] scanType) {
+    public void setScreenOnScanSchedule(int[] scanScheduleSeconds, int[] scanType) {
         throw new UnsupportedOperationException();
     }
 
@@ -191,6 +191,11 @@ public class BaseWifiService extends IWifiManager.Stub {
 
     @Override
     public void allowAutojoinGlobal(boolean choice) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void queryAutojoinGlobal(@NonNull IBooleanListener listener) {
         throw new UnsupportedOperationException();
     }
 
@@ -677,8 +682,14 @@ public class BaseWifiService extends IWifiManager.Stub {
         throw new UnsupportedOperationException();
     }
 
-    @Override
+    /** TO BE REMOVED */
     public void connect(WifiConfiguration config, int netId, IActionListener callback) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void connect(WifiConfiguration config, int netId, IActionListener callback,
+            @NonNull String packageName) {
         throw new UnsupportedOperationException();
     }
 
@@ -692,8 +703,14 @@ public class BaseWifiService extends IWifiManager.Stub {
         throw new UnsupportedOperationException();
     }
 
-    @Override
+    /** TO BE REMOVED */
     public void save(WifiConfiguration config, IActionListener callback) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void save(WifiConfiguration config, IActionListener callback,
+            @NonNull String packageName) {
         throw new UnsupportedOperationException();
     }
 
@@ -858,18 +875,28 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
-    public void validateCurrentWifiMeetsAdminRequirements() {
+    public void notifyMinimumRequiredWifiSecurityLevelChanged(int level) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public String[] getOemPrivilegedAdmins() {
+    public void notifyWifiSsidPolicyChanged(int policyType, @NonNull List<WifiSsid> ssids) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String[] getOemPrivilegedWifiAdminPackages() {
         throw new UnsupportedOperationException();
     }
 
     @Override
     public void replyToP2pInvitationReceivedDialog(
             int dialogId, boolean accepted, @Nullable String optionalPin) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void replyToSimpleDialog(int dialogId, int button) {
         throw new UnsupportedOperationException();
     }
 
@@ -884,8 +911,8 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
-    public void reportImpactToCreateIfaceRequest(String packageName, int interfaceType,
-            boolean queryForNewInterface, IInterfaceCreationInfoCallback callback) {
+    public void reportCreateInterfaceImpact(String packageName, int interfaceType,
+            boolean requireNewInterface, IInterfaceCreationInfoCallback callback) {
         throw new UnsupportedOperationException();
     }
 }
