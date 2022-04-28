@@ -5978,7 +5978,7 @@ public class WifiManager {
             listenerProxy = new ActionListenerProxy("connect", mLooper, listener);
         }
         try {
-            mService.connect(config, networkId, listenerProxy);
+            mService.connect(config, networkId, listenerProxy, mContext.getOpPackageName());
         } catch (RemoteException e) {
             if (listenerProxy != null) {
                 listenerProxy.onFailure(ActionListener.FAILURE_INTERNAL_ERROR);
@@ -6122,7 +6122,7 @@ public class WifiManager {
             listenerProxy = new ActionListenerProxy("save", mLooper, listener);
         }
         try {
-            mService.save(config, listenerProxy);
+            mService.save(config, listenerProxy, mContext.getOpPackageName());
         } catch (RemoteException e) {
             if (listenerProxy != null) {
                 listenerProxy.onFailure(ActionListener.FAILURE_INTERNAL_ERROR);
@@ -6228,7 +6228,7 @@ public class WifiManager {
      *
      * Available for DO/PO apps.
      * Other apps require {@code android.Manifest.permission#NETWORK_SETTINGS} or
-     * {@code android.Manifest.permission#MANAGE_WIFI_AUTO_JOIN} permission.
+     * {@code android.Manifest.permission#MANAGE_WIFI_NETWORK_SELECTION} permission.
      *
      * @param executor The executor on which callback will be invoked.
      * @param resultsCallback An asynchronous callback that will return {@code Boolean} indicating
