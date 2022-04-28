@@ -28,6 +28,7 @@ import android.app.admin.DevicePolicyManager;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
@@ -184,10 +185,11 @@ public class FrameworkFacade {
     }
 
     /**
-     * Wrapper for {@link PendingIntent#getActivity}.
+     * Wrapper for {@link PendingIntent#getActivity} using the current foreground user.
      */
     public PendingIntent getActivity(Context context, int requestCode, Intent intent, int flags) {
-        return PendingIntent.getActivity(context, requestCode, intent, flags);
+        return PendingIntent.getActivity(context.createContextAsUser(UserHandle.CURRENT, 0),
+                requestCode, intent, flags);
     }
 
     public boolean getConfigWiFiDisableInECBM(Context context) {
@@ -273,6 +275,8 @@ public class FrameworkFacade {
      * Create a new instance of {@link AlertDialog.Builder}.
      * @param context reference to a Context
      * @return an instance of AlertDialog.Builder
+     * @deprecated Use {@link WifiDialogManager#createSimpleDialog} instead, or create another
+     *             dialog type in WifiDialogManager.
      */
     public AlertDialog.Builder makeAlertDialogBuilder(Context context) {
         boolean isDarkTheme = (context.getResources().getConfiguration().uiMode
@@ -426,5 +430,21 @@ public class FrameworkFacade {
                 break;
         }
         return false;
+    }
+
+    /**
+     * Return the (displayable) application name corresponding to the (uid, packageName).
+     */
+    public @NonNull CharSequence getAppName(Context context, @NonNull String packageName, int uid) {
+        ApplicationInfo applicationInfo = null;
+        try {
+            applicationInfo = context.getPackageManager().getApplicationInfoAsUser(
+                    packageName, 0, UserHandle.getUserHandleForUid(uid));
+        } catch (PackageManager.NameNotFoundException e) {
+            Log.e(TAG, "Failed to find app name for " + packageName);
+            return "";
+        }
+        CharSequence appName = context.getPackageManager().getApplicationLabel(applicationInfo);
+        return (appName != null) ? appName : "";
     }
 }
