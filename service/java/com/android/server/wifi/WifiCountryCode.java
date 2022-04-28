@@ -29,6 +29,7 @@ import android.util.ArrayMap;
 import android.util.Log;
 
 import com.android.modules.utils.build.SdkLevel;
+import com.android.server.wifi.util.ApConfigUtil;
 import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
@@ -52,7 +53,7 @@ public class WifiCountryCode {
     private static final String BOOT_DEFAULT_WIFI_COUNTRY_CODE = "ro.boot.wificountrycode";
     private static final int PKT_COUNT_HIGH_PKT_PER_SEC = 16;
     private static final int DISCONNECT_WIFI_COUNT_MAX = 1;
-    private static final String COUNTRY_CODE_WORLD = "00";
+    private final String mWorldModeCountryCode;
     private final Context mContext;
     private final TelephonyManager mTelephonyManager;
     private final ActiveModeWarden mActiveModeWarden;
@@ -190,6 +191,9 @@ public class WifiCountryCode {
         clientModeImplMonitor.registerListener(new ClientModeListenerInternal());
         mWifiNative.registerCountryCodeEventListener(new CountryChangeListenerInternal());
 
+        mWorldModeCountryCode = mContext.getResources()
+                .getString(R.string.config_wifiDriverWorldModeCountryCode);
+
         Log.d(TAG, "Default country code from system property "
                 + BOOT_DEFAULT_WIFI_COUNTRY_CODE + " is " + getOemDefaultCountryCode());
     }
@@ -217,6 +221,11 @@ public class WifiCountryCode {
      * The class for country code related change listener
      */
     public interface ChangeListener {
+        /**
+         * Called when receiving new country code change pending.
+         */
+        default void onCountryCodeChangePending(@NonNull String countryCode) {};
+
         /**
          * Called when receiving country code changed from driver.
          */
@@ -310,6 +319,10 @@ public class WifiCountryCode {
                     + "the received country code is empty");
             return;
         }
+        // Support 00 map to device world mode country code
+        if (TextUtils.equals("00", countryCode)) {
+            countryCode = mWorldModeCountryCode;
+        }
         mOverrideCountryCode = countryCode.toUpperCase(Locale.US);
         updateCountryCode(false);
     }
@@ -390,7 +403,7 @@ public class WifiCountryCode {
         }
 
         if (mDriverCountryCode != null
-                && !mDriverCountryCode.equalsIgnoreCase(COUNTRY_CODE_WORLD)) {
+                && !mDriverCountryCode.equalsIgnoreCase(mWorldModeCountryCode)) {
             return false;
         }
 
@@ -540,21 +553,43 @@ public class WifiCountryCode {
                     }
                 }
             } else if (!isClientModeOnly && am instanceof SoftApManager) {
-                // The API:updateCountryCode in SoftApManager is asynchronous, it requires a new
-                // callback support in S to trigger "notifyListener" for
-                // the new S API: SoftApCapability#getSupportedChannelList(band).
-                // It requires:
-                // 1. a new overlay configuration which is introduced from S.
-                // 2. wificond support in S for S API: SoftApCapability#getSupportedChannelList
-                // Any case if device supported to set country code in R,
-                // the new S API: SoftApCapability#getSupportedChannelList(band) still doesn't work
-                // normally in R build when wifi disabled.
                 SoftApManager sm = (SoftApManager) am;
-                if (!sm.updateCountryCode(country)) {
-                    Log.d(TAG, "Can't set country code (SoftApManager) to "
-                            + country + " when SAP on (Device doesn't support runtime update)");
+                if (mDriverCountryCode == null || TextUtils.equals(mDriverCountryCode, country)) {
+                    // Ignore SoftApManager init country code case or country code didn't be
+                    // changed case.
+                    continue;
+                }
+                // Restart SAP only when 1. overlay enabled 2. CC is not world mode.
+                if (ApConfigUtil.isSoftApRestartRequiredWhenCountryCodeChanged(mContext)
+                        && !mDriverCountryCode.equalsIgnoreCase(mWorldModeCountryCode)) {
+                    Log.i(TAG, "restart SoftAp required because country code changed to "
+                            + country);
+                    SoftApModeConfiguration modeConfig = sm.getSoftApModeConfiguration();
+                    mActiveModeWarden.stopSoftAp(modeConfig.getTargetMode());
+                    mActiveModeWarden.startSoftAp(modeConfig, sm.getRequestorWs());
                 } else {
-                    anyAmmConfigured = true;
+                    // The API:updateCountryCode in SoftApManager is asynchronous, it requires a
+                    // new callback support in S to trigger "notifyListener" for
+                    // the new S API: SoftApCapability#getSupportedChannelList(band).
+                    // It requires:
+                    // 1. a new overlay configuration which is introduced from S.
+                    // 2. wificond support in S for S API: SoftApCapability#getSupportedChannelList
+                    // Any case if device supported to set country code in R,
+                    // the new S API: SoftApCapability#getSupportedChannelList(band) still doesn't
+                    // work normally in R build when wifi disabled.
+                    if (!sm.updateCountryCode(country)) {
+                        Log.d(TAG, "Can't set country code (SoftApManager) to "
+                                + country + " when SAP on (Device doesn't support runtime update)");
+                    } else {
+                        anyAmmConfigured = true;
+                    }
+                }
+            }
+        }
+        if (!anyAmmConfigured) {
+            for (ChangeListener listener : mListeners) {
+                if (country != null) {
+                    listener.onCountryCodeChangePending(country);
                 }
             }
         }

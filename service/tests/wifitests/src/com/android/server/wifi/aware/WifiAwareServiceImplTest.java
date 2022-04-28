@@ -19,7 +19,6 @@ package com.android.server.wifi.aware;
 import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_VERBOSE_LOGGING_ENABLED;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -60,6 +59,8 @@ import android.util.SparseIntArray;
 import androidx.test.filters.SmallTest;
 
 import com.android.modules.utils.build.SdkLevel;
+import com.android.server.wifi.HalDeviceManager;
+import com.android.server.wifi.InterfaceConflictManager;
 import com.android.server.wifi.WifiBaseTest;
 import com.android.server.wifi.WifiSettingsConfigStore;
 import com.android.server.wifi.util.NetdWrapper;
@@ -109,8 +110,8 @@ public class WifiAwareServiceImplTest extends WifiBaseTest {
     @Mock private WifiAwareMetrics mAwareMetricsMock;
     @Mock private WifiPermissionsUtil mWifiPermissionsUtil;
     @Mock private WifiPermissionsWrapper mPermissionsWrapperMock;
-    @Mock
-    WifiSettingsConfigStore mWifiSettingsConfigStore;
+    @Mock private WifiSettingsConfigStore mWifiSettingsConfigStore;
+    @Mock private InterfaceConflictManager mInterfaceConflictManager;
 
     /**
      * Using instead of spy to avoid native crash failures - possibly due to
@@ -158,16 +159,22 @@ public class WifiAwareServiceImplTest extends WifiBaseTest {
         when(mWifiPermissionsUtil.isTargetSdkLessThan(any(), eq(Build.VERSION_CODES.TIRAMISU),
                 anyInt())).thenReturn(true);
 
+        when(mInterfaceConflictManager.manageInterfaceConflictForStateMachine(any(), any(), any(),
+                any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any())).thenReturn(
+                InterfaceConflictManager.ICM_EXECUTE_COMMAND);
+
         mDut = new WifiAwareServiceImplSpy(mContextMock);
         mDut.fakeUid = mDefaultUid;
         mDut.start(mHandlerThreadMock, mAwareStateManagerMock, mWifiAwareShellCommandMock,
                 mAwareMetricsMock, mWifiPermissionsUtil, mPermissionsWrapperMock,
                 mWifiSettingsConfigStore,
                 mock(WifiAwareNativeManager.class), mock(WifiAwareNativeApi.class),
-                mock(WifiAwareNativeCallback.class), mock(NetdWrapper.class));
+                mock(WifiAwareNativeCallback.class), mock(NetdWrapper.class),
+                mInterfaceConflictManager);
         mMockLooper.dispatchAll();
         verify(mAwareStateManagerMock).start(eq(mContextMock), any(), eq(mAwareMetricsMock),
-                eq(mWifiPermissionsUtil), eq(mPermissionsWrapperMock), any(), any());
+                eq(mWifiPermissionsUtil), eq(mPermissionsWrapperMock), any(), any(),
+                eq(mInterfaceConflictManager));
     }
 
     /**
@@ -222,13 +229,11 @@ public class WifiAwareServiceImplTest extends WifiBaseTest {
         ConfigRequest configRequest = new ConfigRequest.Builder().setMasterPreference(55).build();
         String callingPackage = "com.google.somePackage";
         String callingFeatureId = "com.google.someFeature";
-        assertFalse(mDut.isDeviceAttached());
         mDut.connect(mBinderMock, callingPackage, callingFeatureId, mCallbackMock,
                 configRequest, false, mExtras);
 
         verify(mAwareStateManagerMock).connect(anyInt(), anyInt(), anyInt(), eq(callingPackage),
-                eq(callingFeatureId), eq(mCallbackMock), eq(configRequest), eq(false));
-        assertTrue(mDut.isDeviceAttached());
+                eq(callingFeatureId), eq(mCallbackMock), eq(configRequest), eq(false), any());
     }
 
     /**
@@ -239,12 +244,10 @@ public class WifiAwareServiceImplTest extends WifiBaseTest {
     @Test
     public void testDisconnect() throws Exception {
         int clientId = doConnect();
-        assertTrue(mDut.isDeviceAttached());
         mDut.disconnect(clientId, mBinderMock);
 
         verify(mAwareStateManagerMock).disconnect(clientId);
         validateInternalStateCleanedUp(clientId);
-        assertFalse(mDut.isDeviceAttached());
     }
 
     /**
@@ -371,7 +374,7 @@ public class WifiAwareServiceImplTest extends WifiBaseTest {
         for (int i = 0; i < loopCount; ++i) {
             mDut.connect(mBinderMock, "", "", mCallbackMock, null, false, mExtras);
             inOrder.verify(mAwareStateManagerMock).connect(clientIdCaptor.capture(), anyInt(),
-                    anyInt(), any(), any(), eq(mCallbackMock), any(), eq(false));
+                    anyInt(), any(), any(), eq(mCallbackMock), any(), eq(false), any());
             int id = clientIdCaptor.getValue();
             if (i != 0) {
                 assertTrue("Client ID incrementing", id > prevId);
@@ -860,7 +863,7 @@ public class WifiAwareServiceImplTest extends WifiBaseTest {
         ArgumentCaptor<Integer> clientId = ArgumentCaptor.forClass(Integer.class);
         verify(mAwareStateManagerMock).connect(clientId.capture(), anyInt(), anyInt(),
                 eq(callingPackage), eq(callingFeatureId), eq(mCallbackMock),
-                eq(new ConfigRequest.Builder().build()), eq(false));
+                eq(new ConfigRequest.Builder().build()), eq(false), any());
 
         return clientId.getValue();
     }

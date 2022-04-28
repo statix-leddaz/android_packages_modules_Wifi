@@ -52,6 +52,7 @@ import android.os.Process;
 import android.os.WorkSource;
 import android.text.TextUtils;
 import android.util.ArrayMap;
+import android.util.ArraySet;
 import android.util.LocalLog;
 import android.util.Log;
 
@@ -183,7 +184,7 @@ public class WifiConnectivityManager {
     private int mInitialScanState = INITIAL_SCAN_STATE_COMPLETE;
     private boolean mAutoJoinEnabledExternal = true; // enabled by default
     private boolean mUntrustedConnectionAllowed = false;
-    private boolean mRestrictedConnectionAllowed = false;
+    private Set<Integer> mRestrictedConnectionAllowedUids = new ArraySet<>();
     private boolean mOemPaidConnectionAllowed = false;
     private boolean mOemPrivateConnectionAllowed = false;
     @MultiInternetManager.MultiInternetState
@@ -459,21 +460,12 @@ public class WifiConnectivityManager {
                             + secondaryCmmCandidate.SSID + " / "
                             + secondaryCmmCandidate.getNetworkSelectionStatus()
                             .getCandidate().BSSID + " isDbsAp " + isDbsAp);
-                    // Disable roaming if necessary.
-                    if (mContext.getResources()
-                            .getBoolean(R.bool.config_wifiUseHalApiToDisableFwRoaming)) {
-                        // Note: This is an old HAL API, but since it wasn't being exercised before,
-                        // we are being extra cautious and only using it on devices running >= S.
-                        if (!ccm.enableRoaming(false)) {
-                            Log.w(TAG, "Failed to disable roaming");
-                        }
-                    }
                     // Secondary candidate cannot be null (otherwise we would have switched to
                     // legacy flow above). Use the explicit bssid for network connection.
                     WifiConfiguration targetNetwork = new WifiConfiguration(secondaryCmmCandidate);
                     targetNetwork.dbsSecondaryInternet = isDbsAp;
                     targetNetwork.ephemeral = true;
-                    targetNetwork.BSSID = targetBssid2;
+                    targetNetwork.BSSID = targetBssid2; // specify the BSSID to disable roaming.
                     connectToNetworkUsingCmmWithoutMbb(cm, targetNetwork);
 
                     handleScanResultsWithCandidate(handleScanResultsListener);
@@ -527,7 +519,7 @@ public class WifiConnectivityManager {
             if (oemPaidOrOemPrivateRequestorWs != null
                     && mActiveModeWarden.canRequestMoreClientModeManagersInRole(
                             oemPaidOrOemPrivateRequestorWs,
-                            ROLE_CLIENT_SECONDARY_LONG_LIVED)) {
+                            ROLE_CLIENT_SECONDARY_LONG_LIVED, false)) {
                 // Add a placeholder CMM state to ensure network selection is performed for a
                 // potential second STA creation.
                 cmmStates.add(new WifiNetworkSelector.ClientModeManagerState());
@@ -539,13 +531,21 @@ public class WifiConnectivityManager {
             if (mMultiInternetConnectionRequestorWs == null) {
                 Log.e(TAG, "mMultiInternetConnectionRequestorWs is null!");
             } else if (mActiveModeWarden.canRequestMoreClientModeManagersInRole(
-                        mMultiInternetConnectionRequestorWs, ROLE_CLIENT_SECONDARY_LONG_LIVED)) {
+                    mMultiInternetConnectionRequestorWs, ROLE_CLIENT_SECONDARY_LONG_LIVED, false)) {
                 cmmStates.add(new WifiNetworkSelector.ClientModeManagerState());
             }
         }
 
         // Check if any blocklisted BSSIDs can be freed.
-        mWifiBlocklistMonitor.tryEnablingBlockedBssids(scanDetails);
+        List<ScanDetail> enabledDetails =
+                mWifiBlocklistMonitor.tryEnablingBlockedBssids(scanDetails);
+        for (ScanDetail scanDetail : enabledDetails) {
+            WifiConfiguration config = mConfigManager.getSavedNetworkForScanDetail(scanDetail);
+            if (config != null) {
+                mConfigManager.updateNetworkSelectionStatus(config.networkId,
+                        WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
+            }
+        }
         Set<String> bssidBlocklist = mWifiBlocklistMonitor.updateAndGetBssidBlocklistForSsids(
                 connectedSsids);
         updateUserDisabledList(scanDetails);
@@ -557,7 +557,7 @@ public class WifiConnectivityManager {
         List<WifiCandidates.Candidate> candidates = mNetworkSelector.getCandidatesFromScan(
                 scanDetails, bssidBlocklist, cmmStates, mUntrustedConnectionAllowed,
                 mOemPaidConnectionAllowed, mOemPrivateConnectionAllowed,
-                mRestrictedConnectionAllowed, isMultiInternetConnectionRequested());
+                mRestrictedConnectionAllowedUids, isMultiInternetConnectionRequested());
         mLatestCandidates = candidates;
         mLatestCandidatesTimestampMs = mClock.getElapsedSinceBootMillis();
 
@@ -1596,6 +1596,15 @@ public class WifiConnectivityManager {
         if (!shouldConnect()) {
             return;
         }
+        if (mContext.getResources().getBoolean(R.bool.config_wifiUseHalApiToDisableFwRoaming)) {
+            // If network with specified BSSID, disable roaming. Otherwise enable the roaming.
+            boolean enableRoaming = targetNetwork.BSSID == null
+                    || targetNetwork.BSSID.equals(ClientModeImpl.SUPPLICANT_BSSID_ANY);
+            if (!clientModeManager.enableRoaming(enableRoaming)) {
+                Log.w(TAG, "Failed to change roaming to "
+                        + (enableRoaming ? "enabled" : "disabled"));
+            }
+        }
         clientModeManager.startConnectToNetwork(
                 targetNetwork.networkId, Process.WIFI_UID, targetBssid);
     }
@@ -2016,9 +2025,10 @@ public class WifiConnectivityManager {
         settings.numBssidsPerScan = 0;
         settings.hiddenNetworks.clear();
         // retrieve the list of hidden network SSIDs from saved network to scan for
-        settings.hiddenNetworks.addAll(mConfigManager.retrieveHiddenNetworkList());
+        settings.hiddenNetworks.addAll(mConfigManager.retrieveHiddenNetworkList(true));
         // retrieve the list of hidden network SSIDs from Network suggestion to scan for
-        settings.hiddenNetworks.addAll(mWifiNetworkSuggestionsManager.retrieveHiddenNetworkList());
+        settings.hiddenNetworks.addAll(
+                mWifiNetworkSuggestionsManager.retrieveHiddenNetworkList(true));
 
         SingleScanListener singleScanListener =
                 new SingleScanListener(isFullBandScan);
@@ -2071,8 +2081,8 @@ public class WifiConnectivityManager {
     /**
      * Sets the external scan schedule and scan type.
      */
-    public void setExternalScreenOnScanSchedule(int[] scanSchedule, int[] scanType) {
-        mExternalSingleScanScheduleSec = scanSchedule;
+    public void setExternalScreenOnScanSchedule(int[] scanScheduleSeconds, int[] scanType) {
+        mExternalSingleScanScheduleSec = scanScheduleSeconds;
         mExternalSingleScanType = scanType;
     }
 
@@ -2154,8 +2164,10 @@ public class WifiConnectivityManager {
     private @NonNull List<WifiConfiguration> getAllScanOptimizationNetworks() {
         List<WifiConfiguration> networks = mConfigManager.getSavedNetworks(-1);
         networks.addAll(mWifiNetworkSuggestionsManager.getAllScanOptimizationSuggestionNetworks());
-        // remove all auto-join disabled or network selection disabled network.
+        // remove all saved but never connected, auto-join disabled, or network selection disabled
+        // networks.
         networks.removeIf(config -> !config.allowAutojoin
+                || (!config.ephemeral && !config.getNetworkSelectionStatus().hasEverConnected())
                 || !config.getNetworkSelectionStatus().isNetworkEnabled()
                 || mConfigManager.isNetworkTemporarilyDisabledByUser(
                         config.isPasspoint() ? config.FQDN : config.SSID));
@@ -2743,7 +2755,7 @@ public class WifiConnectivityManager {
         setAutoJoinEnabled(mAutoJoinEnabledExternal
                 && (mUntrustedConnectionAllowed || mOemPaidConnectionAllowed
                 || mOemPrivateConnectionAllowed || mTrustedConnectionAllowed
-                || mRestrictedConnectionAllowed || hasMultiInternetConnection())
+                || mRestrictedConnectionAllowedUids.size() != 0 || hasMultiInternetConnection())
                 && !mSpecificNetworkRequestInProgress);
         startConnectivityScan(SCAN_IMMEDIATELY);
     }
@@ -2773,13 +2785,29 @@ public class WifiConnectivityManager {
     }
 
     /**
-     * Triggered when {@link RestrictedWifiNetworkFactory} has a pending ephemeral network request.
+     * Triggered when {@link RestrictedWifiNetworkFactory} has a new pending restricted network
+     * request.
+     * @param uid the uid of the latest requestor
      */
-    public void setRestrictionConnectionAllowed(boolean allowed) {
-        localLog("setRestrictionConnectionAllowed: allowed=" + allowed);
+    public void addRestrictionConnectionAllowedUid(int uid) {
+        localLog("addRestrictionConnectionAllowedUid: allowedUid=" + uid);
 
-        if (mRestrictedConnectionAllowed != allowed) {
-            mRestrictedConnectionAllowed = allowed;
+        int size = mRestrictedConnectionAllowedUids.size();
+        mRestrictedConnectionAllowedUids.add(uid);
+        if (size == 0) {
+            checkAllStatesAndEnableAutoJoin();
+        }
+    }
+
+    /**
+     * Triggered when {@link RestrictedWifiNetworkFactory} release a restricted network request.
+     * @param uid the uid of the latest released requestor
+     */
+    public void removeRestrictionConnectionAllowedUid(int uid) {
+        localLog("removeRestrictionConnectionAllowedUid: allowedUid=" + uid);
+
+        mRestrictedConnectionAllowedUids.remove(uid);
+        if (mRestrictedConnectionAllowedUids.size() == 0) {
             checkAllStatesAndEnableAutoJoin();
         }
     }
@@ -2956,6 +2984,13 @@ public class WifiConnectivityManager {
             mAutoJoinEnabledExternal = enable;
             checkAllStatesAndEnableAutoJoin();
         }
+    }
+
+    /**
+     * Return whether auto join is on/off
+     */
+    public boolean getAutoJoinEnabledExternal() {
+        return mAutoJoinEnabledExternal;
     }
 
     /**

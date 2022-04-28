@@ -355,7 +355,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
                     mBackgroundScanStateMachine.sendMessage(Message.obtain(msg));
                     mSingleScanStateMachine.sendMessage(Message.obtain(msg));
                     mPnoScanStateMachine.sendMessage(Message.obtain(msg));
-                    mLastCallerInfoManager.put(LastCallerInfoManager.SCANNING_ENABLED, msg.arg1,
+                    mLastCallerInfoManager.put(WifiManager.API_SCANNING_ENABLED, msg.arg1,
                             msg.sendingUid, msg.arg2, (String) msg.obj, true);
                     break;
                 case WifiScanner.CMD_DISABLE:
@@ -364,7 +364,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
                     mBackgroundScanStateMachine.sendMessage(Message.obtain(msg));
                     mSingleScanStateMachine.sendMessage(Message.obtain(msg));
                     mPnoScanStateMachine.sendMessage(Message.obtain(msg));
-                    mLastCallerInfoManager.put(LastCallerInfoManager.SCANNING_ENABLED, msg.arg1,
+                    mLastCallerInfoManager.put(WifiManager.API_SCANNING_ENABLED, msg.arg1,
                             msg.sendingUid, msg.arg2, (String) msg.obj, false);
                     break;
                 case WifiScanner.CMD_START_BACKGROUND_SCAN:
@@ -2365,8 +2365,10 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
         private void removeHwPnoScanRequest(ClientInfo ci, int handler) {
             if (ci != null) {
                 Pair<PnoSettings, ScanSettings> settings = removePnoScanRequest(ci, handler);
-                logScanRequest("removeHwPnoScanRequest", ci, handler, null,
-                        settings.second, settings.first);
+                if (settings != null) {
+                    logScanRequest("removeHwPnoScanRequest", ci, handler, null,
+                            settings.second, settings.first);
+                }
             }
         }
 

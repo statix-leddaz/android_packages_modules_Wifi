@@ -25,8 +25,11 @@ import android.net.DhcpOption;
 import android.net.Network;
 import android.net.wifi.CoexUnsafeChannel;
 import android.net.wifi.IActionListener;
+import android.net.wifi.IBooleanListener;
 import android.net.wifi.ICoexCallback;
 import android.net.wifi.IDppCallback;
+import android.net.wifi.IInterfaceCreationInfoCallback;
+import android.net.wifi.ILastCallerListener;
 import android.net.wifi.ILocalOnlyHotspotCallback;
 import android.net.wifi.INetworkRequestMatchCallback;
 import android.net.wifi.IOnWifiActivityEnergyInfoListener;
@@ -68,7 +71,7 @@ interface IWifiManager
 
     oneway void getWifiActivityEnergyInfoAsync(in IOnWifiActivityEnergyInfoListener listener);
 
-    void setScreenOnScanSchedule(in int[] scanSchedule, in int[] scanType);
+    void setScreenOnScanSchedule(in int[] scanScheduleSeconds, in int[] scanType);
 
     ParceledListSlice getConfiguredNetworks(String packageName, String featureId, boolean callerNetworksOnly);
 
@@ -111,6 +114,8 @@ interface IWifiManager
     boolean disableNetwork(int netId, String packageName);
 
     void allowAutojoinGlobal(boolean choice);
+
+    void queryAutojoinGlobal(in IBooleanListener listener);
 
     void allowAutojoin(int netId, boolean choice);
 
@@ -297,9 +302,9 @@ interface IWifiManager
 
     void updateWifiUsabilityScore(int seqNum, int score, int predictionHorizonSec);
 
-    oneway void connect(in WifiConfiguration config, int netId, in IActionListener listener);
+    oneway void connect(in WifiConfiguration config, int netId, in IActionListener listener, in String packageName);
 
-    oneway void save(in WifiConfiguration config, in IActionListener listener);
+    oneway void save(in WifiConfiguration config, in IActionListener listener, in String packageName);
 
     oneway void forget(int netId, in IActionListener listener);
 
@@ -322,6 +327,8 @@ interface IWifiManager
     void setExternalPnoScanRequest(in IBinder binder, in IPnoScanResultsCallback callback, in List<WifiSsid> ssids, in int[] frequencies, String packageName, String featureId);
 
     void clearExternalPnoScanRequest();
+
+    void getLastCallerInfoForApi(int api, in ILastCallerListener listener);
 
     /**
      * Return the Map of {@link WifiNetworkSuggestion} and the list of <ScanResult>
@@ -374,11 +381,19 @@ interface IWifiManager
 
     boolean setStaConcurrencyForMultiInternetMode(int mode);
 
-    void validateCurrentWifiMeetsAdminRequirements();
+    void notifyMinimumRequiredWifiSecurityLevelChanged(int level);
+
+    void notifyWifiSsidPolicyChanged(int policyType, in List<WifiSsid> ssids);
+
+    String[] getOemPrivilegedWifiAdminPackages();
 
     void replyToP2pInvitationReceivedDialog(int dialogId, boolean accepted, String optionalPin);
+
+    void replyToSimpleDialog(int dialogId, int reply);
 
     void addCustomDhcpOptions(in WifiSsid ssid, in byte[] oui, in List<DhcpOption> options);
 
     void removeCustomDhcpOptions(in WifiSsid ssid, in byte[] oui);
+
+    void reportCreateInterfaceImpact(String packageName, int interfaceType, boolean requireNewInterface, in IInterfaceCreationInfoCallback callback);
 }

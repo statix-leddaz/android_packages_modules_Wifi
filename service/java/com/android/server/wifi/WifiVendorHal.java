@@ -17,6 +17,10 @@ package com.android.server.wifi;
 
 import static android.net.wifi.CoexUnsafeChannel.POWER_CAP_NONE;
 
+import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_AP;
+import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_AP_BRIDGE;
+import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_STA;
+
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
@@ -3127,7 +3131,7 @@ public class WifiVendorHal {
         return android.hardware.wifi.V1_5.IWifiStaIface.castFrom(iface);
     }
 
-   /**
+    /**
      * Method to mock out the V1_6 IWifiStaIface retrieval in unit tests.
      *
      * @param ifaceName Name of the interface
@@ -3403,13 +3407,35 @@ public class WifiVendorHal {
     }
 
     /**
+     * Returns whether the given HdmIfaceTypeForCreation combo is supported or not.
+     */
+    public boolean canDeviceSupportCreateTypeCombo(SparseArray<Integer> combo) {
+        synchronized (sLock) {
+            return mHalDeviceManager.canDeviceSupportCreateTypeCombo(combo);
+        }
+    }
+
+    /**
+     * Returns whether a new iface can be created without tearing down any existing ifaces.
+     */
+    public boolean canDeviceSupportAdditionalIface(
+            @HalDeviceManager.HdmIfaceTypeForCreation int createIfaceType,
+            @NonNull WorkSource requestorWs) {
+        synchronized (sLock) {
+            List<Pair<Integer, WorkSource>> creationImpact =
+                    mHalDeviceManager.reportImpactToCreateIface(createIfaceType, true, requestorWs);
+            return creationImpact != null && creationImpact.isEmpty();
+        }
+    }
+
+    /**
      * Returns whether STA + AP concurrency is supported or not.
      */
     public boolean isStaApConcurrencySupported() {
         synchronized (sLock) {
-            return mHalDeviceManager.canSupportIfaceCombo(new SparseArray<Integer>() {{
-                    put(IfaceType.STA, 1);
-                    put(IfaceType.AP, 1);
+            return mHalDeviceManager.canDeviceSupportCreateTypeCombo(new SparseArray<Integer>() {{
+                    put(HDM_CREATE_IFACE_STA, 1);
+                    put(HDM_CREATE_IFACE_AP, 1);
                 }});
         }
     }
@@ -3419,8 +3445,8 @@ public class WifiVendorHal {
      */
     public boolean isStaStaConcurrencySupported() {
         synchronized (sLock) {
-            return mHalDeviceManager.canSupportIfaceCombo(new SparseArray<Integer>() {{
-                    put(IfaceType.STA, 2);
+            return mHalDeviceManager.canDeviceSupportCreateTypeCombo(new SparseArray<Integer>() {{
+                    put(HDM_CREATE_IFACE_STA, 2);
                 }});
         }
     }
@@ -3430,7 +3456,17 @@ public class WifiVendorHal {
      */
     public boolean isItPossibleToCreateApIface(@NonNull WorkSource requestorWs) {
         synchronized (sLock) {
-            return mHalDeviceManager.isItPossibleToCreateIface(IfaceType.AP, requestorWs);
+            return mHalDeviceManager.isItPossibleToCreateIface(HDM_CREATE_IFACE_AP, requestorWs);
+        }
+    }
+
+    /**
+     * Returns whether a new AP iface can be created or not.
+     */
+    public boolean isItPossibleToCreateBridgedApIface(@NonNull WorkSource requestorWs) {
+        synchronized (sLock) {
+            return mHalDeviceManager.isItPossibleToCreateIface(
+                    HDM_CREATE_IFACE_AP_BRIDGE, requestorWs);
         }
     }
 
@@ -3439,7 +3475,7 @@ public class WifiVendorHal {
      */
     public boolean isItPossibleToCreateStaIface(@NonNull WorkSource requestorWs) {
         synchronized (sLock) {
-            return mHalDeviceManager.isItPossibleToCreateIface(IfaceType.STA, requestorWs);
+            return mHalDeviceManager.isItPossibleToCreateIface(HDM_CREATE_IFACE_STA, requestorWs);
         }
 
     }

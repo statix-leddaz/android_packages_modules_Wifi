@@ -106,7 +106,7 @@ public class WifiBackupRestoreTest extends WifiBaseTest {
                     + "<boolean name=\"HiddenSSID\" value=\"false\" />\n"
                     + "<boolean name=\"RequirePMF\" value=\"false\" />\n"
                     // Valid Value: 01
-                    + "<byte-array name=\"AllowedKeyMgmt\" num=\"3\">010002</byte-array>\n"
+                    + "<byte-array name=\"AllowedKeyMgmt\" num=\"3\">010004</byte-array>\n"
                     // Valid Value: 03
                     + "<byte-array name=\"AllowedProtocols\" num=\"1\">13</byte-array>\n"
                     // Valid Value: 01
@@ -253,6 +253,7 @@ public class WifiBackupRestoreTest extends WifiBaseTest {
                     + "<boolean name=\"AutoJoinEnabled\" value=\"false\" />\n"
                     + "<int name=\"DeletionPriority\" value=\"0\" />\n"
                     + "<int name=\"NumRebootsSinceLastUse\" value=\"0\" />\n"
+                    + "<boolean name=\"RepeaterEnabled\" value=\"false\" />\n"
                     + "<SecurityParamsList>\n"
                     + "<SecurityParams>\n"
                     + "<int name=\"SecurityType\" value=\"2\" />\n"

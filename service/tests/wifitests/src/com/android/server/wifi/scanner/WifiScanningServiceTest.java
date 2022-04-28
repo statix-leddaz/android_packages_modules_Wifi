@@ -2743,7 +2743,7 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         verifySuccessfulResponse(order, handler, 192);
         assertDumpContainsRequestLog("addBackgroundScanRequest", 192);
         verify(mLastCallerInfoManager, atLeastOnce()).put(
-                eq(LastCallerInfoManager.SCANNING_ENABLED), anyInt(), anyInt(), anyInt(), any(),
+                eq(WifiManager.API_SCANNING_ENABLED), anyInt(), anyInt(), anyInt(), any(),
                 eq(true));
     }
 
@@ -2797,7 +2797,7 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         assertDumpContainsCallbackLog("singleScanResults", requestId,
                 "results=" + results.getScanData().getResults().length);
         verify(mLastCallerInfoManager, atLeastOnce()).put(
-                eq(LastCallerInfoManager.SCANNING_ENABLED), anyInt(), anyInt(), anyInt(), any(),
+                eq(WifiManager.API_SCANNING_ENABLED), anyInt(), anyInt(), anyInt(), any(),
                 eq(true));
     }
 
@@ -3161,7 +3161,7 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         controlChannel.sendMessage(Message.obtain(null, WifiScanner.CMD_DISABLE));
         mLooper.dispatchAll();
 
-        verify(mLastCallerInfoManager).put(eq(LastCallerInfoManager.SCANNING_ENABLED), anyInt(),
+        verify(mLastCallerInfoManager).put(eq(WifiManager.API_SCANNING_ENABLED), anyInt(),
                 anyInt(), anyInt(), any(), eq(false));
         verify(mWifiScannerImpl0).cleanup();
     }
@@ -3982,5 +3982,27 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         mAlarmManager.dispatch(EMERGENCY_SCAN_END_INDICATION_ALARM_TAG);
         mLooper.dispatchAll();
         verify(mWifiManager, times(1)).setEmergencyScanRequestInProgress(false);
+    }
+
+    @Test
+    public void testStopPnoScanNullSetting() throws Exception {
+        startServiceAndLoadDriver();
+        mWifiScanningServiceImpl.setWifiHandlerLogForTest(mLog);
+        Handler handler = mock(Handler.class);
+        BidirectionalAsyncChannel controlChannel = connectChannel(handler);
+        InOrder order = inOrder(handler, mWifiScannerImpl0);
+        int requestId = 12;
+
+        ScanResults scanResults = createScanResultsForPno();
+        Pair<WifiScanner.ScanSettings, WifiNative.ScanSettings> scanSettings =
+                createScanSettingsForHwPno();
+        Pair<WifiScanner.PnoSettings, WifiNative.PnoSettings> pnoSettings =
+                createPnoSettings(scanResults);
+
+        sendPnoScanRequest(controlChannel, requestId, scanSettings.first, pnoSettings.first);
+        expectHwPnoScan(order, handler, requestId, pnoSettings.second, scanResults);
+
+        controlChannel.sendMessage(Message.obtain(null, WifiScanner.CMD_STOP_PNO_SCAN, 0, 0));
+        mLooper.dispatchAll();
     }
 }

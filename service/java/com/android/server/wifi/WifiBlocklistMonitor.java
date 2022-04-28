@@ -675,11 +675,13 @@ public class WifiBlocklistMonitor {
     /**
      * Attempts to re-enable BSSIDs that likely experienced failures due to low RSSI.
      * @param scanDetails
+     * @return the list of ScanDetails for which BSSIDs were re-enabled.
      */
-    public void tryEnablingBlockedBssids(List<ScanDetail> scanDetails) {
+    public @NonNull List<ScanDetail> tryEnablingBlockedBssids(List<ScanDetail> scanDetails) {
         if (scanDetails == null) {
-            return;
+            return Collections.EMPTY_LIST;
         }
+        List<ScanDetail> results = new ArrayList<>();
         for (ScanDetail scanDetail : scanDetails) {
             ScanResult scanResult = scanDetail.getScanResult();
             if (scanResult == null) {
@@ -691,13 +693,20 @@ public class WifiBlocklistMonitor {
                 continue;
             }
             int sufficientRssi = mScoringParams.getSufficientRssi(scanResult.frequency);
-            if (status.lastRssi < sufficientRssi && scanResult.level >= sufficientRssi
-                    && scanResult.level - status.lastRssi >= MIN_RSSI_DIFF_TO_UNBLOCK_BSSID) {
+            int goodRssi = mScoringParams.getGoodRssi(scanResult.frequency);
+            boolean rssiMinDiffAchieved = scanResult.level - status.lastRssi
+                    >= MIN_RSSI_DIFF_TO_UNBLOCK_BSSID;
+            boolean sufficientRssiBreached =
+                    status.lastRssi < sufficientRssi && scanResult.level >= sufficientRssi;
+            boolean goodRssiBreached = status.lastRssi < goodRssi && scanResult.level >= goodRssi;
+            if (rssiMinDiffAchieved && (sufficientRssiBreached || goodRssiBreached)) {
                 mBssidBlocklistMonitorLogger.logBssidUnblocked(
                         status, "rssi significantly improved");
                 mBssidStatusMap.remove(status.bssid);
+                results.add(scanDetail);
             }
         }
+        return results;
     }
 
     private boolean isLowRssiSensitiveFailure(int blockReason) {

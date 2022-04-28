@@ -39,6 +39,7 @@ import static org.mockito.Mockito.when;
 import android.Manifest;
 import android.app.AppOpsManager;
 import android.app.admin.DevicePolicyManager;
+import android.app.admin.WifiSsidPolicy;
 import android.content.AttributionSource;
 import android.content.ComponentName;
 import android.content.ContentResolver;
@@ -46,13 +47,17 @@ import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.location.LocationManager;
 import android.net.NetworkStack;
+import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiSsid;
 import android.os.Build;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.permission.PermissionManager;
 import android.provider.Settings;
+import android.util.ArraySet;
 
 import androidx.test.filters.SmallTest;
 
@@ -62,6 +67,7 @@ import com.android.server.wifi.FakeWifiLog;
 import com.android.server.wifi.FrameworkFacade;
 import com.android.server.wifi.WifiBaseTest;
 import com.android.server.wifi.WifiInjector;
+import com.android.wifi.resources.R;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -73,6 +79,7 @@ import org.mockito.Spy;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 
@@ -98,13 +105,16 @@ public class WifiPermissionsUtilTest extends WifiBaseTest {
     @Mock private PermissionManager mPermissionManager;
     @Mock private PackageManager mPackageManager;
     @Spy private FakeWifiLog mWifiLog;
+    @Mock private Context mUserContext;
 
     private static final String TEST_WIFI_STACK_APK_NAME = "com.android.wifi";
     private static final String TEST_PACKAGE_NAME = "com.google.somePackage";
     private static final String TEST_FEATURE_ID = "com.google.someFeature";
+    private static final String TEST_SSID = "\"GoogleGuest\"";
     private static final String INVALID_PACKAGE  = "BAD_PACKAGE";
     private static final int MANAGED_PROFILE_UID = 1100000;
     private static final int OTHER_USER_UID = 1200000;
+    private static final int TEST_NETWORK_ID = 54;
     private static final boolean CHECK_LOCATION_SETTINGS = false;
     private static final boolean IGNORE_LOCATION_SETTINGS = true;
     private static final boolean DONT_HIDE_FROM_APP_OPS = false;
@@ -1017,6 +1027,43 @@ public class WifiPermissionsUtilTest extends WifiBaseTest {
     }
 
     /**
+     * Verifies the helper method exposed for checking if the calling uid is a ProfileOwner
+     * of an organization owned device.
+     */
+    @Test
+    public void testIsProfileOwnerOfOrganizationOwnedDevice() throws Exception {
+        setupMocks();
+        WifiPermissionsUtil wifiPermissionsUtil = new WifiPermissionsUtil(mMockPermissionsWrapper,
+                mMockContext, mMockUserManager, mWifiInjector);
+
+        when(mMockContext.createPackageContextAsUser(
+                TEST_WIFI_STACK_APK_NAME, 0, UserHandle.getUserHandleForUid(MANAGED_PROFILE_UID)))
+                .thenReturn(mMockContext);
+        when(mMockContext.getSystemService(DevicePolicyManager.class))
+                .thenReturn(mDevicePolicyManager);
+
+        when(mDevicePolicyManager.isOrganizationOwnedDeviceWithManagedProfile())
+                .thenReturn(true);
+        String[] packageNames = {TEST_PACKAGE_NAME};
+        when(mMockContext.getPackageManager().getPackagesForUid(MANAGED_PROFILE_UID))
+                .thenReturn(packageNames);
+
+        when(mDevicePolicyManager.isProfileOwnerApp(TEST_PACKAGE_NAME)).thenReturn(true);
+        assertTrue(wifiPermissionsUtil.isProfileOwnerOfOrganizationOwnedDevice(
+                MANAGED_PROFILE_UID));
+
+        when(mDevicePolicyManager.isProfileOwnerApp(TEST_PACKAGE_NAME)).thenReturn(false);
+        assertFalse(wifiPermissionsUtil.isProfileOwnerOfOrganizationOwnedDevice(
+                MANAGED_PROFILE_UID));
+
+        // DevicePolicyManager does not exist.
+        when(mMockContext.getSystemService(Context.DEVICE_POLICY_SERVICE))
+                .thenReturn(null);
+        assertFalse(wifiPermissionsUtil.isProfileOwnerOfOrganizationOwnedDevice(
+                MANAGED_PROFILE_UID));
+    }
+
+    /**
      * Test case setting: caller does not have Location permission.
      * Expect a SecurityException
      */
@@ -1573,5 +1620,140 @@ public class WifiPermissionsUtilTest extends WifiBaseTest {
         // verify that checking Coarse for apps!
         verify(mMockAppOps).noteOp(eq(AppOpsManager.OPSTR_COARSE_LOCATION), anyInt(), anyString(),
                 any(), any());
+    }
+
+    @Test
+    public void testIsOemPrivilegedAdmin_notAllowListed() throws Exception {
+        setupTestCase();
+        setupOemAdmins(false, false);
+
+        WifiPermissionsUtil codeUnderTest = new WifiPermissionsUtil(mMockPermissionsWrapper,
+                mMockContext, mMockUserManager, mWifiInjector);
+
+        assertFalse(codeUnderTest.isOemPrivilegedAdmin(TEST_CALLING_UID));
+    }
+
+    @Test
+    public void testIsOemPrivilegedAdmin_allowListedNotSigned() throws Exception {
+        setupTestCase();
+        setupOemAdmins(true, false);
+
+        WifiPermissionsUtil codeUnderTest = new WifiPermissionsUtil(mMockPermissionsWrapper,
+                mMockContext, mMockUserManager, mWifiInjector);
+
+        assertFalse(codeUnderTest.isOemPrivilegedAdmin(TEST_CALLING_UID));
+    }
+
+    @Test
+    public void testIsOemPrivilegedAdmin_allowListedAndSigned() throws Exception {
+        setupTestCase();
+        setupOemAdmins(true, true);
+
+        WifiPermissionsUtil codeUnderTest = new WifiPermissionsUtil(mMockPermissionsWrapper,
+                mMockContext, mMockUserManager, mWifiInjector);
+
+        assertTrue(codeUnderTest.isOemPrivilegedAdmin(TEST_CALLING_UID));
+    }
+
+    private void setupOemAdmins(boolean allowlisted, boolean platformSigned) {
+        Resources mockResources = mock(Resources.class);
+        when(mockResources.getStringArray(R.array.config_oemPrivilegedWifiAdminPackages))
+                .thenReturn(allowlisted ? new String[]{TEST_PACKAGE_NAME} : new String[0]);
+        when(mMockContext.getResources()).thenReturn(mockResources);
+        when(mMockPkgMgr.getPackagesForUid(TEST_CALLING_UID))
+                .thenReturn(new String[]{TEST_PACKAGE_NAME});
+
+        when(mMockPkgMgr.checkSignatures(anyInt(), anyInt()))
+                .thenReturn(platformSigned
+                        ? PackageManager.SIGNATURE_MATCH
+                        : PackageManager.SIGNATURE_NO_MATCH);
+    }
+
+    @Test
+    public void testIsGuestUser() throws Exception {
+        when(mMockContext.createContextAsUser(any(), anyInt())).thenReturn(mUserContext);
+        when(mUserContext.getSystemService(UserManager.class)).thenReturn(mMockUserManager);
+        when(mMockUserManager.isGuestUser()).thenReturn(true);
+        setupTestCase();
+        WifiPermissionsUtil codeUnderTest = new WifiPermissionsUtil(mMockPermissionsWrapper,
+                mMockContext, mMockUserManager, mWifiInjector);
+        assertTrue(codeUnderTest.isGuestUser());
+    }
+
+    /**
+     * Test that isAdminRestrictedNetwork returns true due to SSID allowlist restriction
+     */
+    @Test
+    public void testIsAdminRestrictedNetworkSsidAllowlist() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+
+        WifiConfiguration config = new WifiConfiguration();
+        config.networkId = TEST_NETWORK_ID;
+        config.SSID = TEST_SSID;
+
+        WifiSsidPolicy policy = new WifiSsidPolicy(
+                WifiSsidPolicy.WIFI_SSID_POLICY_TYPE_ALLOWLIST,
+                new ArraySet<>(Arrays.asList(WifiSsid.fromUtf8Text("test1"),
+                        WifiSsid.fromUtf8Text("test2"))));
+        when(mDevicePolicyManager.getWifiSsidPolicy()).thenReturn(policy);
+        when(mMockContext.getSystemService(DevicePolicyManager.class))
+                .thenReturn(mDevicePolicyManager);
+
+        setupTestCase();
+        WifiPermissionsUtil codeUnderTest = new WifiPermissionsUtil(mMockPermissionsWrapper,
+                mMockContext, mMockUserManager, mWifiInjector);
+
+        assertTrue(codeUnderTest.isAdminRestrictedNetwork(config));
+    }
+
+    /**
+     * Test that isAdminRestrictedNetwork returns true due to SSID denylist restriction
+     */
+    @Test
+    public void testIsAdminRestrictedNetworkSsidDenylist() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+
+        WifiConfiguration config = new WifiConfiguration();
+        config.networkId = TEST_NETWORK_ID;
+        config.SSID = TEST_SSID;
+
+        WifiSsidPolicy policy = new WifiSsidPolicy(
+                WifiSsidPolicy.WIFI_SSID_POLICY_TYPE_DENYLIST,
+                new ArraySet<>(Arrays.asList(WifiSsid.fromUtf8Text("GoogleGuest"),
+                        WifiSsid.fromUtf8Text("test2"))));
+        when(mDevicePolicyManager.getWifiSsidPolicy()).thenReturn(policy);
+        when(mMockContext.getSystemService(DevicePolicyManager.class))
+                .thenReturn(mDevicePolicyManager);
+
+        setupTestCase();
+        WifiPermissionsUtil codeUnderTest = new WifiPermissionsUtil(mMockPermissionsWrapper,
+                mMockContext, mMockUserManager, mWifiInjector);
+
+        assertTrue(codeUnderTest.isAdminRestrictedNetwork(config));
+    }
+
+    /**
+     * Test that isAdminRestrictedNetwork returns true due to minimum security level restriction
+     */
+    @Test
+    public void testIsAdminRestrictedNetworkSecurityLevelRestriction()
+            throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+
+        WifiConfiguration config = new WifiConfiguration();
+        config.networkId = TEST_NETWORK_ID;
+        config.SSID = TEST_SSID;
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+
+        when(mMockContext.getSystemService(DevicePolicyManager.class))
+                .thenReturn(mDevicePolicyManager);
+        when(mDevicePolicyManager.getMinimumRequiredWifiSecurityLevel()).thenReturn(
+                DevicePolicyManager.WIFI_SECURITY_ENTERPRISE_EAP);
+
+        setupTestCase();
+        WifiPermissionsUtil codeUnderTest = new WifiPermissionsUtil(mMockPermissionsWrapper,
+                mMockContext, mMockUserManager, mWifiInjector);
+
+        assertTrue(codeUnderTest.isAdminRestrictedNetwork(config));
     }
 }

@@ -35,7 +35,6 @@ import android.util.SparseIntArray;
 
 import androidx.annotation.RequiresApi;
 
-import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.Preconditions;
 import com.android.modules.utils.build.SdkLevel;
 
@@ -70,12 +69,6 @@ import java.util.stream.IntStream;
 public final class SoftApConfiguration implements Parcelable {
 
     private static final String TAG = "SoftApConfiguration";
-
-    @VisibleForTesting
-    static final int PSK_MIN_LEN = 8;
-
-    @VisibleForTesting
-    static final int PSK_MAX_LEN = 63;
 
     /**
      * 2GHz band.
@@ -118,6 +111,16 @@ public final class SoftApConfiguration implements Parcelable {
     @SystemApi
     public static final int BAND_ANY = BAND_2GHZ | BAND_5GHZ | BAND_6GHZ;
 
+    /**
+     * A default value used to configure shut down timeout setting to default value.
+     * See {@link Builder#setShutdownTimeoutMillis(long)} or
+     * {@link Builder#setBridgedModeOpportunisticShutdownTimeoutMillis(long)} for details.
+     *
+     * @hide
+     */
+    @SystemApi
+    public static final long DEFAULT_TIMEOUT = -1;
+
     /** @hide */
     @Retention(RetentionPolicy.SOURCE)
     @IntDef(flag = true, prefix = { "BAND_TYPE_" }, value = {
@@ -154,6 +157,16 @@ public final class SoftApConfiguration implements Parcelable {
     @ChangeId
     @EnabledAfter(targetSdkVersion = Build.VERSION_CODES.S)
     private static final long FORCE_MUTUAL_EXCLUSIVE_BSSID_MAC_RAMDONIZATION_SETTING = 215656264L;
+
+    /**
+     * Removes zero support on
+     * {@link android.net.wifi.SoftApConfiguration.Builder#setShutdownTimeoutMillis(long)}.
+     *
+     * @hide
+     */
+    @ChangeId
+    @EnabledAfter(targetSdkVersion = Build.VERSION_CODES.S)
+    public static final long REMOVE_ZERO_FOR_TIMEOUT_SETTING = 213289672L;
 
     private static boolean isChannelBandPairValid(int channel, @BandType int band) {
         switch (band) {
@@ -254,6 +267,21 @@ public final class SoftApConfiguration implements Parcelable {
      * If the set is empty, then all channels in 6GHz are allowed.
      */
     private final @NonNull Set<Integer> mAllowedAcsChannels6g;
+
+    /**
+     * The maximum channel bandwidth for SoftAp operation
+     *
+     * Default value is SoftApInfo#CHANNEL_WIDTH_AUTO which means the channel bandwidth
+     * is to be selected by the chip based on device capabilities.
+     * <p>
+     *
+     * Valid values: {@link SoftApInfo#CHANNEL_WIDTH_AUTO},
+     * {@link SoftApInfo#CHANNEL_WIDTH_20MHZ}, {@link SoftApInfo#CHANNEL_WIDTH_40MHZ},
+     * {@link SoftApInfo#CHANNEL_WIDTH_80MHZ}, {@link SoftApInfo#CHANNEL_WIDTH_160MHZ},
+     * {@link SoftApInfo#CHANNEL_WIDTH_320MHZ}
+     *
+     */
+    private final @WifiAnnotations.Bandwidth int mMaxChannelBandwidth;
 
     /**
      * The maximim allowed number of clients that can associate to the AP.
@@ -426,7 +454,8 @@ public final class SoftApConfiguration implements Parcelable {
             @NonNull List<ScanResult.InformationElement> vendorElements,
             @Nullable MacAddress persistentRandomizedMacAddress,
             @NonNull Set<Integer> allowedAcsChannels24g, @NonNull Set<Integer> allowedAcsChannels5g,
-            @NonNull Set<Integer> allowedAcsChannels6g) {
+            @NonNull Set<Integer> allowedAcsChannels6g,
+            @WifiAnnotations.Bandwidth int maxChannelBandwidth) {
         mWifiSsid = ssid;
         mBssid = bssid;
         mPassphrase = passphrase;
@@ -456,6 +485,7 @@ public final class SoftApConfiguration implements Parcelable {
         mAllowedAcsChannels2g = new HashSet<>(allowedAcsChannels24g);
         mAllowedAcsChannels5g = new HashSet<>(allowedAcsChannels5g);
         mAllowedAcsChannels6g = new HashSet<>(allowedAcsChannels6g);
+        mMaxChannelBandwidth = maxChannelBandwidth;
     }
 
     @Override
@@ -492,7 +522,8 @@ public final class SoftApConfiguration implements Parcelable {
                         other.mPersistentRandomizedMacAddress)
                 && Objects.equals(mAllowedAcsChannels2g, other.mAllowedAcsChannels2g)
                 && Objects.equals(mAllowedAcsChannels5g, other.mAllowedAcsChannels5g)
-                && Objects.equals(mAllowedAcsChannels6g, other.mAllowedAcsChannels6g);
+                && Objects.equals(mAllowedAcsChannels6g, other.mAllowedAcsChannels6g)
+                && mMaxChannelBandwidth == other.mMaxChannelBandwidth;
     }
 
     @Override
@@ -504,7 +535,7 @@ public final class SoftApConfiguration implements Parcelable {
                 mBridgedModeOpportunisticShutdownEnabled, mIeee80211axEnabled, mIeee80211beEnabled,
                 mIsUserConfiguration, mBridgedModeOpportunisticShutdownTimeoutMillis,
                 mVendorElements, mPersistentRandomizedMacAddress, mAllowedAcsChannels2g,
-                mAllowedAcsChannels5g, mAllowedAcsChannels6g);
+                mAllowedAcsChannels5g, mAllowedAcsChannels6g, mMaxChannelBandwidth);
     }
 
     @Override
@@ -537,6 +568,7 @@ public final class SoftApConfiguration implements Parcelable {
         sbuf.append(" \n mAllowedAcsChannels2g = ").append(mAllowedAcsChannels2g);
         sbuf.append(" \n mAllowedAcsChannels5g = ").append(mAllowedAcsChannels5g);
         sbuf.append(" \n mAllowedAcsChannels6g = ").append(mAllowedAcsChannels6g);
+        sbuf.append(" \n mMaxChannelBandwidth = ").append(mMaxChannelBandwidth);
         return sbuf.toString();
     }
 
@@ -565,6 +597,7 @@ public final class SoftApConfiguration implements Parcelable {
         writeHashSetInt(dest, mAllowedAcsChannels2g);
         writeHashSetInt(dest, mAllowedAcsChannels5g);
         writeHashSetInt(dest, mAllowedAcsChannels6g);
+        dest.writeInt(mMaxChannelBandwidth);
     }
 
     /* Reference from frameworks/base/core/java/android/os/Parcel.java */
@@ -583,7 +616,6 @@ public final class SoftApConfiguration implements Parcelable {
             i++;
         }
     }
-
 
     /* Reference from frameworks/base/core/java/android/os/Parcel.java */
     @NonNull
@@ -651,7 +683,8 @@ public final class SoftApConfiguration implements Parcelable {
                     in.readParcelable(MacAddress.class.getClassLoader()),
                     readHashSetInt(in),
                     readHashSetInt(in),
-                    readHashSetInt(in));
+                    readHashSetInt(in),
+                    in.readInt());
         }
 
         @Override
@@ -861,6 +894,11 @@ public final class SoftApConfiguration implements Parcelable {
      */
     @SystemApi
     public long getShutdownTimeoutMillis() {
+        if (!Compatibility.isChangeEnabled(
+                REMOVE_ZERO_FOR_TIMEOUT_SETTING) && mShutdownTimeoutMillis == DEFAULT_TIMEOUT) {
+            // For legacy application, return 0 when setting is DEFAULT_TIMEOUT.
+            return 0;
+        }
         return mShutdownTimeoutMillis;
     }
 
@@ -1029,6 +1067,22 @@ public final class SoftApConfiguration implements Parcelable {
     }
 
     /**
+     * Returns configured maximum channel bandwidth for the SoftAp connection.
+     *
+     * If not configured, it will return {@link SoftApInfo#CHANNEL_WIDTH_AUTO}
+     *
+     * @hide
+     */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    @SystemApi
+    public @WifiAnnotations.Bandwidth int getMaxChannelBandwidth() {
+        if (!SdkLevel.isAtLeastT()) {
+            throw new UnsupportedOperationException();
+        }
+        return mMaxChannelBandwidth;
+    }
+
+    /**
      * Returns whether or not the {@link SoftApConfiguration} was configured by the user
      * (as opposed to the default system configuration).
      * <p>
@@ -1186,6 +1240,7 @@ public final class SoftApConfiguration implements Parcelable {
         private Set<Integer> mAllowedAcsChannels2g;
         private Set<Integer> mAllowedAcsChannels5g;
         private Set<Integer> mAllowedAcsChannels6g;
+        private @WifiAnnotations.Bandwidth int mMaxChannelBandwidth;
 
         /**
          * Constructs a Builder with default values (see {@link Builder}).
@@ -1200,7 +1255,7 @@ public final class SoftApConfiguration implements Parcelable {
             mMaxNumberOfClients = 0;
             mSecurityType = SECURITY_TYPE_OPEN;
             mAutoShutdownEnabled = true; // enabled by default.
-            mShutdownTimeoutMillis = 0;
+            mShutdownTimeoutMillis = DEFAULT_TIMEOUT;
             mClientControlByUser = false;
             mBlockedClientList = new ArrayList<>();
             mAllowedClientList = new ArrayList<>();
@@ -1213,12 +1268,13 @@ public final class SoftApConfiguration implements Parcelable {
             mIeee80211axEnabled = true;
             mIeee80211beEnabled = true;
             mIsUserConfiguration = true;
-            mBridgedModeOpportunisticShutdownTimeoutMillis = 0;
+            mBridgedModeOpportunisticShutdownTimeoutMillis = DEFAULT_TIMEOUT;
             mVendorElements = new ArrayList<>();
             mPersistentRandomizedMacAddress = null;
             mAllowedAcsChannels2g = new HashSet<>();
             mAllowedAcsChannels5g = new HashSet<>();
             mAllowedAcsChannels6g = new HashSet<>();
+            mMaxChannelBandwidth = SoftApInfo.CHANNEL_WIDTH_AUTO;
         }
 
         /**
@@ -1252,6 +1308,13 @@ public final class SoftApConfiguration implements Parcelable {
             mAllowedAcsChannels2g = new HashSet<>(other.mAllowedAcsChannels2g);
             mAllowedAcsChannels5g = new HashSet<>(other.mAllowedAcsChannels5g);
             mAllowedAcsChannels6g = new HashSet<>(other.mAllowedAcsChannels6g);
+            mMaxChannelBandwidth = other.mMaxChannelBandwidth;
+            if (SdkLevel.isAtLeastS() && mBssid != null) {
+                // Auto set correct MAC randomization setting for the legacy SoftApConfiguration
+                // to avoid the exception happen when framework (system server) copy
+                // SoftApConfiguration.
+                mMacRandomizationSetting = RANDOMIZATION_NONE;
+            }
         }
 
         /**
@@ -1274,6 +1337,11 @@ public final class SoftApConfiguration implements Parcelable {
                 throw new IllegalArgumentException("A BSSID had configured but MAC randomization"
                         + " setting is not NONE");
             }
+
+            if (!Compatibility.isChangeEnabled(
+                    REMOVE_ZERO_FOR_TIMEOUT_SETTING) && mShutdownTimeoutMillis == DEFAULT_TIMEOUT) {
+                mShutdownTimeoutMillis = 0; // Use 0 for legacy app.
+            }
             return new SoftApConfiguration(mWifiSsid, mBssid, mPassphrase,
                     mHiddenSsid, mChannels, mSecurityType, mMaxNumberOfClients,
                     mAutoShutdownEnabled, mShutdownTimeoutMillis, mClientControlByUser,
@@ -1282,7 +1350,7 @@ public final class SoftApConfiguration implements Parcelable {
                     mIeee80211beEnabled, mIsUserConfiguration,
                     mBridgedModeOpportunisticShutdownTimeoutMillis, mVendorElements,
                     mPersistentRandomizedMacAddress, mAllowedAcsChannels2g, mAllowedAcsChannels5g,
-                    mAllowedAcsChannels6g);
+                    mAllowedAcsChannels6g, mMaxChannelBandwidth);
         }
 
         /**
@@ -1429,9 +1497,9 @@ public final class SoftApConfiguration implements Parcelable {
          * and {@link #SECURITY_TYPE_WPA3_OWE}.
          *
          * @return Builder for chaining.
-         * @throws IllegalArgumentException when the passphrase length is invalid and
+         * @throws IllegalArgumentException when the passphrase length is empty and
          *         {@code securityType} is any of the following:
-         *         {@link ##SECURITY_TYPE_WPA2_PSK} or {@link #SECURITY_TYPE_WPA3_SAE_TRANSITION}
+         *         {@link #SECURITY_TYPE_WPA2_PSK} or {@link #SECURITY_TYPE_WPA3_SAE_TRANSITION}
          *         or {@link #SECURITY_TYPE_WPA3_SAE},
          *         or non-null passphrase and {@code securityType} is
          *         {@link #SECURITY_TYPE_OPEN} or {@link #SECURITY_TYPE_WPA3_OWE_TRANSITION} or
@@ -1453,15 +1521,6 @@ public final class SoftApConfiguration implements Parcelable {
                 }
             } else {
                 Preconditions.checkStringNotEmpty(passphrase);
-                if (securityType == SECURITY_TYPE_WPA2_PSK
-                        || securityType == SECURITY_TYPE_WPA3_SAE_TRANSITION) {
-                    if (passphrase.length() < PSK_MIN_LEN || passphrase.length() > PSK_MAX_LEN) {
-                        throw new IllegalArgumentException(
-                                "Password size must be at least " + PSK_MIN_LEN
-                                + " and no more than " + PSK_MAX_LEN
-                                + " for WPA2_PSK and WPA3_SAE_TRANSITION Mode");
-                    }
-                }
             }
             mSecurityType = securityType;
             mPassphrase = passphrase;
@@ -1723,23 +1782,31 @@ public final class SoftApConfiguration implements Parcelable {
          * The Soft AP will shut down when there are no devices connected to it for
          * the timeout duration.
          *
-         * Specify a value of 0 to have the framework automatically use default timeout
-         * setting which defined in {@link R.integer.config_wifi_framework_soft_ap_timeout_delay}
+         * Specify a value of {@link #DEFAULT_TIMEOUT} to have the framework automatically use
+         * default timeout setting which defined in
+         * {@link R.integer.config_wifi_framework_soft_ap_timeout_delay}
          *
          * <p>
-         * <li>If not set, defaults to 0</li>
+         * <li>If not set, defaults to {@link #DEFAULT_TIMEOUT}</li>
          * <li>The shut down timeout will apply when {@link #setAutoShutdownEnabled(boolean)} is
          * set to true</li>
          *
-         * @param timeoutMillis milliseconds of the timeout delay.
+         * @param timeoutMillis milliseconds of the timeout delay. Any value less than 1 is invalid
+         *                      except {@link #DEFAULT_TIMEOUT}.
          * @return Builder for chaining.
          *
          * @see #setAutoShutdownEnabled(boolean)
          */
         @NonNull
-        public Builder setShutdownTimeoutMillis(@IntRange(from = 0) long timeoutMillis) {
-            if (timeoutMillis < 0) {
-                throw new IllegalArgumentException("Invalid timeout value");
+        public Builder setShutdownTimeoutMillis(@IntRange(from = -1) long timeoutMillis) {
+            if (Compatibility.isChangeEnabled(
+                    REMOVE_ZERO_FOR_TIMEOUT_SETTING) && timeoutMillis < 1) {
+                if (timeoutMillis != DEFAULT_TIMEOUT) {
+                    throw new IllegalArgumentException("Invalid timeout value: " + timeoutMillis);
+                }
+            } else if (timeoutMillis < 0) {
+                throw new IllegalArgumentException("Invalid timeout value from legacy app: "
+                        + timeoutMillis);
             }
             mShutdownTimeoutMillis = timeoutMillis;
             return this;
@@ -1837,6 +1904,44 @@ public final class SoftApConfiguration implements Parcelable {
                     break;
             }
 
+            return this;
+        }
+
+        /**
+         * Sets maximum channel bandwidth for the SoftAp Connection
+         *
+         * If not set, the SoftAp connection will seek the maximum channel bandwidth achievable on
+         * the device. However, in some cases the caller will need to put a cap on the channel
+         * bandwidth through this API.
+         *
+         * @param maxChannelBandwidth one of {@link SoftApInfo#CHANNEL_WIDTH_AUTO},
+         * {@link SoftApInfo#CHANNEL_WIDTH_20MHZ}, {@link SoftApInfo#CHANNEL_WIDTH_40MHZ},
+         * {@link SoftApInfo#CHANNEL_WIDTH_80MHZ}, {@link SoftApInfo#CHANNEL_WIDTH_160MHZ},
+         * or {@link SoftApInfo#CHANNEL_WIDTH_320MHZ}
+         *
+         * @return builder for chaining
+         */
+        @NonNull
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        public Builder setMaxChannelBandwidth(@WifiAnnotations.Bandwidth int maxChannelBandwidth) {
+            if (!SdkLevel.isAtLeastT()) {
+                throw new UnsupportedOperationException();
+            }
+
+            switch (maxChannelBandwidth) {
+                case SoftApInfo.CHANNEL_WIDTH_AUTO:
+                case SoftApInfo.CHANNEL_WIDTH_20MHZ:
+                case SoftApInfo.CHANNEL_WIDTH_40MHZ:
+                case SoftApInfo.CHANNEL_WIDTH_80MHZ:
+                case SoftApInfo.CHANNEL_WIDTH_160MHZ:
+                case SoftApInfo.CHANNEL_WIDTH_320MHZ:
+                    mMaxChannelBandwidth = maxChannelBandwidth;
+                    break;
+                default:
+                    throw new IllegalArgumentException(
+                            "Invalid channel bandwidth value("
+                            + maxChannelBandwidth + ")  configured");
+            }
             return this;
         }
 
@@ -2045,26 +2150,31 @@ public final class SoftApConfiguration implements Parcelable {
          * An instance of bridged Soft AP will shut down when there is no device connected to it
          * for this timeout duration.
          *
-         * Specify a value of 0 to have the framework automatically use default timeout
-         * setting defined by
+         * Specify a value of {@link DEFAULT_TIMEOUT} to have the framework automatically use
+         * default timeout setting defined by
          * {@link
          * R.integer.config_wifiFrameworkSoftApShutDownIdleInstanceInBridgedModeTimeoutMillisecond}
          *
          * <p>
-         * <li>If not set, defaults to 0</li>
+         * <li>If not set, defaults to {@link #DEFAULT_TIMEOUT}</li>
          * <li>The shut down timeout will apply when
          * {@link #setBridgedModeOpportunisticShutdownEnabled(boolean)} is set to true</li>
          *
-         * @param timeoutMillis milliseconds of the timeout delay.
+         * @param timeoutMillis milliseconds of the timeout delay. Any value less than 1 is invalid
+         *                      except {@link #DEFAULT_TIMEOUT}.
          * @return Builder for chaining.
          *
          * @see #setBridgedModeOpportunisticShutdownEnabled(boolean)
          */
         @RequiresApi(Build.VERSION_CODES.TIRAMISU)
         @NonNull
-        public Builder setBridgedModeOpportunisticShutdownTimeoutMillis(long timeoutMillis) {
+        public Builder setBridgedModeOpportunisticShutdownTimeoutMillis(
+                @IntRange(from = -1) long timeoutMillis) {
             if (!SdkLevel.isAtLeastT()) {
                 throw new UnsupportedOperationException();
+            }
+            if (timeoutMillis < 1 && timeoutMillis != DEFAULT_TIMEOUT) {
+                throw new IllegalArgumentException("Invalid timeout value: " + timeoutMillis);
             }
             mBridgedModeOpportunisticShutdownTimeoutMillis = timeoutMillis;
             return this;
