@@ -103,6 +103,8 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
     @Mock ActiveModeManager.Listener<ConcreteClientModeManager> mListener;
     @Mock WakeupController mWakeupController;
     @Mock WifiInjector mWifiInjector;
+    @Mock DeviceConfigFacade mDeviceConfigFacade;
+    @Mock WifiDiagnostics mWifiDiagnostics;
     @Mock ClientModeImpl mClientModeImpl;
     @Mock CarrierConfigManager mCarrierConfigManager;
     @Mock PersistableBundle mCarrierConfigBundle;
@@ -123,7 +125,6 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
             AccessNetworkConstants.TRANSPORT_TYPE_INVALID;
     private NetworkRequest mImsRequest = null;
     private NetworkCallback mImsNetworkCallback = null;
-    private Handler mImsNetworkCallbackHandler = null;
     private long mElapsedSinceBootMillis = 0L;
     private List<SubscriptionInfo> mSubscriptionInfoList = new ArrayList<>();
     private MockResources mResources;
@@ -138,11 +139,11 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
      * from the context.
      */
     private void setUpSystemServiceForContext() {
-        when(mContext.getSystemService(Context.CARRIER_CONFIG_SERVICE))
+        when(mContext.getSystemService(eq(CarrierConfigManager.class)))
                 .thenReturn(mCarrierConfigManager);
-        when(mContext.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE))
+        when(mContext.getSystemService(eq(SubscriptionManager.class)))
                 .thenReturn(mSubscriptionManager);
-        when(mContext.getSystemService(Context.CONNECTIVITY_SERVICE))
+        when(mContext.getSystemService(eq(ConnectivityManager.class)))
                 .thenReturn(mConnectivityManager);
         when(mContext.getResources()).thenReturn(mResources);
         when(mWifiInjector.makeClientModeImpl(any(), any(), anyBoolean()))
@@ -222,7 +223,6 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
             public void answer(NetworkRequest req, NetworkCallback callback, Handler handler) {
                 mImsRequest = req;
                 mImsNetworkCallback = callback;
-                mImsNetworkCallbackHandler = handler;
             }
         }).when(mConnectivityManager).registerNetworkCallback(any(), any(), any());
         doAnswer(new AnswerWithArguments() {
@@ -242,7 +242,9 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
                 broadcast.send();
             }
         }).when(mBroadcastQueue).queueOrSendBroadcast(any(), any());
-
+        when(mDeviceConfigFacade.isInterfaceFailureBugreportEnabled()).thenReturn(true);
+        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfigFacade);
+        when(mWifiInjector.getWifiDiagnostics()).thenReturn(mWifiDiagnostics);
         mLooper = new TestLooper();
     }
 
@@ -271,6 +273,9 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
         // now mark the interface as up
         mInterfaceCallbackCaptor.getValue().onUp(TEST_INTERFACE_NAME);
         mLooper.dispatchAll();
+
+        // DeferStopHandler(): ConnectivityManager.class
+        verify(mContext).getSystemService(eq(ConnectivityManager.class));
 
         // Ensure that no public broadcasts were sent.
         verifyNoMoreInteractions(mContext);
@@ -457,7 +462,10 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
         verify(mWifiNative).switchClientInterfaceToScanMode(TEST_INTERFACE_NAME, TEST_WORKSOURCE);
         verify(mClientModeImpl).stop();
 
-        verify(mContext).getSystemService(anyString());
+        // DeferStopHandler(): ConnectivityManager.class
+        // getWifiOffDeferringTimeMs(): SubscriptionManager.class
+        verify(mContext).getSystemService(eq(ConnectivityManager.class));
+        verify(mContext).getSystemService(eq(SubscriptionManager.class));
         verify(mImsMmTelManager, never()).registerImsRegistrationCallback(any(), any());
         verify(mImsMmTelManager, never()).unregisterImsRegistrationCallback(any());
 
@@ -491,6 +499,7 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
                 WIFI_STATE_UNKNOWN);
         assertEquals(WIFI_STATE_DISABLED, mClientModeManager.syncGetWifiState());
         verify(mListener).onStartFailure(mClientModeManager);
+        verify(mWifiDiagnostics).takeBugReport(anyString(), anyString());
     }
 
     /** Tests failure when setting up iface for scan only mode. */
@@ -505,6 +514,7 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
 
         assertEquals(WIFI_STATE_DISABLED, mClientModeManager.syncGetWifiState());
         verify(mListener).onStartFailure(mClientModeManager);
+        verify(mWifiDiagnostics).takeBugReport(anyString(), anyString());
 
         mClientModeManager.getFactoryMacAddress();
         // wifi is off, should get value from DefaultClientModeManager
@@ -760,6 +770,8 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
         setUpSystemServiceForContext();
         mClientModeManager.stop();
         mLooper.dispatchAll();
+        mImsNetworkCallback.onAvailable(null);
+        mLooper.dispatchAll();
 
         // Not yet finish IMS deregistration.
         verify(mImsMmTelManager).registerImsRegistrationCallback(
@@ -808,6 +820,8 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
         reset(mContext, mListener);
         setUpSystemServiceForContext();
         mClientModeManager.stop();
+        mLooper.dispatchAll();
+        mImsNetworkCallback.onAvailable(null);
         mLooper.dispatchAll();
 
         // Not yet finish IMS deregistration.
@@ -1068,6 +1082,8 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
 
         mClientModeManager.setRole(ROLE_CLIENT_SCAN_ONLY, TEST_WORKSOURCE);
         mLooper.dispatchAll();
+        mImsNetworkCallback.onAvailable(null);
+        mLooper.dispatchAll();
 
         // Not yet finish IMS deregistration.
         verify(mWifiNative, never()).switchClientInterfaceToScanMode(any(), any());
@@ -1112,6 +1128,8 @@ public class ConcreteClientModeManagerTest extends WifiBaseTest {
                 .thenReturn(true);
 
         mClientModeManager.setRole(ROLE_CLIENT_SCAN_ONLY, TEST_WORKSOURCE);
+        mLooper.dispatchAll();
+        mImsNetworkCallback.onAvailable(null);
         mLooper.dispatchAll();
 
         // Not yet finish IMS deregistration.
