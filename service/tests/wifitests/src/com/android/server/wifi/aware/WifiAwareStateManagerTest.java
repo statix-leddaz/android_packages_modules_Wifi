@@ -1064,6 +1064,7 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         inOrderM.verify(mAwareMetricsMock).recordDiscoveryStatus(uid, NanStatusType.SUCCESS, true);
         inOrderM.verify(mAwareMetricsMock).recordAttachSessionDuration(anyLong());
         inOrderM.verify(mAwareMetricsMock).recordDiscoverySessionDuration(anyLong(), eq(true));
+        inOrderM.verify(mAwareMetricsMock).recordDisableAware();
 
         validateInternalClientInfoCleanedUp(clientId);
 
@@ -2941,6 +2942,7 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         // (5) trying to publish on the same client: NOP
         mDut.publish(clientId, publishConfig, mockSessionCallback);
         mMockLooper.dispatchAll();
+        verify(mockSessionCallback).onSessionConfigFail(NanStatusType.INTERNAL_FAILURE);
 
         // (6) got some callback on original publishId - should be ignored
         mDut.onSessionTerminatedNotification(publishId, 0, true);
