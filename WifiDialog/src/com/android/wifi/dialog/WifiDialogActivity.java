@@ -137,6 +137,12 @@ public class WifiDialogActivity extends Activity  {
                 name, "id", getWifiContext().getWifiOverlayApkPkgName());
     }
 
+    private int getStyleId(@NonNull String name) {
+        Resources res = getResources();
+        return res.getIdentifier(
+                name, "style", getWifiContext().getWifiOverlayApkPkgName());
+    }
+
     private WifiManager getWifiManager() {
         if (mWifiManager == null) {
             mWifiManager = getSystemService(WifiManager.class);
@@ -339,11 +345,13 @@ public class WifiDialogActivity extends Activity  {
         }
         mActiveDialogsPerId.put(dialogId, dialog);
         dialog.show();
-        // Allow message URLs to be clickable.
-        ((TextView) dialog.findViewById(android.R.id.message))
-                .setMovementMethod(LinkMovementMethod.getInstance());
         if (mIsVerboseLoggingEnabled) {
             Log.v(TAG, "Showing dialog " + dialogId);
+        }
+        // Allow message URLs to be clickable.
+        TextView messageView = dialog.findViewById(android.R.id.message);
+        if (messageView != null) {
+            messageView.setMovementMethod(LinkMovementMethod.getInstance());
         }
         // Play a notification sound/vibration if the dialog just came in (i.e. not read from the
         // saved instance state after a configuration change), and the overlays specify a
@@ -523,7 +531,8 @@ public class WifiDialogActivity extends Activity  {
             addRowToP2pDialog(group, getStringId("wifi_p2p_show_pin_message"), displayPin);
         }
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this,
+                getStyleId("wifi_p2p_invitation_received_dialog"))
                 .setTitle(getString(getStringId("wifi_p2p_invitation_to_connect_title")))
                 .setView(textEntryView)
                 .setPositiveButton(getStringId("accept"), (dialogPositive, which) -> {

@@ -16,8 +16,6 @@
 
 package android.net.wifi;
 
-import static android.net.wifi.WifiAvailableChannel.FILTER_NAN_INSTANT_MODE;
-import static android.net.wifi.WifiAvailableChannel.OP_MODE_WIFI_AWARE;
 import static android.net.wifi.WifiConfiguration.METERED_OVERRIDE_METERED;
 import static android.net.wifi.WifiManager.ACTION_REMOVE_SUGGESTION_DISCONNECT;
 import static android.net.wifi.WifiManager.ACTION_REMOVE_SUGGESTION_LINGER;
@@ -2929,7 +2927,8 @@ public class WifiManagerTest {
 
         ArgumentCaptor<IActionListener> binderListenerCaptor =
                 ArgumentCaptor.forClass(IActionListener.class);
-        verify(mWifiService).connect(eq(null), eq(TEST_NETWORK_ID), binderListenerCaptor.capture());
+        verify(mWifiService).connect(eq(null), eq(TEST_NETWORK_ID), binderListenerCaptor.capture(),
+                anyString());
         assertNotNull(binderListenerCaptor.getValue());
 
         // Trigger on success.
@@ -2949,7 +2948,7 @@ public class WifiManagerTest {
     @Test
     public void testConnectWithListenerHandleSecurityException() throws Exception {
         doThrow(new SecurityException()).when(mWifiService)
-                .connect(eq(null), anyInt(), any(IActionListener.class));
+                .connect(eq(null), anyInt(), any(IActionListener.class), anyString());
         ActionListener externalListener = mock(ActionListener.class);
         mWifiManager.connect(TEST_NETWORK_ID, externalListener);
 
@@ -2963,7 +2962,7 @@ public class WifiManagerTest {
     @Test
     public void testConnectWithListenerHandleRemoteException() throws Exception {
         doThrow(new RemoteException()).when(mWifiService)
-                .connect(eq(null), anyInt(), any(IActionListener.class));
+                .connect(eq(null), anyInt(), any(IActionListener.class), anyString());
         ActionListener externalListener = mock(ActionListener.class);
         mWifiManager.connect(TEST_NETWORK_ID, externalListener);
 
@@ -2979,7 +2978,8 @@ public class WifiManagerTest {
         WifiConfiguration configuration = new WifiConfiguration();
         mWifiManager.connect(configuration, null);
 
-        verify(mWifiService).connect(configuration, WifiConfiguration.INVALID_NETWORK_ID, null);
+        verify(mWifiService).connect(eq(configuration), eq(WifiConfiguration.INVALID_NETWORK_ID),
+                eq(null), anyString());
     }
 
     /**
@@ -3882,16 +3882,5 @@ public class WifiManagerTest {
         cbCaptor.getValue().onResults(canCreate, interfaces, packagesForInterfaces);
         verify(resultCallback).accept(eq(canCreate), resultCaptor.capture());
         assertEquals(interfacePairs, resultCaptor.getValue());
-    }
-
-    @Test
-    public void testGetAwareInstantCommunicationChannels() throws RemoteException {
-        when(mWifiService.getUsableChannels(WifiScanner.WIFI_BAND_5_GHZ, OP_MODE_WIFI_AWARE,
-                FILTER_NAN_INSTANT_MODE)).thenReturn(List.of(
-                        new WifiAvailableChannel(5745, OP_MODE_WIFI_AWARE)));
-        List<WifiAvailableChannel> channels = mWifiManager
-                .getAwareDiscoveryChannels(WifiScanner.WIFI_BAND_5_GHZ);
-        assertEquals(1, channels.size());
-        assertEquals(5745, channels.get(0).getFrequencyMhz());
     }
 }
