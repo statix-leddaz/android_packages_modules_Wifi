@@ -67,6 +67,7 @@ import org.xmlpull.v1.XmlPullParserException;
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1058,6 +1059,25 @@ public class WifiConfigManager {
         }
     }
 
+    private void mergeDppSecurityParamsWithInternalWifiConfiguration(
+            WifiConfiguration internalConfig, WifiConfiguration externalConfig) {
+        // Do not update for non-DPP network
+        if (!externalConfig.isSecurityType(WifiConfiguration.SECURITY_TYPE_DPP)) {
+            return;
+        }
+
+        if (externalConfig.getDppConnector().length != 0
+                && externalConfig.getDppCSignKey().length != 0
+                && externalConfig.getDppNetAccessKey().length != 0) {
+            internalConfig.setDppConnectionKeys(externalConfig.getDppConnector(),
+                    externalConfig.getDppCSignKey(), externalConfig.getDppNetAccessKey());
+        }
+
+        if (externalConfig.getDppPrivateEcKey().length != 0) {
+            internalConfig.setDppConfigurator(externalConfig.getDppPrivateEcKey());
+        }
+    }
+
     /**
      * Copy over public elements from an external WifiConfiguration object to the internal
      * configuration object if element has been set in the provided external WifiConfiguration.
@@ -1115,6 +1135,7 @@ public class WifiConfigManager {
         }
 
         mergeSecurityParamsListWithInternalWifiConfiguration(internalConfig, externalConfig);
+        mergeDppSecurityParamsWithInternalWifiConfiguration(internalConfig, externalConfig);
 
         // Copy over the |IpConfiguration| parameters if set.
         if (externalConfig.getIpConfiguration() != null) {
@@ -1382,11 +1403,12 @@ public class WifiConfigManager {
                 && !(newInternalConfig.isPasspoint() && uid == newInternalConfig.creatorUid)
                 && !config.fromWifiNetworkSuggestion
                 && !mWifiPermissionsUtil.isDeviceInDemoMode(mContext)
-                && !(mWifiPermissionsUtil.isAdmin(uid, packageName) && uid == config.creatorUid)) {
+                && !(mWifiPermissionsUtil.isAdmin(uid, packageName)
+                && uid == newInternalConfig.creatorUid)) {
             Log.e(TAG, "UID " + uid + " does not have permission to modify MAC randomization "
                     + "Settings " + config.getProfileKey() + ". Must have "
                     + "NETWORK_SETTINGS or NETWORK_SETUP_WIZARD or be in Demo Mode "
-                    + "or be the creator adding or updating a passpoint network"
+                    + "or be the creator adding or updating a passpoint network "
                     + "or be an admin updating their own network.");
             return new Pair<>(
                     new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID),
@@ -2287,6 +2309,27 @@ public class WifiConfigManager {
         config.getNetworkSelectionStatus().setCandidateScore(score);
         config.getNetworkSelectionStatus().setSeenInLastQualifiedNetworkSelection(true);
         config.getNetworkSelectionStatus().setCandidateSecurityParams(params);
+        return true;
+    }
+
+    /**
+     * Set the {@link NetworkSelectionStatus#mLastUsedSecurityParams}.
+     *
+     * @param networkId  network ID corresponding to the network.
+     * @param params     Security params for this candidate.
+     * @return true if the network was found, false otherwise.
+     */
+    public boolean setNetworkLastUsedSecurityParams(int networkId, SecurityParams params) {
+        WifiConfiguration config = getInternalConfiguredNetwork(networkId);
+        if (config == null) {
+            Log.e(TAG, "Cannot find network for " + networkId);
+            return false;
+        }
+        config.getNetworkSelectionStatus().setLastUsedSecurityParams(params);
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "Update last used security param for " + config.getProfileKey()
+                    + " with security type " + params.getSecurityType());
+        }
         return true;
     }
 
@@ -3936,14 +3979,60 @@ public class WifiConfigManager {
         saveToStore(true);
     }
 
+    private static final int SUBJECT_ALTERNATIVE_NAMES_EMAIL = 1;
+    private static final int SUBJECT_ALTERNATIVE_NAMES_DNS = 2;
+    private static final int SUBJECT_ALTERNATIVE_NAMES_URI = 6;
+    /** altSubjectMatch only matches EMAIL, DNS, and URI. */
+    private static String getAltSubjectMatchFromAltSubjectName(X509Certificate cert) {
+        Collection<List<?>> col = null;
+        try {
+            col = cert.getSubjectAlternativeNames();
+        } catch (CertificateParsingException ex) {
+            col = null;
+        }
+
+        if (null == col) return null;
+        if (0 == col.size()) return null;
+
+        List<String> altSubjectNameList = new ArrayList<>();
+        for (List<?> item: col) {
+            if (2 != item.size()) continue;
+            if (!(item.get(0) instanceof Integer)) continue;
+            if (!(item.get(1) instanceof String)) continue;
+
+            StringBuilder sb = new StringBuilder();
+            int type = (Integer) item.get(0);
+            if (SUBJECT_ALTERNATIVE_NAMES_EMAIL == type) {
+                sb.append("EMAIL:");
+            } else if (SUBJECT_ALTERNATIVE_NAMES_DNS == type) {
+                sb.append("DNS:");
+            } else if (SUBJECT_ALTERNATIVE_NAMES_URI == type) {
+                sb.append("URI:");
+            } else {
+                Log.d(TAG, "Ignore type " + type + " for altSubjectMatch");
+                continue;
+            }
+            sb.append((String) item.get(1));
+            altSubjectNameList.add(sb.toString());
+        }
+        if (altSubjectNameList.size() > 0) {
+            // wpa_supplicant uses ';' as the separator.
+            return String.join(";", altSubjectNameList);
+        }
+        return null;
+    }
+
     /**
-     * This method updates the Root CA certifiate in the internal network.
+     * This method updates the Root CA certifiate and the domain name of the
+     * server in the internal network.
      *
      * @param networkId networkId corresponding to the network to be updated.
-     * @param cert Root CA certificate to be updated.
+     * @param caCert Root CA certificate to be updated.
+     * @param serverCert Server certificate to be updated.
      * @return true if updating Root CA certificate successfully; otherwise, false.
      */
-    public boolean updateCaCertificate(int networkId, @NonNull X509Certificate cert) {
+    public boolean updateCaCertificate(int networkId, @NonNull X509Certificate caCert,
+            @NonNull X509Certificate serverCert) {
         WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
         if (internalConfig == null) {
             Log.e(TAG, "No network for network ID " + networkId);
@@ -3957,13 +4046,18 @@ public class WifiConfigManager {
             Log.e(TAG, "Network " + networkId + " does not need verifying server cert");
             return false;
         }
-        if (null == cert) {
+        if (null == caCert) {
             Log.e(TAG, "Root CA cert is null");
             return false;
         }
-        CertificateSubjectInfo info = CertificateSubjectInfo.parse(cert.getSubjectDN().getName());
-        if (null == info) {
-            Log.e(TAG, "Invalid Root CA cert subject");
+        if (null == serverCert) {
+            Log.e(TAG, "Server cert is null");
+            return false;
+        }
+        CertificateSubjectInfo serverCertInfo = CertificateSubjectInfo.parse(
+                serverCert.getSubjectDN().getName());
+        if (null == serverCertInfo) {
+            Log.e(TAG, "Invalid Server CA cert subject");
             return false;
         }
 
@@ -3971,8 +4065,26 @@ public class WifiConfigManager {
         // setCaCertificate will mark that this CA certifiate should be removed on
         // removing this configuration.
         newConfig.enterpriseConfig.enableTrustOnFirstUse(false);
-        newConfig.enterpriseConfig.setCaCertificate(cert);
-        newConfig.enterpriseConfig.setDomainSuffixMatch(info.commonName);
+        try {
+            newConfig.enterpriseConfig.setCaCertificate(caCert);
+        } catch (IllegalArgumentException ex) {
+            Log.e(TAG, "Failed to set CA cert: " + caCert);
+            return false;
+        }
+
+        // If there is a subject alternative name, it should be matched first.
+        String altSubjectNames = getAltSubjectMatchFromAltSubjectName(serverCert);
+        if (!TextUtils.isEmpty(altSubjectNames)) {
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "Set altSubjectMatch to " + altSubjectNames);
+            }
+            newConfig.enterpriseConfig.setAltSubjectMatch(altSubjectNames);
+        } else {
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "Set domainSuffixMatch to " + serverCertInfo.commonName);
+            }
+            newConfig.enterpriseConfig.setDomainSuffixMatch(serverCertInfo.commonName);
+        }
         newConfig.enterpriseConfig.setUserApproveNoCaCert(false);
         // Trigger an update to install CA certifiate and the corresponding configuration.
         NetworkUpdateResult result = addOrUpdateNetwork(newConfig, internalConfig.creatorUid);

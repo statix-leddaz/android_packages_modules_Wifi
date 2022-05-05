@@ -124,8 +124,6 @@ import com.android.server.wifi.proto.nano.WifiMetricsProto.P2pConnectionEvent;
 import com.android.server.wifi.util.NetdWrapper;
 import com.android.server.wifi.util.StringUtil;
 import com.android.server.wifi.util.WaitingState;
-import com.android.server.wifi.util.WifiAsyncChannel;
-import com.android.server.wifi.util.WifiHandler;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.server.wifi.util.WifiPermissionsWrapper;
 import com.android.wifi.resources.R;
@@ -194,7 +192,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     private DhcpResultsParcelable mDhcpResultsParcelable;
 
     private P2pStateMachine mP2pStateMachine;
-    private AsyncChannel mReplyChannel = new WifiAsyncChannel(TAG);
+    private AsyncChannel mReplyChannel = new AsyncChannel();
     private AsyncChannel mWifiChannel;
     private LocationManager mLocationManager;
     private WifiInjector mWifiInjector;
@@ -508,10 +506,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     /**
      * Handles client connections
      */
-    private class ClientHandler extends WifiHandler {
+    private class ClientHandler extends Handler {
 
         ClientHandler(String tag, android.os.Looper looper) {
-            super(tag, looper);
+            super(looper);
         }
 
         @Override
@@ -572,25 +570,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             info.setDetailedState(mDetailedState, null, null);
         }
         return info;
-    }
-
-    /**
-     * Provide a way for unit tests to set valid log object in the WifiHandler
-     * @param log WifiLog object to assign to the clientHandler
-     */
-    @VisibleForTesting
-    void setWifiHandlerLogForTest(WifiLog log) {
-        mClientHandler.setWifiLog(log);
-
-    }
-
-    /**
-     * Provide a way for unit tests to set valid log object in the WifiAsyncChannel
-     * @param log WifiLog object to assign to the mReplyChannel
-     */
-    @VisibleForTesting
-    void setWifiLogForReplyChannel(WifiLog log) {
-        ((WifiAsyncChannel) mReplyChannel).setWifiLog(log);
     }
 
     private class DeathHandlerData {
@@ -1094,8 +1073,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             } else {
                 setInitialState(mP2pNotSupportedState);
             }
-            setLogRecSize(50);
-            setLogOnlyTransitions(true);
+            setLogRecSize(100);
 
             if (p2pSupported) {
                 // Init p2p idle shutdown message
@@ -1193,6 +1171,14 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 }
                 mIsP2pDisallowedByAdmin = newIsP2pDisallowedByAdmin;
             }
+        }
+
+        @Override
+        protected String getLogRecString(Message msg) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("sender=").append(getCallingPkgName(msg.sendingUid, msg.replyTo))
+                    .append("(").append(msg.sendingUid).append(")");
+            return sb.toString();
         }
 
         @Override
@@ -1526,7 +1512,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 case WifiP2pManager.REQUEST_NETWORK_INFO:
                 case WifiP2pManager.REQUEST_CONNECTION_INFO:
                 case WifiP2pManager.REQUEST_GROUP_INFO:
-                case WifiP2pManager.REQUEST_DEVICE_INFO:
                 case WifiP2pManager.REQUEST_PEERS:
                 // These commands configure the framework behavior.
                 case WifiP2pManager.ADD_EXTERNAL_APPROVER:
@@ -1574,7 +1559,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         transitionTo(mP2pDisabledState);
                         break;
                     case AsyncChannel.CMD_CHANNEL_FULL_CONNECTION:
-                        AsyncChannel ac = new WifiAsyncChannel(TAG);
+                        AsyncChannel ac = new AsyncChannel();
                         ac.connect(mContext, getHandler(), message.replyTo);
                         break;
                     case BLOCK_DISCOVERY:
@@ -4311,7 +4296,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         private void sendBroadcastMultiplePermissions(Intent intent) {
             Context context = mContext.createContextAsUser(UserHandle.ALL, 0);
             String[] permissions = RECEIVER_PERMISSIONS_FOR_BROADCAST;
-            if (!mWifiPermissionsUtil.isLocationModeEnabled()) {
+            boolean isLocationModeEnabled = mWifiPermissionsUtil.isLocationModeEnabled();
+            if (!isLocationModeEnabled) {
                 permissions = RECEIVER_PERMISSIONS_FOR_BROADCAST_LOCATION_OFF;
             }
             context.sendBroadcastWithMultiplePermissions(
@@ -4322,12 +4308,12 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         android.Manifest.permission.NEARBY_WIFI_DEVICES,
                         android.Manifest.permission.ACCESS_WIFI_STATE
                 };
-                String[] excludedPermissions = new String[] {
-                        android.Manifest.permission.ACCESS_FINE_LOCATION
-                };
                 BroadcastOptions broadcastOptions = mWifiInjector.makeBroadcastOptions();
                 broadcastOptions.setRequireAllOfPermissions(requiredPermissions);
-                broadcastOptions.setRequireNoneOfPermissions(excludedPermissions);
+                if (isLocationModeEnabled) {
+                    broadcastOptions.setRequireNoneOfPermissions(
+                            new String[] {android.Manifest.permission.ACCESS_FINE_LOCATION});
+                }
                 context.sendBroadcast(intent, null, broadcastOptions.toBundle());
             }
         }
