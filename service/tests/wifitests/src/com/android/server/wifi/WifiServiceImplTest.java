@@ -1191,7 +1191,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         dialogHandle = mock(WifiDialogManager.DialogHandle.class);
         when(mWifiDialogManager.createSimpleDialog(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(dialogHandle);
-        when(mClientModeManager.syncGetWifiState()).thenReturn(WifiManager.WIFI_STATE_ENABLED);
+        when(mActiveModeWarden.getWifiState()).thenReturn(WifiManager.WIFI_STATE_ENABLED);
         assertTrue(mWifiServiceImpl.setWifiEnabled(TEST_PACKAGE_NAME, true));
         mLooper.dispatchAll();
         verify(mActiveModeWarden, times(3)).wifiToggled(
@@ -1772,7 +1772,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     public void testWifiFullyStartsWhenDeviceBootsWithWifiEnabled() {
         when(mSettingsStore.handleWifiToggled(true)).thenReturn(true);
         when(mSettingsStore.isWifiToggleEnabled()).thenReturn(true);
-        when(mClientModeManager.syncGetWifiState()).thenReturn(WIFI_STATE_DISABLED);
+        when(mActiveModeWarden.getWifiState()).thenReturn(WIFI_STATE_DISABLED);
         when(mContext.getPackageName()).thenReturn(ANDROID_SYSTEM_PACKAGE);
         when(mContext.checkPermission(eq(android.Manifest.permission.NETWORK_SETTINGS),
                 anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_GRANTED);
@@ -5255,6 +5255,36 @@ public class WifiServiceImplTest extends WifiBaseTest {
     }
 
     /**
+     * Verify that connecting to an admin restricted network fails to connect but saves the network
+     */
+    @Test
+    public void connectToAdminRestrictedNetwork_failure() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        when(mContext.checkPermission(eq(android.Manifest.permission.NETWORK_SETTINGS),
+                anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_GRANTED);
+        when(mWifiPermissionsUtil.isLocationModeEnabled()).thenReturn(true);
+        NetworkUpdateResult result = new NetworkUpdateResult(TEST_NETWORK_ID);
+        when(mWifiConfigManager.addOrUpdateNetwork(eq(mWifiConfig), anyInt()))
+                .thenReturn(result);
+        when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(mWifiConfig);
+        when(mWifiPermissionsUtil.isAdminRestrictedNetwork(mWifiConfig)).thenReturn(true);
+
+        mWifiServiceImpl.connect(mWifiConfig, WifiConfiguration.INVALID_NETWORK_ID,
+                mActionListener, TEST_PACKAGE_NAME);
+        mLooper.dispatchAll();
+
+        ArgumentCaptor<WifiConfiguration> configCaptor =
+                ArgumentCaptor.forClass(WifiConfiguration.class);
+        verify(mWifiConfigManager).addOrUpdateNetwork(configCaptor.capture(), anyInt());
+        assertThat(configCaptor.getValue().networkId).isEqualTo(TEST_NETWORK_ID);
+
+        verify(mWifiConfigManager).addOrUpdateNetwork(eq(mWifiConfig), anyInt());
+        verify(mClientModeManager, never()).connectNetwork(any(), any(), anyInt(), any());
+        verify(mActionListener).onFailure(WifiManager.ActionListener.FAILURE_INTERNAL_ERROR);
+        verify(mActionListener, never()).onSuccess();
+    }
+
+    /**
      * Verify that the SAVE_NETWORK message received from an app with
      * one of the privileged permission is forwarded to ClientModeManager.
      */
@@ -5839,8 +5869,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 (IntentFilter) argThat((IntentFilter filter) ->
                         filter.hasAction(TelephonyManager.ACTION_SIM_CARD_STATE_CHANGED)),
                 isNull(),
-                any(Handler.class),
-                eq(Context.RECEIVER_NOT_EXPORTED));
+                any(Handler.class));
 
         int userHandle = TEST_USER_HANDLE;
         // Send the broadcast
@@ -5861,8 +5890,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 (IntentFilter) argThat((IntentFilter filter) ->
                         filter.hasAction(TelephonyManager.ACTION_SIM_CARD_STATE_CHANGED)),
                 isNull(),
-                any(Handler.class),
-                eq(Context.RECEIVER_NOT_EXPORTED));
+                any(Handler.class));
 
         int userHandle = TEST_USER_HANDLE;
         // Send the broadcast
@@ -5885,8 +5913,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(TelephonyManager.ACTION_SIM_CARD_STATE_CHANGED)),
                 isNull(),
-                any(Handler.class),
-                eq(Context.RECEIVER_NOT_EXPORTED));
+                any(Handler.class));
 
         Intent intent = new Intent(TelephonyManager.ACTION_SIM_CARD_STATE_CHANGED);
         intent.putExtra(TelephonyManager.EXTRA_SIM_STATE, TelephonyManager.SIM_STATE_ABSENT);
@@ -5914,8 +5941,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(TelephonyManager.ACTION_SIM_APPLICATION_STATE_CHANGED)),
                 isNull(),
-                any(Handler.class),
-                eq(Context.RECEIVER_NOT_EXPORTED));
+                any(Handler.class));
 
         Intent intent = new Intent(TelephonyManager.ACTION_SIM_APPLICATION_STATE_CHANGED);
         intent.putExtra(TelephonyManager.EXTRA_SIM_STATE, TelephonyManager.SIM_STATE_LOADED);
@@ -8562,8 +8588,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 argThat((IntentFilter filter) ->
                         filter.hasAction(TelephonyManager.ACTION_NETWORK_COUNTRY_CHANGED)),
                 isNull(),
-                any(Handler.class),
-                eq(Context.RECEIVER_NOT_EXPORTED));
+                any(Handler.class));
         sendCountryCodeChangedBroadcast("US");
         verify(mWifiCountryCode).setTelephonyCountryCodeAndUpdate(any());
     }
