@@ -67,6 +67,7 @@ import org.xmlpull.v1.XmlPullParserException;
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -2312,6 +2313,27 @@ public class WifiConfigManager {
     }
 
     /**
+     * Set the {@link NetworkSelectionStatus#mLastUsedSecurityParams}.
+     *
+     * @param networkId  network ID corresponding to the network.
+     * @param params     Security params for this candidate.
+     * @return true if the network was found, false otherwise.
+     */
+    public boolean setNetworkLastUsedSecurityParams(int networkId, SecurityParams params) {
+        WifiConfiguration config = getInternalConfiguredNetwork(networkId);
+        if (config == null) {
+            Log.e(TAG, "Cannot find network for " + networkId);
+            return false;
+        }
+        config.getNetworkSelectionStatus().setLastUsedSecurityParams(params);
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "Update last used security param for " + config.getProfileKey()
+                    + " with security type " + params.getSecurityType());
+        }
+        return true;
+    }
+
+    /**
      * Iterate through all the saved networks and remove the provided configuration from the
      * {@link NetworkSelectionStatus#mConnectChoice} from them.
      *
@@ -3957,6 +3979,49 @@ public class WifiConfigManager {
         saveToStore(true);
     }
 
+    private static final int SUBJECT_ALTERNATIVE_NAMES_EMAIL = 1;
+    private static final int SUBJECT_ALTERNATIVE_NAMES_DNS = 2;
+    private static final int SUBJECT_ALTERNATIVE_NAMES_URI = 6;
+    /** altSubjectMatch only matches EMAIL, DNS, and URI. */
+    private static String getAltSubjectMatchFromAltSubjectName(X509Certificate cert) {
+        Collection<List<?>> col = null;
+        try {
+            col = cert.getSubjectAlternativeNames();
+        } catch (CertificateParsingException ex) {
+            col = null;
+        }
+
+        if (null == col) return null;
+        if (0 == col.size()) return null;
+
+        List<String> altSubjectNameList = new ArrayList<>();
+        for (List<?> item: col) {
+            if (2 != item.size()) continue;
+            if (!(item.get(0) instanceof Integer)) continue;
+            if (!(item.get(1) instanceof String)) continue;
+
+            StringBuilder sb = new StringBuilder();
+            int type = (Integer) item.get(0);
+            if (SUBJECT_ALTERNATIVE_NAMES_EMAIL == type) {
+                sb.append("EMAIL:");
+            } else if (SUBJECT_ALTERNATIVE_NAMES_DNS == type) {
+                sb.append("DNS:");
+            } else if (SUBJECT_ALTERNATIVE_NAMES_URI == type) {
+                sb.append("URI:");
+            } else {
+                Log.d(TAG, "Ignore type " + type + " for altSubjectMatch");
+                continue;
+            }
+            sb.append((String) item.get(1));
+            altSubjectNameList.add(sb.toString());
+        }
+        if (altSubjectNameList.size() > 0) {
+            // wpa_supplicant uses ';' as the separator.
+            return String.join(";", altSubjectNameList);
+        }
+        return null;
+    }
+
     /**
      * This method updates the Root CA certifiate and the domain name of the
      * server in the internal network.
@@ -4006,7 +4071,20 @@ public class WifiConfigManager {
             Log.e(TAG, "Failed to set CA cert: " + caCert);
             return false;
         }
-        newConfig.enterpriseConfig.setDomainSuffixMatch(serverCertInfo.commonName);
+
+        // If there is a subject alternative name, it should be matched first.
+        String altSubjectNames = getAltSubjectMatchFromAltSubjectName(serverCert);
+        if (!TextUtils.isEmpty(altSubjectNames)) {
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "Set altSubjectMatch to " + altSubjectNames);
+            }
+            newConfig.enterpriseConfig.setAltSubjectMatch(altSubjectNames);
+        } else {
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "Set domainSuffixMatch to " + serverCertInfo.commonName);
+            }
+            newConfig.enterpriseConfig.setDomainSuffixMatch(serverCertInfo.commonName);
+        }
         newConfig.enterpriseConfig.setUserApproveNoCaCert(false);
         // Trigger an update to install CA certifiate and the corresponding configuration.
         NetworkUpdateResult result = addOrUpdateNetwork(newConfig, internalConfig.creatorUid);
