@@ -19,7 +19,7 @@ package {
 java_defaults {
     name: "wifi-module-sdk-version-defaults",
     min_sdk_version: "30",
-    target_sdk_version: "31",
+    target_sdk_version: "33",
 }
 
 filegroup {
@@ -95,6 +95,7 @@ java_defaults {
         "framework-wifi-util-lib",
         "android.hardware.wifi-V1.0-java-constants",
         "wifi-modules-utils",
+        "PlatformProperties",
     ],
     libs: [
         "androidx.annotation_annotation",

@@ -34,6 +34,7 @@ import static org.mockito.Mockito.when;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.net.MacAddress;
+import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.util.ScanResultUtil;
@@ -93,6 +94,7 @@ public class NetworkListStoreDataTest extends WifiBaseTest {
                     + "<boolean name=\"AutoJoinEnabled\" value=\"true\" />\n"
                     + "<int name=\"DeletionPriority\" value=\"0\" />\n"
                     + "<int name=\"NumRebootsSinceLastUse\" value=\"0\" />\n"
+                    + "<boolean name=\"RepeaterEnabled\" value=\"false\" />\n"
                     + "<SecurityParamsList>\n"
                     + "<SecurityParams>\n"
                     + "<int name=\"SecurityType\" value=\"0\" />\n"
@@ -135,6 +137,10 @@ public class NetworkListStoreDataTest extends WifiBaseTest {
                     + "<int name=\"CarrierId\" value=\"-1\" />\n"
                     + "<boolean name=\"IsMostRecentlyConnected\" value=\"false\" />\n"
                     + "<int name=\"SubscriptionId\" value=\"-1\" />\n"
+                    + "<byte-array name=\"DppPrivateEcKey\" num=\"0\"></byte-array>\n"
+                    + "<byte-array name=\"DppConnector\" num=\"0\"></byte-array>\n"
+                    + "<byte-array name=\"DppCSignKey\" num=\"0\"></byte-array>\n"
+                    + "<byte-array name=\"DppNetAccessKey\" num=\"0\"></byte-array>\n"
                     + "</WifiConfiguration>\n"
                     + "<NetworkStatus>\n"
                     + "<string name=\"SelectionStatus\">NETWORK_SELECTION_ENABLED</string>\n"
@@ -171,6 +177,7 @@ public class NetworkListStoreDataTest extends WifiBaseTest {
                     + "<boolean name=\"AutoJoinEnabled\" value=\"true\" />\n"
                     + "<int name=\"DeletionPriority\" value=\"0\" />\n"
                     + "<int name=\"NumRebootsSinceLastUse\" value=\"0\" />\n"
+                    + "<boolean name=\"RepeaterEnabled\" value=\"false\" />\n"
                     + "<SecurityParamsList>\n"
                     + "<SecurityParams>\n"
                     + "<int name=\"SecurityType\" value=\"3\" />\n"
@@ -213,6 +220,10 @@ public class NetworkListStoreDataTest extends WifiBaseTest {
                     + "<int name=\"CarrierId\" value=\"-1\" />\n"
                     + "<boolean name=\"IsMostRecentlyConnected\" value=\"false\" />\n"
                     + "<int name=\"SubscriptionId\" value=\"-1\" />\n"
+                    + "<byte-array name=\"DppPrivateEcKey\" num=\"0\"></byte-array>\n"
+                    + "<byte-array name=\"DppConnector\" num=\"0\"></byte-array>\n"
+                    + "<byte-array name=\"DppCSignKey\" num=\"0\"></byte-array>\n"
+                    + "<byte-array name=\"DppNetAccessKey\" num=\"0\"></byte-array>\n"
                     + "</WifiConfiguration>\n"
                     + "<NetworkStatus>\n"
                     + "<string name=\"SelectionStatus\">NETWORK_SELECTION_ENABLED</string>\n"
@@ -277,6 +288,7 @@ public class NetworkListStoreDataTest extends WifiBaseTest {
                     + "<boolean name=\"AutoJoinEnabled\" value=\"true\" />\n"
                     + "<int name=\"DeletionPriority\" value=\"0\" />\n"
                     + "<int name=\"NumRebootsSinceLastUse\" value=\"0\" />\n"
+                    + "<boolean name=\"RepeaterEnabled\" value=\"false\" />\n"
                     + "<SecurityParamsList>\n"
                     + "<SecurityParams>\n"
                     + "<int name=\"SecurityType\" value=\"4\" />\n"
@@ -313,6 +325,10 @@ public class NetworkListStoreDataTest extends WifiBaseTest {
                     + "<int name=\"CarrierId\" value=\"-1\" />\n"
                     + "<boolean name=\"IsMostRecentlyConnected\" value=\"false\" />\n"
                     + "<int name=\"SubscriptionId\" value=\"-1\" />\n"
+                    + "<byte-array name=\"DppPrivateEcKey\" num=\"0\"></byte-array>\n"
+                    + "<byte-array name=\"DppConnector\" num=\"0\"></byte-array>\n"
+                    + "<byte-array name=\"DppCSignKey\" num=\"0\"></byte-array>\n"
+                    + "<byte-array name=\"DppNetAccessKey\" num=\"0\"></byte-array>\n"
                     + "</WifiConfiguration>\n"
                     + "<NetworkStatus>\n"
                     + "<string name=\"SelectionStatus\">NETWORK_SELECTION_ENABLED</string>\n"
@@ -349,6 +365,7 @@ public class NetworkListStoreDataTest extends WifiBaseTest {
                     + "<boolean name=\"AutoJoinEnabled\" value=\"true\" />\n"
                     + "<int name=\"DeletionPriority\" value=\"0\" />\n"
                     + "<int name=\"NumRebootsSinceLastUse\" value=\"0\" />\n"
+                    + "<boolean name=\"RepeaterEnabled\" value=\"false\" />\n"
                     + "<SecurityParamsList>\n"
                     + "<SecurityParams>\n"
                     + "<int name=\"SecurityType\" value=\"3\" />\n"
@@ -390,6 +407,10 @@ public class NetworkListStoreDataTest extends WifiBaseTest {
                     + "<int name=\"CarrierId\" value=\"-1\" />\n"
                     + "<boolean name=\"IsMostRecentlyConnected\" value=\"false\" />\n"
                     + "<int name=\"SubscriptionId\" value=\"-1\" />\n"
+                    + "<byte-array name=\"DppPrivateEcKey\" num=\"0\"></byte-array>\n"
+                    + "<byte-array name=\"DppConnector\" num=\"0\"></byte-array>\n"
+                    + "<byte-array name=\"DppCSignKey\" num=\"0\"></byte-array>\n"
+                    + "<byte-array name=\"DppNetAccessKey\" num=\"0\"></byte-array>\n"
                     + "</WifiConfiguration>\n"
                     + "<NetworkStatus>\n"
                     + "<string name=\"SelectionStatus\">NETWORK_SELECTION_ENABLED</string>\n"
@@ -460,6 +481,7 @@ public class NetworkListStoreDataTest extends WifiBaseTest {
                     + "<boolean name=\"AutoJoinEnabled\" value=\"true\" />\n"
                     + "<int name=\"DeletionPriority\" value=\"0\" />\n"
                     + "<int name=\"NumRebootsSinceLastUse\" value=\"0\" />\n"
+                    + "<boolean name=\"RepeaterEnabled\" value=\"false\" />\n"
                     + "<boolean name=\"Trusted\" value=\"true\" />\n"
                     + "<null name=\"BSSID\" />\n"
                     + "<int name=\"Status\" value=\"2\" />\n"
@@ -757,6 +779,7 @@ public class NetworkListStoreDataTest extends WifiBaseTest {
      *
      * @throws Exception
      */
+    @Test
     public void parseNetworkWithMismatchConfigKey() throws Exception {
         WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
         byte[] xmlData = String.format(SINGLE_OPEN_NETWORK_DATA_XML_STRING_FORMAT,
@@ -1017,5 +1040,47 @@ public class NetworkListStoreDataTest extends WifiBaseTest {
         assertEquals(wpa3EapNetwork.SSID, deserializedWpa3EapNetwork.SSID);
         assertTrue(deserializedWpa3EapNetwork.isSecurityType(
                 WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE));
+    }
+
+    @Test
+    public void testSerializeDeserializeWithSecurityUpdate() throws Exception {
+        WifiConfiguration pskConfig = WifiConfigurationTestUtil.createPskNetwork();
+        WifiConfiguration wpa2EapConfig = WifiConfigurationTestUtil
+                .createWpa2Wpa3EnterpriseNetwork();
+        wpa2EapConfig.setSecurityParams(SecurityParams
+                .createSecurityParamsBySecurityType(
+                        WifiConfiguration.SECURITY_TYPE_EAP));
+        WifiConfiguration openConfig = WifiConfigurationTestUtil.createOpenNetwork();
+
+        List<WifiConfiguration> expected = new ArrayList<>();
+        expected.add(pskConfig);
+        expected.add(wpa2EapConfig);
+        expected.add(openConfig);
+        mNetworkListSharedStoreData.setConfigurations(expected);
+        List<WifiConfiguration> retrieved = deserializeData(serializeData());
+        assertEquals(expected.size(), retrieved.size());
+        for (int i = 0; i < expected.size(); i++) {
+            verifyAutoUpgradeType(expected.get(i), retrieved.get(i));
+        }
+    }
+
+    /**
+     * This helper method tests the auto-upgrade type is added for Open,
+     * PSK, and Enterprise networks.
+     */
+    private static void verifyAutoUpgradeType(WifiConfiguration expected,
+            WifiConfiguration actual) {
+        if (expected.isSecurityType(WifiConfiguration.SECURITY_TYPE_OPEN)) {
+            assertTrue(actual.isSecurityType(WifiConfiguration.SECURITY_TYPE_OPEN));
+            assertTrue(actual.isSecurityType(WifiConfiguration.SECURITY_TYPE_OWE));
+        } else if (expected.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
+            assertTrue(actual.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK));
+            assertTrue(actual.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE));
+        } else if (expected.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP)
+                && expected.isEnterprise()) {
+            assertTrue(actual.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP));
+            assertTrue(actual.isSecurityType(
+                    WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE));
+        }
     }
 }

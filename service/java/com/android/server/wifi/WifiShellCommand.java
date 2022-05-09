@@ -46,6 +46,7 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.wifi.IActionListener;
+import android.net.wifi.IDppCallback;
 import android.net.wifi.ILocalOnlyHotspotCallback;
 import android.net.wifi.IPnoScanResultsCallback;
 import android.net.wifi.IScoreUpdateObserver;
@@ -158,6 +159,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             "start-softap",
             "status",
             "stop-softap",
+            "query-interface",
+            "interface-priority-interactive-mode",
     };
 
     private static final Map<String, Pair<NetworkRequest, ConnectivityManager.NetworkCallback>>
@@ -184,6 +187,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
     private final ScanRequestProxy mScanRequestProxy;
     private final @NonNull WifiDialogManager mWifiDialogManager;
     private final HalDeviceManager mHalDeviceManager;
+    private final InterfaceConflictManager mInterfaceConflictManager;
 
     private class SoftApCallbackProxy extends ISoftApCallback.Stub {
         private final PrintWriter mPrintWriter;
@@ -232,6 +236,115 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         }
     }
 
+    /**
+     * Used for shell command testing of DPP feature.
+     */
+    public static class DppCallbackProxy extends IDppCallback.Stub {
+        private final PrintWriter mPrintWriter;
+        private final CountDownLatch mCountDownLatch;
+        private static final int STATUS_SUCCESS = 0;
+        private static final int STATUS_PROGRESS = 1;
+        private static final int STATUS_FAILURE = 2;
+
+        DppCallbackProxy(PrintWriter printWriter, CountDownLatch countDownLatch) {
+            mPrintWriter = printWriter;
+            mCountDownLatch = countDownLatch;
+        }
+
+        @Override
+        public void onSuccessConfigReceived(int networkId) {
+            mPrintWriter.println("onSuccessConfigReceived. netId=" + networkId);
+            mCountDownLatch.countDown();
+        }
+
+        @Override
+        public void onSuccess(int status) {
+            mPrintWriter.println("onSuccess status=" + statusToString(STATUS_SUCCESS, status));
+            mCountDownLatch.countDown();
+        }
+
+        @Override
+        public void onFailure(int status, String ssid, String channelList, int[] bandArray) {
+            mPrintWriter.println("onFailure. status=" + statusToString(STATUS_FAILURE, status)
+                    + "ssid=" + ssid + "channelList=" + channelList);
+            mCountDownLatch.countDown();
+        }
+
+        @Override
+        public void onProgress(int status) {
+            mPrintWriter.println("onProgress status=" + statusToString(STATUS_PROGRESS, status));
+        }
+
+        @Override
+        public void onBootstrapUriGenerated(String uri) {
+            mPrintWriter.println("onBootstrapUriGenerated URI = " + uri);
+        }
+
+        private String statusToString(int type, int status) {
+            switch (type) {
+                case STATUS_SUCCESS: {
+                    switch (status) {
+                        case 0:
+                            return "CONFIGURATION_SENT";
+                        case 1:
+                            return "CONFIGURATION_APPLIED";
+                        default:
+                            return "Unknown success code";
+                    }
+                }
+                case STATUS_PROGRESS: {
+                    switch (status) {
+                        case 0:
+                            return "AUTHENTICATION_SUCCESS";
+                        case 1:
+                            return "RESPONSE_PENDING";
+                        case 2:
+                            return "CONFIGURATION_SENT_WAITING_RESPONSE";
+                        case 3:
+                            return "CONFIGURATION_ACCEPTED";
+                        default:
+                            return "Unknown progress code";
+                    }
+                }
+                case STATUS_FAILURE: {
+                    switch (status) {
+                        case -1:
+                            return "INVALID_URI";
+                        case -2:
+                            return "AUTHENTICATION";
+                        case -3:
+                            return "NOT_COMPATIBLE";
+                        case -4:
+                            return "CONFIGURATION";
+                        case -5:
+                            return "BUSY";
+                        case -6:
+                            return "TIMEOUT";
+                        case -7:
+                            return "GENERIC";
+                        case -8:
+                            return "NOT_SUPPORTED";
+                        case -9:
+                            return "INVALID_NETWORK";
+                        case -10:
+                            return "CANNOT_FIND_NETWORK";
+                        case -11:
+                            return "ENROLLEE_AUTHENTICATION";
+                        case -12:
+                            return "ENROLLEE_REJECTED_CONFIGURATION";
+                        case -13:
+                            return "URI_GENERATION";
+                        case -14:
+                            return "ENROLLEE_FAILED_TO_SCAN_NETWORK_CHANNEL";
+                        default:
+                            return "Unknown failure code";
+                    }
+                }
+                default :
+                    return "Unknown status type";
+            }
+        }
+    }
 
     /**
      * Used for shell command testing of scorer.
@@ -294,6 +407,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         mScanRequestProxy = wifiInjector.getScanRequestProxy();
         mWifiDialogManager = wifiInjector.getWifiDialogManager();
         mHalDeviceManager = wifiInjector.getHalDeviceManager();
+        mInterfaceConflictManager = wifiInjector.getInterfaceConflictManager();
     }
 
     @Override
@@ -759,7 +873,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         }
                     };
                     WifiConfiguration config = buildWifiConfiguration(pw);
-                    mWifiService.connect(config, -1, actionListener);
+                    mWifiService.connect(config, -1, actionListener, SHELL_PACKAGE_NAME);
                     // wait for status.
                     countDownLatch.await(500, TimeUnit.MILLISECONDS);
                     setAutoJoin(pw, config.SSID, config.allowAutojoin);
@@ -781,7 +895,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         }
                     };
                     WifiConfiguration config = buildWifiConfiguration(pw);
-                    mWifiService.save(config, actionListener);
+                    mWifiService.save(config, actionListener, SHELL_PACKAGE_NAME);
                     // wait for status.
                     countDownLatch.await(500, TimeUnit.MILLISECONDS);
                     setAutoJoin(pw, config.SSID, config.allowAutojoin);
@@ -1145,7 +1259,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 case "stop-faking-scans":
                     mWifiNative.stopFakingScanDetails();
                     return 0;
-                case "enable-scanning":
+                case "enable-scanning": {
                     boolean enabled = getNextArgRequiredTrueOrFalse("enabled", "disabled");
                     boolean hiddenEnabled = false;
                     String option = getNextOption();
@@ -1160,12 +1274,147 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     }
                     mScanRequestProxy.enableScanning(enabled, hiddenEnabled);
                     return 0;
-                case "launch-dialog-p2p-invitation-received":
+                }
+                case "launch-dialog-simple":
+                    String title = null;
+                    String message = null;
+                    String messageUrl = null;
+                    int messageUrlStart = 0;
+                    int messageUrlEnd = 0;
+                    String positiveButtonText = null;
+                    String negativeButtonText = null;
+                    String neutralButtonText = null;
+                    String dialogOption = getNextOption();
+                    boolean simpleTimeoutSpecified = false;
+                    long simpleTimeoutMs = 0;
+                    while (dialogOption != null) {
+                        switch (dialogOption) {
+                            case "-t":
+                                title = getNextArgRequired();
+                                break;
+                            case "-m":
+                                message = getNextArgRequired();
+                                break;
+                            case "-l":
+                                messageUrl = getNextArgRequired();
+                                messageUrlStart = Integer.valueOf(getNextArgRequired());
+                                messageUrlEnd = Integer.valueOf(getNextArgRequired());
+                                break;
+                            case "-y":
+                                positiveButtonText = getNextArgRequired();
+                                break;
+                            case "-n":
+                                negativeButtonText = getNextArgRequired();
+                                break;
+                            case "-x":
+                                neutralButtonText = getNextArgRequired();
+                                break;
+                            case "-c":
+                                simpleTimeoutMs = Integer.parseInt(getNextArgRequired());
+                                simpleTimeoutSpecified = true;
+                                break;
+                            default:
+                                pw.println("Ignoring unknown option " + dialogOption);
+                                break;
+                        }
+                        dialogOption = getNextOption();
+                    }
+                    ArrayBlockingQueue<String> simpleQueue = new ArrayBlockingQueue<>(1);
+                    WifiDialogManager.SimpleDialogCallback wifiEnableRequestCallback =
+                            new WifiDialogManager.SimpleDialogCallback() {
+                                @Override
+                                public void onPositiveButtonClicked() {
+                                    simpleQueue.offer("Positive button was clicked.");
+                                }
+
+                                @Override
+                                public void onNegativeButtonClicked() {
+                                    simpleQueue.offer("Negative button was clicked.");
+                                }
+
+                                @Override
+                                public void onNeutralButtonClicked() {
+                                    simpleQueue.offer("Neutral button was clicked.");
+                                }
+
+                                @Override
+                                public void onCancelled() {
+                                    simpleQueue.offer("Dialog was cancelled.");
+                                }
+                            };
+                    WifiDialogManager.DialogHandle simpleDialogHandle =
+                            mWifiDialogManager.createSimpleDialogWithUrl(
+                                    title,
+                                    message,
+                                    messageUrl,
+                                    messageUrlStart,
+                                    messageUrlEnd,
+                                    positiveButtonText,
+                                    negativeButtonText,
+                                    neutralButtonText,
+                                    wifiEnableRequestCallback,
+                                    mWifiThreadRunner);
+                    if (simpleTimeoutSpecified) {
+                        simpleDialogHandle.launchDialog(simpleTimeoutMs);
+                        pw.println("Launched dialog with " + simpleTimeoutMs + " millisecond"
+                                + " timeout. Waiting for user response...");
+                        pw.flush();
+                        String dialogResponse = simpleQueue.take();
+                        if (dialogResponse == null) {
+                            pw.println("No response received.");
+                        } else {
+                            pw.println(dialogResponse);
+                        }
+                    } else {
+                        simpleDialogHandle.launchDialog();
+                        pw.println("Launched dialog. Waiting up to 15 seconds for user response"
+                                + " before dismissing...");
+                        pw.flush();
+                        String dialogResponse = simpleQueue.poll(15, TimeUnit.SECONDS);
+                        if (dialogResponse == null) {
+                            pw.println("No response received. Dismissing dialog.");
+                            simpleDialogHandle.dismissDialog();
+                        } else {
+                            pw.println(dialogResponse);
+                        }
+                    }
+                    return 0;
+                case "launch-dialog-p2p-invitation-sent": {
+                    int displayId = Display.DEFAULT_DISPLAY;
+                    String deviceName = getNextArgRequired();
+                    String displayPin = getNextArgRequired();
+                    String cmdOption = getNextOption();
+                    if (cmdOption != null && cmdOption.equals("-i")) {
+                        String displayIdStr = getNextArgRequired();
+                        try {
+                            displayId = Integer.parseInt(displayIdStr);
+                        } catch (NumberFormatException e) {
+                            pw.println("Invalid <display-id> argument to "
+                                    + "'launch-dialog-p2p-invitation-sent' "
+                                    + "- must be an integer: "
+                                    + displayIdStr);
+                            return -1;
+                        }
+                        DisplayManager dm = mContext.getSystemService(DisplayManager.class);
+                        Display[] displays = dm.getDisplays();
+                        for (Display display : displays) {
+                            pw.println("Display: id=" + display.getDisplayId() + ", info="
+                                    + display.getDeviceProductInfo());
+                        }
+                    }
+                    mWifiDialogManager.createP2pInvitationSentDialog(deviceName, displayPin,
+                            displayId).launchDialog();
+                    pw.println("Launched dialog.");
+                    return 0;
+                }
+                case "launch-dialog-p2p-invitation-received": {
                     String deviceName = getNextArgRequired();
                     boolean isPinRequested = false;
                     String displayPin = null;
                     String pinOption = getNextOption();
                     int displayId = Display.DEFAULT_DISPLAY;
+                    boolean p2pInvRecTimeoutSpecified = false;
+                    long p2pInvRecTimeout = 0;
                     while (pinOption != null) {
                         if (pinOption.equals("-p")) {
                             isPinRequested = true;
@@ -1184,45 +1433,67 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                             }
                             DisplayManager dm = mContext.getSystemService(DisplayManager.class);
                             Display[] displays = dm.getDisplays();
-                            for (Display display: displays) {
+                            for (Display display : displays) {
                                 pw.println("Display: id=" + display.getDisplayId() + ", info="
                                         + display.getDeviceProductInfo());
                             }
+                        } else if (pinOption.equals("-c")) {
+                            p2pInvRecTimeout = Integer.parseInt(getNextArgRequired());
+                            p2pInvRecTimeoutSpecified = true;
                         } else {
                             pw.println("Ignoring unknown option " + pinOption);
                         }
                         pinOption = getNextOption();
                     }
-                    ArrayBlockingQueue<String> queue = new ArrayBlockingQueue<>(1);
+                    ArrayBlockingQueue<String> p2pInvRecQueue = new ArrayBlockingQueue<>(1);
                     WifiDialogManager.P2pInvitationReceivedDialogCallback callback =
                             new WifiDialogManager.P2pInvitationReceivedDialogCallback() {
                         @Override
                         public void onAccepted(@Nullable String optionalPin) {
-                            queue.offer("Invitation accepted with optionalPin=" + optionalPin);
+                            p2pInvRecQueue.offer("Invitation accepted with optionalPin="
+                                    + optionalPin);
                         }
 
                         @Override
                         public void onDeclined() {
-                            queue.offer("Invitation declined");
+                            p2pInvRecQueue.offer("Invitation declined");
                         }
                     };
-                    mWifiDialogManager.launchP2pInvitationReceivedDialog(
-                            deviceName,
-                            isPinRequested,
-                            displayPin,
-                            displayId,
-                            callback,
-                            mWifiThreadRunner);
-                    pw.println("Launched dialog. Waiting up to 15 seconds for user response.");
-                    pw.flush();
-                    String msg = queue.poll(15, TimeUnit.SECONDS);
-                    if (msg == null) {
-                        pw.println("No response received.");
+                    WifiDialogManager.DialogHandle p2pInvitationReceivedDialogHandle =
+                            mWifiDialogManager.createP2pInvitationReceivedDialog(
+                                    deviceName,
+                                    isPinRequested,
+                                    displayPin,
+                                    displayId,
+                                    callback,
+                                    mWifiThreadRunner);
+                    if (p2pInvRecTimeoutSpecified) {
+                        p2pInvitationReceivedDialogHandle.launchDialog(p2pInvRecTimeout);
+                        pw.println("Launched dialog with " + p2pInvRecTimeout + " millisecond"
+                                + " timeout. Waiting for user response...");
+                        pw.flush();
+                        String dialogResponse = p2pInvRecQueue.take();
+                        if (dialogResponse == null) {
+                            pw.println("No response received.");
+                        } else {
+                            pw.println(dialogResponse);
+                        }
                     } else {
-                        pw.println(msg);
+                        p2pInvitationReceivedDialogHandle.launchDialog();
+                        pw.println("Launched dialog. Waiting up to 15 seconds for user response"
+                                + " before dismissing...");
+                        pw.flush();
+                        String dialogResponse = p2pInvRecQueue.poll(15, TimeUnit.SECONDS);
+                        if (dialogResponse == null) {
+                            pw.println("No response received. Dismissing dialog.");
+                            p2pInvitationReceivedDialogHandle.dismissDialog();
+                        } else {
+                            pw.println(dialogResponse);
+                        }
                     }
                     return 0;
-                case "query-interface":
+                }
+                case "query-interface": {
                     String uidArg = getNextArgRequired();
                     int uid = 0;
                     try {
@@ -1282,11 +1553,68 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     } else {
                         pw.println("Interface " + interfaceTypeArg
                                 + " can be created. Following interfaces will be destroyed:");
-                        for (Pair<Integer, WorkSource> detail: details) {
+                        for (Pair<Integer, WorkSource> detail : details) {
                             pw.println("    Type=" + ifaceMap.get(detail.first) + ", WS="
                                     + detail.second);
                         }
                     }
+                    return 0;
+                }
+                case "interface-priority-interactive-mode": {
+                    String flag = getNextArgRequired(); // enable|disable|default
+                    switch (flag) {
+                        case "enable":
+                            mInterfaceConflictManager.setUserApprovalNeededOverride(true, true);
+                            break;
+                        case "disable":
+                            mInterfaceConflictManager.setUserApprovalNeededOverride(true, false);
+                            break;
+                        case "default":
+                            mInterfaceConflictManager.setUserApprovalNeededOverride(
+                                    false, /* don't care */ false);
+                            break;
+                        default:
+                            pw.println(
+                                    "Invalid argument to `interface-priority-interactive-mode` - "
+                                            + flag);
+                            return -1;
+                    }
+                    return 0;
+                }
+                case "start-dpp-enrollee-responder": {
+                    CountDownLatch countDownLatch = new CountDownLatch(1);
+                    String option = getNextOption();
+                    String info = null;
+                    int curve = 0;
+                    while (option != null) {
+                        if (option.equals("-i")) {
+                            info = getNextArgRequired();
+                        } else if (option.equals("-c")) {
+                            curve = Integer.parseInt(getNextArgRequired());
+                        } else {
+                            pw.println("Ignoring unknown option " + option);
+                        }
+                        option = getNextOption();
+                    }
+                    mWifiService.startDppAsEnrolleeResponder(new Binder(), info, curve,
+                            new DppCallbackProxy(pw, countDownLatch));
+                    // Wait for DPP callback
+                    countDownLatch.await(10000, TimeUnit.MILLISECONDS);
+                    return 0;
+                }
+                case "start-dpp-configurator-initiator": {
+                    CountDownLatch countDownLatch = new CountDownLatch(1);
+                    int netId = Integer.parseInt(getNextArgRequired());
+                    int role = Integer.parseInt(getNextArgRequired());
+                    String enrolleeUri = getNextArgRequired();
+                    mWifiService.startDppAsConfiguratorInitiator(new Binder(), SHELL_PACKAGE_NAME,
+                            enrolleeUri, netId, role, new DppCallbackProxy(pw, countDownLatch));
+                    // Wait for DPP callback
+                    countDownLatch.await(10000, TimeUnit.MILLISECONDS);
+                    return 0;
+                }
+                case "stop-dpp":
+                    mWifiService.stopDppSession();
                     return 0;
                 default:
                     return handleDefaultCommands(cmd);
@@ -1331,6 +1659,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             configuration.setSecurityParams(WifiConfiguration.SECURITY_TYPE_OWE);
         } else if (TextUtils.equals(type, "open")) {
             configuration.setSecurityParams(WifiConfiguration.SECURITY_TYPE_OPEN);
+        } else if (TextUtils.equals(type, "dpp")) {
+            configuration.setSecurityParams(WifiConfiguration.SECURITY_TYPE_DPP);
         } else {
             throw new IllegalArgumentException("Unknown network type " + type);
         }
@@ -1913,7 +2243,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    Turns on the default connected scorer.");
         pw.println("    Note: Will clear any external scorer set.");
         pw.println("  start-softap <ssid> (open|wpa2|wpa3|wpa3_transition|owe|owe_transition) "
-                + "<passphrase> [-b 2|5|6|any]");
+                + "<passphrase> [-b 2|5|6|any|bridged]");
         pw.println("    Start softap with provided params");
         pw.println("    Note that the shell command doesn't activate internet tethering. In some "
                 + "devices, internet sharing is possible when Wi-Fi STA is also enabled and is"
@@ -1943,19 +2273,39 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println(
                 "    Reset the WiFi resources cache which will cause them to be reloaded next "
                         + "time they are accessed. Necessary if overlays are manually modified.");
+        pw.println("  launch-dialog-simple [-t <title>] [-m <message>]"
+                + " [-l <url> <url_start> <url_end>] [-y <positive_button_text>]"
+                + " [-n <negative_button_text>] [-x <neutral_button_text>] [-c <timeout_millis>]");
+        pw.println("    Launches a simple dialog and waits up to 15 seconds to"
+                + " print the response.");
+        pw.println("    -t - Title");
+        pw.println("    -m - Message");
+        pw.println("    -l - URL of the message, with the start and end index inside the message");
+        pw.println("    -y - Positive Button Text");
+        pw.println("    -n - Negative Button Text");
+        pw.println("    -x - Neutral Button Text");
+        pw.println("    -c - Optional timeout in milliseconds");
+        pw.println("  launch-dialog-p2p-invitation-sent <device_name> <pin> [-i <display_id>]");
+        pw.println("    Launches a P2P Invitation Sent dialog.");
+        pw.println("    <device_name> - Name of the device the invitation was sent to");
+        pw.println("    <pin> - PIN for the invited device to input");
         pw.println("  launch-dialog-p2p-invitation-received <device_name> [-p] [-d <pin>] "
-                + "[-i <display_id>]");
-        pw.println("    Launches a P2P Invitation Received dialog and waits up to 30 seconds to"
+                + "[-i <display_id>] [-c <timeout_millis>]");
+        pw.println("    Launches a P2P Invitation Received dialog and waits up to 15 seconds to"
                 + " print the response.");
         pw.println("    <device_name> - Name of the device sending the invitation");
         pw.println("    -p - Show PIN input");
         pw.println("    -d - Display PIN <pin>");
         pw.println("    -i - Display ID");
+        pw.println("    -c - Optional timeout in milliseconds");
         pw.println("  query-interface <uid> <package_name> STA|AP|AWARE|DIRECT [-new]");
         pw.println(
                 "    Query whether the specified could be created for the specified UID and "
                         + "package name, and if so - what other interfaces would be destroyed");
         pw.println("    -new - query for a new interfaces (otherwise an existing interface is ok");
+        pw.println("  interface-priority-interactive-mode enable|disable|default");
+        pw.println("    Enable or disable asking the user when there's an interface priority "
+                + "conflict, |default| implies using the device default behavior.");
     }
 
     private void onHelpPrivileged(PrintWriter pw) {
@@ -2032,6 +2382,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    or left for normal   operation.");
         pw.println("  force-country-code enabled <two-letter code> | disabled ");
         pw.println("    Sets country code to <two-letter code> or left for normal value");
+        pw.println("    or '00' for forcing to world mode country code");
         pw.println("  set-wifi-watchdog enabled|disabled");
         pw.println("    Sets whether wifi watchdog should trigger recovery");
         pw.println("  get-wifi-watchdog");
@@ -2155,6 +2506,16 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    Requests to include a non-quoted UTF-8 SSID in PNO scans");
         pw.println("  clear-pno-request");
         pw.println("    Clear the PNO scan request.");
+        pw.println("  start-dpp-enrollee-responder [-i <info>] [-c <curve>]");
+        pw.println("    Start DPP Enrollee responder mode.");
+        pw.println("    -i - Device Info to be used in DPP Bootstrapping URI");
+        pw.println("    -c - Cryptography Curve integer 1:p256v1, 2:s384r1, etc");
+        pw.println("  start-dpp-configurator-initiator <networkId> <netRole> <enrolleeURI>");
+        pw.println("    Start DPP Configurator Initiator mode.");
+        pw.println("    netRole - 0: STA, 1: AP");
+        pw.println("    enrolleeURI - Bootstrapping URI received from Enrollee");
+        pw.println("  stop-dpp");
+        pw.println("    Stop DPP session.");
     }
 
     @Override
