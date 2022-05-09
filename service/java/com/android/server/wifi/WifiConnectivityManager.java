@@ -22,6 +22,8 @@ import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_LONG_LIVED;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_TRANSIENT;
 import static com.android.server.wifi.ClientModeImpl.WIFI_WORK_SOURCE;
+import static com.android.server.wifi.WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE;
+import static com.android.server.wifi.proto.nano.WifiMetricsProto.ConnectionEvent.AUTH_FAILURE_EAP_FAILURE;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -52,6 +54,7 @@ import android.os.Process;
 import android.os.WorkSource;
 import android.text.TextUtils;
 import android.util.ArrayMap;
+import android.util.ArraySet;
 import android.util.LocalLog;
 import android.util.Log;
 
@@ -183,7 +186,7 @@ public class WifiConnectivityManager {
     private int mInitialScanState = INITIAL_SCAN_STATE_COMPLETE;
     private boolean mAutoJoinEnabledExternal = true; // enabled by default
     private boolean mUntrustedConnectionAllowed = false;
-    private boolean mRestrictedConnectionAllowed = false;
+    private Set<Integer> mRestrictedConnectionAllowedUids = new ArraySet<>();
     private boolean mOemPaidConnectionAllowed = false;
     private boolean mOemPrivateConnectionAllowed = false;
     @MultiInternetManager.MultiInternetState
@@ -459,21 +462,12 @@ public class WifiConnectivityManager {
                             + secondaryCmmCandidate.SSID + " / "
                             + secondaryCmmCandidate.getNetworkSelectionStatus()
                             .getCandidate().BSSID + " isDbsAp " + isDbsAp);
-                    // Disable roaming if necessary.
-                    if (mContext.getResources()
-                            .getBoolean(R.bool.config_wifiUseHalApiToDisableFwRoaming)) {
-                        // Note: This is an old HAL API, but since it wasn't being exercised before,
-                        // we are being extra cautious and only using it on devices running >= S.
-                        if (!ccm.enableRoaming(false)) {
-                            Log.w(TAG, "Failed to disable roaming");
-                        }
-                    }
                     // Secondary candidate cannot be null (otherwise we would have switched to
                     // legacy flow above). Use the explicit bssid for network connection.
                     WifiConfiguration targetNetwork = new WifiConfiguration(secondaryCmmCandidate);
                     targetNetwork.dbsSecondaryInternet = isDbsAp;
                     targetNetwork.ephemeral = true;
-                    targetNetwork.BSSID = targetBssid2;
+                    targetNetwork.BSSID = targetBssid2; // specify the BSSID to disable roaming.
                     connectToNetworkUsingCmmWithoutMbb(cm, targetNetwork);
 
                     handleScanResultsWithCandidate(handleScanResultsListener);
@@ -527,7 +521,7 @@ public class WifiConnectivityManager {
             if (oemPaidOrOemPrivateRequestorWs != null
                     && mActiveModeWarden.canRequestMoreClientModeManagersInRole(
                             oemPaidOrOemPrivateRequestorWs,
-                            ROLE_CLIENT_SECONDARY_LONG_LIVED)) {
+                            ROLE_CLIENT_SECONDARY_LONG_LIVED, false)) {
                 // Add a placeholder CMM state to ensure network selection is performed for a
                 // potential second STA creation.
                 cmmStates.add(new WifiNetworkSelector.ClientModeManagerState());
@@ -539,7 +533,7 @@ public class WifiConnectivityManager {
             if (mMultiInternetConnectionRequestorWs == null) {
                 Log.e(TAG, "mMultiInternetConnectionRequestorWs is null!");
             } else if (mActiveModeWarden.canRequestMoreClientModeManagersInRole(
-                        mMultiInternetConnectionRequestorWs, ROLE_CLIENT_SECONDARY_LONG_LIVED)) {
+                    mMultiInternetConnectionRequestorWs, ROLE_CLIENT_SECONDARY_LONG_LIVED, false)) {
                 cmmStates.add(new WifiNetworkSelector.ClientModeManagerState());
             }
         }
@@ -565,7 +559,7 @@ public class WifiConnectivityManager {
         List<WifiCandidates.Candidate> candidates = mNetworkSelector.getCandidatesFromScan(
                 scanDetails, bssidBlocklist, cmmStates, mUntrustedConnectionAllowed,
                 mOemPaidConnectionAllowed, mOemPrivateConnectionAllowed,
-                mRestrictedConnectionAllowed, isMultiInternetConnectionRequested());
+                mRestrictedConnectionAllowedUids, isMultiInternetConnectionRequested());
         mLatestCandidates = candidates;
         mLatestCandidatesTimestampMs = mClock.getElapsedSinceBootMillis();
 
@@ -1277,7 +1271,8 @@ public class WifiConnectivityManager {
         handleScreenStateChanged(mPowerManager.isInteractive());
 
         // Listen to WifiConfigManager network update events
-        mConfigManager.addOnNetworkUpdateListener(new OnNetworkUpdateListener());
+        mEventHandler.postAtFrontOfQueue(() ->
+                mConfigManager.addOnNetworkUpdateListener(new OnNetworkUpdateListener()));
         // Listen to WifiNetworkSuggestionsManager suggestion update events
         mWifiNetworkSuggestionsManager.addOnSuggestionUpdateListener(
                 new OnSuggestionUpdateListener());
@@ -1603,6 +1598,15 @@ public class WifiConnectivityManager {
             @NonNull WifiConfiguration targetNetwork, @NonNull String targetBssid) {
         if (!shouldConnect()) {
             return;
+        }
+        if (mContext.getResources().getBoolean(R.bool.config_wifiUseHalApiToDisableFwRoaming)) {
+            // If network with specified BSSID, disable roaming. Otherwise enable the roaming.
+            boolean enableRoaming = targetNetwork.BSSID == null
+                    || targetNetwork.BSSID.equals(ClientModeImpl.SUPPLICANT_BSSID_ANY);
+            if (!clientModeManager.enableRoaming(enableRoaming)) {
+                Log.w(TAG, "Failed to change roaming to "
+                        + (enableRoaming ? "enabled" : "disabled"));
+            }
         }
         clientModeManager.startConnectToNetwork(
                 targetNetwork.networkId, Process.WIFI_UID, targetBssid);
@@ -2080,8 +2084,8 @@ public class WifiConnectivityManager {
     /**
      * Sets the external scan schedule and scan type.
      */
-    public void setExternalScreenOnScanSchedule(int[] scanSchedule, int[] scanType) {
-        mExternalSingleScanScheduleSec = scanSchedule;
+    public void setExternalScreenOnScanSchedule(int[] scanScheduleSeconds, int[] scanType) {
+        mExternalSingleScanScheduleSec = scanScheduleSeconds;
         mExternalSingleScanType = scanType;
     }
 
@@ -2663,11 +2667,13 @@ public class WifiConnectivityManager {
      * Handler when a WiFi connection attempt ended.
      *
      * @param failureCode {@link WifiMetrics.ConnectionEvent} failure code.
+     * @param failureReason {@link WifiMetricsProto.ConnectionEvent} Level2FailureReason
      * @param bssid the failed network.
      * @param config identifies the failed network.
      */
     public void handleConnectionAttemptEnded(@NonNull ClientModeManager clientModeManager,
-            int failureCode, @NonNull String bssid, @NonNull WifiConfiguration config) {
+            int failureCode, int failureReason, @NonNull String bssid,
+            @NonNull WifiConfiguration config) {
         List<ClientModeManager> internetConnectivityCmms =
                 mActiveModeWarden.getInternetConnectivityClientModeManagers();
         if (!internetConnectivityCmms.contains(clientModeManager)) {
@@ -2684,13 +2690,15 @@ public class WifiConnectivityManager {
             // Only attempt to reconnect when connection on the primary CMM fails, since MBB
             // CMM will be destroyed after the connection failure.
             if (clientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
-                retryConnectionOnLatestCandidates(clientModeManager, bssid, config);
+                retryConnectionOnLatestCandidates(clientModeManager, bssid, config,
+                        failureCode == FAILURE_AUTHENTICATION_FAILURE
+                                && failureReason == AUTH_FAILURE_EAP_FAILURE);
             }
         }
     }
 
     private void retryConnectionOnLatestCandidates(@NonNull ClientModeManager clientModeManager,
-            String bssid, @NonNull WifiConfiguration configuration) {
+            String bssid, @NonNull WifiConfiguration configuration, boolean ignoreSameNetwork) {
         try {
             if (mLatestCandidates == null || mLatestCandidates.size() == 0
                     || mClock.getElapsedSinceBootMillis() - mLatestCandidatesTimestampMs
@@ -2699,9 +2707,16 @@ public class WifiConnectivityManager {
                 return;
             }
             MacAddress macAddress = MacAddress.fromString(bssid);
+            ScanResultMatchInfo scanResultMatchInfo =
+                    ScanResultMatchInfo.fromWifiConfiguration(configuration);
             int prevNumCandidates = mLatestCandidates.size();
             mLatestCandidates = mLatestCandidates.stream()
                     .filter(candidate -> {
+                        // filter out the same network if needed
+                        if (ignoreSameNetwork && scanResultMatchInfo.matchForNetworkSelection(
+                                candidate.getKey().matchInfo) != null) {
+                            return false;
+                        }
                         // filter out the candidate with the BSSID that just failed
                         if (macAddress.equals(candidate.getKey().bssid)) {
                             return false;
@@ -2754,7 +2769,7 @@ public class WifiConnectivityManager {
         setAutoJoinEnabled(mAutoJoinEnabledExternal
                 && (mUntrustedConnectionAllowed || mOemPaidConnectionAllowed
                 || mOemPrivateConnectionAllowed || mTrustedConnectionAllowed
-                || mRestrictedConnectionAllowed || hasMultiInternetConnection())
+                || mRestrictedConnectionAllowedUids.size() != 0 || hasMultiInternetConnection())
                 && !mSpecificNetworkRequestInProgress);
         startConnectivityScan(SCAN_IMMEDIATELY);
     }
@@ -2784,13 +2799,29 @@ public class WifiConnectivityManager {
     }
 
     /**
-     * Triggered when {@link RestrictedWifiNetworkFactory} has a pending ephemeral network request.
+     * Triggered when {@link RestrictedWifiNetworkFactory} has a new pending restricted network
+     * request.
+     * @param uid the uid of the latest requestor
      */
-    public void setRestrictionConnectionAllowed(boolean allowed) {
-        localLog("setRestrictionConnectionAllowed: allowed=" + allowed);
+    public void addRestrictionConnectionAllowedUid(int uid) {
+        localLog("addRestrictionConnectionAllowedUid: allowedUid=" + uid);
 
-        if (mRestrictedConnectionAllowed != allowed) {
-            mRestrictedConnectionAllowed = allowed;
+        int size = mRestrictedConnectionAllowedUids.size();
+        mRestrictedConnectionAllowedUids.add(uid);
+        if (size == 0) {
+            checkAllStatesAndEnableAutoJoin();
+        }
+    }
+
+    /**
+     * Triggered when {@link RestrictedWifiNetworkFactory} release a restricted network request.
+     * @param uid the uid of the latest released requestor
+     */
+    public void removeRestrictionConnectionAllowedUid(int uid) {
+        localLog("removeRestrictionConnectionAllowedUid: allowedUid=" + uid);
+
+        mRestrictedConnectionAllowedUids.remove(uid);
+        if (mRestrictedConnectionAllowedUids.size() == 0) {
             checkAllStatesAndEnableAutoJoin();
         }
     }
@@ -2967,6 +2998,13 @@ public class WifiConnectivityManager {
             mAutoJoinEnabledExternal = enable;
             checkAllStatesAndEnableAutoJoin();
         }
+    }
+
+    /**
+     * Return whether auto join is on/off
+     */
+    public boolean getAutoJoinEnabledExternal() {
+        return mAutoJoinEnabledExternal;
     }
 
     /**

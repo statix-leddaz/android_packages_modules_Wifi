@@ -37,19 +37,34 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.argThat;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.calls;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.isNull;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.nullable;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import android.app.ActivityManager;
-import android.app.AlertDialog;
 import android.app.AppOpsManager;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.net.wifi.EAPConstants;
 import android.net.wifi.ISuggestionConnectionStatusListener;
@@ -75,7 +90,6 @@ import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.test.suitebuilder.annotation.SmallTest;
 import android.view.LayoutInflater;
-import android.view.Window;
 
 import com.android.dx.mockito.inline.extended.ExtendedMockito;
 import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
@@ -148,7 +162,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
     private @Mock Resources mResources;
     private @Mock AppOpsManager mAppOpsManager;
     private @Mock WifiNotificationManager mWifiNotificationManager;
-    private @Mock PackageManager mPackageManager;
+    private @Mock WifiDialogManager mWifiDialogManager;
     private @Mock WifiPermissionsUtil mWifiPermissionsUtil;
     private @Mock WifiInjector mWifiInjector;
     private @Mock FrameworkFacade mFrameworkFacade;
@@ -164,8 +178,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
     private @Mock ActivityManager mActivityManager;
     private @Mock WifiScoreCard mWifiScoreCard;
     private @Mock WifiKeyStore mWifiKeyStore;
-    private @Mock AlertDialog.Builder mAlertDialogBuilder;
-    private @Mock AlertDialog mAlertDialog;
+    private @Mock WifiDialogManager.DialogHandle mDialogHandle;
     private @Mock Notification.Builder mNotificationBuilder;
     private @Mock Notification mNotification;
     private @Mock LruConnectionTracker mLruConnectionTracker;
@@ -212,14 +225,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         when(mWifiInjector.getActiveModeWarden()).thenReturn(mActiveModeWarden);
         when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
         when(mWifiInjector.getWifiNotificationManager()).thenReturn(mWifiNotificationManager);
-        when(mAlertDialogBuilder.setTitle(any())).thenReturn(mAlertDialogBuilder);
-        when(mAlertDialogBuilder.setMessage(any())).thenReturn(mAlertDialogBuilder);
-        when(mAlertDialogBuilder.setPositiveButton(any(), any())).thenReturn(mAlertDialogBuilder);
-        when(mAlertDialogBuilder.setNegativeButton(any(), any())).thenReturn(mAlertDialogBuilder);
-        when(mAlertDialogBuilder.setOnDismissListener(any())).thenReturn(mAlertDialogBuilder);
-        when(mAlertDialogBuilder.setOnCancelListener(any())).thenReturn(mAlertDialogBuilder);
-        when(mAlertDialogBuilder.create()).thenReturn(mAlertDialog);
-        when(mAlertDialog.getWindow()).thenReturn(mock(Window.class));
+        when(mWifiInjector.getWifiDialogManager()).thenReturn(mWifiDialogManager);
         when(mNotificationBuilder.setSmallIcon(any())).thenReturn(mNotificationBuilder);
         when(mNotificationBuilder.setTicker(any())).thenReturn(mNotificationBuilder);
         when(mNotificationBuilder.setContentTitle(any())).thenReturn(mNotificationBuilder);
@@ -231,15 +237,14 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         when(mNotificationBuilder.addAction(any())).thenReturn(mNotificationBuilder);
         when(mNotificationBuilder.setTimeoutAfter(anyLong())).thenReturn(mNotificationBuilder);
         when(mNotificationBuilder.build()).thenReturn(mNotification);
-        when(mFrameworkFacade.makeAlertDialogBuilder(any()))
-                .thenReturn(mAlertDialogBuilder);
+        when(mWifiDialogManager.createSimpleDialog(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(mDialogHandle);
         when(mFrameworkFacade.makeNotificationBuilder(any(), anyString()))
                 .thenReturn(mNotificationBuilder);
         when(mFrameworkFacade.getBroadcast(any(), anyInt(), any(), anyInt()))
                 .thenReturn(mock(PendingIntent.class));
         when(mContext.getResources()).thenReturn(mResources);
         when(mContext.getSystemService(Context.APP_OPS_SERVICE)).thenReturn(mAppOpsManager);
-        when(mContext.getPackageManager()).thenReturn(mPackageManager);
         when(mContext.getSystemService(ActivityManager.class)).thenReturn(mActivityManager);
         when(mContext.getSystemService(Context.LAYOUT_INFLATER_SERVICE))
                 .thenReturn(mock(LayoutInflater.class));
@@ -267,19 +272,11 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         when(mResources.getText(eq(R.string.wifi_suggestion_action_disallow_app)))
                 .thenReturn("blah");
 
-
-        // Our app Info. Needed for notification builder.
-        ApplicationInfo ourAppInfo = new ApplicationInfo();
-        when(mContext.getApplicationInfo()).thenReturn(ourAppInfo);
         // test app info
-        ApplicationInfo appInfO1 = new ApplicationInfo();
-        when(mPackageManager.getApplicationInfoAsUser(eq(TEST_PACKAGE_1), eq(0), any()))
-            .thenReturn(appInfO1);
-        when(mPackageManager.getApplicationLabel(appInfO1)).thenReturn(TEST_APP_NAME_1);
-        ApplicationInfo appInfO2 = new ApplicationInfo();
-        when(mPackageManager.getApplicationInfoAsUser(eq(TEST_PACKAGE_2), eq(0), any()))
-            .thenReturn(appInfO2);
-        when(mPackageManager.getApplicationLabel(appInfO2)).thenReturn(TEST_APP_NAME_2);
+        when(mFrameworkFacade.getAppName(any(), eq(TEST_PACKAGE_1), eq(TEST_UID_1)))
+            .thenReturn(TEST_APP_NAME_1);
+        when(mFrameworkFacade.getAppName(any(), eq(TEST_PACKAGE_2), eq(TEST_UID_2)))
+                .thenReturn(TEST_APP_NAME_2);
         when(mWifiCarrierInfoManager.getCarrierIdForPackageWithCarrierPrivileges(any())).thenReturn(
                 TelephonyManager.UNKNOWN_CARRIER_ID);
         when(mWifiCarrierInfoManager.isSubIdMatchingCarrierId(anyInt(), anyInt())).thenReturn(true);
@@ -299,9 +296,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                         mWifiInjector, mWifiPermissionsUtil, mWifiConfigManager, mWifiConfigStore,
                         mWifiMetrics, mWifiCarrierInfoManager, mWifiKeyStore,
                         mLruConnectionTracker, mClock);
-        verify(mContext).getResources();
-        verify(mContext).getSystemService(Context.APP_OPS_SERVICE);
-        verify(mContext).getPackageManager();
+        mLooper.dispatchAll();
         verify(mContext).registerReceiver(mBroadcastReceiverCaptor.capture(), any(), any(), any());
 
         ArgumentCaptor<NetworkSuggestionStoreData.DataSource> dataSourceArgumentCaptor =
@@ -576,7 +571,6 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
                         TEST_PACKAGE_1, TEST_FEATURE));
     }
-
 
     @Test
     public void testAddOemPrivateNetworkSuggestionOnPreSDevices() {
@@ -2977,13 +2971,11 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         validateUserApprovalDialog(TEST_APP_NAME_1);
 
         // Simulate user clicking on allow in the dialog.
-        ArgumentCaptor<DialogInterface.OnClickListener> clickListenerCaptor =
-                ArgumentCaptor.forClass(DialogInterface.OnClickListener.class);
-        verify(mAlertDialogBuilder, atLeastOnce()).setPositiveButton(
-                any(), clickListenerCaptor.capture());
-        assertNotNull(clickListenerCaptor.getValue());
-        clickListenerCaptor.getValue().onClick(mAlertDialog, 0);
-        mLooper.dispatchAll();
+        ArgumentCaptor<WifiDialogManager.SimpleDialogCallback> dialogCallbackCaptor =
+                ArgumentCaptor.forClass(WifiDialogManager.SimpleDialogCallback.class);
+        verify(mWifiDialogManager).createSimpleDialog(
+                any(), any(), any(), any(), any(), dialogCallbackCaptor.capture(), any());
+        dialogCallbackCaptor.getValue().onPositiveButtonClicked();
 
         // Verify config store interactions.
         verify(mWifiConfigManager, times(2)).saveToStore(true);
@@ -3021,13 +3013,11 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         validateUserApprovalDialog(TEST_APP_NAME_1);
 
         // Simulate user clicking on disallow in the dialog.
-        ArgumentCaptor<DialogInterface.OnClickListener> clickListenerCaptor =
-                ArgumentCaptor.forClass(DialogInterface.OnClickListener.class);
-        verify(mAlertDialogBuilder, atLeastOnce()).setNegativeButton(
-                any(), clickListenerCaptor.capture());
-        assertNotNull(clickListenerCaptor.getValue());
-        clickListenerCaptor.getValue().onClick(mAlertDialog, 0);
-        mLooper.dispatchAll();
+        ArgumentCaptor<WifiDialogManager.SimpleDialogCallback> dialogCallbackCaptor =
+                ArgumentCaptor.forClass(WifiDialogManager.SimpleDialogCallback.class);
+        verify(mWifiDialogManager).createSimpleDialog(
+                any(), any(), any(), any(), any(), dialogCallbackCaptor.capture(), any());
+        dialogCallbackCaptor.getValue().onNegativeButtonClicked();
         // Ensure we turn off CHANGE_WIFI_STATE app-ops.
         verify(mAppOpsManager).setMode(
                 OPSTR_CHANGE_WIFI_STATE, TEST_UID_1, TEST_PACKAGE_1, MODE_IGNORED);
@@ -3078,13 +3068,12 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                         TEST_PACKAGE_1, TEST_FEATURE));
         validateUserApprovalDialog(TEST_APP_NAME_1);
 
-        // Simulate user clicking on allow in the dialog.
-        ArgumentCaptor<DialogInterface.OnDismissListener> dismissListenerCaptor =
-                ArgumentCaptor.forClass(DialogInterface.OnDismissListener.class);
-        verify(mAlertDialogBuilder, atLeastOnce()).setOnDismissListener(
-                dismissListenerCaptor.capture());
-        assertNotNull(dismissListenerCaptor.getValue());
-        dismissListenerCaptor.getValue().onDismiss(mAlertDialog);
+        // Simulate user dismissing the dialog via home/back button.
+        ArgumentCaptor<WifiDialogManager.SimpleDialogCallback> dialogCallbackCaptor =
+                ArgumentCaptor.forClass(WifiDialogManager.SimpleDialogCallback.class);
+        verify(mWifiDialogManager).createSimpleDialog(
+                any(), any(), any(), any(), any(), dialogCallbackCaptor.capture(), any());
+        dialogCallbackCaptor.getValue().onCancelled();
         mLooper.dispatchAll();
 
         // Verify no new config store or app-op interactions.
@@ -3272,16 +3261,16 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
     }
 
     private void validateUserApprovalDialog(String... anyOfExpectedAppNames) {
-        verify(mAlertDialog, atLeastOnce()).show();
-        ArgumentCaptor<CharSequence> contentCaptor =
-                ArgumentCaptor.forClass(CharSequence.class);
-        verify(mAlertDialogBuilder, atLeastOnce()).setMessage(contentCaptor.capture());
-        CharSequence content = contentCaptor.getValue();
-        assertNotNull(content);
+        verify(mDialogHandle, atLeastOnce()).launchDialog();
+        ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
+        verify(mWifiDialogManager, atLeastOnce()).createSimpleDialog(
+                any(), messageCaptor.capture(), any(), any(), any(), any(), any());
+        String message = messageCaptor.getValue();
+        assertNotNull(message);
 
         boolean foundMatch = false;
         for (int i = 0; i < anyOfExpectedAppNames.length; i++) {
-            foundMatch = content.toString().contains(anyOfExpectedAppNames[i]);
+            foundMatch = message.contains(anyOfExpectedAppNames[i]);
             if (foundMatch) break;
         }
         assertTrue(foundMatch);
@@ -4140,7 +4129,6 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 .thenReturn(true);
         verify(mPasspointManager).enableAutojoin(anyString(), any(), eq(true));
         verify(mWifiConfigManager).addOrUpdateNetwork(any(), anyInt(), anyString());
-        verify(mWifiConfigManager).allowAutojoin(anyInt(), eq(true));
         matchedSuggestions = mWifiNetworkSuggestionsManager
                 .getNetworkSuggestionsForScanDetail(createScanDetailForNetwork(eapSimConfig));
 

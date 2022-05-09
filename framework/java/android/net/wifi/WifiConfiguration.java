@@ -19,6 +19,7 @@ package android.net.wifi;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.RequiresPermission;
 import android.annotation.SuppressLint;
 import android.annotation.SystemApi;
 import android.compat.annotation.UnsupportedAppUsage;
@@ -583,6 +584,10 @@ public class WifiConfiguration implements Parcelable {
      * This is accomplished by setting the various BitSets exposed in WifiConfiguration.
      * <br>
      * This API would clear existing security types and add a default one.
+     *
+     * Before calling this API with {@link #SECURITY_TYPE_DPP} as securityType,
+     * call {@link WifiManager#isEasyConnectDppAkmSupported() to know whether this security type is
+     * supported or not.
      *
      * @param securityType One of the following security types:
      * {@link #SECURITY_TYPE_OPEN},
@@ -1607,6 +1612,40 @@ public class WifiConfiguration implements Parcelable {
     public boolean meteredHint;
 
     /**
+     * True if this configuration is intended to be repeater enabled to expand coverage.
+     */
+    private boolean mIsRepeaterEnabled;
+
+    /**
+     * Sets if this configuration is intended to be repeater enabled for expanded coverage.
+     *
+     * @param isRepeaterEnabled true if this network is intended to be repeater enabled,
+     *        false otherwise.
+     *
+     * This request is only accepted if the caller is holding
+     * {@link android.Manifest.permission#NETWORK_SETTINGS}.
+     *
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.NETWORK_SETTINGS)
+    @SystemApi
+    public void setRepeaterEnabled(boolean isRepeaterEnabled) {
+        mIsRepeaterEnabled = isRepeaterEnabled;
+    }
+
+    /**
+     * Returns if this configuration is intended to be repeater enabled for expanded coverage.
+     *
+     * @return true if this network is intended to be repeater enabled, false otherwise.
+     *
+     * @hide
+     */
+    @SystemApi
+    public boolean isRepeaterEnabled() {
+        return mIsRepeaterEnabled;
+    }
+
+    /**
      * Indicate whether the network is restricted or not.
      *
      * This bit can only be used by suggestion network, see
@@ -1785,6 +1824,16 @@ public class WifiConfiguration implements Parcelable {
 
     /**
      * Set the MAC randomization setting for this network.
+     * <p>
+     * Caller must satify one of the following conditions:
+     * </p>
+     * <ul>
+     * <li>Have {@code android.Manifest.permission#NETWORK_SETTINGS} permission.</li>
+     * <li>Have {@code android.Manifest.permission#NETWORK_SETUP_WIZARD} permission.</li>
+     * <li>Be in Demo Mode.</li>
+     * <li>Be the creator adding or updating a passpoint network.</li>
+     * <li>Be an admin updating their own network.</li>
+     * </ul>
      */
     public void setMacRandomizationSetting(@MacRandomizationSetting int macRandomizationSetting) {
         this.macRandomizationSetting = macRandomizationSetting;
@@ -2345,6 +2394,11 @@ public class WifiConfiguration implements Parcelable {
         private SecurityParams mCandidateSecurityParams;
 
         /**
+         * Used to cache the last used security params for the candidate.
+         */
+        private SecurityParams mLastUsedSecurityParams;
+
+        /**
          * Indicate whether this network is visible in latest Qualified Network Selection. This
          * means there is scan result found related to this Configuration and meet the minimum
          * requirement. The saved network need not join latest Qualified Network Selection. For
@@ -2441,6 +2495,24 @@ public class WifiConfiguration implements Parcelable {
          */
         public SecurityParams getCandidateSecurityParams() {
             return mCandidateSecurityParams;
+        }
+
+        /**
+         * set the last used security type of the network
+         * @param params value to set to mLastUsedSecurityParams
+         * @hide
+         */
+        public void setLastUsedSecurityParams(SecurityParams params) {
+            mLastUsedSecurityParams = params;
+        }
+
+        /**
+         * get the last used security type of the network
+         * @return return the security params
+         * @hide
+         */
+        public SecurityParams getLastUsedSecurityParams() {
+            return mLastUsedSecurityParams;
         }
 
         /**
@@ -2781,6 +2853,7 @@ public class WifiConfiguration implements Parcelable {
             setCandidate(source.getCandidate());
             setCandidateScore(source.getCandidateScore());
             setCandidateSecurityParams(source.getCandidateSecurityParams());
+            setLastUsedSecurityParams(source.getLastUsedSecurityParams());
             setConnectChoice(source.getConnectChoice());
             setConnectChoiceRssi(source.getConnectChoiceRssi());
             setHasEverConnected(source.hasEverConnected());
@@ -2788,7 +2861,7 @@ public class WifiConfiguration implements Parcelable {
         }
 
         /** @hide */
-        public void writeToParcel(Parcel dest) {
+        public void writeToParcel(Parcel dest, int flags) {
             dest.writeInt(getNetworkSelectionStatus());
             dest.writeInt(getNetworkSelectionDisableReason());
             for (int index = DISABLED_NONE; index < NETWORK_SELECTION_DISABLED_MAX;
@@ -2806,6 +2879,8 @@ public class WifiConfiguration implements Parcelable {
             }
             dest.writeInt(hasEverConnected() ? 1 : 0);
             dest.writeInt(hasNeverDetectedCaptivePortal() ? 1 : 0);
+            dest.writeParcelable(getCandidateSecurityParams(), flags);
+            dest.writeParcelable(getLastUsedSecurityParams(), flags);
         }
 
         /** @hide */
@@ -2826,6 +2901,8 @@ public class WifiConfiguration implements Parcelable {
             }
             setHasEverConnected(in.readInt() != 0);
             setHasNeverDetectedCaptivePortal(in.readInt() != 0);
+            setCandidateSecurityParams((SecurityParams) in.readParcelable(null));
+            setLastUsedSecurityParams((SecurityParams) in.readParcelable(null));
         }
     }
 
@@ -3099,6 +3176,7 @@ public class WifiConfiguration implements Parcelable {
         fromWifiNetworkSpecifier = false;
         dbsSecondaryInternet = false;
         meteredHint = false;
+        mIsRepeaterEnabled = false;
         meteredOverride = METERED_OVERRIDE_NONE;
         useExternalScores = false;
         validatedInternetAccess = false;
@@ -3217,6 +3295,10 @@ public class WifiConfiguration implements Parcelable {
                 .append(mNetworkSelectionStatus.hasEverConnected()).append("\n");
         sbuf.append(" hasNeverDetectedCaptivePortal: ")
                 .append(mNetworkSelectionStatus.hasNeverDetectedCaptivePortal()).append("\n");
+        sbuf.append(" mCandidateSecurityParams: ")
+                .append(mNetworkSelectionStatus.getCandidateSecurityParams());
+        sbuf.append(" mLastUsedSecurityParams: ")
+                .append(mNetworkSelectionStatus.getLastUsedSecurityParams());
 
         if (this.numAssociation > 0) {
             sbuf.append(" numAssociation ").append(this.numAssociation).append("\n");
@@ -3242,6 +3324,7 @@ public class WifiConfiguration implements Parcelable {
         if (this.fromWifiNetworkSpecifier) sbuf.append(" fromWifiNetworkSpecifier");
         if (this.dbsSecondaryInternet) sbuf.append(" dbsSecondaryInternet");
         if (this.meteredHint) sbuf.append(" meteredHint");
+        if (this.mIsRepeaterEnabled) sbuf.append(" repeaterEnabled");
         if (this.useExternalScores) sbuf.append(" useExternalScores");
         if (this.validatedInternetAccess || this.ephemeral || this.trusted || this.oemPaid
                 || this.oemPrivate || this.carrierMerged || this.fromWifiNetworkSuggestion
@@ -3417,6 +3500,7 @@ public class WifiConfiguration implements Parcelable {
             sbuf.append("bssidAllowlist unset");
         }
         sbuf.append("\n");
+        sbuf.append("IsDppConfigurator: ").append(this.mIsDppConfigurator).append("\n");
         return sbuf.toString();
     }
 
@@ -3810,6 +3894,7 @@ public class WifiConfiguration implements Parcelable {
             fromWifiNetworkSpecifier = source.fromWifiNetworkSpecifier;
             dbsSecondaryInternet = source.dbsSecondaryInternet;
             meteredHint = source.meteredHint;
+            mIsRepeaterEnabled = source.mIsRepeaterEnabled;
             meteredOverride = source.meteredOverride;
             useExternalScores = source.useExternalScores;
 
@@ -3861,7 +3946,7 @@ public class WifiConfiguration implements Parcelable {
     public void writeToParcel(Parcel dest, int flags) {
         dest.writeInt(networkId);
         dest.writeInt(status);
-        mNetworkSelectionStatus.writeToParcel(dest);
+        mNetworkSelectionStatus.writeToParcel(dest, flags);
         dest.writeString(SSID);
         dest.writeString(BSSID);
         dest.writeInt(apBand);
@@ -3894,7 +3979,7 @@ public class WifiConfiguration implements Parcelable {
 
         dest.writeInt(mSecurityParamsList.size());
         mSecurityParamsList.stream()
-                .forEach(params -> params.writeToParcel(dest, flags));
+                .forEach(params -> dest.writeParcelable(params, flags));
 
         dest.writeParcelable(enterpriseConfig, flags);
 
@@ -3912,6 +3997,7 @@ public class WifiConfiguration implements Parcelable {
         dest.writeInt(fromWifiNetworkSpecifier ? 1 : 0);
         dest.writeInt(dbsSecondaryInternet ? 1 : 0);
         dest.writeInt(meteredHint ? 1 : 0);
+        dest.writeBoolean(mIsRepeaterEnabled);
         dest.writeInt(meteredOverride);
         dest.writeInt(useExternalScores ? 1 : 0);
         dest.writeInt(creatorUid);
@@ -3940,7 +4026,7 @@ public class WifiConfiguration implements Parcelable {
         dest.writeBoolean(restricted);
         dest.writeParcelable(mSubscriptionGroup, flags);
         dest.writeList(mBssidAllowlist);
-        dest.writeInt(mIsDppConfigurator ? 1 : 0);
+        dest.writeBoolean(mIsDppConfigurator);
         dest.writeByteArray(mDppPrivateEcKey);
         dest.writeByteArray(mDppConnector);
         dest.writeByteArray(mDppCSignKey);
@@ -3989,7 +4075,7 @@ public class WifiConfiguration implements Parcelable {
 
                 int numSecurityParams = in.readInt();
                 for (int i = 0; i < numSecurityParams; i++) {
-                    config.mSecurityParamsList.add(SecurityParams.createFromParcel(in));
+                    config.mSecurityParamsList.add(in.readParcelable(null));
                 }
 
                 config.enterpriseConfig = in.readParcelable(null);
@@ -4007,6 +4093,7 @@ public class WifiConfiguration implements Parcelable {
                 config.fromWifiNetworkSpecifier = in.readInt() != 0;
                 config.dbsSecondaryInternet = in.readInt() != 0;
                 config.meteredHint = in.readInt() != 0;
+                config.mIsRepeaterEnabled = in.readBoolean();
                 config.meteredOverride = in.readInt();
                 config.useExternalScores = in.readInt() != 0;
                 config.creatorUid = in.readInt();
@@ -4034,7 +4121,7 @@ public class WifiConfiguration implements Parcelable {
                 config.restricted = in.readBoolean();
                 config.mSubscriptionGroup = in.readParcelable(null);
                 config.mBssidAllowlist = in.readArrayList(MacAddress.class.getClassLoader());
-                config.mIsDppConfigurator = in.readInt() != 0;
+                config.mIsDppConfigurator = in.readBoolean();
                 config.mDppPrivateEcKey = in.createByteArray();
                 config.mDppConnector = in.createByteArray();
                 config.mDppCSignKey = in.createByteArray();
