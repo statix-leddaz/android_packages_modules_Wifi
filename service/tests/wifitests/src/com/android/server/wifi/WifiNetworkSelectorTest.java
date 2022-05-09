@@ -36,6 +36,7 @@ import android.app.admin.DevicePolicyManager;
 import android.app.admin.WifiSsidPolicy;
 import android.content.Context;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SecurityParams;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
@@ -1065,6 +1066,9 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
                 false, true, true, Collections.emptySet(), false);
         WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
 
+        WifiConfiguration[] configs = scanDetailsAndConfigs.getWifiConfigs();
+        configs[0].getNetworkSelectionStatus().setLastUsedSecurityParams(
+                configs[0].getNetworkSelectionStatus().getCandidateSecurityParams());
         when(mWifiInfo.getSupplicantState()).thenReturn(SupplicantState.COMPLETED);
         when(mWifiInfo.getNetworkId()).thenReturn(0); // 0 is current network
         when(mWifiInfo.getBSSID()).thenReturn(bssids[0]);
@@ -2852,5 +2856,30 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
         WifiConfigurationTestUtil.assertConfigurationEqual(networkSelectorChoice, candidate);
         assertTrue(networkSelectorChoice.getNetworkSelectionStatus().getCandidateSecurityParams()
                 .isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK));
+    }
+
+    /**
+     * Verify network selection for the user selected network.
+     */
+    @Test
+    public void testNetworkSelectionForUserSelectedNetwork() {
+        when(mClientModeManager.getSupportedFeatures()).thenReturn(WIFI_FEATURE_WPA3_SAE);
+        when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(true);
+
+        ScanDetailsAndWifiConfigs scanDetailsAndConfigs = setupAutoUpgradeNetworks(
+                WifiConfigurationTestUtil.createPskSaeNetwork(TEST_AUTO_UPGRADE_SSID),
+                new String[] {"[RSN-PSK+SAE-CCMP][ESS]", "[RSN-PSK+SAE-CCMP][ESS]"});
+        List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
+        WifiConfiguration[] savedConfigs = scanDetailsAndConfigs.getWifiConfigs();
+        WifiConfiguration userSelectedConfig = savedConfigs[0];
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector
+                .getCandidatesForUserSelection(userSelectedConfig, scanDetails);
+        WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
+
+        ArgumentCaptor<SecurityParams> paramsCaptor =
+                ArgumentCaptor.forClass(SecurityParams.class);
+        verify(mWifiConfigManager).setNetworkCandidateScanResult(
+                eq(userSelectedConfig.networkId), any(), eq(0), paramsCaptor.capture());
+        assertTrue(paramsCaptor.getValue().isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE));
     }
 }
