@@ -43,6 +43,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
+import android.os.Process;
 import android.os.RemoteException;
 import android.util.Log;
 import android.util.SparseArray;
@@ -50,6 +51,7 @@ import android.util.SparseIntArray;
 
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.Clock;
+import com.android.server.wifi.InterfaceConflictManager;
 import com.android.server.wifi.WifiSettingsConfigStore;
 import com.android.server.wifi.util.NetdWrapper;
 import com.android.server.wifi.util.WifiPermissionsUtil;
@@ -103,7 +105,8 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
             WifiPermissionsUtil wifiPermissionsUtil, WifiPermissionsWrapper permissionsWrapper,
             WifiSettingsConfigStore settingsConfigStore,
             WifiAwareNativeManager wifiAwareNativeManager, WifiAwareNativeApi wifiAwareNativeApi,
-            WifiAwareNativeCallback wifiAwareNativeCallback, NetdWrapper netdWrapper) {
+            WifiAwareNativeCallback wifiAwareNativeCallback, NetdWrapper netdWrapper,
+            InterfaceConflictManager interfaceConflictManager) {
         Log.i(TAG, "Starting Wi-Fi Aware service");
 
         mWifiPermissionsUtil = wifiPermissionsUtil;
@@ -113,7 +116,8 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
 
         mHandler.post(() -> {
             mStateManager.start(mContext, handlerThread.getLooper(), awareMetrics,
-                    wifiPermissionsUtil, permissionsWrapper, new Clock(), netdWrapper);
+                    wifiPermissionsUtil, permissionsWrapper, new Clock(), netdWrapper,
+                    interfaceConflictManager);
 
             settingsConfigStore.registerChangeListener(
                     WIFI_VERBOSE_LOGGING_ENABLED,
@@ -178,14 +182,16 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
 
     @Override
     public void enableInstantCommunicationMode(String callingPackage, boolean enable) {
-        int uid = getMockableCallingUid();
-        mWifiPermissionsUtil.checkPackage(uid, callingPackage);
-        if (!mWifiPermissionsUtil.isSystem(callingPackage, uid)) {
-            Log.i(TAG, "enableInstantCommunicationMode not allowed for uid="
-                    + Binder.getCallingUid());
-            return;
-        }
         enforceChangePermission();
+        int uid = getMockableCallingUid();
+        if (uid != Process.SHELL_UID && uid != Process.ROOT_UID) {
+            mWifiPermissionsUtil.checkPackage(uid, callingPackage);
+            if (!mWifiPermissionsUtil.isSystem(callingPackage, uid)
+                    && !mWifiPermissionsUtil.checkConfigOverridePermission(uid)) {
+                Log.i(TAG, "enableInstantCommunicationMode not allowed for uid=" + uid);
+                return;
+            }
+        }
         mStateManager.enableInstantCommunicationMode(enable);
     }
 
@@ -227,6 +233,10 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
         }
         if (binder == null) {
             throw new IllegalArgumentException("Binder must not be null");
+        }
+
+        if (extras == null) {
+            throw new IllegalArgumentException("extras bundle must not be null");
         }
 
         if (notifyOnIdentityChanged) {
@@ -287,7 +297,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
         }
 
         mStateManager.connect(clientId, uid, pid, callingPackage, callingFeatureId, callback,
-                configRequest, notifyOnIdentityChanged);
+                configRequest, notifyOnIdentityChanged, extras);
     }
 
     @Override

@@ -37,6 +37,7 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 
 class SupplicantStaNetworkCallbackAidlImpl extends ISupplicantStaNetworkCallback.Stub {
+    private static final String TAG = "SupplicantStaNetworkCallbackAidlImpl";
     private final SupplicantStaNetworkHalAidlImpl mNetworkHal;
     /**
      * Current configured network's framework network id.
@@ -201,8 +202,6 @@ class SupplicantStaNetworkCallbackAidlImpl extends ISupplicantStaNetworkCallback
                         "onServerCertificateAvailable: Failed to read certificate.");
                 return;
             }
-            // Not a CA certificate, ignore it.
-            if (cert.getBasicConstraints() < 0) return;
 
             mNetworkHal.logCallback("onServerCertificateAvailable:"
                     + " depth=" + depth
@@ -210,7 +209,17 @@ class SupplicantStaNetworkCallbackAidlImpl extends ISupplicantStaNetworkCallback
                     + " certHash=" + certHash
                     + " cert=" + cert);
             mWifiMonitor.broadcastCertificationEvent(
-                    mIfaceName, mFrameworkNetworkId, mSsid, cert);
+                    mIfaceName, mFrameworkNetworkId, mSsid, depth, cert);
         }
+    }
+
+    @Override
+    public String getInterfaceHash() {
+        return ISupplicantStaNetworkCallback.HASH;
+    }
+
+    @Override
+    public int getInterfaceVersion() {
+        return ISupplicantStaNetworkCallback.VERSION;
     }
 }

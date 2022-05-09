@@ -62,6 +62,7 @@ import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.net.MacAddress;
 import android.net.wifi.EAPConstants;
 import android.net.wifi.IOnWifiUsabilityStatsListener;
 import android.net.wifi.ScanResult;
@@ -1611,6 +1612,18 @@ public class WifiMetricsTest extends WifiBaseTest {
 
     }
 
+    @Test
+    public void testHalCrashSoftApFailureCount() throws Exception {
+        mWifiMetrics.incrementNumHalCrashes();
+        mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHostapd();
+        ExtendedMockito.verify(() -> WifiStatsLog.write(
+                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
+                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__SOFT_AP_FAILURE_HOSTAPD));
+        ExtendedMockito.verify(() -> WifiStatsLog.write(
+                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
+                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__HAL_CRASH));
+    }
+
     /**
      *  Assert deserialized metrics Scan Return Entry equals count
      */
@@ -2607,19 +2620,20 @@ public class WifiMetricsTest extends WifiBaseTest {
     private final WifiConfiguration mTestWifiConfig = createComplexWifiConfig();
     // <msg.what> <msg.arg1> <msg.arg2>
     private int[][] mTestStaMessageInts = {
-        {WifiMonitor.ASSOCIATION_REJECTION_EVENT,   0,                   0},
-        {WifiMonitor.AUTHENTICATION_FAILURE_EVENT,  AUTH_FAILURE_REASON, -1},
-        {WifiMonitor.NETWORK_CONNECTION_EVENT,      0,                   0},
-        {WifiMonitor.NETWORK_DISCONNECTION_EVENT,   0,                   0},
-        {WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0,                   0},
-        {WifiMonitor.ASSOCIATED_BSSID_EVENT,        0,                   0},
-        {WifiMonitor.TARGET_BSSID_EVENT,            0,                   0},
-        {WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0,                   0},
-        {WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0,                   0}
+        {WifiMonitor.ASSOCIATION_REJECTION_EVENT,   0, 0},
+        {WifiMonitor.AUTHENTICATION_FAILURE_EVENT,  0, 0},
+        {WifiMonitor.NETWORK_CONNECTION_EVENT,      0, 0},
+        {WifiMonitor.NETWORK_DISCONNECTION_EVENT,   0, 0},
+        {WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0},
+        {WifiMonitor.ASSOCIATED_BSSID_EVENT,        0, 0},
+        {WifiMonitor.TARGET_BSSID_EVENT,            0, 0},
+        {WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0},
+        {WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0}
     };
     private Object[] mTestStaMessageObjs = {
         new AssocRejectEventInfo(sSSID, sBSSID, ASSOC_STATUS, ASSOC_TIMEOUT),
-        null,
+        new AuthenticationFailureEventInfo(sSSID, MacAddress.fromString(sBSSID),
+                AUTH_FAILURE_REASON, -1),
         null,
         new DisconnectEventInfo(sSSID, sBSSID, DEAUTH_REASON, LOCAL_GEN),
         mStateDisconnected,
