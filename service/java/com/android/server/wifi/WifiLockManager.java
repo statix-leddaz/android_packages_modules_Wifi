@@ -16,10 +16,7 @@
 
 package com.android.server.wifi;
 
-import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
-
 import android.annotation.NonNull;
-import android.annotation.Nullable;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -124,9 +121,6 @@ public class WifiLockManager {
 
         // Register for UID fg/bg transitions
         registerUidImportanceTransitions();
-
-        mActiveModeWarden.registerPrimaryClientModeManagerChangedCallback(
-                new PrimaryClientModeManagerChangedCallback());
     }
 
     // Check for conditions to activate high-perf lock
@@ -383,16 +377,18 @@ public class WifiLockManager {
      */
     public void updateWifiClientConnected(
             ClientModeManager clientModeManager, boolean isConnected) {
-        // ignore if not primary
-        if (clientModeManager.getRole() != ROLE_CLIENT_PRIMARY) {
-            return;
+        boolean hasAtLeastOneConnection = isConnected
+                || mActiveModeWarden.getClientModeManagers().stream().anyMatch(
+                        cmm -> cmm.isConnected());
+        if (mVerboseLoggingEnabled) {
+            Log.d(TAG, "updateWifiClientConnected hasAtLeastOneConnection="
+                    + hasAtLeastOneConnection);
         }
-
-        if (mWifiConnected == isConnected) {
+        if (mWifiConnected == hasAtLeastOneConnection) {
             // No need to take action
             return;
         }
-        mWifiConnected = isConnected;
+        mWifiConnected = hasAtLeastOneConnection;
 
         // Adjust blaming for UIDs in foreground carrying low latency locks
         if (canActivateLowLatencyLock(IGNORE_WIFI_STATE_MASK)) {
@@ -606,7 +602,8 @@ public class WifiLockManager {
     private boolean resetCurrentMode(@NonNull ClientModeManager clientModeManager) {
         switch (mCurrentOpMode) {
             case WifiManager.WIFI_MODE_FULL_HIGH_PERF:
-                if (!clientModeManager.setPowerSave(true)) {
+                if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+                        true)) {
                     Log.e(TAG, "Failed to reset the OpMode from hi-perf to Normal");
                     return false;
                 }
@@ -641,7 +638,8 @@ public class WifiLockManager {
     private boolean setNewMode(@NonNull ClientModeManager clientModeManager, int newLockMode) {
         switch (newLockMode) {
             case WifiManager.WIFI_MODE_FULL_HIGH_PERF:
-                if (!clientModeManager.setPowerSave(false)) {
+                if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+                        false)) {
                     Log.e(TAG, "Failed to set the OpMode to hi-perf");
                     return false;
                 }
@@ -695,27 +693,6 @@ public class WifiLockManager {
         return setNewMode(primaryManager, newLockMode);
     }
 
-    private class PrimaryClientModeManagerChangedCallback
-            implements ActiveModeWarden.PrimaryClientModeManagerChangedCallback {
-
-        @Override
-        public void onChange(
-                @Nullable ConcreteClientModeManager prevPrimaryClientModeManager,
-                @Nullable ConcreteClientModeManager newPrimaryClientModeManager) {
-            // reset wifi lock on previous primary
-            if (prevPrimaryClientModeManager != null) {
-                resetCurrentMode(prevPrimaryClientModeManager);
-            }
-            // set wifi lock on new primary
-            if (newPrimaryClientModeManager != null) {
-                mWifiConnected = newPrimaryClientModeManager.isConnected();
-                setNewMode(newPrimaryClientModeManager, getStrongestLockMode());
-            } else {
-                mWifiConnected = false;
-            }
-        }
-    }
-
     /** Returns the cached low latency mode support value, or tries to fetch it if not yet known. */
     private int getLowLatencyModeSupport() {
         if (mLatencyModeSupport != LOW_LATENCY_SUPPORT_UNDEFINED) {
@@ -750,7 +727,8 @@ public class WifiLockManager {
                 return false;
             }
 
-            if (!clientModeManager.setPowerSave(!enabled)) {
+            if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+                    !enabled)) {
                 Log.e(TAG, "Failed to set power save mode");
                 // Revert the low latency mode
                 clientModeManager.setLowLatencyMode(!enabled);
@@ -758,7 +736,8 @@ public class WifiLockManager {
             }
         } else if (lowLatencySupport == LOW_LATENCY_NOT_SUPPORTED) {
             // Only set power save mode
-            if (!clientModeManager.setPowerSave(!enabled)) {
+            if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+                    !enabled)) {
                 Log.e(TAG, "Failed to set power save mode");
                 return false;
             }
@@ -857,12 +836,8 @@ public class WifiLockManager {
         }
     }
 
-    protected void enableVerboseLogging(int verbose) {
-        if (verbose > 0) {
-            mVerboseLoggingEnabled = true;
-        } else {
-            mVerboseLoggingEnabled = false;
-        }
+    protected void enableVerboseLogging(boolean verboseEnabled) {
+        mVerboseLoggingEnabled = verboseEnabled;
     }
 
     private class WifiLock implements IBinder.DeathRecipient {
@@ -905,7 +880,7 @@ public class WifiLockManager {
         }
 
         public void binderDied() {
-            releaseLock(mBinder);
+            mHandler.post(() -> releaseLock(mBinder));
         }
 
         public void unlinkDeathRecipient() {
