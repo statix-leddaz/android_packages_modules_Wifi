@@ -322,6 +322,7 @@ public abstract class NetworkListStoreData implements WifiConfigStore.StoreData 
         if (enterpriseConfig != null) {
             configuration.enterpriseConfig = enterpriseConfig;
         }
+        WifiConfigurationUtil.addUpgradableSecurityTypeIfNecessary(configuration);
         return configuration;
     }
 }
