@@ -16,6 +16,9 @@
 
 package com.android.server.wifi;
 
+import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_AP;
+import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_STA;
+
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -737,7 +740,7 @@ public class WifiVendorHalTest extends WifiBaseTest {
     @Test
     public void testEnterLogging() {
         mWifiVendorHal.mLog = spy(mWifiLog);
-        mWifiVendorHal.enableVerboseLogging(true);
+        mWifiVendorHal.enableVerboseLogging(true, false);
         mWifiVendorHal.installPacketFilter(TEST_IFACE_NAME, new byte[0]);
         verify(mWifiVendorHal.mLog).trace(eq("filter length %"), eq(1));
     }
@@ -749,8 +752,8 @@ public class WifiVendorHalTest extends WifiBaseTest {
     public void testEnterSilenceWhenNotEnabled() {
         mWifiVendorHal.mLog = spy(mWifiLog);
         mWifiVendorHal.installPacketFilter(TEST_IFACE_NAME, new byte[0]);
-        mWifiVendorHal.enableVerboseLogging(true);
-        mWifiVendorHal.enableVerboseLogging(false);
+        mWifiVendorHal.enableVerboseLogging(true, false);
+        mWifiVendorHal.enableVerboseLogging(false, false);
         mWifiVendorHal.installPacketFilter(TEST_IFACE_NAME, new byte[0]);
         verify(mWifiVendorHal.mLog, never()).trace(eq("filter length %"), anyInt());
     }
@@ -1044,31 +1047,6 @@ public class WifiVendorHalTest extends WifiBaseTest {
         assertEquals(MacAddress.BROADCAST_ADDRESS.toString(),
                 mWifiVendorHal.getStaFactoryMacAddress(TEST_IFACE_NAME).toString());
         verify(mIWifiStaIfaceV13).getFactoryMacAddress(any());
-    }
-
-    /**
-     * Test enablement of link layer stats after startup
-     *
-     * Request link layer stats before HAL start
-     * - should not make it to the HAL layer
-     * Start the HAL in STA mode
-     * Request link layer stats twice more
-     * - enable request should make it to the HAL layer
-     * - HAL layer should have been called to make the requests (i.e., two calls total)
-     */
-    @Test
-    public void testLinkLayerStatsEnableAfterStartup() throws Exception {
-        doNothing().when(mIWifiStaIface).getLinkLayerStats(any());
-
-        assertNull(mWifiVendorHal.getWifiLinkLayerStats(TEST_IFACE_NAME));
-        assertTrue(mWifiVendorHal.startVendorHalSta());
-        assertTrue(mWifiVendorHal.isHalStarted());
-
-        verify(mHalDeviceManager).start();
-        mWifiVendorHal.getWifiLinkLayerStats(TEST_IFACE_NAME);
-        mWifiVendorHal.getWifiLinkLayerStats(TEST_IFACE_NAME);
-        verify(mIWifiStaIface).enableLinkLayerStatsCollection(false); // mLinkLayerStatsDebug
-        verify(mIWifiStaIface, times(2)).getLinkLayerStats(any());
     }
 
     /**
@@ -3857,17 +3835,18 @@ public class WifiVendorHalTest extends WifiBaseTest {
 
     @Test
     public void testIsItPossibleToCreateIface() {
-        when(mHalDeviceManager.isItPossibleToCreateIface(eq(IfaceType.AP), any())).thenReturn(true);
+        when(mHalDeviceManager.isItPossibleToCreateIface(eq(HDM_CREATE_IFACE_AP),
+                any())).thenReturn(true);
         assertTrue(mWifiVendorHal.isItPossibleToCreateApIface(new WorkSource()));
 
-        when(mHalDeviceManager.isItPossibleToCreateIface(eq(IfaceType.STA), any()))
+        when(mHalDeviceManager.isItPossibleToCreateIface(eq(HDM_CREATE_IFACE_STA), any()))
                 .thenReturn(true);
         assertTrue(mWifiVendorHal.isItPossibleToCreateStaIface(new WorkSource()));
     }
 
     @Test
     public void testIsStaApConcurrencySupported() {
-        when(mHalDeviceManager.canSupportIfaceCombo(
+        when(mHalDeviceManager.canDeviceSupportCreateTypeCombo(
                 argThat(ifaceCombo -> ifaceCombo.get(IfaceType.STA) == 1
                         && ifaceCombo.get(IfaceType.AP) == 1))).thenReturn(true);
         assertTrue(mWifiVendorHal.isStaApConcurrencySupported());
@@ -3875,7 +3854,7 @@ public class WifiVendorHalTest extends WifiBaseTest {
 
     @Test
     public void testIsStaStaConcurrencySupported() {
-        when(mHalDeviceManager.canSupportIfaceCombo(
+        when(mHalDeviceManager.canDeviceSupportCreateTypeCombo(
                 argThat(ifaceCombo -> ifaceCombo.get(IfaceType.STA) == 2))).thenReturn(true);
         assertTrue(mWifiVendorHal.isStaStaConcurrencySupported());
     }
@@ -4006,7 +3985,7 @@ public class WifiVendorHalTest extends WifiBaseTest {
         ScanResult scanResult = new ScanResult();
         scanResult.SSID = NativeUtil.encodeSsid(staScanResult.ssid);
         scanResult.BSSID = NativeUtil.macAddressFromByteArray(staScanResult.bssid);
-        scanResult.wifiSsid = WifiSsid.createFromByteArray(ssid);
+        scanResult.wifiSsid = WifiSsid.fromBytes(ssid);
         scanResult.frequency = staScanResult.frequency;
         scanResult.level = staScanResult.rssi;
         scanResult.timestamp = staScanResult.timeStampInUs;
@@ -4039,7 +4018,7 @@ public class WifiVendorHalTest extends WifiBaseTest {
 
     private void assertScanResultEqual(ScanResult expected, ScanResult actual) {
         assertEquals(expected.SSID, actual.SSID);
-        assertEquals(expected.wifiSsid.getHexString(), actual.wifiSsid.getHexString());
+        assertEquals(expected.wifiSsid, actual.wifiSsid);
         assertEquals(expected.BSSID, actual.BSSID);
         assertEquals(expected.frequency, actual.frequency);
         assertEquals(expected.level, actual.level);
