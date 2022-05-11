@@ -20,8 +20,8 @@ import android.annotation.Nullable;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiConfiguration;
-
-import com.android.server.wifi.util.ScanResultUtil;
+import android.net.wifi.WifiSsid;
+import android.net.wifi.util.ScanResultUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -60,15 +60,42 @@ public class ScanResultMatchInfo {
      */
     public static ScanResultMatchInfo fromScanResult(ScanResult scanResult) {
         ScanResultMatchInfo info = new ScanResultMatchInfo();
-        // Scan result ssid's are not quoted, hence add quotes.
-        // TODO: This matching algo works only if the scan result contains a string SSID.
-        // However, according to our public documentation ths {@link WifiConfiguration#SSID} can
-        // either have a hex string or quoted ASCII string SSID.
-        info.networkSsid = ScanResultUtil.createQuotedSSID(scanResult.SSID);
+        WifiSsid wifiSsid = scanResult.getWifiSsid();
+        if (wifiSsid != null) {
+            info.networkSsid = wifiSsid.toString();
+        } else {
+            info.networkSsid = "\"" + scanResult.SSID + "\"";
+        }
         info.securityParamsList =
                 ScanResultUtil.generateSecurityParamsListFromScanResult(scanResult);
         info.mFromScanResult = true;
         return info;
+    }
+
+    /**
+     * Check if an auto-upgraded security parameters configuration is allowed by the overlay
+     * configurations for WPA3-Personal (SAE) and Enhanced Open (OWE).
+     *
+     * @param securityParams Security parameters object
+     * @return true if allowed, false if not allowed
+     */
+    private static boolean isAutoUpgradeSecurityParamsAllowed(SecurityParams securityParams) {
+        WifiGlobals wifiGlobals = WifiInjector.getInstance().getWifiGlobals();
+        // In mixed security network environments, we need to filter out APs with the stronger
+        // security type when the current network supports the weaker security type, and the
+        // stronger security type was added by auto-upgrade, and
+        // auto-upgrade feature is disabled.
+        if (securityParams.getSecurityType() == WifiConfiguration.SECURITY_TYPE_SAE
+                && securityParams.isAddedByAutoUpgrade()
+                && !wifiGlobals.isWpa3SaeUpgradeEnabled()) {
+            return false;
+        }
+        if (securityParams.getSecurityType() == WifiConfiguration.SECURITY_TYPE_OWE
+                && securityParams.isAddedByAutoUpgrade()
+                && !wifiGlobals.isOweUpgradeEnabled()) {
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -89,9 +116,10 @@ public class ScanResultMatchInfo {
         if (null == scanResultParamsList) return null;
         for (int i = allowedParamsList.size() - 1; i >= 0; i--) {
             SecurityParams allowedParams = allowedParamsList.get(i);
-
-            if (!WifiConfigurationUtil.isSecurityParamsValid(allowedParams)) continue;
-
+            if (!WifiConfigurationUtil.isSecurityParamsValid(allowedParams)
+                    || !isAutoUpgradeSecurityParamsAllowed(allowedParams)) {
+                continue;
+            }
             for (SecurityParams scanResultParams: scanResultParamsList) {
                 if (!allowedParams.isSecurityType(scanResultParams.getSecurityType())) {
                     continue;

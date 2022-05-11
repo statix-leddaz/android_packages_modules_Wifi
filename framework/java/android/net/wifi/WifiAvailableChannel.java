@@ -19,11 +19,8 @@ import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.SystemApi;
-import android.os.Build;
 import android.os.Parcel;
 import android.os.Parcelable;
-
-import androidx.annotation.RequiresApi;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -38,7 +35,6 @@ import java.util.Objects;
  *
  * @hide
  */
-@RequiresApi(Build.VERSION_CODES.S)
 @SystemApi
 public final class WifiAvailableChannel implements Parcelable {
 
@@ -105,6 +101,12 @@ public final class WifiAvailableChannel implements Parcelable {
     public static final int FILTER_CONCURRENCY = 1 << 1;
 
     /**
+     * Filter channel for the Wi-Fi Aware instant communication mode.
+     * @hide
+     */
+    public static final int FILTER_NAN_INSTANT_MODE = 1 << 2;
+
+    /**
      * @hide
      */
     @Retention(RetentionPolicy.SOURCE)
@@ -112,6 +114,7 @@ public final class WifiAvailableChannel implements Parcelable {
             FILTER_REGULATORY,
             FILTER_CELLULAR_COEXISTENCE,
             FILTER_CONCURRENCY,
+            FILTER_NAN_INSTANT_MODE,
     })
     public @interface Filter {}
 

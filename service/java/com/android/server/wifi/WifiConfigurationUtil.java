@@ -36,6 +36,7 @@ import android.util.Log;
 import android.util.Pair;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.util.NativeUtil;
 
 import java.nio.charset.StandardCharsets;
@@ -156,6 +157,14 @@ public class WifiConfigurationUtil {
     }
 
     /**
+     * Helper method to check if the provided |config| corresponds to a Passpoint network or not.
+     */
+    public static boolean isConfigForPasspoint(WifiConfiguration config) {
+        return config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PASSPOINT_R1_R2)
+                || config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PASSPOINT_R3);
+    }
+
+    /**
      * Helper method to check if the provided |config| corresponds to an open or enhanced
      * open network, or not.
      */
@@ -163,7 +172,8 @@ public class WifiConfigurationUtil {
         return (!(isConfigForWepNetwork(config) || isConfigForPskNetwork(config)
                 || isConfigForWapiPskNetwork(config) || isConfigForWapiCertNetwork(config)
                 || isConfigForEapNetwork(config) || isConfigForSaeNetwork(config)
-                || isConfigForWpa3Enterprise192BitNetwork(config)));
+                || isConfigForWpa3Enterprise192BitNetwork(config)
+                || isConfigForPasspoint(config)));
     }
 
     /**
@@ -208,6 +218,24 @@ public class WifiConfigurationUtil {
 
     /**
      * Compare existing and new WifiConfiguration objects after a network update and return if
+     * Repeater Enabled flag has changed or not. In case the there is no existing WifiConfiguration,
+     * checks if Repeater Enabled flag has changed from the default value of false.
+     *
+     * @param existingConfig Existing WifiConfiguration object corresponding to the network.
+     * @param newConfig      New WifiConfiguration object corresponding to the network.
+     * @return true if RepeaterEnabled flag has changed, or if there is no existing config, and
+     * the flag is set to true, false otherwise.
+     */
+    public static boolean hasRepeaterEnabledChanged(WifiConfiguration existingConfig,
+            WifiConfiguration newConfig) {
+        if (existingConfig == null) {
+            return newConfig.isRepeaterEnabled();
+        }
+        return (newConfig.isRepeaterEnabled() != existingConfig.isRepeaterEnabled());
+    }
+
+    /**
+     * Compare existing and new WifiConfiguration objects after a network update and return if
      * MAC randomization setting has changed or not.
      * @param existingConfig Existing WifiConfiguration object corresponding to the network.
      * @param newConfig      New WifiConfiguration object corresponding to the network.
@@ -239,8 +267,11 @@ public class WifiConfigurationUtil {
                 return true;
             }
             if (existingEnterpriseConfig.isAuthenticationSimBased()) {
-                // No other credential changes for SIM based methods.
-                // The SIM card is the credential.
+                // The anonymous identity will be decorated with 3gpp realm in the service.
+                if (!TextUtils.equals(existingEnterpriseConfig.getAnonymousIdentity(),
+                        newEnterpriseConfig.getAnonymousIdentity())) {
+                    return true;
+                }
                 return false;
             }
             if (existingEnterpriseConfig.getPhase2Method()
@@ -655,13 +686,15 @@ public class WifiConfigurationUtil {
      * 9. {@link WifiConfiguration#getIpConfiguration()}
      *
      * @param config {@link WifiConfiguration} received from an external application.
+     * @param supportedFeatureSet bitmask for supported features using {@code WIFI_FEATURE_}
      * @param isAdd {@link #VALIDATE_FOR_ADD} to indicate a network config received for an add,
      *              {@link #VALIDATE_FOR_UPDATE} for a network config received for an update.
      *              These 2 cases need to be handled differently because the config received for an
      *              update could contain only the fields that are being changed.
      * @return true if the parameters are valid, false otherwise.
      */
-    public static boolean validate(WifiConfiguration config, boolean isAdd) {
+    public static boolean validate(WifiConfiguration config, long supportedFeatureSet,
+            boolean isAdd) {
         if (!validateSsid(config.SSID, isAdd)) {
             return false;
         }
@@ -687,8 +720,12 @@ public class WifiConfigurationUtil {
                 && !validatePassword(config.preSharedKey, isAdd, true)) {
             return false;
         }
-
-        if (!validateEnterpriseConfig(config)) {
+        if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_DPP)
+                && (supportedFeatureSet & WifiManager.WIFI_FEATURE_DPP_AKM) == 0) {
+            Log.e(TAG, "DPP AKM is not supported");
+            return false;
+        }
+        if (!validateEnterpriseConfig(config, isAdd)) {
             return false;
         }
 
@@ -750,7 +787,12 @@ public class WifiConfigurationUtil {
         return false;
     }
 
-    private static boolean isMatchAllNetworkSpecifier(WifiNetworkSpecifier specifier) {
+    /**
+     * Check if the network specifier matches all networks.
+     * @param specifier The network specifier
+     * @return true if it matches all networks.
+     */
+    public static boolean isMatchAllNetworkSpecifier(WifiNetworkSpecifier specifier) {
         PatternMatcher ssidPatternMatcher = specifier.ssidPatternMatcher;
         Pair<MacAddress, MacAddress> bssidPatternMatcher = specifier.bssidPatternMatcher;
         if (ssidPatternMatcher.match(MATCH_EMPTY_SSID_PATTERN_PATH)
@@ -866,6 +908,10 @@ public class WifiConfigurationUtil {
             return false;
         }
         if (!Objects.equals(config.SSID, config1.SSID)) {
+            return false;
+        }
+        if (!Objects.equals(config.getNetworkSelectionStatus().getCandidateSecurityParams(),
+                config1.getNetworkSelectionStatus().getCandidateSecurityParams())) {
             return false;
         }
         if (WifiConfigurationUtil.hasCredentialChanged(config, config1)) {
@@ -1041,7 +1087,10 @@ public class WifiConfigurationUtil {
     /**
      * Convert multi-type configurations to a list of configurations with a single security type,
      * where a configuration with multiple security configurations will be converted to multiple
-     * Wi-Fi configurations with a single security type..
+     * Wi-Fi configurations with a single security type.
+     * For R or older releases, Settings/WifiTrackerLib does not handle multiple configurations
+     * with the same SSID and will result in duplicate saved networks. As a result, just return
+     * the merged configs directly.
      *
      * @param configs the list of multi-type configurations.
      * @return a list of Wi-Fi configurations with a single security type,
@@ -1049,6 +1098,9 @@ public class WifiConfigurationUtil {
      */
     public static List<WifiConfiguration> convertMultiTypeConfigsToLegacyConfigs(
             List<WifiConfiguration> configs) {
+        if (!SdkLevel.isAtLeastS()) {
+            return configs;
+        }
         List<WifiConfiguration> legacyConfigs = new ArrayList<>();
         for (WifiConfiguration config : configs) {
             for (SecurityParams params: config.getSecurityParamsList()) {
@@ -1062,7 +1114,7 @@ public class WifiConfigurationUtil {
         return legacyConfigs;
     }
 
-    private static boolean validateEnterpriseConfig(WifiConfiguration config) {
+    private static boolean validateEnterpriseConfig(WifiConfiguration config, boolean isAdd) {
         if ((config.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP)
                 || config.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE))
                 && !config.isEnterprise()) {
@@ -1073,7 +1125,6 @@ public class WifiConfigurationUtil {
                 || config.enterpriseConfig.getEapMethod() != WifiEnterpriseConfig.Eap.TLS)) {
             return false;
         }
-
         if (config.isEnterprise()) {
             if (config.enterpriseConfig.getEapMethod() == WifiEnterpriseConfig.Eap.PEAP
                     || config.enterpriseConfig.getEapMethod() == WifiEnterpriseConfig.Eap.TTLS) {
@@ -1083,7 +1134,9 @@ public class WifiConfigurationUtil {
                         || phase2Method == WifiEnterpriseConfig.Phase2.MSCHAPV2
                         || phase2Method == WifiEnterpriseConfig.Phase2.PAP
                         || phase2Method == WifiEnterpriseConfig.Phase2.GTC) {
-                    if (TextUtils.isEmpty(config.enterpriseConfig.getPassword())
+                    // Check the password on add only. When updating, the password may not be
+                    // available and it appears as "(Unchanged)" in Settings
+                    if ((isAdd && TextUtils.isEmpty(config.enterpriseConfig.getPassword()))
                             || TextUtils.isEmpty(config.enterpriseConfig.getIdentity())) {
                         Log.e(TAG, "Enterprise network without an identity or a password set");
                         return false;

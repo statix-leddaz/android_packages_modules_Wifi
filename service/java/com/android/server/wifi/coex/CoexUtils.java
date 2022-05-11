@@ -39,6 +39,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -54,6 +55,8 @@ public class CoexUtils {
     /* package */ static final int INVALID_BAND = -1;
     @VisibleForTesting
     /* package */ static final int INVALID_FREQ = -1;
+
+    public static final int GPS_L1_CENTER_FREQ_KHZ = 1575_420;
 
     public static final int NUM_24_GHZ_CHANNELS = 14;
     public static final NavigableSet<Integer> CHANNEL_SET_5_GHZ_20_MHZ = create5g20MhzChannels();
@@ -309,22 +312,24 @@ public class CoexUtils {
      *
      * @param startChannel Channel to start from
      * @param offsetKhz Offset distance in Khz
-     * @param channelStep Step size to count channels by
-     * @return
+     * @param channelStepSize Step size to count channels by
+     * @return The channel that lies the given offset away from the start channel
      */
-    private static int getOffsetChannel(int startChannel, int offsetKhz, int channelStep) {
-        // Each channel number always counts 5Mhz.
+    @VisibleForTesting
+    /* package */ static int getOffsetChannel(
+            int startChannel, int offsetKhz, int channelStepSize) {
+        // Each channel number is always separated by 5Mhz.
         int channelSpacingKhz = 5_000;
-        int offsetChannel = startChannel + offsetKhz / channelSpacingKhz;
+        int stepsToOffset = offsetKhz / (channelSpacingKhz * channelStepSize);
         // Offset lands directly channel edge; use previous channel based on offset direction.
-        if (offsetKhz % (channelSpacingKhz * channelStep) == 0) {
+        if (offsetKhz % (channelSpacingKhz * channelStepSize) == 0) {
             if (offsetKhz > 0) {
-                offsetChannel -= channelStep;
-            } else {
-                offsetChannel += channelStep;
+                stepsToOffset--;
+            } else if (offsetKhz < 0) {
+                stepsToOffset++;
             }
         }
-        return offsetChannel;
+        return startChannel + (stepsToOffset * channelStepSize);
     }
 
     /**
@@ -540,6 +545,96 @@ public class CoexUtils {
     }
 
     /**
+     * Returns CoexUnsafeChannels affecting GPS L1 due to the intermod interference from a given
+     * uplink and downlink cell channel and every possible Wi-Fi channel.
+     */
+    public static List<CoexUnsafeChannel> getCoexUnsafeChannelsForGpsL1(
+            int cellUlFreqKhz, int cellUlBandwidthKhz, int thresholdKhz) {
+        List<CoexUnsafeChannel> coexUnsafeChannels = new ArrayList<>();
+        for (int channel = 1; channel <= 14; channel++) {
+            int centerFreq2gMhz =
+                    ScanResult.convertChannelToFrequencyMhzIfSupported(channel, WIFI_BAND_24_GHZ);
+            if (centerFreq2gMhz == UNSPECIFIED) {
+                continue;
+            }
+            if (isGpsL1ImpactedByCellAndWifi(cellUlFreqKhz, cellUlBandwidthKhz,
+                    centerFreq2gMhz * 1000, 22_000, thresholdKhz)) {
+                coexUnsafeChannels.add(new CoexUnsafeChannel(WIFI_BAND_24_GHZ, channel));
+            }
+        }
+        for (int channel : CHANNEL_SET_5_GHZ_20_MHZ) {
+            int centerFreq5g20Mhz =
+                    ScanResult.convertChannelToFrequencyMhzIfSupported(channel, WIFI_BAND_5_GHZ);
+            if (centerFreq5g20Mhz == UNSPECIFIED) {
+                continue;
+            }
+            if (isGpsL1ImpactedByCellAndWifi(cellUlFreqKhz, cellUlBandwidthKhz,
+                    centerFreq5g20Mhz * 1000, 20_000, thresholdKhz)) {
+                coexUnsafeChannels.add(new CoexUnsafeChannel(WIFI_BAND_24_GHZ, channel));
+            }
+        }
+        for (int channel : CHANNEL_SET_5_GHZ_40_MHZ) {
+            int centerFreq5g40Mhz =
+                    ScanResult.convertChannelToFrequencyMhzIfSupported(channel, WIFI_BAND_5_GHZ);
+            if (centerFreq5g40Mhz == UNSPECIFIED) {
+                continue;
+            }
+            if (isGpsL1ImpactedByCellAndWifi(cellUlFreqKhz, cellUlBandwidthKhz,
+                    centerFreq5g40Mhz * 1000, 40_000, thresholdKhz)) {
+                coexUnsafeChannels.add(new CoexUnsafeChannel(WIFI_BAND_24_GHZ, channel));
+            }
+        }
+        for (int channel : CHANNEL_SET_5_GHZ_80_MHZ) {
+            int centerFreq5g80Mhz =
+                    ScanResult.convertChannelToFrequencyMhzIfSupported(channel, WIFI_BAND_5_GHZ);
+            if (centerFreq5g80Mhz == UNSPECIFIED) {
+                continue;
+            }
+            if (isGpsL1ImpactedByCellAndWifi(cellUlFreqKhz, cellUlBandwidthKhz,
+                    centerFreq5g80Mhz * 1000, 80_000, thresholdKhz)) {
+                coexUnsafeChannels.add(new CoexUnsafeChannel(WIFI_BAND_24_GHZ, channel));
+            }
+        }
+        for (int channel : CHANNEL_SET_5_GHZ_160_MHZ) {
+            int centerFreq5g160Mhz =
+                    ScanResult.convertChannelToFrequencyMhzIfSupported(channel, WIFI_BAND_5_GHZ);
+            if (centerFreq5g160Mhz == UNSPECIFIED) {
+                continue;
+            }
+            if (isGpsL1ImpactedByCellAndWifi(cellUlFreqKhz, cellUlBandwidthKhz,
+                    centerFreq5g160Mhz * 1000, 160_000, thresholdKhz)) {
+                coexUnsafeChannels.add(new CoexUnsafeChannel(WIFI_BAND_24_GHZ, channel));
+            }
+        }
+        return coexUnsafeChannels;
+    }
+
+    /**
+     * Returns whether or not GPS L1 is impacted by the given cell and wifi channels.
+     */
+    public static boolean isGpsL1ImpactedByCellAndWifi(
+            int cellCenterKhz, int cellBandwidthKhz,
+            int wifiCenterKhz, int wifiBandwidthKhz,
+            int thresholdKhz) {
+        int cellLowerKhz = cellCenterKhz - cellBandwidthKhz / 2;
+        int cellUpperKhz = cellCenterKhz + cellBandwidthKhz / 2;
+        int wifiLowerKhz = wifiCenterKhz - wifiBandwidthKhz / 2;
+        int wifiUpperKhz = wifiCenterKhz + wifiBandwidthKhz / 2;
+        int intermodLowerKhz;
+        int intermodUpperKhz;
+        if (wifiCenterKhz > cellCenterKhz) {
+            intermodLowerKhz = wifiLowerKhz - cellUpperKhz;
+            intermodUpperKhz = wifiUpperKhz - cellLowerKhz;
+        } else {
+            intermodLowerKhz = cellLowerKhz - wifiUpperKhz;
+            intermodUpperKhz = cellUpperKhz - wifiLowerKhz;
+        }
+        int gpsLowerKhz = GPS_L1_CENTER_FREQ_KHZ - thresholdKhz;
+        int gpsUpperKhz = GPS_L1_CENTER_FREQ_KHZ + thresholdKhz;
+        return !(intermodLowerKhz > gpsUpperKhz || intermodUpperKhz < gpsLowerKhz);
+    }
+
+    /**
      * Data structure class mirroring cell channel information from PhysicalChannelConfig used for
      * coex calculations.
      */
@@ -642,6 +737,26 @@ public class CoexUtils {
                     + ", ulBandwidthKhz=" + mUplinkBandwidthKhz
                     + ", subId=" + mSubId
                     + '}';
+        }
+
+        @java.lang.Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof CoexCellChannel)) return false;
+            CoexCellChannel that = (CoexCellChannel) o;
+            return getRat() == that.getRat() && getBand() == that.getBand()
+                    && getDownlinkFreqKhz() == that.getDownlinkFreqKhz()
+                    && getDownlinkBandwidthKhz() == that.getDownlinkBandwidthKhz()
+                    && getUplinkFreqKhz() == that.getUplinkFreqKhz()
+                    && getUplinkBandwidthKhz() == that.getUplinkBandwidthKhz()
+                    && getSubId() == that.getSubId();
+        }
+
+        @java.lang.Override
+        public int hashCode() {
+            return Objects.hash(getRat(), getBand(), getDownlinkFreqKhz(),
+                    getDownlinkBandwidthKhz(),
+                    getUplinkFreqKhz(), getUplinkBandwidthKhz(), getSubId());
         }
     }
 }
