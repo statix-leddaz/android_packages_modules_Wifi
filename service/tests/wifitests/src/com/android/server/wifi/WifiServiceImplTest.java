@@ -546,7 +546,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 .thenReturn(Collections.emptyList());
         when(mWifiPermissionsUtil.doesUidBelongToCurrentUserOrDeviceOwner(anyInt()))
                 .thenReturn(true);
-        // TODO(b/197689548) use Build.VERSION_CODES.T after T SDK is finalized
         // Defaulting apps to target SDK level that's prior to T. This is need for to test for
         // backward compatibility of API changes.
         when(mWifiPermissionsUtil.isTargetSdkLessThan(anyString(),
@@ -9456,6 +9455,31 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiConnectivityManager).setExternalScreenOnScanSchedule(null, null);
         verify(mLastCallerInfoManager).put(eq(WifiManager.API_SET_SCAN_SCHEDULE), anyInt(),
                 anyInt(), anyInt(), any(), eq(false));
+    }
+
+    @Test
+    public void testSetOneShotScreenOnConnectivityScanDelayMillis() {
+        assumeTrue(SdkLevel.isAtLeastT());
+        int delayMs = 1234;
+
+        // verify permission checks
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(false);
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt()))
+                .thenReturn(false);
+        assertThrows(SecurityException.class,
+                () -> mWifiServiceImpl.setOneShotScreenOnConnectivityScanDelayMillis(delayMs));
+
+        // verify correct input
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(true);
+        assertThrows(IllegalArgumentException.class,
+                () -> mWifiServiceImpl.setOneShotScreenOnConnectivityScanDelayMillis(-1));
+
+        // verify correct call
+        mWifiServiceImpl.setOneShotScreenOnConnectivityScanDelayMillis(delayMs);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager).setOneShotScreenOnConnectivityScanDelayMillis(delayMs);
     }
 
     @Test(expected = SecurityException.class)

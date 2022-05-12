@@ -1129,7 +1129,6 @@ public class WifiServiceImpl extends BaseWifiService {
         if (!SdkLevel.isAtLeastT()) {
             return true;
         }
-        // TODO(b/197689548) use Build.VERSION_CODES.T here and in tests after T SDK is finalized
         return mWifiPermissionsUtil.isTargetSdkLessThan(packageName, Build.VERSION_CODES.TIRAMISU,
                 uid);
     }
@@ -3124,6 +3123,29 @@ public class WifiServiceImpl extends BaseWifiService {
                 scanScheduleSeconds != null);
     }
 
+    @Override
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    public void setOneShotScreenOnConnectivityScanDelayMillis(int delayMs) {
+        if (!SdkLevel.isAtLeastT()) {
+            throw new UnsupportedOperationException();
+        }
+        if (delayMs < 0) {
+            throw new IllegalArgumentException("delayMs should not be negative");
+        }
+        int uid = Binder.getCallingUid();
+        if (!mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(uid)
+                && !mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)) {
+            throw new SecurityException("Uid=" + uid + ", is not allowed to set screen-on scan "
+                    + "delay");
+        }
+        mLog.info("delayMs=% uid=%").c(delayMs).c(uid).flush();
+        mWifiThreadRunner.post(() ->
+                mWifiConnectivityManager.setOneShotScreenOnConnectivityScanDelayMillis(delayMs));
+        mLastCallerInfoManager.put(WifiManager.API_SET_ONE_SHOT_SCREEN_ON_CONNECTIVITY_SCAN_DELAY,
+                Process.myTid(), uid, Binder.getCallingPid(), "<unknown>",
+                delayMs > 0);
+    }
+
     /**
      * Return a map of all matching configurations keys with corresponding scanResults (or an empty
      * map if none).
@@ -3865,12 +3887,14 @@ public class WifiServiceImpl extends BaseWifiService {
      * @return the Wi-Fi information, contained in {@link WifiInfo}.
      */
     @Override
-    public WifiInfo getConnectionInfo(String callingPackage, String callingFeatureId) {
+    public WifiInfo getConnectionInfo(@NonNull String callingPackage,
+            @Nullable String callingFeatureId) {
         enforceAccessPermission();
         int uid = Binder.getCallingUid();
         if (isVerboseLoggingEnabled()) {
             mLog.info("getConnectionInfo uid=%").c(uid).flush();
         }
+        mWifiPermissionsUtil.checkPackage(uid, callingPackage);
         long ident = Binder.clearCallingIdentity();
         try {
             WifiInfo wifiInfo = mWifiThreadRunner.call(
