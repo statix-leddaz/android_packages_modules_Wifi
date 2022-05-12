@@ -29,6 +29,7 @@ import static android.net.wifi.WifiConfiguration.METERED_OVERRIDE_NOT_METERED;
 import static android.net.wifi.WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE;
 import static android.net.wifi.WifiConfiguration.NetworkSelectionStatus.DISABLED_NO_INTERNET_PERMANENT;
 import static android.net.wifi.WifiConfiguration.NetworkSelectionStatus.DISABLED_NO_INTERNET_TEMPORARY;
+import static android.net.wifi.WifiConfiguration.NetworkSelectionStatus.NETWORK_SELECTION_PERMANENTLY_DISABLED;
 
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_TRANSIENT;
@@ -3431,6 +3432,32 @@ public class ClientModeImplTest extends WifiBaseTest {
      * Verifies that when
      * 1. connected MAC randomization is on and
      * 2. macRandomizationSetting of the WifiConfiguration is RANDOMIZATION_AUTO and
+     * 3. current MAC set to the driver is a randomized MAC address.
+     * 4. SSID of network to connect is in the MAC randomization forced disable list.
+     *
+     * Then the current MAC will be set to the factory MAC when CMD_START_CONNECT executes.
+     */
+    @Test
+    public void testConnectedMacRandomizationRandomizationForceDisabled() throws Exception {
+        initializeAndAddNetworkAndVerifySuccess();
+
+        when(mWifiNative.getMacAddress(WIFI_IFACE_NAME))
+                .thenReturn(TEST_LOCAL_MAC_ADDRESS.toString());
+        mResources.setStringArray(R.array.config_wifiForceDisableMacRandomizationSsidList,
+                new String[]{mConnectedNetwork.SSID});
+
+        connect();
+        verify(mWifiNative).setStaMacAddress(WIFI_IFACE_NAME, TEST_GLOBAL_MAC_ADDRESS);
+        verify(mWifiMetrics).logStaEvent(
+                eq(WIFI_IFACE_NAME), eq(StaEvent.TYPE_MAC_CHANGE), any(WifiConfiguration.class));
+        verify(mWifiConfigManager).addOrUpdateNetwork(any(), eq(Process.SYSTEM_UID));
+        assertEquals(TEST_GLOBAL_MAC_ADDRESS.toString(), mWifiInfo.getMacAddress());
+    }
+
+    /**
+     * Verifies that when
+     * 1. connected MAC randomization is on and
+     * 2. macRandomizationSetting of the WifiConfiguration is RANDOMIZATION_AUTO and
      * 3. randomized MAC for the network to connect to is different from the current MAC.
      *
      * Then the current MAC gets set to the randomized MAC when CMD_START_CONNECT executes.
@@ -3896,13 +3923,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 eq(WifiConfiguration.NetworkSelectionStatus.DISABLED_CONSECUTIVE_FAILURES));
     }
 
-    /**
-     * Verify that the WifiConfigManager is notified when a network experiences consecutive
-     * connection failures.
-     */
-    @Test
-    public void testDisableNetworkConsecutiveFailures() throws Exception {
-        initializeAndAddNetworkAndVerifySuccess();
+    private void triggerConnectionWithConsecutiveFailure() throws Exception {
         when(mPerNetworkRecentStats.getCount(WifiScoreCard.CNT_CONSECUTIVE_CONNECTION_FAILURE))
                 .thenReturn(WifiBlocklistMonitor.NUM_CONSECUTIVE_FAILURES_PER_NETWORK_EXP_BACKOFF);
         mCmi.sendMessage(ClientModeImpl.CMD_START_CONNECT, FRAMEWORK_NETWORK_ID, 0, TEST_BSSID_STR);
@@ -3911,11 +3932,41 @@ public class ClientModeImplTest extends WifiBaseTest {
                         ISupplicantStaIfaceCallback.ReasonCode.FOURWAY_HANDSHAKE_TIMEOUT,
                         false));
         mLooper.dispatchAll();
+    }
+
+    /**
+     * Verify that the WifiConfigManager is notified when a network experiences consecutive
+     * connection failures.
+     */
+    @Test
+    public void testDisableNetworkConsecutiveFailures() throws Exception {
+        initializeAndAddNetworkAndVerifySuccess();
+        triggerConnectionWithConsecutiveFailure();
+
         verify(mWifiScoreCard).noteConnectionFailure(any(), anyInt(), anyString(), anyInt());
         verify(mWifiScoreCard).resetConnectionState(WIFI_IFACE_NAME);
         verify(mWifiBlocklistMonitor).handleBssidConnectionFailure(anyString(), eq(mTestConfig),
                 eq(WifiBlocklistMonitor.REASON_NONLOCAL_DISCONNECT_CONNECTING), anyInt());
         verify(mWifiConfigManager).updateNetworkSelectionStatus(FRAMEWORK_NETWORK_ID,
+                WifiConfiguration.NetworkSelectionStatus.DISABLED_CONSECUTIVE_FAILURES);
+    }
+
+    @Test
+    public void testDisableNetworkConsecutiveFailuresDoNotOverrideDisabledNetworks()
+            throws Exception {
+        initializeAndAddNetworkAndVerifySuccess();
+        // Now mock the connecting network to be already disabled
+        mTestConfig.getNetworkSelectionStatus().setNetworkSelectionStatus(
+                NETWORK_SELECTION_PERMANENTLY_DISABLED);
+        triggerConnectionWithConsecutiveFailure();
+
+        verify(mWifiScoreCard).noteConnectionFailure(any(), anyInt(), anyString(), anyInt());
+        verify(mWifiScoreCard).resetConnectionState(WIFI_IFACE_NAME);
+        verify(mWifiBlocklistMonitor).handleBssidConnectionFailure(anyString(), eq(mTestConfig),
+                eq(WifiBlocklistMonitor.REASON_NONLOCAL_DISCONNECT_CONNECTING), anyInt());
+
+        // should not disable due to DISABLED_CONSECUTIVE_FAILURES
+        verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(FRAMEWORK_NETWORK_ID,
                 WifiConfiguration.NetworkSelectionStatus.DISABLED_CONSECUTIVE_FAILURES);
     }
 

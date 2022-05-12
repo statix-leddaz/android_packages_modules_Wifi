@@ -3164,7 +3164,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 WifiScoreCard.NetworkConnectionStats recentStats = mWifiScoreCard.lookupNetwork(
                         ssid).getRecentStats();
                 if (recentStats.getCount(WifiScoreCard.CNT_CONSECUTIVE_CONNECTION_FAILURE)
-                        >= WifiBlocklistMonitor.NUM_CONSECUTIVE_FAILURES_PER_NETWORK_EXP_BACKOFF) {
+                        >= WifiBlocklistMonitor.NUM_CONSECUTIVE_FAILURES_PER_NETWORK_EXP_BACKOFF
+                        && configuration.getNetworkSelectionStatus().isNetworkEnabled()) {
                     mWifiConfigManager.updateNetworkSelectionStatus(mTargetNetworkId,
                             WifiConfiguration.NetworkSelectionStatus.DISABLED_CONSECUTIVE_FAILURES);
                 }
@@ -6851,10 +6852,19 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         selectCandidateSecurityParamsIfNecessary(config, scanResults);
 
         if (mWifiGlobals.isConnectedMacRandomizationEnabled()) {
-            if (config.macRandomizationSetting != WifiConfiguration.RANDOMIZATION_NONE) {
-                configureRandomizedMacAddress(config);
-            } else {
+            boolean isMacRandomizationForceDisabled = isMacRandomizationForceDisabledOnSsid(config);
+            if (config.macRandomizationSetting == WifiConfiguration.RANDOMIZATION_NONE
+                    || isMacRandomizationForceDisabled) {
                 setCurrentMacToFactoryMac(config);
+            } else {
+                configureRandomizedMacAddress(config);
+            }
+            if (isMacRandomizationForceDisabled
+                    && config.macRandomizationSetting != WifiConfiguration.RANDOMIZATION_NONE) {
+                // update WifiConfigManager to disable MAC randomization so Settings show the right
+                // MAC randomization information.
+                config.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_NONE;
+                mWifiConfigManager.addOrUpdateNetwork(config, Process.SYSTEM_UID);
             }
         }
 
@@ -6868,6 +6878,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // Use anonymous@<realm> when pseudonym is not available
             config.enterpriseConfig.setAnonymousIdentity(anonAtRealm);
         }
+    }
+
+    private boolean isMacRandomizationForceDisabledOnSsid(WifiConfiguration config) {
+        Set<String> unsupportedSsids = new ArraySet<>(mContext.getResources().getStringArray(
+                R.array.config_wifiForceDisableMacRandomizationSsidList));
+        return unsupportedSsids.contains(config.SSID);
     }
 
     private void setConfigurationsPriorToIpClientProvisioning(WifiConfiguration config) {
