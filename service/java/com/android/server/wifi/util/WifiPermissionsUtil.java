@@ -22,6 +22,7 @@ import static android.Manifest.permission.NEARBY_WIFI_DEVICES;
 import static android.Manifest.permission.RENOUNCE_PERMISSIONS;
 import static android.Manifest.permission.REQUEST_COMPANION_PROFILE_AUTOMOTIVE_PROJECTION;
 import static android.content.pm.PackageManager.GET_PERMISSIONS;
+import static android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES;
 
 import android.Manifest;
 import android.annotation.NonNull;
@@ -241,14 +242,16 @@ public class WifiPermissionsUtil {
         // 2 ways are used to disavow location usage.
         // First check if the app renounced location.
         // Check every step along the attribution chain for a renouncement.
-        // If location has been renounced anywhere in the chain we treat it as a disavowal.
         AttributionSource currentAttrib = attributionSource;
         while (true) {
+            int curUid = currentAttrib.getUid();
+            String curPackageName = currentAttrib.getPackageName();
+            // If location has been renounced anywhere in the chain we treat it as a disavowal.
             if (currentAttrib.getRenouncedPermissions().contains(ACCESS_FINE_LOCATION)
-                    && mWifiPermissionsWrapper.getUidPermission(RENOUNCE_PERMISSIONS, uid)
+                    && mWifiPermissionsWrapper.getUidPermission(RENOUNCE_PERMISSIONS, curUid)
                     == PackageManager.PERMISSION_GRANTED) {
                 if (mVerboseLoggingEnabled) {
-                    Log.v(TAG, "package=" + packageName + " UID=" + uid
+                    Log.v(TAG, "package=" + curPackageName + " UID=" + curUid
                             + " has renounced location permission - bypassing location check.");
                 }
                 return;
@@ -262,8 +265,16 @@ public class WifiPermissionsUtil {
         // If the app did not renounce location, check if "neverForLocation" is set.
         PackageManager pm = mContext.getPackageManager();
         try {
-            PackageInfo pkgInfo = pm.getPackageInfo(packageName, GET_PERMISSIONS);
-            for (int i = 0; i < pkgInfo.requestedPermissions.length; i++) {
+            PackageInfo pkgInfo = pm.getPackageInfo(packageName,
+                    GET_PERMISSIONS | MATCH_UNINSTALLED_PACKAGES);
+            int requestedPermissionsLength = pkgInfo.requestedPermissions == null
+                    || pkgInfo.requestedPermissionsFlags == null ? 0
+                    : pkgInfo.requestedPermissions.length;
+            if (requestedPermissionsLength == 0) {
+                Log.e(TAG, "package=" + packageName + " unexpectedly has null "
+                        + "requestedPermissions or requestPermissionFlags.");
+            }
+            for (int i = 0; i < requestedPermissionsLength; i++) {
                 if (pkgInfo.requestedPermissions[i].equals(NEARBY_WIFI_DEVICES)
                         && (pkgInfo.requestedPermissionsFlags[i]
                         & PackageInfo.REQUESTED_PERMISSION_NEVER_FOR_LOCATION) != 0) {
@@ -412,7 +423,7 @@ public class WifiPermissionsUtil {
      */
     public void enforceFineLocationPermission(String pkgName, @Nullable String featureId,
             int uid) {
-        if (!checkCallersFineLocationPermission(pkgName, featureId, uid, false)) {
+        if (!checkCallersFineLocationPermission(pkgName, featureId, uid, false, false)) {
             throw new SecurityException("UID " + uid + " does not have Fine Location permission");
         }
     }
@@ -427,22 +438,28 @@ public class WifiPermissionsUtil {
      * @param hideFromAppOps True to invoke {@link AppOpsManager#checkOp(int, int, String)}, false
      *                       to invoke {@link AppOpsManager#noteOp(String, int, String, String,
      *                       String)}.
+     * @param ignoreLocationSettings Whether this request can bypass location settings.
      */
     private boolean checkCallersFineLocationPermission(String pkgName, @Nullable String featureId,
-            int uid, boolean hideFromAppOps) {
+            int uid, boolean hideFromAppOps, boolean ignoreLocationSettings) {
         // Having FINE permission implies having COARSE permission (but not the reverse)
         if (mWifiPermissionsWrapper.getUidPermission(
                 ACCESS_FINE_LOCATION, uid)
                 == PackageManager.PERMISSION_DENIED) {
             return false;
         }
+
+        boolean isAllowed;
         if (hideFromAppOps) {
             // Don't note the operation, just check if the app is allowed to perform the operation.
-            return checkAppOpAllowed(AppOpsManager.OPSTR_FINE_LOCATION, pkgName, uid);
+            isAllowed = checkAppOpAllowed(AppOpsManager.OPSTR_FINE_LOCATION, pkgName, uid);
         } else {
-            return noteAppOpAllowed(AppOpsManager.OPSTR_FINE_LOCATION, pkgName, featureId, uid,
+            isAllowed = noteAppOpAllowed(AppOpsManager.OPSTR_FINE_LOCATION, pkgName, featureId, uid,
                     null);
         }
+        // If the ignoreLocationSettings is true, we always return true. This is for the emergency
+        // location service use case. But still notify the operation manager.
+        return isAllowed || ignoreLocationSettings;
     }
 
     /**
@@ -602,8 +619,8 @@ public class WifiPermissionsUtil {
         }
         // LocationAccess by App: caller must have fine & hardware Location permission to have
         // access to location information.
-        if (!checkCallersFineLocationPermission(pkgName, featureId, uid, hideFromAppOps)
-                || !checkCallersHardwareLocationPermission(uid)) {
+        if (!checkCallersFineLocationPermission(pkgName, featureId, uid, hideFromAppOps,
+                ignoreLocationSettings) || !checkCallersHardwareLocationPermission(uid)) {
             throw new SecurityException("UID " + uid + " has no location permission");
         }
         // Check if Wifi Scan request is an operation allowed for this App.

@@ -3164,7 +3164,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 WifiScoreCard.NetworkConnectionStats recentStats = mWifiScoreCard.lookupNetwork(
                         ssid).getRecentStats();
                 if (recentStats.getCount(WifiScoreCard.CNT_CONSECUTIVE_CONNECTION_FAILURE)
-                        >= WifiBlocklistMonitor.NUM_CONSECUTIVE_FAILURES_PER_NETWORK_EXP_BACKOFF) {
+                        >= WifiBlocklistMonitor.NUM_CONSECUTIVE_FAILURES_PER_NETWORK_EXP_BACKOFF
+                        && configuration.getNetworkSelectionStatus().isNetworkEnabled()) {
                     mWifiConfigManager.updateNetworkSelectionStatus(mTargetNetworkId,
                             WifiConfiguration.NetworkSelectionStatus.DISABLED_CONSECUTIVE_FAILURES);
                 }
@@ -6782,36 +6783,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
     }
 
-    // Just add all results as candidates and let network selection chooses the proper one.
-    private List<WifiCandidates.Candidate> getCandidatesForUserSelection(
-            WifiConfiguration config, @NonNull List<ScanDetail> scanDetails) {
-        if (scanDetails.size() == 0) {
-            if (mVerboseLoggingEnabled) {
-                Log.d(getTag(), "No scan result for the user selected network.");
-                return null;
-            }
-        }
-
-        WifiCandidates wifiCandidates = new WifiCandidates(mWifiScoreCard, mContext);
-        for (ScanDetail scanDetail: scanDetails) {
-            WifiCandidates.Key key = wifiCandidates.keyFromScanDetailAndConfig(
-                    scanDetail, config);
-            if (key != null) {
-                wifiCandidates.add(key, config,
-                        WifiNetworkSelector.NetworkNominator.NOMINATOR_ID_CURRENT,
-                        scanDetail.getScanResult().level,
-                        scanDetail.getScanResult().frequency,
-                        scanDetail.getScanResult().channelWidth,
-                        0.0 /* lastSelectionWeightBetweenZeroAndOne */,
-                        false /* isMetered */,
-                        WifiNetworkSelector.isFromCarrierOrPrivilegedApp(config),
-                        0 /* predictedThroughputMbps */);
-            }
-        }
-        return wifiCandidates.getCandidates();
-    }
-
-
     private void selectCandidateSecurityParamsIfNecessary(
             WifiConfiguration config,
             List<ScanResult> scanResults) {
@@ -6827,8 +6798,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         ScanResultUtil.createQuotedSsid(scanResult.SSID)))
                 .map(ScanDetail::new)
                 .collect(Collectors.toList());
-        List<WifiCandidates.Candidate> candidates = getCandidatesForUserSelection(
-                config, scanDetailsList);
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector
+                .getCandidatesForUserSelection(config, scanDetailsList);
         mWifiNetworkSelector.selectNetwork(candidates);
         // Get the fresh copy again to retrieve the candidate security params.
         WifiConfiguration freshConfig = mWifiConfigManager.getConfiguredNetwork(config.networkId);
@@ -6881,10 +6852,19 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         selectCandidateSecurityParamsIfNecessary(config, scanResults);
 
         if (mWifiGlobals.isConnectedMacRandomizationEnabled()) {
-            if (config.macRandomizationSetting != WifiConfiguration.RANDOMIZATION_NONE) {
-                configureRandomizedMacAddress(config);
-            } else {
+            boolean isMacRandomizationForceDisabled = isMacRandomizationForceDisabledOnSsid(config);
+            if (config.macRandomizationSetting == WifiConfiguration.RANDOMIZATION_NONE
+                    || isMacRandomizationForceDisabled) {
                 setCurrentMacToFactoryMac(config);
+            } else {
+                configureRandomizedMacAddress(config);
+            }
+            if (isMacRandomizationForceDisabled
+                    && config.macRandomizationSetting != WifiConfiguration.RANDOMIZATION_NONE) {
+                // update WifiConfigManager to disable MAC randomization so Settings show the right
+                // MAC randomization information.
+                config.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_NONE;
+                mWifiConfigManager.addOrUpdateNetwork(config, Process.SYSTEM_UID);
             }
         }
 
@@ -6898,6 +6878,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // Use anonymous@<realm> when pseudonym is not available
             config.enterpriseConfig.setAnonymousIdentity(anonAtRealm);
         }
+    }
+
+    private boolean isMacRandomizationForceDisabledOnSsid(WifiConfiguration config) {
+        Set<String> unsupportedSsids = new ArraySet<>(mContext.getResources().getStringArray(
+                R.array.config_wifiForceDisableMacRandomizationSsidList));
+        return unsupportedSsids.contains(config.SSID);
     }
 
     private void setConfigurationsPriorToIpClientProvisioning(WifiConfiguration config) {
