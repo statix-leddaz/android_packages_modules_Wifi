@@ -113,7 +113,6 @@ import com.android.server.wifi.InterfaceConflictManager;
 import com.android.server.wifi.WifiDialogManager;
 import com.android.server.wifi.WifiGlobals;
 import com.android.server.wifi.WifiInjector;
-import com.android.server.wifi.WifiLog;
 import com.android.server.wifi.WifiSettingsConfigStore;
 import com.android.server.wifi.WifiThreadRunner;
 import com.android.server.wifi.coex.CoexManager;
@@ -1182,6 +1181,19 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         }
 
         @Override
+        protected boolean recordLogRec(Message msg) {
+            // Filter unnecessary records to avoid overwhelming the buffer.
+            switch (msg.what) {
+                case WifiP2pManager.REQUEST_PEERS:
+                case WifiP2pMonitor.P2P_DEVICE_FOUND_EVENT:
+                case WifiP2pMonitor.P2P_DEVICE_LOST_EVENT:
+                    return false;
+                default:
+                    return true;
+            }
+        }
+
+        @Override
         protected String getWhatToString(int what) {
             switch (what) {
                 case AsyncChannel.CMD_CHANNEL_DISCONNECTED:
@@ -1667,6 +1679,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     case WifiP2pManager.SET_WFD_INFO:
                         WifiP2pWfdInfo d = (WifiP2pWfdInfo) message.obj;
                         if (!getWfdPermission(message.sendingUid)) {
+                            loge("No WFD permission, uid = " + message.sendingUid);
                             replyToMessage(message, WifiP2pManager.SET_WFD_INFO_FAILED,
                                     WifiP2pManager.ERROR);
                         } else if (d != null) {
@@ -1940,7 +1953,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         MacAddress devAddr = extras.getParcelable(
                                 WifiP2pManager.EXTRA_PARAM_KEY_PEER_ADDRESS);
                         IBinder binder = extras.getBinder(WifiP2pManager.CALLING_BINDER);
-                        if (!checkExternalApproverCaller(message, binder, devAddr)) {
+                        if (!checkExternalApproverCaller(message, binder, devAddr,
+                                "ADD_EXTERNAL_APPROVER")) {
                             replyToMessage(message, WifiP2pManager.EXTERNAL_APPROVER_DETACH,
                                     ExternalApproverRequestListener.APPROVER_DETACH_REASON_FAILURE,
                                     devAddr);
@@ -1967,7 +1981,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         MacAddress devAddr = extras.getParcelable(
                                 WifiP2pManager.EXTRA_PARAM_KEY_PEER_ADDRESS);
                         IBinder binder = extras.getBinder(WifiP2pManager.CALLING_BINDER);
-                        if (!checkExternalApproverCaller(message, binder, devAddr)) {
+                        if (!checkExternalApproverCaller(message, binder, devAddr,
+                                "REMOVE_EXTERNAL_APPROVER")) {
                             replyToMessage(message,
                                     WifiP2pManager.REMOVE_EXTERNAL_APPROVER_FAILED);
                             break;
@@ -1993,6 +2008,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         }
                         if (!mWifiPermissionsUtil.checkConfigOverridePermission(
                                 message.sendingUid)) {
+                            loge(" Uid " + message.sendingUid
+                                    + " has no config override permission");
                             replyToMessage(message, WifiP2pManager.SET_VENDOR_ELEMENTS_FAILED);
                             break;
                         }
@@ -2088,6 +2105,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         break;
                     case WifiP2pManager.SET_WFD_INFO:
                         if (!getWfdPermission(message.sendingUid)) {
+                            loge("No WFD permission, uid = " + message.sendingUid);
                             replyToMessage(message, WifiP2pManager.SET_WFD_INFO_FAILED,
                                     WifiP2pManager.ERROR);
                         } else {
@@ -2348,6 +2366,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     {
                         WifiP2pWfdInfo d = (WifiP2pWfdInfo) message.obj;
                         if (!getWfdPermission(message.sendingUid)) {
+                            loge("No WFD permission, uid = " + message.sendingUid);
                             replyToMessage(message, WifiP2pManager.SET_WFD_INFO_FAILED,
                                     WifiP2pManager.ERROR);
                         } else if (d != null && setWfdInfo(d)) {
@@ -4353,7 +4372,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             if (!SdkLevel.isAtLeastT()) {
                 return true;
             }
-            // TODO(b/197689548) use Build.VERSION_CODES.T here after T SDK is finalized
             return mWifiPermissionsUtil.isTargetSdkLessThan(packageName,
                     Build.VERSION_CODES.TIRAMISU, uid);
         }
@@ -4515,6 +4533,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
         private void notifyInvitationSent(String pin, String peerAddress) {
             ApproverEntry entry = mExternalApproverManager.get(MacAddress.fromString(peerAddress));
+            if (null == entry) {
+                logd("No approver found for " + peerAddress
+                        + " check the wildcard address approver.");
+                entry = mExternalApproverManager.get(MacAddress.BROADCAST_ADDRESS);
+            }
             if (null != entry) {
                 logd("Received invitation - Send WPS PIN event to the approver " + entry);
                 Bundle extras = new Bundle();
@@ -4589,6 +4612,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         private void notifyP2pProvDiscShowPinRequest(String pin, String peerAddress) {
             ExternalApproverManager.ApproverEntry entry = mExternalApproverManager.get(
                     MacAddress.fromString(peerAddress));
+            if (null == entry) {
+                logd("No approver found for " + peerAddress
+                        + " check the wildcard address approver.");
+                entry = mExternalApproverManager.get(MacAddress.BROADCAST_ADDRESS);
+            }
             if (null != entry) {
                 logd("Received provision discovery request - Send request from "
                         + mSavedPeerConfig.deviceAddress + " to the approver " + entry);
@@ -4741,6 +4769,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 @WifiP2pManager.ExternalApproverRequestListener.RequestType int requestType) {
             ApproverEntry entry = mExternalApproverManager.get(
                     MacAddress.fromString(mSavedPeerConfig.deviceAddress));
+            if (null == entry) {
+                logd("No approver found for " + mSavedPeerConfig.deviceAddress
+                        + " check the wildcard address approver.");
+                entry = mExternalApproverManager.get(MacAddress.BROADCAST_ADDRESS);
+            }
             if (null != entry) {
                 logd("Received Invitation request - Send request " + requestType + " from "
                         + mSavedPeerConfig.deviceAddress + " to the approver " + entry);
@@ -4911,9 +4944,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 // Calling app holds the LOCAL_MAC_ADDRESS permission, and is allowed to see this
                 // device's MAC.
                 return new WifiP2pDevice(device);
-            } else {
-                return eraseOwnDeviceAddress(device);
             }
+            if (mVerboseLoggingEnabled) {
+                Log.i(TAG, "Uid " + uid + " does not have local mac address permission");
+            }
+            return eraseOwnDeviceAddress(device);
         }
 
         /**
@@ -4935,9 +4970,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 // Calling app holds the LOCAL_MAC_ADDRESS permission, and is allowed to see this
                 // device's MAC.
                 return new WifiP2pGroup(group);
-            } else {
-                return eraseOwnDeviceAddress(group);
             }
+            if (mVerboseLoggingEnabled) {
+                Log.i(TAG, "Uid " + uid + " does not have local mac address permission");
+            }
+            return eraseOwnDeviceAddress(group);
         }
 
         /**
@@ -6015,12 +6052,17 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         }
 
         private boolean checkExternalApproverCaller(Message message,
-                IBinder binder, MacAddress devAddr) {
+                IBinder binder, MacAddress devAddr, String cmd) {
             Bundle extras = (Bundle) message.obj;
             if (!mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(
                     message.sendingUid)) {
                 loge("Permission violation - no MANAGE_WIFI_NETWORK_SELECTION,"
                         + " permission, uid = " + message.sendingUid);
+                return false;
+            }
+            if (!checkNearbyDevicesPermission(message, cmd)) {
+                loge("Permission violation - no NEARBY_WIFI_DEVICES permission"
+                        + ", uid = " + message.sendingUid);
                 return false;
             }
             if (null == binder) {
@@ -6054,6 +6096,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
             ApproverEntry entry = mExternalApproverManager.remove(
                     MacAddress.fromString(mSavedPeerConfig.deviceAddress));
+            if (null == entry) {
+                logd("No approver found for " + mSavedPeerConfig.deviceAddress
+                        + " check the wildcard address approver.");
+                entry = mExternalApproverManager.remove(MacAddress.BROADCAST_ADDRESS);
+            }
             if (null == entry) return;
 
             logd("Detach the approver " + entry);
@@ -6067,7 +6114,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             MacAddress devAddr = extras.getParcelable(
                     WifiP2pManager.EXTRA_PARAM_KEY_PEER_ADDRESS);
             IBinder binder = extras.getBinder(WifiP2pManager.CALLING_BINDER);
-            if (!checkExternalApproverCaller(message, binder, devAddr)) return false;
+            if (!checkExternalApproverCaller(message, binder, devAddr,
+                    "SET_CONNECTION_REQUEST_RESULT")) {
+                return false;
+            }
 
             if (!devAddr.equals(MacAddress.fromString(mSavedPeerConfig.deviceAddress))) {
                 logd("Saved peer address is different from " + devAddr);
@@ -6075,6 +6125,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             }
 
             ApproverEntry entry = mExternalApproverManager.get(binder, devAddr);
+            if (null == entry) {
+                logd("No approver found for " + devAddr
+                        + " check the wildcard address approver.");
+                entry = mExternalApproverManager.get(binder, MacAddress.BROADCAST_ADDRESS);
+            }
             if (null == entry) return false;
             if (!entry.getKey().equals(binder)) {
                 loge("Ignore connection result from a client"
