@@ -1296,12 +1296,13 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      */
     private void connectToUserSelectNetwork(int netId, int uid, boolean forceReconnect,
             @NonNull String packageName) {
-        logd("connectToUserSelectNetwork netId " + netId + ", uid " + uid + ", package "
-                + packageName + ", forceReconnect = " + forceReconnect);
         if (mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
                 || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid)) {
             mIsUserSelected = true;
         }
+        logd("connectToUserSelectNetwork netId " + netId + ", uid " + uid + ", package "
+                + packageName + ", forceReconnect = " + forceReconnect + ", isUserSelected = "
+                + mIsUserSelected);
         updateSaeAutoUpgradeFlagForUserSelectNetwork(netId);
         if (!forceReconnect && (mLastNetworkId == netId || mTargetNetworkId == netId)) {
             // We're already connecting/connected to the user specified network, don't trigger a
@@ -6852,10 +6853,19 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         selectCandidateSecurityParamsIfNecessary(config, scanResults);
 
         if (mWifiGlobals.isConnectedMacRandomizationEnabled()) {
-            if (config.macRandomizationSetting != WifiConfiguration.RANDOMIZATION_NONE) {
-                configureRandomizedMacAddress(config);
-            } else {
+            boolean isMacRandomizationForceDisabled = isMacRandomizationForceDisabledOnSsid(config);
+            if (config.macRandomizationSetting == WifiConfiguration.RANDOMIZATION_NONE
+                    || isMacRandomizationForceDisabled) {
                 setCurrentMacToFactoryMac(config);
+            } else {
+                configureRandomizedMacAddress(config);
+            }
+            if (isMacRandomizationForceDisabled
+                    && config.macRandomizationSetting != WifiConfiguration.RANDOMIZATION_NONE) {
+                // update WifiConfigManager to disable MAC randomization so Settings show the right
+                // MAC randomization information.
+                config.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_NONE;
+                mWifiConfigManager.addOrUpdateNetwork(config, Process.SYSTEM_UID);
             }
         }
 
@@ -6869,6 +6879,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // Use anonymous@<realm> when pseudonym is not available
             config.enterpriseConfig.setAnonymousIdentity(anonAtRealm);
         }
+    }
+
+    private boolean isMacRandomizationForceDisabledOnSsid(WifiConfiguration config) {
+        Set<String> unsupportedSsids = new ArraySet<>(mContext.getResources().getStringArray(
+                R.array.config_wifiForceDisableMacRandomizationSsidList));
+        return unsupportedSsids.contains(config.SSID);
     }
 
     private void setConfigurationsPriorToIpClientProvisioning(WifiConfiguration config) {
