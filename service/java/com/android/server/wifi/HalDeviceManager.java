@@ -53,6 +53,7 @@ import android.os.IHwBinder.DeathRecipient;
 import android.os.RemoteException;
 import android.os.WorkSource;
 import android.text.TextUtils;
+import android.util.ArrayMap;
 import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
@@ -112,6 +113,7 @@ public class HalDeviceManager {
     private ServiceManagerDeathRecipient mServiceManagerDeathRecipient;
     private boolean mIsBridgedSoftApSupported;
     private boolean mIsStaWithBridgedSoftApConcurrencySupported;
+    private ArrayMap<IWifiIface, SoftApManager> mSoftApManagers = new ArrayMap<>();
 
     // cache the value for supporting vendor HAL or not
     private boolean mIsVendorHalSupported = false;
@@ -356,20 +358,19 @@ public class HalDeviceManager {
     public IWifiApIface createApIface(
             long requiredChipCapabilities,
             @Nullable InterfaceDestroyedListener destroyedListener, @Nullable Handler handler,
-            @NonNull WorkSource requestorWs, boolean isBridged) {
-        return (IWifiApIface) createIface(isBridged ? HDM_CREATE_IFACE_AP_BRIDGE
+            @NonNull WorkSource requestorWs, boolean isBridged,
+            @NonNull SoftApManager softApManager) {
+        if (softApManager == null) {
+            Log.e(TAG, "Cannot create AP Iface with null SoftApManager");
+            return null;
+        }
+        IWifiApIface apIface = (IWifiApIface) createIface(isBridged ? HDM_CREATE_IFACE_AP_BRIDGE
                 : HDM_CREATE_IFACE_AP, requiredChipCapabilities, destroyedListener,
                 handler, requestorWs);
-    }
-
-    /**
-     * Create AP interface if possible (see createStaIface doc).
-     */
-    public IWifiApIface createApIface(
-            @Nullable InterfaceDestroyedListener destroyedListener, @Nullable Handler handler,
-            @NonNull WorkSource requestorWs, boolean isBridged) {
-        return (IWifiApIface) createApIface(CHIP_CAPABILITY_ANY,
-                destroyedListener, handler, requestorWs, isBridged);
+        if (apIface != null) {
+            mSoftApManagers.put(apIface, softApManager);
+        }
+        return apIface;
     }
 
     /**
@@ -1137,6 +1138,31 @@ public class HalDeviceManager {
     }
 
     /**
+     * Register the wifi HAL event callback. Reset the Wifi HAL interface when it fails.
+     * @return true if success.
+     */
+    private boolean registerWifiHalEventCallback() {
+        try {
+            WifiStatus status;
+            android.hardware.wifi.V1_5.IWifi iWifiV15 = getWifiServiceForV1_5Mockable(mWifi);
+            if (iWifiV15 != null) {
+                status = iWifiV15.registerEventCallback_1_5(mWifiEventCallbackV15);
+            } else {
+                status = mWifi.registerEventCallback(mWifiEventCallback);
+            }
+
+            if (status.code != WifiStatusCode.SUCCESS) {
+                Log.e(TAG, "IWifi.registerEventCallback failed: " + statusString(status));
+                mWifi = null;
+            }
+            return status.code == WifiStatusCode.SUCCESS;
+        } catch (RemoteException e) {
+            Log.e(TAG, "Exception while operating on IWifi: " + e);
+        }
+        return false;
+    }
+
+    /**
      * Initialize IWifi and register death listener and event callback.
      *
      * - It is possible that IWifi is not ready - we have a listener on IServiceManager for it.
@@ -1165,21 +1191,13 @@ public class HalDeviceManager {
                     return;
                 }
 
-                WifiStatus status;
-                android.hardware.wifi.V1_5.IWifi iWifiV15 = getWifiServiceForV1_5Mockable(mWifi);
-                if (iWifiV15 != null) {
-                    status = iWifiV15.registerEventCallback_1_5(mWifiEventCallbackV15);
-                } else {
-                    status = mWifi.registerEventCallback(mWifiEventCallback);
-                }
-
-                if (status.code != WifiStatusCode.SUCCESS) {
-                    Log.e(TAG, "IWifi.registerEventCallback failed: " + statusString(status));
-                    mWifi = null;
+                // Stopping wifi just in case. This would also trigger the status callback.
+                // Stopping wifi invalidated the registered the event callback, register after the
+                // wifi stop.
+                stopWifi();
+                if (!registerWifiHalEventCallback()) {
                     return;
                 }
-                // Stopping wifi just in case. This would also trigger the status callback.
-                stopWifi();
                 mIsReady = true;
             } catch (RemoteException e) {
                 Log.e(TAG, "Exception while operating on IWifi: " + e);
@@ -1511,7 +1529,9 @@ public class HalDeviceManager {
                             wifiApIfaceV15.getBridgedInstances((status, instances) -> {
                                 statusOk.value = status.code == WifiStatusCode.SUCCESS;
                                 if (statusOk.value) {
-                                    if (instances != null && !instances.isEmpty()) {
+                                    // Only count bridged APs with more than 1 instance as a bridged
+                                    // AP; 1 instance bridged APs will be counted as single AP.
+                                    if (instances != null && instances.size() > 1) {
                                         apIfaceInfo.createType = HDM_CREATE_IFACE_AP_BRIDGE;
                                         numBridgedAps.value++;
                                     }
@@ -1831,7 +1851,8 @@ public class HalDeviceManager {
                             }
                             return true;
                         } else if (status.code == WifiStatusCode.ERROR_NOT_AVAILABLE) {
-                            // Should retry. Hal might still be stopping.
+                            // Should retry. Hal might still be stopping. the registered event
+                            // callback will not be cleared.
                             Log.e(TAG, "Cannot start IWifi: " + statusString(status)
                                     + ", Retrying...");
                             try {
@@ -1842,6 +1863,7 @@ public class HalDeviceManager {
                             triedCount++;
                         } else {
                             // Should not retry on other failures.
+                            // Will be handled in the onFailure event.
                             Log.e(TAG, "Cannot start IWifi: " + statusString(status));
                             return false;
                         }
@@ -2033,12 +2055,16 @@ public class HalDeviceManager {
             if (chipInfos == null) {
                 Log.e(TAG, "createIface: no chip info found");
                 stopWifi(); // major error: shutting down
+                // Event callback has been invalidated in HAL stop, register it again.
+                registerWifiHalEventCallback();
                 return null;
             }
 
             if (!validateInterfaceCacheAndRetrieveRequestorWs(chipInfos)) {
                 Log.e(TAG, "createIface: local cache is invalid!");
                 stopWifi(); // major error: shutting down
+                // Event callback has been invalidated in HAL stop, register it again.
+                registerWifiHalEventCallback();
                 return null;
             }
 
@@ -2214,6 +2240,7 @@ public class HalDeviceManager {
         public WifiChipInfo chipInfo;
         public int chipModeId;
         public List<WifiIfaceInfo> interfacesToBeRemovedFirst;
+        public List<WifiIfaceInfo> interfacesToBeDowngraded;
 
         @Override
         public String toString() {
@@ -2285,6 +2312,7 @@ public class HalDeviceManager {
 
         // possibly supported
         List<WifiIfaceInfo> interfacesToBeRemovedFirst = new ArrayList<>();
+        List<WifiIfaceInfo> interfacesToBeDowngraded = new ArrayList<>();
         for (int existingCreateType : CREATE_TYPES_BY_PRIORITY) {
             WifiIfaceInfo[] createTypeIfaces = chipInfo.ifaces[existingCreateType];
             int numExcessIfaces = createTypeIfaces.length - chipCreateTypeCombo[existingCreateType];
@@ -2293,6 +2321,25 @@ public class HalDeviceManager {
                 numExcessIfaces += 1;
             }
             if (numExcessIfaces > 0) { // may need to delete some
+                // Try downgrading bridged APs before we consider deleting them.
+                if (existingCreateType == HDM_CREATE_IFACE_AP_BRIDGE) {
+                    int availableSingleApCapacity = chipCreateTypeCombo[HDM_CREATE_IFACE_AP]
+                            - chipInfo.ifaces[HDM_CREATE_IFACE_AP].length;
+                    if (requestedCreateType == HDM_CREATE_IFACE_AP) {
+                        availableSingleApCapacity -= 1;
+                    }
+                    if (availableSingleApCapacity >= numExcessIfaces) {
+                        interfacesToBeDowngraded = selectBridgedApInterfacesToDowngrade(
+                                        numExcessIfaces, createTypeIfaces);
+                        if (interfacesToBeDowngraded != null) {
+                            continue;
+                        }
+                        // Can't downgrade enough bridged APs, fall through to delete them.
+                        if (VDBG) {
+                            Log.d(TAG, "Could not downgrade enough bridged APs for request.");
+                        }
+                    }
+                }
                 List<WifiIfaceInfo> selectedIfacesToDelete =
                         selectInterfacesToDelete(numExcessIfaces, requestedCreateType, requestorWs,
                                 existingCreateType, createTypeIfaces);
@@ -2310,6 +2357,7 @@ public class HalDeviceManager {
         ifaceCreationData.chipInfo = chipInfo;
         ifaceCreationData.chipModeId = chipModeId;
         ifaceCreationData.interfacesToBeRemovedFirst = interfacesToBeRemovedFirst;
+        ifaceCreationData.interfacesToBeDowngraded = interfacesToBeDowngraded;
 
         return ifaceCreationData;
     }
@@ -2596,6 +2644,43 @@ public class HalDeviceManager {
     }
 
     /**
+     * Selects the requested quantity of bridged AP ifaces available for downgrade in order of
+     * creation, or returns null if the requested quantity cannot be satisfied.
+     *
+     * @param requestedQuantity Number of interfaces which need to be selected
+     * @param bridgedApIfaces Array of bridged AP interfaces in order of creation
+     */
+    private List<WifiIfaceInfo> selectBridgedApInterfacesToDowngrade(int requestedQuantity,
+            WifiIfaceInfo[] bridgedApIfaces) {
+        List<WifiIfaceInfo> ifacesToDowngrade = new ArrayList<>();
+        for (WifiIfaceInfo ifaceInfo : bridgedApIfaces) {
+            SoftApManager softApManager = mSoftApManagers.get(ifaceInfo.iface);
+            if (softApManager == null) {
+                Log.e(TAG, "selectBridgedApInterfacesToDowngrade: Could not find SoftApManager for"
+                        + " iface: " + ifaceInfo.iface);
+                continue;
+            }
+            String instanceForRemoval =
+                    softApManager.getBridgedApDowngradeIfaceInstanceForRemoval();
+            if (instanceForRemoval == null) {
+                continue;
+            }
+            ifacesToDowngrade.add(ifaceInfo);
+            if (ifacesToDowngrade.size() >= requestedQuantity) {
+                break;
+            }
+        }
+        if (ifacesToDowngrade.size() < requestedQuantity) {
+            return null;
+        }
+        if (VDBG) {
+            Log.i(TAG, "selectBridgedApInterfacesToDowngrade: ifaces to downgrade "
+                    + ifacesToDowngrade);
+        }
+        return ifacesToDowngrade;
+    }
+
+    /**
      * Checks whether the expanded @HdmIfaceTypeForCreation combo can support the requested combo.
      */
     private boolean canCreateTypeComboSupportRequestedCreateTypeCombo(
@@ -2658,9 +2743,19 @@ public class HalDeviceManager {
                     }
                 } else {
                     // remove all interfaces on the delete list
-                    for (WifiIfaceInfo ifaceInfo: ifaceCreationData.interfacesToBeRemovedFirst) {
+                    for (WifiIfaceInfo ifaceInfo : ifaceCreationData.interfacesToBeRemovedFirst) {
                         removeIfaceInternal(ifaceInfo.iface,
                                 /* validateRttController */false); // ignore return value
+                    }
+                    // downgrade all interfaces on the downgrade list
+                    for (WifiIfaceInfo ifaceInfo : ifaceCreationData.interfacesToBeDowngraded) {
+                        if (ifaceInfo.createType == HDM_CREATE_IFACE_AP_BRIDGE) {
+                            if (!downgradeBridgedApIface(ifaceInfo)) {
+                                Log.e(TAG, "executeChipReconfiguration: failed to downgrade bridged"
+                                        + " AP: " + ifaceInfo);
+                                return null;
+                            }
+                        }
                     }
                 }
 
@@ -2861,6 +2956,37 @@ public class HalDeviceManager {
         for (InterfaceDestroyedListenerProxy listener : triggerList) {
             listener.trigger();
         }
+    }
+
+    private boolean downgradeBridgedApIface(WifiIfaceInfo bridgedApIfaceInfo) {
+        SoftApManager bridgedSoftApManager = mSoftApManagers.get(bridgedApIfaceInfo.iface);
+        if (bridgedSoftApManager == null) {
+            Log.e(TAG, "Could not find SoftApManager for bridged AP iface "
+                    + bridgedApIfaceInfo.iface);
+            return false;
+        }
+        String name = getName(bridgedApIfaceInfo.iface);
+        if (name == null) {
+            return false;
+        }
+        IWifiChip chip = getChip(bridgedApIfaceInfo.iface);
+        if (chip == null) {
+            return false;
+        }
+        android.hardware.wifi.V1_5.IWifiChip chip15 = getWifiChipForV1_5Mockable(chip);
+        if (chip15 == null) {
+            return false;
+        }
+        String instanceForRemoval =
+                bridgedSoftApManager.getBridgedApDowngradeIfaceInstanceForRemoval();
+        try {
+            chip15.removeIfaceInstanceFromBridgedApIface(name, instanceForRemoval);
+        } catch (RemoteException e) {
+            Log.e(TAG,
+                    "IWifiChip.removeIfaceInstanceFromBridgedApIface exception: " + e);
+            return false;
+        }
+        return true;
     }
 
     private abstract class ListenerProxy<LISTENER>  {
