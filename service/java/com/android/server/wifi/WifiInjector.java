@@ -416,7 +416,7 @@ public class WifiInjector {
                 mWifiCarrierInfoManager, mMacAddressUtil, mWifiPermissionsUtil);
         PasspointNetworkNominateHelper nominateHelper =
                 new PasspointNetworkNominateHelper(mPasspointManager, mWifiConfigManager,
-                        mConnectivityLocalLog);
+                        mConnectivityLocalLog, mWifiCarrierInfoManager);
         mPasspointManager.setPasspointNetworkNominateHelper(nominateHelper);
         mSavedNetworkNominator = new SavedNetworkNominator(
                 mWifiConfigManager, nominateHelper, mConnectivityLocalLog, mWifiCarrierInfoManager,
@@ -458,7 +458,7 @@ public class WifiInjector {
                 wifiLooper, mFrameworkFacade, mClock, mWifiMetrics,
                 mWifiConfigManager, mWifiConfigStore, mConnectHelper,
                 new ConnectToNetworkNotificationBuilder(mContext, mFrameworkFacade),
-                mMakeBeforeBreakManager, mWifiNotificationManager);
+                mMakeBeforeBreakManager, mWifiNotificationManager, mWifiPermissionsUtil);
         mMultiInternetManager = new MultiInternetManager(mActiveModeWarden, mFrameworkFacade,
                 mContext, mCmiMonitor, mSettingsStore, wifiHandler, mClock);
         mExternalPnoScanRequestManager = new ExternalPnoScanRequestManager(wifiHandler);
@@ -587,7 +587,6 @@ public class WifiInjector {
         if (SdkLevel.isAtLeastS()) {
             mCoexManager.enableVerboseLogging(verboseEnabled);
         }
-        mWifiPermissionsWrapper.enableVerboseLogging(verboseEnabled);
         mWifiPermissionsUtil.enableVerboseLogging(verboseEnabled);
         mWifiDialogManager.enableVerboseLogging(verboseEnabled);
     }
