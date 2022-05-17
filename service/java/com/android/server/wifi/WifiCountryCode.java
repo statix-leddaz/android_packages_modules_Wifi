@@ -28,8 +28,8 @@ import android.text.TextUtils;
 import android.util.ArrayMap;
 import android.util.Log;
 
-import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.build.SdkLevel;
+import com.android.server.wifi.util.ApConfigUtil;
 import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
@@ -53,7 +53,7 @@ public class WifiCountryCode {
     private static final String BOOT_DEFAULT_WIFI_COUNTRY_CODE = "ro.boot.wificountrycode";
     private static final int PKT_COUNT_HIGH_PKT_PER_SEC = 16;
     private static final int DISCONNECT_WIFI_COUNT_MAX = 1;
-    private static final String COUNTRY_CODE_WORLD = "00";
+    private final String mWorldModeCountryCode;
     private final Context mContext;
     private final TelephonyManager mTelephonyManager;
     private final ActiveModeWarden mActiveModeWarden;
@@ -79,30 +79,38 @@ public class WifiCountryCode {
     private String mTelephonyCountryCode = null;
     private String mOverrideCountryCode = null;
     private String mDriverCountryCode = null;
-    private String mReceivedDriverCountryCode = null;
+    private long mDriverCountryCodeUpdatedTimestamp = 0;
     private String mTelephonyCountryTimestamp = null;
-    private String mDriverCountryTimestamp = null;
-    private String mReadyTimestamp = null;
+    private String mAllCmmReadyTimestamp = null;
     private int mDisconnectWifiToForceUpdateCount = 0;
 
     private class ModeChangeCallbackInternal implements ActiveModeWarden.ModeChangeCallback {
         @Override
         public void onActiveModeManagerAdded(@NonNull ActiveModeManager activeModeManager) {
-            if (activeModeManager.getRole() instanceof ActiveModeManager.ClientRole
-                    || activeModeManager instanceof SoftApManager) {
+            if (activeModeManager.getRole() instanceof ActiveModeManager.ClientRole) {
                 // Add this CMM for tracking. Interface is up and HAL is initialized at this point.
                 // If this device runs the 1.5 HAL version, use the IWifiChip.setCountryCode()
                 // to set the country code.
                 mAmmToReadyForChangeMap.put(activeModeManager, true);
                 evaluateAllCmmStateAndApplyIfAllReady();
+            } else if (activeModeManager instanceof SoftApManager) {
+                // Put SoftApManager ready for consistence behavior in mAmmToReadyForChangeMap.
+                // No need to trigger CC change because SoftApManager takes CC when starting up.
+                mAmmToReadyForChangeMap.put(activeModeManager, true);
             }
         }
 
         @Override
         public void onActiveModeManagerRemoved(@NonNull ActiveModeManager activeModeManager) {
             if (mAmmToReadyForChangeMap.remove(activeModeManager) != null) {
-                // Remove this CMM from tracking.
-                evaluateAllCmmStateAndApplyIfAllReady();
+                if (activeModeManager instanceof ActiveModeManager.ClientRole) {
+                    // Remove this CMM from tracking.
+                    evaluateAllCmmStateAndApplyIfAllReady();
+                }
+            }
+            if (mAmmToReadyForChangeMap.size() == 0) {
+                handleCountryCodeChanged(null);
+                Log.i(TAG, "No active mode, call onDriverCountryCodeChanged with Null");
             }
         }
 
@@ -146,22 +154,24 @@ public class WifiCountryCode {
     private class CountryChangeListenerInternal implements ChangeListener {
         @Override
         public void onDriverCountryCodeChanged(String country) {
-            if (TextUtils.equals(country, mReceivedDriverCountryCode)) {
+            if (TextUtils.equals(country, mDriverCountryCode)) {
                 return;
             }
             Log.i(TAG, "Receive onDriverCountryCodeChanged " + country);
-            mReceivedDriverCountryCode = country;
-            updateDriverCountryCodeAndNotifyListener(country);
+            if (isDriverSupportedRegChangedEvent()) {
+                // CC doesn't notify listener after sending to the driver, notify the listener
+                // after we received CC changed event.
+                handleCountryCodeChanged(country);
+            }
         }
 
         @Override
         public void onSetCountryCodeSucceeded(String country) {
             Log.i(TAG, "Receive onSetCountryCodeSucceeded " + country);
-            // The driver country code updated, don't need to trigger again.
-            if (TextUtils.equals(country, mReceivedDriverCountryCode)) {
-                return;
+            if (!isDriverSupportedRegChangedEvent()) {
+                mWifiNative.countryCodeChanged(country);
+                handleCountryCodeChanged(country);
             }
-            updateDriverCountryCodeAndNotifyListener(country);
         }
     }
 
@@ -180,6 +190,9 @@ public class WifiCountryCode {
         mActiveModeWarden.registerModeChangeCallback(new ModeChangeCallbackInternal());
         clientModeImplMonitor.registerListener(new ClientModeListenerInternal());
         mWifiNative.registerCountryCodeEventListener(new CountryChangeListenerInternal());
+
+        mWorldModeCountryCode = mContext.getResources()
+                .getString(R.string.config_wifiDriverWorldModeCountryCode);
 
         Log.d(TAG, "Default country code from system property "
                 + BOOT_DEFAULT_WIFI_COUNTRY_CODE + " is " + getOemDefaultCountryCode());
@@ -209,6 +222,11 @@ public class WifiCountryCode {
      */
     public interface ChangeListener {
         /**
+         * Called when receiving new country code change pending.
+         */
+        default void onCountryCodeChangePending(@NonNull String countryCode) {};
+
+        /**
          * Called when receiving country code changed from driver.
          */
         void onDriverCountryCodeChanged(String countryCode);
@@ -224,11 +242,17 @@ public class WifiCountryCode {
         default void onSetCountryCodeSucceeded(String country) {}
     }
 
+
     /**
      * Register Country code changed listener.
      */
     public void registerListener(@NonNull ChangeListener listener) {
         mListeners.add(listener);
+        /**
+         * Always called with mDriverCountryCode even if the SDK version is lower than T.
+         * Reason: Before android S, the purpose of the internal listener is updating the supported
+         * channels, it always depends on mDriverCountryCode.
+         */
         if (mDriverCountryCode != null) {
             listener.onDriverCountryCodeChanged(mDriverCountryCode);
         }
@@ -256,9 +280,17 @@ public class WifiCountryCode {
      *
      * @return true if there are active CMM's and all are ready for country code change.
      */
-    private boolean isReady() {
-        return !mAmmToReadyForChangeMap.isEmpty()
-                && mAmmToReadyForChangeMap.values().stream().allMatch(r -> r);
+    private boolean isAllCmmReady() {
+        boolean isAnyCmmExist = false;
+        for (ActiveModeManager am : mAmmToReadyForChangeMap.keySet()) {
+            if (am instanceof ConcreteClientModeManager) {
+                isAnyCmmExist = true;
+                if (!mAmmToReadyForChangeMap.get(am)) {
+                    return false;
+                }
+            }
+        }
+        return isAnyCmmExist;
     }
 
     /**
@@ -266,12 +298,12 @@ public class WifiCountryCode {
      */
     private void evaluateAllCmmStateAndApplyIfAllReady() {
         Log.d(TAG, "evaluateAllCmmStateAndApplyIfAllReady: " + mAmmToReadyForChangeMap);
-        if (isReady()) {
-            mReadyTimestamp = FORMATTER.format(new Date(System.currentTimeMillis()));
+        if (isAllCmmReady()) {
+            mAllCmmReadyTimestamp = FORMATTER.format(new Date(System.currentTimeMillis()));
             // We are ready to set country code now.
             // We need to post pending country code request.
             initializeTelephonyCountryCodeIfNeeded();
-            updateCountryCode();
+            updateCountryCode(true);
         }
     }
 
@@ -287,15 +319,12 @@ public class WifiCountryCode {
                     + "the received country code is empty");
             return;
         }
-        mOverrideCountryCode = countryCode.toUpperCase(Locale.US);
-
-        // If wpa_supplicant is ready we set the country code now, otherwise it will be
-        // set once wpa_supplicant is ready.
-        if (isReady()) {
-            updateCountryCode();
-        } else {
-            Log.d(TAG, "skip update supplicant not ready yet");
+        // Support 00 map to device world mode country code
+        if (TextUtils.equals("00", countryCode)) {
+            countryCode = mWorldModeCountryCode;
         }
+        mOverrideCountryCode = countryCode.toUpperCase(Locale.US);
+        updateCountryCode(false);
     }
 
     /**
@@ -303,14 +332,7 @@ public class WifiCountryCode {
      */
     public synchronized void clearOverrideCountryCode() {
         mOverrideCountryCode = null;
-
-        // If wpa_supplicant is ready we set the country code now, otherwise it will be
-        // set once wpa_supplicant is ready.
-        if (isReady()) {
-            updateCountryCode();
-        } else {
-            Log.d(TAG, "skip update supplicant not ready yet");
-        }
+        updateCountryCode(false);
     }
 
     private void setTelephonyCountryCode(String countryCode) {
@@ -334,23 +356,25 @@ public class WifiCountryCode {
      * @param countryCode The country code intended to set.
      * This is supposed to be from Telephony service.
      * otherwise we think it is from other applications.
-     * @return Returns true if the country code passed in is acceptable.
+     * @return Returns true if the country code passed in is acceptable and passed to the driver.
      */
     public boolean setTelephonyCountryCodeAndUpdate(String countryCode) {
-        setTelephonyCountryCode(countryCode);
-        if (mOverrideCountryCode != null) {
-            Log.d(TAG, "Skip Telephony Country code update due to override country code set");
+        if (TextUtils.isEmpty(countryCode)
+                && !TextUtils.isEmpty(mTelephonyManager.getNetworkCountryIso())) {
+            Log.i(TAG, "Skip Telephony CC update to empty because there is "
+                    + "an available CC from default active SIM");
             return false;
         }
-        // If wpa_supplicant is ready we set the country code now, otherwise it will be
-        // set once wpa_supplicant is ready.
-        if (isReady()) {
-            updateCountryCode();
-        } else {
-            Log.d(TAG, "skip update supplicant not ready yet");
-            disconnectWifiToForceUpdateIfNeeded();
+        // We do not check if the country code (CC) equals the current one because
+        // 1. Wpa supplicant may silently modify the country code.
+        // 2. If Wifi restarted therefore wpa_supplicant also restarted,
+        setTelephonyCountryCode(countryCode);
+        if (mOverrideCountryCode != null) {
+            Log.d(TAG, "Skip Telephony CC update due to override country code set");
+            return false;
         }
 
+        updateCountryCode(false);
         return true;
     }
 
@@ -369,7 +393,8 @@ public class WifiCountryCode {
     }
 
     private boolean shouldDisconnectWifiToForceUpdate() {
-        if (mTelephonyCountryCode == null || mTelephonyCountryCode.equals(mDriverCountryCode)) {
+        if (mTelephonyCountryCode == null
+                || mTelephonyCountryCode.equals(mDriverCountryCode)) {
             return false;
         }
 
@@ -378,7 +403,7 @@ public class WifiCountryCode {
         }
 
         if (mDriverCountryCode != null
-                && !mDriverCountryCode.equalsIgnoreCase(COUNTRY_CODE_WORLD)) {
+                && !mDriverCountryCode.equalsIgnoreCase(mWorldModeCountryCode)) {
             return false;
         }
 
@@ -397,16 +422,13 @@ public class WifiCountryCode {
     }
 
     /**
-     * Method to get the Country Code that was sent to wpa_supplicant.
+     * Method to get the received driver Country Code that being used in driver.
      *
-     * @return Returns the local copy of the Country Code that was sent to the driver upon
-     * setReadyForChange(true).
-     * If wpa_supplicant was never started, this may be null even if Telephony reported a valid
-     * country code.
-     * Returns null if no Country Code was sent to driver.
+     * @return Returns the local copy of the received driver Country Code or null if
+     * there is no Country Code was received from driver or no any active mode.
      */
-    @VisibleForTesting
-    public synchronized String getCountryCodeSentToDriver() {
+    @Nullable
+    public synchronized String getCurrentDriverCountryCode() {
         return mDriverCountryCode;
     }
 
@@ -436,14 +458,7 @@ public class WifiCountryCode {
         mSettingsConfigStore.put(WIFI_DEFAULT_COUNTRY_CODE,
                 countryCode.toUpperCase(Locale.US));
         Log.i(TAG, "Default country code updated in config store: " + countryCode);
-
-        // If wpa_supplicant is ready we set the country code now, otherwise it will be
-        // set once wpa_supplicant is ready.
-        if (isReady()) {
-            updateCountryCode();
-        } else {
-            Log.d(TAG, "skip update supplicant not ready yet");
-        }
+        updateCountryCode(false);
     }
 
     /**
@@ -456,18 +471,27 @@ public class WifiCountryCode {
         pw.println("DefaultCountryCode(system property): " + getOemDefaultCountryCode());
         pw.println("DefaultCountryCode(config store): "
                 + mSettingsConfigStore.get(WIFI_DEFAULT_COUNTRY_CODE));
-        pw.println("mDriverCountryCode: " + mDriverCountryCode);
         pw.println("mTelephonyCountryCode: " + mTelephonyCountryCode);
         pw.println("mTelephonyCountryTimestamp: " + mTelephonyCountryTimestamp);
         pw.println("mOverrideCountryCode: " + mOverrideCountryCode);
-        pw.println("mDriverCountryTimestamp: " + mDriverCountryTimestamp);
-        pw.println("mReadyTimestamp: " + mReadyTimestamp);
-        pw.println("isReady: " + isReady());
+        pw.println("mAllCmmReadyTimestamp: " + mAllCmmReadyTimestamp);
+        pw.println("isAllCmmReady: " + isAllCmmReady());
         pw.println("mAmmToReadyForChangeMap: " + mAmmToReadyForChangeMap);
         pw.println("mDisconnectWifiToForceUpdateCount: " + mDisconnectWifiToForceUpdateCount);
+        pw.println("mDriverCountryCode: " + mDriverCountryCode);
+        pw.println("mDriverCountryCodeUpdatedTimestamp: "
+                + (mDriverCountryCodeUpdatedTimestamp != 0
+                ? FORMATTER.format(new Date(mDriverCountryCodeUpdatedTimestamp)) : "N/A"));
+        pw.println("isDriverSupportedRegChangedEvent: "
+                + isDriverSupportedRegChangedEvent());
     }
 
-    private void updateCountryCode() {
+    private boolean isDriverSupportedRegChangedEvent() {
+        return mContext.getResources().getBoolean(
+                R.bool.config_wifiDriverSupportedNl80211RegChangedEvent);
+    }
+
+    private void updateCountryCode(boolean isClientModeOnly) {
         String country = pickCountryCode();
         Log.d(TAG, "updateCountryCode to " + country);
 
@@ -477,7 +501,7 @@ public class WifiCountryCode {
         // 2. If Wifi restarted therefore wpa_supplicant also restarted,
         // the country code could be reset to '00' by wpa_supplicant.
         if (country != null) {
-            setCountryCodeNative(country);
+            setCountryCodeNative(country, isClientModeOnly);
         }
         // We do not set country code if there is no candidate. This is reasonable
         // because wpa_supplicant usually starts with an international safe country
@@ -491,15 +515,27 @@ public class WifiCountryCode {
         if (mTelephonyCountryCode != null) {
             return mTelephonyCountryCode;
         }
+        if (mDriverCountryCode != null) {
+            // Returns driver country code since it may be different to WIFI_DEFAULT_COUNTRY_CODE
+            // when driver supported 802.11d.
+            return mDriverCountryCode;
+        }
         return mSettingsConfigStore.get(WIFI_DEFAULT_COUNTRY_CODE);
     }
 
-    private boolean setCountryCodeNative(String country) {
+    private boolean setCountryCodeNative(String country, boolean isClientModeOnly) {
         Set<ActiveModeManager> amms = mAmmToReadyForChangeMap.keySet();
         boolean isConcreteClientModeManagerUpdated = false;
         boolean anyAmmConfigured = false;
+        boolean isAllCmmReady = isAllCmmReady();
+        if (!isAllCmmReady) {
+            Log.d(TAG, "skip update supplicant not ready yet");
+            disconnectWifiToForceUpdateIfNeeded();
+        }
+        Log.d(TAG, "setCountryCodeNative" + country + ", isClientModeOnly" + isClientModeOnly);
         for (ActiveModeManager am : amms) {
-            if (!isConcreteClientModeManagerUpdated && am instanceof ConcreteClientModeManager) {
+            if (isAllCmmReady && !isConcreteClientModeManagerUpdated
+                    && am instanceof ConcreteClientModeManager) {
                 // Set the country code using one of the active mode managers. Since
                 // country code is a chip level global setting, it can be set as long
                 // as there is at least one active interface to communicate to Wifi chip
@@ -512,35 +548,75 @@ public class WifiCountryCode {
                     anyAmmConfigured = true;
                     // Start from S, frameworks support country code callback from wificond,
                     // move "notify the lister" to CountryChangeListenerInternal.
-                    if (!SdkLevel.isAtLeastS()) {
-                        updateDriverCountryCodeAndNotifyListener(country);
+                    if (!SdkLevel.isAtLeastS() && !isDriverSupportedRegChangedEvent()) {
+                        handleCountryCodeChanged(country);
                     }
                 }
-            } else if (am instanceof SoftApManager) {
-                // The API:updateCountryCode in SoftApManager is asynchronous, it requires a new
-                // callback support in S to trigger "updateDriverCountryCodeAndNotifyListener" for
-                // the new S API: SoftApCapability#getSupportedChannelList(band).
-                // It requires:
-                // 1. a new overlay configuration which is introduced from S.
-                // 2. wificond support in S for S API: SoftApCapability#getSupportedChannelList
-                // Any case if device supported to set country code in R,
-                // the new S API: SoftApCapability#getSupportedChannelList(band) still doesn't work
-                // normally in R build when wifi disabled.
+            } else if (!isClientModeOnly && am instanceof SoftApManager) {
                 SoftApManager sm = (SoftApManager) am;
-                if (!sm.updateCountryCode(country)) {
-                    Log.d(TAG, "Can't set country code (SoftApManager) to "
-                            + country + " (Device doesn't support it)");
+                if (mDriverCountryCode == null || TextUtils.equals(mDriverCountryCode, country)) {
+                    // Ignore SoftApManager init country code case or country code didn't be
+                    // changed case.
+                    continue;
+                }
+                // Restart SAP only when 1. overlay enabled 2. CC is not world mode.
+                if (ApConfigUtil.isSoftApRestartRequiredWhenCountryCodeChanged(mContext)
+                        && !mDriverCountryCode.equalsIgnoreCase(mWorldModeCountryCode)) {
+                    Log.i(TAG, "restart SoftAp required because country code changed to "
+                            + country);
+                    SoftApModeConfiguration modeConfig = sm.getSoftApModeConfiguration();
+                    mActiveModeWarden.stopSoftAp(modeConfig.getTargetMode());
+                    mActiveModeWarden.startSoftAp(modeConfig, sm.getRequestorWs());
                 } else {
-                    anyAmmConfigured = true;
+                    // The API:updateCountryCode in SoftApManager is asynchronous, it requires a
+                    // new callback support in S to trigger "notifyListener" for
+                    // the new S API: SoftApCapability#getSupportedChannelList(band).
+                    // It requires:
+                    // 1. a new overlay configuration which is introduced from S.
+                    // 2. wificond support in S for S API: SoftApCapability#getSupportedChannelList
+                    // Any case if device supported to set country code in R,
+                    // the new S API: SoftApCapability#getSupportedChannelList(band) still doesn't
+                    // work normally in R build when wifi disabled.
+                    if (!sm.updateCountryCode(country)) {
+                        Log.d(TAG, "Can't set country code (SoftApManager) to "
+                                + country + " when SAP on (Device doesn't support runtime update)");
+                    } else {
+                        anyAmmConfigured = true;
+                    }
+                }
+            }
+        }
+        if (!anyAmmConfigured) {
+            for (ChangeListener listener : mListeners) {
+                if (country != null) {
+                    listener.onCountryCodeChangePending(country);
                 }
             }
         }
         return anyAmmConfigured;
     }
 
-    private void updateDriverCountryCodeAndNotifyListener(String country) {
-        mDriverCountryTimestamp = FORMATTER.format(new Date(System.currentTimeMillis()));
-        mDriverCountryCode = country;
+    private void handleCountryCodeChanged(String country) {
+        if (!TextUtils.equals(mDriverCountryCode, country)) {
+            mDriverCountryCodeUpdatedTimestamp = System.currentTimeMillis();
+            mDriverCountryCode = country;
+            notifyListener(country);
+        }
+    }
+
+
+    /**
+     * Notify the listeners. There are two kind of listeners
+     * 1. external listener, they only care what is country code which driver is using now.
+     * 2. internal listener, frameworks also only care what is country code which driver is using
+     * now because it requires to update supported channels with new country code.
+     *
+     * Note: Call this API only after confirming the CC is used in driver.
+     *
+     * @param country the country code is used in driver or null when driver is non-active.
+     */
+    private void notifyListener(@Nullable String country) {
+        mActiveModeWarden.updateClientScanModeAfterCountryCodeUpdate(country);
         for (ChangeListener listener : mListeners) {
             listener.onDriverCountryCodeChanged(country);
         }
