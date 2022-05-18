@@ -1627,7 +1627,7 @@ public class WifiScoreCardTest extends WifiBaseTest {
             addTotalBytes(txBytes, rxBytes);
             millisecondsPass(3_000);
             perNetwork.updateLinkBandwidth(mOldLlStats, mNewLlStats, mWifiInfo, mTotalTxBytes,
-                    mTotalTxBytes);
+                    mTotalRxBytes);
         }
 
         assertEquals(10_000, perNetwork.getTxLinkBandwidthKbps());
