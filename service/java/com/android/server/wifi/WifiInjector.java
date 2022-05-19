@@ -349,7 +349,7 @@ public class WifiInjector {
                 mWifiConfigStore, wifiHandler, mWifiMetrics, mClock);
         String l2KeySeed = Secure.getString(mContext.getContentResolver(), Secure.ANDROID_ID);
         mWifiScoreCard = new WifiScoreCard(mClock, l2KeySeed, mDeviceConfigFacade,
-                mFrameworkFacade, mContext);
+                mContext);
         mWifiMetrics.setWifiScoreCard(mWifiScoreCard);
         mLruConnectionTracker = new LruConnectionTracker(MAX_RECENTLY_CONNECTED_NETWORK,
                 mContext);
@@ -416,7 +416,7 @@ public class WifiInjector {
                 mWifiCarrierInfoManager, mMacAddressUtil, mWifiPermissionsUtil);
         PasspointNetworkNominateHelper nominateHelper =
                 new PasspointNetworkNominateHelper(mPasspointManager, mWifiConfigManager,
-                        mConnectivityLocalLog);
+                        mConnectivityLocalLog, mWifiCarrierInfoManager);
         mPasspointManager.setPasspointNetworkNominateHelper(nominateHelper);
         mSavedNetworkNominator = new SavedNetworkNominator(
                 mWifiConfigManager, nominateHelper, mConnectivityLocalLog, mWifiCarrierInfoManager,
@@ -444,7 +444,7 @@ public class WifiInjector {
         mWifiHealthMonitor = new WifiHealthMonitor(mContext, this, mClock, mWifiConfigManager,
             mWifiScoreCard, wifiHandler, mWifiNative, l2KeySeed, mDeviceConfigFacade,
             mActiveModeWarden);
-        mWifiDataStall = new WifiDataStall(mFrameworkFacade, mWifiMetrics, mContext,
+        mWifiDataStall = new WifiDataStall(mWifiMetrics, mContext,
                 mDeviceConfigFacade, wifiChannelUtilizationConnected, mClock, wifiHandler,
                 mThroughputPredictor, mActiveModeWarden, mCmiMonitor);
         mWifiMetrics.setWifiDataStall(mWifiDataStall);
@@ -587,7 +587,6 @@ public class WifiInjector {
         if (SdkLevel.isAtLeastS()) {
             mCoexManager.enableVerboseLogging(verboseEnabled);
         }
-        mWifiPermissionsWrapper.enableVerboseLogging(verboseEnabled);
         mWifiPermissionsUtil.enableVerboseLogging(verboseEnabled);
         mWifiDialogManager.enableVerboseLogging(verboseEnabled);
     }
