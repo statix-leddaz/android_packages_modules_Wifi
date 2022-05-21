@@ -143,6 +143,8 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
         when(mWifiInjector.getMacAddressUtil()).thenReturn(mMacAddressUtil);
         when(mMacAddressUtil.calculatePersistentMac(any(), any())).thenReturn(TEST_RANDOMIZED_MAC);
         mResources.setBoolean(R.bool.config_wifi_ap_mac_randomization_supported, true);
+        mResources.setBoolean(
+                R.bool.config_wifiSoftapAutoAppendLowerBandsToBandConfigurationEnabled, true);
     }
 
     private void setupAllBandsSupported() {
@@ -859,13 +861,28 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
         // Builder will auto check auth type and passphrase
 
         // test random (valid length)
-        int maxLen = WifiApConfigStore.PSK_MAX_LEN;
-        int minLen = WifiApConfigStore.PSK_MIN_LEN;
+        int maxLen = WifiApConfigStore.PSK_SAE_ASCII_MAX_LEN;
+        int minLen = WifiApConfigStore.PSK_ASCII_MIN_LEN;
         configBuilder.setPassphrase(
                 generateRandomString(mRandom.nextInt(maxLen - minLen) + minLen),
                 SoftApConfiguration.SECURITY_TYPE_WPA2_PSK);
         assertTrue(WifiApConfigStore.validateApWifiConfiguration(
                 configBuilder.build(), true, mContext));
+    }
+
+    @Test
+    public void testSaeNetworkConfigInValidateApWifiConfigurationCheck() {
+        Builder configBuilder = new SoftApConfiguration.Builder();
+        configBuilder.setSsid(TEST_DEFAULT_HOTSPOT_SSID);
+
+        // test random (invalid length)
+        int maxLen = WifiApConfigStore.PSK_SAE_ASCII_MAX_LEN;
+        configBuilder.setPassphrase(
+                generateRandomString(maxLen + 1),
+                SoftApConfiguration.SECURITY_TYPE_WPA3_SAE);
+        assertFalse(WifiApConfigStore.validateApWifiConfiguration(
+                configBuilder.build(), true, mContext));
+
     }
 
     /**
@@ -1104,7 +1121,7 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
                 R.bool.config_wifiSoftapResetAutoShutdownTimerConfig, true);
         configBuilder.setShutdownTimeoutMillis(8888);
         resetedConfig = store.resetToDefaultForUnsupportedConfig(configBuilder.build());
-        assertEquals(resetedConfig.getShutdownTimeoutMillis(), 0);
+        assertEquals(-1, resetedConfig.getShutdownTimeoutMillis());
 
         // Test max client setting when force client disconnect doesn't support
         mResources.setBoolean(R.bool.config_wifiSofapClientForceDisconnectSupported, false);
@@ -1272,6 +1289,31 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
             store.setApConfiguration(testConfigBuilder.build());
             verifyApConfig(expectedConfigBuilder.build(), store.getApConfiguration());
         }
+    }
+
+    @Test
+    public void testSanitizePersistentApConfigWhenAutoAppendDisabled() throws Exception {
+        // Test when resource disabled
+        mResources.setBoolean(
+                R.bool.config_wifiSoftapAutoAppendLowerBandsToBandConfigurationEnabled,
+                false);
+        SoftApConfiguration config5Gonly = setupApConfig(
+                "ConfiguredAP",                   /* SSID */
+                "randomKey",                      /* preshared key */
+                SECURITY_TYPE_WPA2_PSK,           /* security type */
+                SoftApConfiguration.BAND_5GHZ,    /* AP band */
+                0,                                /* AP channel */
+                true                              /* Hidden SSID */);
+        WifiApConfigStore store_disableAutoAppendBand = createWifiApConfigStore();
+        store_disableAutoAppendBand.setApConfiguration(config5Gonly);
+        verifyApConfig(config5Gonly, store_disableAutoAppendBand.getApConfiguration());
+
+        SoftApConfiguration config6Gonly =
+                new SoftApConfiguration.Builder(config5Gonly)
+                .setBand(SoftApConfiguration.BAND_6GHZ).build();
+
+        store_disableAutoAppendBand.setApConfiguration(config6Gonly);
+        verifyApConfig(config6Gonly, store_disableAutoAppendBand.getApConfiguration());
     }
 
     @Test

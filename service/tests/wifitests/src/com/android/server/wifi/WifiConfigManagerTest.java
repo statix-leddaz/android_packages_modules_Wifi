@@ -1111,7 +1111,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
 
     /**
      * Verifies the addition of a single suggestion network using
-     * {@link WifiConfigManager#addOrUpdateNetwork(WifiConfiguration, int, String)} and verifies
+     * {@link WifiConfigManager#addOrUpdateNetwork(WifiConfiguration, int, String, boolean)} and verifies
      * that the {@link WifiConfigManager#getSavedNetworks()} does not return this network.
      */
     @Test
@@ -1143,7 +1143,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
 
     /**
      * Verifies the addition of a single specifier network using
-     * {@link WifiConfigManager#addOrUpdateNetwork(WifiConfiguration, int, String)} and verifies
+     * {@link WifiConfigManager#addOrUpdateNetwork(WifiConfiguration, int, String, boolean)} and verifies
      * that the {@link WifiConfigManager#getSavedNetworks()} does not return this network.
      */
     @Test
@@ -5748,7 +5748,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         triggerStoreReadIfNeeded();
         when(mClock.getWallClockMillis()).thenReturn(TEST_WALLCLOCK_CREATION_TIME_MILLIS);
         NetworkUpdateResult result =
-                mWifiConfigManager.addOrUpdateNetwork(configuration, uid, packageName);
+                mWifiConfigManager.addOrUpdateNetwork(configuration, uid, packageName, false);
         setDefaults(configuration);
         setCreationDebugParams(
                 configuration, uid, packageName != null ? packageName : TEST_CREATOR_NAME);
@@ -7410,6 +7410,72 @@ public class WifiConfigManagerTest extends WifiBaseTest {
     }
 
     @Test
+    public void testUpdateCaCertificateWithoutAltSubjectNames() throws Exception {
+        when(mPrimaryClientModeManager.getSupportedFeatures()).thenReturn(
+                WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE);
+
+        verifyAddNetwork(WifiConfigurationTestUtil.createOpenNetwork(), true);
+        int eapPeapNetId = verifyAddNetwork(prepareTofuEapConfig(
+                WifiEnterpriseConfig.Eap.PEAP, WifiEnterpriseConfig.Phase2.NONE), true);
+        verifyAddNetwork(WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE), true);
+
+        X509Certificate mockServerCert = mock(X509Certificate.class);
+        Principal mockSubjectDn = mock(Principal.class);
+        when(mockServerCert.getSubjectDN()).thenReturn(mockSubjectDn);
+        when(mockSubjectDn.getName()).thenReturn(
+                "C=TW,ST=Taiwan,L=Taipei,O=Google,CN=mockServerCert");
+
+        assertTrue(mWifiConfigManager.updateCaCertificate(eapPeapNetId, FakeKeys.CA_CERT0,
+                mockServerCert));
+        WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(eapPeapNetId);
+        assertFalse(config.enterpriseConfig.isTrustOnFirstUseEnabled());
+        assertFalse(config.enterpriseConfig.isUserApproveNoCaCert());
+        assertEquals("mockServerCert", config.enterpriseConfig.getDomainSuffixMatch());
+        assertEquals("", config.enterpriseConfig.getAltSubjectMatch());
+    }
+
+    @Test
+    public void testUpdateCaCertificateWithAltSubjectNames() throws Exception {
+        when(mPrimaryClientModeManager.getSupportedFeatures()).thenReturn(
+                WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE);
+
+        verifyAddNetwork(WifiConfigurationTestUtil.createOpenNetwork(), true);
+        int eapPeapNetId = verifyAddNetwork(prepareTofuEapConfig(
+                WifiEnterpriseConfig.Eap.PEAP, WifiEnterpriseConfig.Phase2.NONE), true);
+        verifyAddNetwork(WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE), true);
+
+        X509Certificate mockServerCert = mock(X509Certificate.class);
+        Principal mockSubjectDn = mock(Principal.class);
+        when(mockServerCert.getSubjectDN()).thenReturn(mockSubjectDn);
+        when(mockSubjectDn.getName()).thenReturn(
+                "C=TW,ST=Taiwan,L=Taipei,O=Google,CN=mockServerCert");
+        List<List<?>> altNames = new ArrayList<>();
+        // DNS name 1 with type 2
+        altNames.add(Arrays.asList(new Object[]{2, "wifi.android"}));
+        // EMail with type 1
+        altNames.add(Arrays.asList(new Object[]{1, "test@wifi.com"}));
+        // DNS name 2 with type 2
+        altNames.add(Arrays.asList(new Object[]{2, "network.android"}));
+        // RID name 2 with type 8, this one should be ignored.
+        altNames.add(Arrays.asList(new Object[]{8, "1.2.3.4"}));
+        // URI name with type 6
+        altNames.add(Arrays.asList(new Object[]{6, "http://test.android.com"}));
+        when(mockServerCert.getSubjectAlternativeNames()).thenReturn(altNames);
+
+        assertTrue(mWifiConfigManager.updateCaCertificate(eapPeapNetId, FakeKeys.CA_CERT0,
+                mockServerCert));
+        WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(eapPeapNetId);
+        assertFalse(config.enterpriseConfig.isTrustOnFirstUseEnabled());
+        assertFalse(config.enterpriseConfig.isUserApproveNoCaCert());
+        assertEquals("", config.enterpriseConfig.getDomainSuffixMatch());
+        assertEquals("DNS:wifi.android;EMAIL:test@wifi.com;DNS:network.android;"
+                + "URI:http://test.android.com",
+                config.enterpriseConfig.getAltSubjectMatch());
+    }
+
+    @Test
     public void testUpdateCaCertificateFaiulreInvalidArgument() throws Exception {
         when(mPrimaryClientModeManager.getSupportedFeatures()).thenReturn(
                 WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE);
@@ -7442,5 +7508,64 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         when(mockSubjectDn.getName()).thenReturn("");
         assertFalse(mWifiConfigManager.updateCaCertificate(eapPeapNetId, FakeKeys.CA_CERT0,
                 mockServerCert));
+    }
+
+    @Test
+    public void testUpdateCaCertificateSuccessWithSelfSignedCertificate() throws Exception {
+        when(mPrimaryClientModeManager.getSupportedFeatures()).thenReturn(
+                WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE);
+
+        int openNetId = verifyAddNetwork(WifiConfigurationTestUtil.createOpenNetwork(), true);
+        int eapPeapNetId = verifyAddNetwork(prepareTofuEapConfig(
+                WifiEnterpriseConfig.Eap.PEAP, WifiEnterpriseConfig.Phase2.NONE), true);
+        int eapSimNetId = verifyAddNetwork(WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE), true);
+
+        X509Certificate mockCaCert = mock(X509Certificate.class);
+        when(mockCaCert.getBasicConstraints()).thenReturn(-1);
+        assertTrue(mWifiConfigManager.updateCaCertificate(eapPeapNetId, mockCaCert,
+                FakeKeys.CA_CERT1));
+        WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(eapPeapNetId);
+        assertFalse(config.enterpriseConfig.isTrustOnFirstUseEnabled());
+        assertFalse(config.enterpriseConfig.isUserApproveNoCaCert());
+        assertEquals(mockCaCert, config.enterpriseConfig.getCaCertificate());
+    }
+
+    @Test
+    public void testUpdateCaCertificateFailureWithSelfSignedCertificateAndTofuNotEnabled()
+            throws Exception {
+        when(mPrimaryClientModeManager.getSupportedFeatures()).thenReturn(
+                WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE);
+
+        int openNetId = verifyAddNetwork(WifiConfigurationTestUtil.createOpenNetwork(), true);
+        int eapPeapNetId = verifyAddNetwork(WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.PEAP, WifiEnterpriseConfig.Phase2.NONE), true);
+        int eapSimNetId = verifyAddNetwork(WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE), true);
+
+        X509Certificate mockCaCert = mock(X509Certificate.class);
+        when(mockCaCert.getBasicConstraints()).thenReturn(-1);
+        assertFalse(mWifiConfigManager.updateCaCertificate(eapPeapNetId, mockCaCert,
+                FakeKeys.CA_CERT1));
+        WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(eapPeapNetId);
+        assertEquals(null, config.enterpriseConfig.getCaCertificate());
+    }
+
+    @Test
+    public void testUpdateNetworkWithCreatorOverride() {
+        WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
+        int openNetId = verifyAddNetwork(WifiConfigurationTestUtil.createOpenNetwork(), true);
+
+        assertEquals(TEST_CREATOR_UID, mWifiConfigManager
+                .getConfiguredNetwork(openNetId).creatorUid);
+        config.networkId = openNetId;
+        NetworkUpdateResult result = mWifiConfigManager.addOrUpdateNetwork(
+                config, TEST_UPDATE_UID, TEST_UPDATE_NAME, true);
+        assertEquals(openNetId, result.getNetworkId());
+
+        assertEquals(TEST_UPDATE_UID, mWifiConfigManager
+                .getConfiguredNetwork(openNetId).creatorUid);
+        assertEquals(TEST_UPDATE_NAME, mWifiConfigManager
+                .getConfiguredNetwork(openNetId).creatorName);
     }
 }

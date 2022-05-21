@@ -26,6 +26,7 @@ import android.util.Pair;
 
 import com.android.server.wifi.NetworkUpdateResult;
 import com.android.server.wifi.ScanDetail;
+import com.android.server.wifi.WifiCarrierInfoManager;
 import com.android.server.wifi.WifiConfigManager;
 import com.android.server.wifi.hotspot2.anqp.ANQPElement;
 import com.android.server.wifi.hotspot2.anqp.Constants;
@@ -49,6 +50,7 @@ public class PasspointNetworkNominateHelper {
     @NonNull private final WifiConfigManager mWifiConfigManager;
     @NonNull private final List<ScanDetail> mCachedScanDetails = new ArrayList<>();
     @NonNull private final LocalLog mLocalLog;
+    @NonNull private final WifiCarrierInfoManager mCarrierInfoManager;
 
     /**
      * Contained information for a Passpoint network candidate.
@@ -66,10 +68,12 @@ public class PasspointNetworkNominateHelper {
     }
 
     public PasspointNetworkNominateHelper(@NonNull PasspointManager passpointManager,
-            @NonNull WifiConfigManager wifiConfigManager, @NonNull LocalLog localLog) {
+            @NonNull WifiConfigManager wifiConfigManager, @NonNull LocalLog localLog,
+            WifiCarrierInfoManager carrierInfoManager) {
         mPasspointManager = passpointManager;
         mWifiConfigManager = wifiConfigManager;
         mLocalLog = localLog;
+        mCarrierInfoManager = carrierInfoManager;
     }
 
     /**
@@ -259,6 +263,12 @@ public class PasspointNetworkNominateHelper {
                 == NetworkDetail.Ant.ChargeablePublic) {
             config.meteredHint = true;
         }
+        if (mCarrierInfoManager.shouldDisableMacRandomization(config.SSID,
+                config.carrierId, config.subscriptionId)) {
+            mLocalLog.log("Disabling MAC randomization on " + config.SSID
+                    + " due to CarrierConfig override");
+            config.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_NONE;
+        }
         WifiConfiguration existingNetwork = mWifiConfigManager.getConfiguredNetwork(
                 config.getProfileKey());
         if (existingNetwork != null) {
@@ -276,7 +286,7 @@ public class PasspointNetworkNominateHelper {
         // NOTE: if existingNetwork != null, this update is a no-op in most cases if the SSID is the
         // same (since we update the cached config in PasspointManager#addOrUpdateProvider().
         NetworkUpdateResult result = mWifiConfigManager.addOrUpdateNetwork(
-                config, config.creatorUid, config.creatorName);
+                config, config.creatorUid, config.creatorName, false);
 
         if (!result.isSuccess()) {
             mLocalLog.log("Failed to add passpoint network");
