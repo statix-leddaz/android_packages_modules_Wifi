@@ -152,8 +152,8 @@ public class WifiPermissionsUtil {
      * @return true if the app does have the permission, false otherwise.
      */
     public boolean checkConfigOverridePermission(int uid) {
-        int permission = mWifiPermissionsWrapper.getOverrideWifiConfigPermission(uid);
-        return permission == PackageManager.PERMISSION_GRANTED;
+        return mWifiPermissionsWrapper.getOverrideWifiConfigPermission(uid)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
     /**
@@ -423,7 +423,7 @@ public class WifiPermissionsUtil {
      */
     public void enforceFineLocationPermission(String pkgName, @Nullable String featureId,
             int uid) {
-        if (!checkCallersFineLocationPermission(pkgName, featureId, uid, false)) {
+        if (!checkCallersFineLocationPermission(pkgName, featureId, uid, false, false)) {
             throw new SecurityException("UID " + uid + " does not have Fine Location permission");
         }
     }
@@ -438,22 +438,28 @@ public class WifiPermissionsUtil {
      * @param hideFromAppOps True to invoke {@link AppOpsManager#checkOp(int, int, String)}, false
      *                       to invoke {@link AppOpsManager#noteOp(String, int, String, String,
      *                       String)}.
+     * @param ignoreLocationSettings Whether this request can bypass location settings.
      */
     private boolean checkCallersFineLocationPermission(String pkgName, @Nullable String featureId,
-            int uid, boolean hideFromAppOps) {
+            int uid, boolean hideFromAppOps, boolean ignoreLocationSettings) {
         // Having FINE permission implies having COARSE permission (but not the reverse)
         if (mWifiPermissionsWrapper.getUidPermission(
                 ACCESS_FINE_LOCATION, uid)
                 == PackageManager.PERMISSION_DENIED) {
             return false;
         }
+
+        boolean isAllowed;
         if (hideFromAppOps) {
             // Don't note the operation, just check if the app is allowed to perform the operation.
-            return checkAppOpAllowed(AppOpsManager.OPSTR_FINE_LOCATION, pkgName, uid);
+            isAllowed = checkAppOpAllowed(AppOpsManager.OPSTR_FINE_LOCATION, pkgName, uid);
         } else {
-            return noteAppOpAllowed(AppOpsManager.OPSTR_FINE_LOCATION, pkgName, featureId, uid,
+            isAllowed = noteAppOpAllowed(AppOpsManager.OPSTR_FINE_LOCATION, pkgName, featureId, uid,
                     null);
         }
+        // If the ignoreLocationSettings is true, we always return true. This is for the emergency
+        // location service use case. But still notify the operation manager.
+        return isAllowed || ignoreLocationSettings;
     }
 
     /**
@@ -613,8 +619,8 @@ public class WifiPermissionsUtil {
         }
         // LocationAccess by App: caller must have fine & hardware Location permission to have
         // access to location information.
-        if (!checkCallersFineLocationPermission(pkgName, featureId, uid, hideFromAppOps)
-                || !checkCallersHardwareLocationPermission(uid)) {
+        if (!checkCallersFineLocationPermission(pkgName, featureId, uid, hideFromAppOps,
+                ignoreLocationSettings) || !checkCallersHardwareLocationPermission(uid)) {
             throw new SecurityException("UID " + uid + " has no location permission");
         }
         // Check if Wifi Scan request is an operation allowed for this App.
@@ -855,6 +861,15 @@ public class WifiPermissionsUtil {
     public boolean checkReadWifiCredentialPermission(int uid) {
         return mWifiPermissionsWrapper.getUidPermission(
                 android.Manifest.permission.READ_WIFI_CREDENTIAL, uid)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * Returns true if the |uid| holds CAMERA permission.
+     */
+    public boolean checkCameraPermission(int uid) {
+        return mWifiPermissionsWrapper.getUidPermission(
+                android.Manifest.permission.CAMERA, uid)
                 == PackageManager.PERMISSION_GRANTED;
     }
 
@@ -1184,9 +1199,15 @@ public class WifiPermissionsUtil {
                 WifiPermissionsUtil.retrieveDevicePolicyManagerFromContext(mContext);
         if (devicePolicyManager == null) return false;
 
-        int adminMinimumSecurityLevel =
-                devicePolicyManager.getMinimumRequiredWifiSecurityLevel();
-        WifiSsidPolicy policy = devicePolicyManager.getWifiSsidPolicy();
+        int adminMinimumSecurityLevel = 0;
+        WifiSsidPolicy policy;
+        long ident = Binder.clearCallingIdentity();
+        try {
+            adminMinimumSecurityLevel = devicePolicyManager.getMinimumRequiredWifiSecurityLevel();
+            policy = devicePolicyManager.getWifiSsidPolicy();
+        } finally {
+            Binder.restoreCallingIdentity(ident);
+        }
 
         //check minimum security level restriction
         if (adminMinimumSecurityLevel != 0) {
@@ -1233,6 +1254,14 @@ public class WifiPermissionsUtil {
      * Returns the foreground userId
      */
     public int getCurrentUser() {
-        return mWifiPermissionsWrapper.getCurrentUser();
+        //set the default to undefined user id (UserHandle.USER_NULL)
+        int user = -10000;
+        long ident = Binder.clearCallingIdentity();
+        try {
+            user = mWifiPermissionsWrapper.getCurrentUser();
+        } finally {
+            Binder.restoreCallingIdentity(ident);
+        }
+        return user;
     }
 }

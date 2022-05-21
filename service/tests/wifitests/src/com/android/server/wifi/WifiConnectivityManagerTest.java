@@ -2673,6 +2673,35 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
                 VALID_EXTERNAL_SINGLE_SCAN_SCHEDULE_SEC, VALID_EXTERNAL_SINGLE_SCAN_TYPE);
     }
 
+    @Test
+    public void testSetOneShotScreenOnConnectivityScanDelayMillis() {
+        assumeTrue(SdkLevel.isAtLeastT());
+        int scanDelayMs = 12345;
+        mWifiConnectivityManager.setOneShotScreenOnConnectivityScanDelayMillis(scanDelayMs);
+
+        // Toggle screen to ON
+        assertEquals(0, mTestHandler.getIntervals().size());
+        setScreenState(false);
+        setScreenState(true);
+        assertEquals(1, mTestHandler.getIntervals().size());
+        assertTrue("Delay is not in 1ms error margin",
+                Math.abs(scanDelayMs - mTestHandler.getIntervals().get(0).longValue()) < 2);
+
+        // Toggle again and there should be no more delayed scan
+        setScreenState(false);
+        setScreenState(true);
+        assertEquals(1, mTestHandler.getIntervals().size());
+
+        // set the scan delay and verify again
+        scanDelayMs = 23455;
+        mWifiConnectivityManager.setOneShotScreenOnConnectivityScanDelayMillis(scanDelayMs);
+        setScreenState(false);
+        setScreenState(true);
+        assertEquals(2, mTestHandler.getIntervals().size());
+        assertTrue("Delay is not in 1ms error margin",
+                Math.abs(scanDelayMs - mTestHandler.getIntervals().get(1).longValue()) < 2);
+    }
+
     /**
      *  Verify that scan interval for screen on and wifi connected scenario
      *  is in the exponential backoff fashion.
@@ -4513,15 +4542,16 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     @Test
     public void testSetAndClearExternalPnoScanRequest() {
         int testUid = 123;
+        String testPackage = "TestPackage";
         IBinder binder = mock(IBinder.class);
         IPnoScanResultsCallback callback = mock(IPnoScanResultsCallback.class);
         List<WifiSsid> requestedSsids = Arrays.asList(
                 WifiSsid.fromString("\"TEST_SSID_1\""),
                 WifiSsid.fromString("\"TEST_SSID_2\""));
         int[] frequencies = new int[] {TEST_FREQUENCY};
-        mWifiConnectivityManager.setExternalPnoScanRequest(testUid, binder, callback,
+        mWifiConnectivityManager.setExternalPnoScanRequest(testUid, testPackage, binder, callback,
                 requestedSsids, frequencies);
-        verify(mExternalPnoScanRequestManager).setRequest(testUid, binder, callback,
+        verify(mExternalPnoScanRequestManager).setRequest(testUid, testPackage, binder, callback,
                 requestedSsids, frequencies);
         mWifiConnectivityManager.clearExternalPnoScanRequest(testUid);
         verify(mExternalPnoScanRequestManager).removeRequest(testUid);
