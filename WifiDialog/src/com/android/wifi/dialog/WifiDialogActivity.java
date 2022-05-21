@@ -345,11 +345,13 @@ public class WifiDialogActivity extends Activity  {
         }
         mActiveDialogsPerId.put(dialogId, dialog);
         dialog.show();
-        // Allow message URLs to be clickable.
-        ((TextView) dialog.findViewById(android.R.id.message))
-                .setMovementMethod(LinkMovementMethod.getInstance());
         if (mIsVerboseLoggingEnabled) {
             Log.v(TAG, "Showing dialog " + dialogId);
+        }
+        // Allow message URLs to be clickable.
+        TextView messageView = dialog.findViewById(android.R.id.message);
+        if (messageView != null) {
+            messageView.setMovementMethod(LinkMovementMethod.getInstance());
         }
         // Play a notification sound/vibration if the dialog just came in (i.e. not read from the
         // saved instance state after a configuration change), and the overlays specify a
@@ -391,8 +393,11 @@ public class WifiDialogActivity extends Activity  {
         SpannableString spannableMessage = null;
         if (message != null) {
             spannableMessage = new SpannableString(message);
-            spannableMessage.setSpan(new URLSpan(messageUrl), messageUrlStart, messageUrlEnd,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            if (messageUrlStart >= 0 && messageUrlEnd <= message.length()
+                    && messageUrlStart < messageUrlEnd) {
+                spannableMessage.setSpan(new URLSpan(messageUrl), messageUrlStart, messageUrlEnd,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
         }
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(title)
