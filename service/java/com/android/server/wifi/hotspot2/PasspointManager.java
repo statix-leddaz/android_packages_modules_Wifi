@@ -383,8 +383,9 @@ public class PasspointManager {
         sPasspointManager = this;
         mMacAddressUtil = macAddressUtil;
         mClock = clock;
-        mWifiConfigManager.addOnNetworkUpdateListener(
-                new PasspointManager.OnNetworkUpdateListener());
+        mHandler.postAtFrontOfQueue(() ->
+                mWifiConfigManager.addOnNetworkUpdateListener(
+                        new PasspointManager.OnNetworkUpdateListener()));
         mWifiPermissionsUtil = wifiPermissionsUtil;
         mSettingsStore = wifiSettingsStore;
         mEnabled = mSettingsStore.isWifiPasspointEnabled();
@@ -433,7 +434,7 @@ public class PasspointManager {
             return;
         }
         NetworkUpdateResult result = mWifiConfigManager.addOrUpdateNetwork(
-                newConfig, uid, packageName);
+                newConfig, uid, packageName, false);
         if (!result.isSuccess()) {
             Log.e(TAG, "Failed to update config in WifiConfigManager");
         } else {

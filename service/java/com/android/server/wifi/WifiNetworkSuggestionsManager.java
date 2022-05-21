@@ -676,8 +676,8 @@ public class WifiNetworkSuggestionsManager {
 
         mContext.registerReceiver(mBroadcastReceiver, mIntentFilter, null, handler);
         mLruConnectionTracker = lruConnectionTracker;
-        mWifiConfigManager.addOnNetworkUpdateListener(
-                new WifiNetworkSuggestionsManager.OnNetworkUpdateListener());
+        mHandler.postAtFrontOfQueue(() -> mWifiConfigManager.addOnNetworkUpdateListener(
+                new WifiNetworkSuggestionsManager.OnNetworkUpdateListener()));
     }
 
     /**
@@ -858,7 +858,7 @@ public class WifiNetworkSuggestionsManager {
             return;
         }
         NetworkUpdateResult result = mWifiConfigManager.addOrUpdateNetwork(
-                newConfig, uid, packageName);
+                newConfig, uid, packageName, false);
         if (!result.isSuccess()) {
             Log.e(TAG, "Failed to update config in WifiConfigManager");
             return;
@@ -984,7 +984,7 @@ public class WifiNetworkSuggestionsManager {
             }
             // If network has no IMSI protection and user didn't approve exemption, make it initial
             // auto join disabled
-            if (isSimBasedSuggestion(ewns)) {
+            if (isSimBasedPhase1Suggestion(ewns)) {
                 int subId = mWifiCarrierInfoManager
                         .getMatchingSubId(getCarrierIdFromSuggestion(ewns));
                 if (!(mWifiCarrierInfoManager.requiresImsiEncryption(subId)
@@ -1041,10 +1041,11 @@ public class WifiNetworkSuggestionsManager {
         return ewns.wns.passpointConfiguration.getCarrierId();
     }
 
-    private boolean isSimBasedSuggestion(ExtendedWifiNetworkSuggestion ewns) {
+    private boolean isSimBasedPhase1Suggestion(ExtendedWifiNetworkSuggestion ewns) {
         if (ewns.wns.passpointConfiguration == null) {
             return ewns.wns.wifiConfiguration.enterpriseConfig != null
-                    && ewns.wns.wifiConfiguration.enterpriseConfig.isAuthenticationSimBased();
+                    && ewns.wns.wifiConfiguration.enterpriseConfig.isAuthenticationSimBased()
+                    && !ewns.wns.wifiConfiguration.enterpriseConfig.isEapMethodServerCertUsed();
         } else {
             return ewns.wns.passpointConfiguration.getCredential().getSimCredential() != null;
         }
@@ -1475,7 +1476,7 @@ public class WifiNetworkSuggestionsManager {
     private void restoreInitialAutojoinForCarrierId(int carrierId) {
         for (PerAppInfo appInfo : mActiveNetworkSuggestionsPerApp.values()) {
             for (ExtendedWifiNetworkSuggestion ewns : appInfo.extNetworkSuggestions.values()) {
-                if (!(isSimBasedSuggestion(ewns)
+                if (!(isSimBasedPhase1Suggestion(ewns)
                         && getCarrierIdFromSuggestion(ewns) == carrierId)) {
                     continue;
                 }
@@ -1730,7 +1731,7 @@ public class WifiNetworkSuggestionsManager {
                     ewns.wns.wifiConfiguration, ewns.perAppInfo.packageName)) {
                 continue;
             }
-            if (isSimBasedSuggestion(ewns)) {
+            if (isSimBasedPhase1Suggestion(ewns)) {
                 mWifiCarrierInfoManager.sendImsiProtectionExemptionNotificationIfRequired(
                         getCarrierIdFromSuggestion(ewns));
             }
@@ -1780,7 +1781,7 @@ public class WifiNetworkSuggestionsManager {
                     ewns.wns.wifiConfiguration, ewns.perAppInfo.packageName)) {
                 continue;
             }
-            if (isSimBasedSuggestion(ewns)) {
+            if (isSimBasedPhase1Suggestion(ewns)) {
                 mWifiCarrierInfoManager.sendImsiProtectionExemptionNotificationIfRequired(
                         getCarrierIdFromSuggestion(ewns));
             }
