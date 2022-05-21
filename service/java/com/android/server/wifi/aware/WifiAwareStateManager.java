@@ -17,6 +17,7 @@
 package com.android.server.wifi.aware;
 
 import static android.Manifest.permission.ACCESS_WIFI_STATE;
+import static android.net.wifi.WifiAvailableChannel.OP_MODE_WIFI_AWARE;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -28,7 +29,9 @@ import android.hardware.wifi.V1_0.NanStatusType;
 import android.hardware.wifi.V1_0.WifiStatusCode;
 import android.location.LocationManager;
 import android.net.MacAddress;
+import android.net.wifi.WifiAvailableChannel;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiScanner;
 import android.net.wifi.aware.AwareParams;
 import android.net.wifi.aware.AwareResources;
 import android.net.wifi.aware.Characteristics;
@@ -65,10 +68,12 @@ import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
 import com.android.internal.util.WakeupMessage;
 import com.android.modules.utils.BasicShellCommandHandler;
+import com.android.modules.utils.HandlerExecutor;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.Clock;
 import com.android.server.wifi.HalDeviceManager;
 import com.android.server.wifi.InterfaceConflictManager;
+import com.android.server.wifi.WifiInjector;
 import com.android.server.wifi.util.NetdWrapper;
 import com.android.server.wifi.util.WaitingState;
 import com.android.server.wifi.util.WifiPermissionsUtil;
@@ -247,6 +252,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     private InterfaceConflictManager mInterfaceConflictMgr;
     private WifiManager mWifiManager;
     private Handler mHandler;
+    private final WifiInjector mWifiInjector;
 
     private final SparseArray<WifiAwareClientState> mClients = new SparseArray<>();
     private ConfigRequest mCurrentAwareConfiguration = null;
@@ -254,6 +260,10 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     private boolean mCurrentRangingEnabled = false;
     private boolean mInstantCommModeGlobalEnable = false;
     private int mInstantCommModeClientRequest = INSTANT_MODE_DISABLED;
+    private static final int AWARE_BAND_2_INSTANT_COMMUNICATION_CHANNEL_FREQ = 2437; // Channel 6
+    private int mAwareBand5InstantCommunicationChannelFreq = -1; // -1 is not set, 0 is unsupported.
+    private static final int AWARE_BAND_5_INSTANT_COMMUNICATION_CHANNEL_FREQ_CHANNEL_149 = 5745;
+    private static final int AWARE_BAND_5_INSTANT_COMMUNICATION_CHANNEL_FREQ_CHANNEL_44 = 5220;
 
     private static final byte[] ALL_ZERO_MAC = new byte[] {0, 0, 0, 0, 0, 0};
     private byte[] mCurrentDiscoveryInterfaceMac = ALL_ZERO_MAC;
@@ -261,7 +271,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     // condition.
     private boolean mAwareIsDisabling = false;
 
-    public WifiAwareStateManager() {
+    public WifiAwareStateManager(WifiInjector wifiInjector) {
+        mWifiInjector = wifiInjector;
         onReset();
     }
 
@@ -401,6 +412,29 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     return -1;
                 }
             }
+            case "get_instant_communication_channel": {
+                String arg = parentShell.getNextArgRequired();
+                int band;
+                if (TextUtils.equals(arg, "2G")) {
+                    band = WifiScanner.WIFI_BAND_24_GHZ;
+                } else if (TextUtils.equals(arg, "5G")) {
+                    band = WifiScanner.WIFI_BAND_5_GHZ;
+                } else {
+                    pw_err.println("Unknown band -- " + arg);
+                    return -1;
+                }
+                List<WifiAvailableChannel> channels = mWifiInjector.getWifiThreadRunner().call(
+                        () -> mWifiInjector.getWifiNative().getUsableChannels(band,
+                                OP_MODE_WIFI_AWARE,
+                                WifiAvailableChannel.FILTER_NAN_INSTANT_MODE), null);
+                StringBuilder out = new StringBuilder();
+                for (WifiAvailableChannel channel : channels) {
+                    out.append(channel.toString());
+                    out.append(", ");
+                }
+                pw_out.println(out.toString());
+                return 0;
+            }
             default:
                 pw_err.println("Unknown 'wifiaware state_mgr <cmd>'");
         }
@@ -429,6 +463,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         pw.println(
                 "    allow_ndp_any true|false: configure whether Responders can be specified to "
                         + "accept requests from ANY requestor (null peer spec)");
+        pw.println(" get_instant_communication_channel 2G|5G: get instant communication mode "
+                + "channel available for the target band");
     }
 
     /**
@@ -485,7 +521,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     }
                 }
             }
-        }, intentFilter, Context.RECEIVER_NOT_EXPORTED);
+        }, intentFilter);
 
         intentFilter = new IntentFilter();
         intentFilter.addAction(LocationManager.MODE_CHANGED_ACTION);
@@ -503,7 +539,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     }
                 }
             }
-        }, intentFilter, Context.RECEIVER_NOT_EXPORTED);
+        }, intentFilter);
 
         intentFilter = new IntentFilter();
         intentFilter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
@@ -519,7 +555,22 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     disableUsage(false);
                 }
             }
-        }, intentFilter, Context.RECEIVER_NOT_EXPORTED);
+        }, intentFilter);
+    }
+
+    private class CountryCodeChangeCallback implements
+            WifiManager.ActiveCountryCodeChangedCallback {
+
+        @Override
+        public void onActiveCountryCodeChanged(@androidx.annotation.NonNull String countryCode) {
+            mAwareBand5InstantCommunicationChannelFreq = -1;
+            reconfigure();
+        }
+
+        @Override
+        public void onCountryCodeInactive() {
+            // Ignore.
+        }
     }
 
     /**
@@ -1746,6 +1797,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                 }
                 case NOTIFICATION_TYPE_ON_DATA_PATH_END:
                     mDataPathMgr.onDataPathEnd(msg.arg2);
+                    sendAwareResourcesChangedBroadcast();
                     break;
                 case NOTIFICATION_TYPE_ON_DATA_PATH_SCHED_UPDATE:
                     mDataPathMgr.onDataPathSchedUpdate(
@@ -2031,6 +2083,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     waitForResponse = endDataPathLocal(mCurrentTransactionId, msg.arg2);
                     break;
                 case COMMAND_TYPE_DELAYED_INITIALIZATION:
+                    mWifiManager.registerActiveCountryCodeChangedCallback(
+                            new HandlerExecutor(mHandler), new CountryCodeChangeCallback());
                     mWifiAwareNativeManager.start(getHandler());
                     waitForResponse = false;
                     break;
@@ -2432,7 +2486,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             return;
         }
         if (VDBG) {
-            Log.v(TAG, "sendAwareStateChangedBroadcast");
+            Log.v(TAG, "sendAwareResourcesChangedBroadcast");
         }
         final Intent intent = new Intent(WifiAwareManager.ACTION_WIFI_AWARE_RESOURCE_CHANGED);
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
@@ -2515,12 +2569,9 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         int instantMode = getInstantModeFromAllClients();
         boolean enableInstantMode = false;
         int instantModeChannel = 0;
-        if (instantMode == INSTANT_MODE_5GHZ) {
+        if (instantMode != INSTANT_MODE_DISABLED || mInstantCommModeGlobalEnable) {
             enableInstantMode = true;
-            instantModeChannel = 5745; // TODO: get usable channel
-        } else if (instantMode == INSTANT_MODE_24GHZ || mInstantCommModeGlobalEnable) {
-            enableInstantMode = true;
-            instantModeChannel = 2437; // TODO: get usable channel
+            instantModeChannel = getAwareInstantCommunicationChannel(instantMode);
         }
 
         if (mCurrentAwareConfiguration == null) {
@@ -2587,12 +2638,9 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         int instantMode = getInstantModeFromAllClients();
         boolean enableInstantMode = false;
         int instantModeChannel = 0;
-        if (instantMode == INSTANT_MODE_5GHZ) {
+        if (instantMode != INSTANT_MODE_DISABLED || mInstantCommModeGlobalEnable) {
             enableInstantMode = true;
-            instantModeChannel = 5745; // TODO: get usable channel
-        } else if (instantMode == INSTANT_MODE_24GHZ || mInstantCommModeGlobalEnable) {
-            enableInstantMode = true;
-            instantModeChannel = 2437; // TODO: get usable channel
+            instantModeChannel = getAwareInstantCommunicationChannel(instantMode);
         }
         if (merged.equals(mCurrentAwareConfiguration)
                 && mCurrentIdentityNotification == notificationReqs
@@ -2619,12 +2667,9 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         int instantMode = getInstantModeFromAllClients();
         boolean enableInstantMode = false;
         int instantModeChannel = 0;
-        if (instantMode == INSTANT_MODE_5GHZ) {
+        if (instantMode != INSTANT_MODE_DISABLED || mInstantCommModeGlobalEnable) {
             enableInstantMode = true;
-            instantModeChannel = 5745; // TODO: get usable channel
-        } else if (instantMode == INSTANT_MODE_24GHZ || mInstantCommModeGlobalEnable) {
-            enableInstantMode = true;
-            instantModeChannel = 2437; // TODO: get usable channel
+            instantModeChannel = getAwareInstantCommunicationChannel(instantMode);
         }
 
         return mWifiAwareNativeApi.enableAndConfigure(transactionId, mCurrentAwareConfiguration,
@@ -2834,7 +2879,9 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         mInstantCommModeClientRequest = INSTANT_MODE_DISABLED;
         deferDisableAware();
         sendAwareStateChangedBroadcast(markAsAvailable);
-        mAwareMetrics.recordDisableUsage();
+        if (!markAsAvailable) {
+            mAwareMetrics.recordDisableUsage();
+        }
     }
 
     private boolean initiateDataPathSetupLocal(short transactionId,
@@ -2890,7 +2937,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             Log.v(TAG,
                     "endDataPathLocal: transactionId=" + transactionId + ", ndpId=" + ndpId);
         }
-
+        sendAwareResourcesChangedBroadcast();
         return mWifiAwareNativeApi.endDataPath(transactionId, ndpId);
     }
 
@@ -3716,5 +3763,55 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                 disconnect(clientState.getClientId());
             }
         }
+    }
+
+    private int getAwareInstantCommunicationChannel(int instantMode) {
+        if (instantMode != INSTANT_MODE_5GHZ) {
+            return AWARE_BAND_2_INSTANT_COMMUNICATION_CHANNEL_FREQ;
+        }
+        if (mAwareBand5InstantCommunicationChannelFreq == 0) {
+            // If 5G instant communication doesn't have a valid channel, fallback to 2G.
+            return AWARE_BAND_2_INSTANT_COMMUNICATION_CHANNEL_FREQ;
+        }
+        if (mAwareBand5InstantCommunicationChannelFreq > 0) {
+            return mAwareBand5InstantCommunicationChannelFreq;
+        }
+        List<WifiAvailableChannel> channels = mWifiInjector.getWifiThreadRunner().call(
+                () -> mWifiInjector.getWifiNative().getUsableChannels(WifiScanner.WIFI_BAND_5_GHZ,
+                        OP_MODE_WIFI_AWARE, WifiAvailableChannel.FILTER_NAN_INSTANT_MODE), null);
+        if (channels == null || channels.isEmpty()) {
+            if (mDbg) {
+                Log.v(TAG, "No available instant communication mode channel");
+            }
+            mAwareBand5InstantCommunicationChannelFreq = 0;
+        } else {
+            if (channels.size() > 1) {
+                if (mDbg) {
+                    Log.v(TAG, "should have only one 5G instant communication channel,"
+                            + "but size=" + channels.size());
+                }
+            }
+            // TODO(b/232138258): When the filter issue fixed, just check if only return channel is
+            //  correct
+            for (WifiAvailableChannel channel : channels) {
+                int freq = channel.getFrequencyMhz();
+                if (freq == AWARE_BAND_5_INSTANT_COMMUNICATION_CHANNEL_FREQ_CHANNEL_149) {
+                    mAwareBand5InstantCommunicationChannelFreq =
+                            AWARE_BAND_5_INSTANT_COMMUNICATION_CHANNEL_FREQ_CHANNEL_149;
+                    break;
+                } else if (freq == AWARE_BAND_5_INSTANT_COMMUNICATION_CHANNEL_FREQ_CHANNEL_44) {
+                    mAwareBand5InstantCommunicationChannelFreq =
+                            AWARE_BAND_5_INSTANT_COMMUNICATION_CHANNEL_FREQ_CHANNEL_44;
+                }
+            }
+            if (mAwareBand5InstantCommunicationChannelFreq == -1) {
+                Log.e(TAG, "Both channel 149 and 44 are not available when the 5G WI-FI is "
+                        + "supported");
+                mAwareBand5InstantCommunicationChannelFreq = 0;
+            }
+        }
+        return mAwareBand5InstantCommunicationChannelFreq == 0
+                ? AWARE_BAND_2_INSTANT_COMMUNICATION_CHANNEL_FREQ
+                : mAwareBand5InstantCommunicationChannelFreq;
     }
 }

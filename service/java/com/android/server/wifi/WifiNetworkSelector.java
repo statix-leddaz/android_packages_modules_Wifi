@@ -169,12 +169,12 @@ public class WifiNetworkSelector {
          * @param untrustedNetworkAllowed  a flag to indicate if untrusted networks are allowed
          * @param oemPaidNetworkAllowed    a flag to indicate if oem paid networks are allowed
          * @param oemPrivateNetworkAllowed a flag to indicate if oem private networks are allowed
-         * @param restrictedNetworkAllowed a flag to indicate if restrictednetworks are allowed
+         * @param restrictedNetworkAllowedUids a set of Uids are allowed for restricted network
          * @param onConnectableListener    callback to record all of the connectable networks
          */
         void nominateNetworks(List<ScanDetail> scanDetails,
                 boolean untrustedNetworkAllowed, boolean oemPaidNetworkAllowed,
-                boolean oemPrivateNetworkAllowed, boolean restrictedNetworkAllowed,
+                boolean oemPrivateNetworkAllowed, Set<Integer> restrictedNetworkAllowedUids,
                 OnConnectableListener onConnectableListener);
 
         /**
@@ -902,7 +902,7 @@ public class WifiNetworkSelector {
      * @param untrustedNetworkAllowed  True if untrusted networks are allowed for connection
      * @param oemPaidNetworkAllowed    True if oem paid networks are allowed for connection
      * @param oemPrivateNetworkAllowed True if oem private networks are allowed for connection
-     * @param restrictedNetworkAllowed True if restricted networks are allowed for connection
+     * @param restrictedNetworkAllowedUids a set of Uids are allowed for restricted network
      * @param multiInternetNetworkAllowed True if multi internet networks are allowed for
      *                                    connection.
      * @return list of valid Candidate(s)
@@ -911,7 +911,7 @@ public class WifiNetworkSelector {
             @NonNull List<ScanDetail> scanDetails, @NonNull Set<String> bssidBlocklist,
             @NonNull List<ClientModeManagerState> cmmStates, boolean untrustedNetworkAllowed,
             boolean oemPaidNetworkAllowed, boolean oemPrivateNetworkAllowed,
-            boolean restrictedNetworkAllowed, boolean multiInternetNetworkAllowed) {
+            Set<Integer> restrictedNetworkAllowedUids, boolean multiInternetNetworkAllowed) {
         mFilteredNetworks.clear();
         mConnectableNetworks.clear();
         if (scanDetails.size() == 0) {
@@ -926,8 +926,6 @@ public class WifiNetworkSelector {
         for (NetworkNominator registeredNominator : mNominators) {
             registeredNominator.update(scanDetails);
         }
-
-        updateCandidatesSecurityParams(scanDetails);
 
         // Shall we start network selection at all?
         if (!multiInternetNetworkAllowed && !isNetworkSelectionNeeded(scanDetails, cmmStates)) {
@@ -954,7 +952,7 @@ public class WifiNetworkSelector {
                 // will be replaced.
                 MacAddress bssid = MacAddress.fromString(currentBssid);
                 SecurityParams params = currentNetwork.getNetworkSelectionStatus()
-                        .getCandidateSecurityParams();
+                        .getLastUsedSecurityParams();
                 if (null == params) {
                     localLog("No known candidate security params for current network.");
                     continue;
@@ -985,7 +983,7 @@ public class WifiNetworkSelector {
             registeredNominator.nominateNetworks(
                     new ArrayList<>(mFilteredNetworks),
                     untrustedNetworkAllowed, oemPaidNetworkAllowed, oemPrivateNetworkAllowed,
-                    restrictedNetworkAllowed, (scanDetail, config) -> {
+                    restrictedNetworkAllowedUids, (scanDetail, config) -> {
                         WifiCandidates.Key key = wifiCandidates.keyFromScanDetailAndConfig(
                                 scanDetail, config);
                         if (key != null) {
@@ -1019,6 +1017,47 @@ public class WifiNetworkSelector {
         if (mConnectableNetworks.size() != wifiCandidates.size()) {
             localLog("Connectable: " + mConnectableNetworks.size()
                     + " Candidates: " + wifiCandidates.size());
+        }
+        return wifiCandidates.getCandidates();
+    }
+
+    /**
+     * Add all results as candidates for the user selected network and let network selection
+     * chooses the proper one for the user selected network.
+     * @param config                  The configuration for the user selected network.
+     * @param scanDetails              List of ScanDetail for the user selected network.
+     * @return list of valid Candidate(s)
+     */
+    public List<WifiCandidates.Candidate> getCandidatesForUserSelection(
+            WifiConfiguration config, @NonNull List<ScanDetail> scanDetails) {
+        if (scanDetails.size() == 0) {
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "No scan result for the user selected network.");
+                return null;
+            }
+        }
+
+        mConnectableNetworks.clear();
+        WifiCandidates wifiCandidates = new WifiCandidates(mWifiScoreCard, mContext);
+        for (ScanDetail scanDetail: scanDetails) {
+            WifiCandidates.Key key = wifiCandidates.keyFromScanDetailAndConfig(
+                    scanDetail, config);
+            if (null == key) continue;
+
+            boolean added = wifiCandidates.add(key, config,
+                    WifiNetworkSelector.NetworkNominator.NOMINATOR_ID_CURRENT,
+                    scanDetail.getScanResult().level,
+                    scanDetail.getScanResult().frequency,
+                    scanDetail.getScanResult().channelWidth,
+                    0.0 /* lastSelectionWeightBetweenZeroAndOne */,
+                    false /* isMetered */,
+                    WifiNetworkSelector.isFromCarrierOrPrivilegedApp(config),
+                    0 /* predictedThroughputMbps */);
+            if (!added) continue;
+
+            mConnectableNetworks.add(Pair.create(scanDetail, config));
+            mWifiConfigManager.updateScanDetailForNetwork(
+                    config.networkId, scanDetail);
         }
         return wifiCandidates.getCandidates();
     }
@@ -1128,7 +1167,7 @@ public class WifiNetworkSelector {
      * @param network the target network.
      * @param scanDetail the target scan detail.
      */
-    public void updateNetworkCandidateSecurityParams(
+    private void updateNetworkCandidateSecurityParams(
             WifiConfiguration network, ScanDetail scanDetail) {
         if (network == null) return;
         if (scanDetail == null) return;
@@ -1280,7 +1319,8 @@ public class WifiNetworkSelector {
         }
         if (config.isPasspoint()) {
             config.SSID = choice.candidateKey.matchInfo.networkSsid;
-            mWifiConfigManager.addOrUpdateNetwork(config, config.creatorUid, config.creatorName);
+            mWifiConfigManager.addOrUpdateNetwork(config, config.creatorUid, config.creatorName,
+                    false);
         }
     }
 
@@ -1393,7 +1433,13 @@ public class WifiNetworkSelector {
         }
     }
 
-    private static boolean isFromCarrierOrPrivilegedApp(WifiConfiguration config) {
+    /**
+     * Indicate whether or not a configuration is from carrier or privileged app.
+     *
+     * @param config The network configuration
+     * @return true if this configuration is from carrier or privileged app; false otherwise.
+     */
+    public static boolean isFromCarrierOrPrivilegedApp(WifiConfiguration config) {
         if (config.fromWifiNetworkSuggestion
                 && config.carrierId != TelephonyManager.UNKNOWN_CARRIER_ID) {
             // Privileged carrier suggestion
@@ -1447,13 +1493,5 @@ public class WifiNetworkSelector {
         mWifiChannelUtilization = wifiChannelUtilization;
         mWifiGlobals = wifiGlobals;
         mScanRequestProxy = scanRequestProxy;
-    }
-
-    private void updateCandidatesSecurityParams(List<ScanDetail> scanDetails) {
-        for (ScanDetail scanDetail : scanDetails) {
-            WifiConfiguration network =
-                    mWifiConfigManager.getSavedNetworkForScanDetail(scanDetail);
-            updateNetworkCandidateSecurityParams(network, scanDetail);
-        }
     }
 }

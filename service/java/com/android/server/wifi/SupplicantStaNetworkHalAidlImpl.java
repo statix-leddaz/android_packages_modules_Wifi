@@ -18,6 +18,7 @@ package com.android.server.wifi;
 
 import android.content.Context;
 import android.hardware.wifi.supplicant.AuthAlgMask;
+import android.hardware.wifi.supplicant.DppConnectionKeys;
 import android.hardware.wifi.supplicant.EapMethod;
 import android.hardware.wifi.supplicant.EapPhase2Method;
 import android.hardware.wifi.supplicant.GroupCipherMask;
@@ -321,8 +322,10 @@ public class SupplicantStaNetworkHalAidlImpl {
             }
             Log.d(TAG, "The target security params: " + securityParams);
 
+            boolean isRequirePmf = getOptimalPmfSettingForConfig(config,
+                    securityParams.isRequirePmf());
             /** RequirePMF */
-            if (!setRequirePmf(securityParams.isRequirePmf())) {
+            if (!setRequirePmf(isRequirePmf)) {
                 Log.e(TAG, config.SSID + ": failed to set requirePMF: " + config.requirePmf);
                 return false;
             }
@@ -343,6 +346,12 @@ public class SupplicantStaNetworkHalAidlImpl {
                 if (keyMgmtMask.get(WifiConfiguration.KeyMgmt.SUITE_B_192)
                         && !saveSuiteBConfig(config)) {
                     Log.e(TAG, "failed to set Suite-B-192 configuration");
+                    return false;
+                }
+                // Check and set DPP Connection keys
+                if (keyMgmtMask.get(WifiConfiguration.KeyMgmt.DPP)
+                        && !saveDppConnectionConfig(config)) {
+                    Log.e(TAG, "failed to set DPP connection params");
                     return false;
                 }
             }
@@ -600,6 +609,34 @@ public class SupplicantStaNetworkHalAidlImpl {
     }
 
     /**
+     * save network variables from the provided dpp configuration to wpa_supplicant.
+     *
+     * @param config wificonfiguration object to be saved
+     * @return true if succeeds, false otherwise.
+     */
+    private boolean saveDppConnectionConfig(WifiConfiguration config) {
+        synchronized (mLock) {
+            final String methodStr = "setDppKeys";
+            if (!checkStaNetworkAndLogFailure(methodStr)) {
+                return false;
+            }
+            try {
+                DppConnectionKeys keys = new DppConnectionKeys();
+                keys.connector = config.getDppConnector();
+                keys.cSign = config.getDppCSignKey();
+                keys.netAccessKey = config.getDppNetAccessKey();
+                mISupplicantStaNetwork.setDppKeys(keys);
+                return true;
+            } catch (RemoteException e) {
+                handleRemoteException(e, methodStr);
+            } catch (ServiceSpecificException e) {
+                handleServiceSpecificException(e, methodStr);
+            }
+            return false;
+        }
+    }
+
+    /**
      * Save network variables from the provided SuiteB configuration to wpa_supplicant.
      *
      * @param config WifiConfiguration object to be saved
@@ -846,6 +883,9 @@ public class SupplicantStaNetworkHalAidlImpl {
                     break;
                 case WifiConfiguration.KeyMgmt.FILS_SHA384:
                     mask |= KeyMgmtMask.FILS_SHA384;
+                    break;
+                case WifiConfiguration.KeyMgmt.DPP:
+                    mask |= KeyMgmtMask.DPP;
                     break;
                 case WifiConfiguration.KeyMgmt.WPA2_PSK: // This should never happen
                 default:
@@ -3500,6 +3540,29 @@ public class SupplicantStaNetworkHalAidlImpl {
             modifiedFlags.clear(WifiConfiguration.KeyMgmt.WPA_EAP_SHA256);
             return modifiedFlags;
         }
+    }
+
+    /**
+     * Update PMF requirement if auto-upgrade offload is supported.
+     *
+     * If SAE auto-upgrade offload is supported and this config enables
+     * both PSK and SAE, do not set PMF requirement to
+     * mandatory to allow the device to roam between PSK and SAE BSSes.
+     * wpa_supplicant will set PMF requirement to optional by default.
+     */
+    private boolean getOptimalPmfSettingForConfig(WifiConfiguration config,
+            boolean isPmfRequiredFromSelectedSecurityParams) {
+        if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)
+                && config.getSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK).isEnabled()
+                && config.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE)
+                && config.getSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE).isEnabled()
+                && mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()) {
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "Keep optional PMF for SAE auto-upgrade offload.");
+            }
+            return false;
+        }
+        return isPmfRequiredFromSelectedSecurityParams;
     }
 
     /**
