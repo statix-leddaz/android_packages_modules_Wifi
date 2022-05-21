@@ -176,7 +176,7 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
         mWifiConfigManager = mockConfigManager();
 
         mWifiScoreCard = new WifiScoreCard(mClock, "some seed", mDeviceConfigFacade,
-                mFrameworkFacade, mContext);
+                mContext);
         mAlarmManager = new TestAlarmManager();
         when(mContext.getSystemService(Context.ALARM_SERVICE))
                 .thenReturn(mAlarmManager.getAlarmManager());
@@ -238,7 +238,7 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
         mWifiHealthMonitor = new WifiHealthMonitor(mContext, mWifiInjector, mClock,
                 mWifiConfigManager, mWifiScoreCard, new Handler(mLooper.getLooper()), mWifiNative,
                 "some seed", mDeviceConfigFacade, mActiveModeWarden);
-
+        mLooper.dispatchAll();
         ArgumentCaptor<ModeChangeCallback> modeChangeCallbackArgumentCaptor =
                 ArgumentCaptor.forClass(ModeChangeCallback.class);
         verify(mActiveModeWarden).registerModeChangeCallback(

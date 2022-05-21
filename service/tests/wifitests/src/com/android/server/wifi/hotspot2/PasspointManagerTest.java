@@ -304,6 +304,7 @@ public class PasspointManagerTest extends WifiBaseTest {
         // SIM is absent
         when(mSubscriptionManager.getActiveSubscriptionInfoList())
                 .thenReturn(Collections.emptyList());
+        mLooper.dispatchAll();
         verify(mWifiConfigManager).addOnNetworkUpdateListener(mNetworkListenerCaptor.capture());
     }
 
@@ -891,7 +892,7 @@ public class PasspointManagerTest extends WifiBaseTest {
         when(mWifiConfigManager.getConfiguredNetwork(origWifiConfig.getProfileKey()))
                 .thenReturn(origWifiConfig);
         when(mWifiConfigManager.addOrUpdateNetwork(
-                origWifiConfig, TEST_CREATOR_UID, TEST_PACKAGE))
+                origWifiConfig, TEST_CREATOR_UID, TEST_PACKAGE, false))
                 .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(origProvider.getAnonymousIdentity()).thenReturn(TEST_ANONYMOUS_IDENTITY);
         when(origProvider.getConnectChoice()).thenReturn(USER_CONNECT_CHOICE);
@@ -901,7 +902,8 @@ public class PasspointManagerTest extends WifiBaseTest {
         verify(mWifiConfigManager, never()).removePasspointConfiguredNetwork(
                 origWifiConfig.getProfileKey());
         verify(mWifiConfigManager).addOrUpdateNetwork(
-                argThat((c) -> c.FQDN.equals(TEST_FQDN)), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE));
+                argThat((c) -> c.FQDN.equals(TEST_FQDN)), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
+                eq(false));
         verify(mWifiConfigManager).allowAutojoin(TEST_NETWORK_ID, origWifiConfig.allowAutojoin);
         verify(mWifiConfigManager).saveToStore(true);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
@@ -2138,14 +2140,15 @@ public class PasspointManagerTest extends WifiBaseTest {
         when(mWifiConfigManager.getConfiguredNetwork(origWifiConfig.getProfileKey()))
                 .thenReturn(origWifiConfig);
         when(mWifiConfigManager.addOrUpdateNetwork(
-                origWifiConfig, TEST_CREATOR_UID, TEST_PACKAGE))
+                origWifiConfig, TEST_CREATOR_UID, TEST_PACKAGE, false))
                 .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         assertTrue(mManager.addOrUpdateProvider(origConfig, TEST_CREATOR_UID, TEST_PACKAGE,
                 true, true));
         verify(mWifiConfigManager, never()).removePasspointConfiguredNetwork(
                 origWifiConfig.getProfileKey());
         verify(mWifiConfigManager).addOrUpdateNetwork(
-                argThat((c) -> c.FQDN.equals(TEST_FQDN)), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE));
+                argThat((c) -> c.FQDN.equals(TEST_FQDN)), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
+                eq(false));
         verify(mWifiConfigManager).allowAutojoin(TEST_NETWORK_ID, origWifiConfig.allowAutojoin);
         verify(mWifiConfigManager).saveToStore(true);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
