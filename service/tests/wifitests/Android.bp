@@ -72,7 +72,7 @@ android_test {
     compile_multilib: "both",
 
     min_sdk_version: "30",
-    target_sdk_version: "30",
+    target_sdk_version: "33",
     privileged: true,
     test_suites: [
         "general-tests",
@@ -1056,9 +1056,6 @@ android_test {
             "com.android.server.wifi.util.WaitingState",
             "com.android.server.wifi.util.WaitingState$*",
             "com.android.server.wifi.util.WaitingState.**",
-            "com.android.server.wifi.util.WifiAsyncChannel",
-            "com.android.server.wifi.util.WifiAsyncChannel$*",
-            "com.android.server.wifi.util.WifiAsyncChannel.**",
             "com.android.server.wifi.util.WifiConfigStoreEncryptionUtil",
             "com.android.server.wifi.util.WifiConfigStoreEncryptionUtil$*",
             "com.android.server.wifi.util.WifiConfigStoreEncryptionUtil.**",
