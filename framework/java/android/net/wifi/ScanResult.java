@@ -62,8 +62,8 @@ public final class ScanResult implements Parcelable {
      * @deprecated Use {@link #getWifiSsid()} instead.
      */
     @Deprecated
-    @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.S,
-            publicAlternatives = "{@link #getWifiSsid()}")
+    // TODO(b/231433398): add maxTargetSdk = Build.VERSION_CODES.S
+    @UnsupportedAppUsage(publicAlternatives = "{@link #getWifiSsid()}")
     public WifiSsid wifiSsid;
 
     /**
@@ -416,9 +416,10 @@ public final class ScanResult implements Parcelable {
      * an absolute signal level which can be displayed to a user.
      */
     public int level;
+
     /**
-     * The primary 20 MHz frequency (in MHz) of the channel over which the client is communicating
-     * with the access point.
+     * The center frequency of the primary 20 MHz frequency (in MHz) of the channel over which the
+     * client is communicating with the access point.
      */
     public int frequency;
 

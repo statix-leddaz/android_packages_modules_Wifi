@@ -1012,7 +1012,7 @@ public class WifiNetworkFactory extends NetworkFactory {
         NetworkUpdateResult networkUpdateResult =
                 mWifiConfigManager.addOrUpdateNetwork(
                         network, mActiveSpecificNetworkRequest.getRequestorUid(),
-                        mActiveSpecificNetworkRequest.getRequestorPackageName());
+                        mActiveSpecificNetworkRequest.getRequestorPackageName(), false);
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "Added network to config manager " + networkUpdateResult.getNetworkId());
         }
@@ -1073,7 +1073,8 @@ public class WifiNetworkFactory extends NetworkFactory {
                 mClientModeManager,
                 new NetworkUpdateResult(networkId),
                 new ActionListenerWrapper(listener),
-                mActiveSpecificNetworkRequest.getRequestorUid());
+                mActiveSpecificNetworkRequest.getRequestorUid(),
+                mActiveSpecificNetworkRequest.getRequestorPackageName());
 
         // Post an alarm to handle connection timeout.
         scheduleConnectionTimeout();
@@ -1115,11 +1116,8 @@ public class WifiNetworkFactory extends NetworkFactory {
         }
         WorkSource ws = new WorkSource(mActiveSpecificNetworkRequest.getRequestorUid(),
                 mActiveSpecificNetworkRequest.getRequestorPackageName());
-        if (didUserSeeUi) {
-            ws.add(mFacade.getSettingsWorkSource(mContext));
-        }
         mActiveModeWarden.requestLocalOnlyClientModeManager(new ClientModeManagerRequestListener(),
-                ws, networkToConnect.SSID, networkToConnect.BSSID);
+                ws, networkToConnect.SSID, networkToConnect.BSSID, didUserSeeUi);
     }
 
     private void handleConnectToNetworkUserSelection(WifiConfiguration network,
@@ -1428,14 +1426,17 @@ public class WifiNetworkFactory extends NetworkFactory {
                     + "retrieval..");
             return;
         }
-
+        // TODO(230795804): remove the car mode check when we can smooth switch the ownership of the
+        //  network and attribute to the right App with correct package name.
         if (SdkLevel.isAtLeastS() && ActiveModeWarden
                 .isClientModeManagerConnectedOrConnectingToBssid(mClientModeManager,
                 mUserSelectedNetwork.SSID, mUserSelectedNetwork.BSSID)
                 && mConnectedSpecificNetworkRequest != null
                 && !WifiConfigurationUtil.hasCredentialChanged(
                         mConnectedSpecificNetworkRequestSpecifier.wifiConfiguration,
-                mActiveSpecificNetworkRequestSpecifier.wifiConfiguration)) {
+                mActiveSpecificNetworkRequestSpecifier.wifiConfiguration)
+                && !mWifiPermissionsUtil.checkEnterCarModePrioritized(
+                        mActiveSpecificNetworkRequest.getRequestorUid())) {
             // Already connected to the same network.
             setupForConnectedRequest(false);
             return;

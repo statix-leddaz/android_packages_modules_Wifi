@@ -73,6 +73,8 @@ interface IWifiManager
 
     void setScreenOnScanSchedule(in int[] scanScheduleSeconds, in int[] scanType);
 
+    void setOneShotScreenOnConnectivityScanDelayMillis(int delayMs);
+
     ParceledListSlice getConfiguredNetworks(String packageName, String featureId, boolean callerNetworksOnly);
 
     ParceledListSlice getPrivilegedConfiguredNetworks(String packageName, String featureId, in Bundle extras);
@@ -302,9 +304,9 @@ interface IWifiManager
 
     void updateWifiUsabilityScore(int seqNum, int score, int predictionHorizonSec);
 
-    oneway void connect(in WifiConfiguration config, int netId, in IActionListener listener);
+    oneway void connect(in WifiConfiguration config, int netId, in IActionListener listener, in String packageName);
 
-    oneway void save(in WifiConfiguration config, in IActionListener listener);
+    oneway void save(in WifiConfiguration config, in IActionListener listener, in String packageName);
 
     oneway void forget(int netId, in IActionListener listener);
 

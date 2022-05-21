@@ -22,6 +22,8 @@ import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_LONG_LIVED;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_TRANSIENT;
 import static com.android.server.wifi.ClientModeImpl.WIFI_WORK_SOURCE;
+import static com.android.server.wifi.WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE;
+import static com.android.server.wifi.proto.nano.WifiMetricsProto.ConnectionEvent.AUTH_FAILURE_EAP_FAILURE;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -52,6 +54,7 @@ import android.os.Process;
 import android.os.WorkSource;
 import android.text.TextUtils;
 import android.util.ArrayMap;
+import android.util.ArraySet;
 import android.util.LocalLog;
 import android.util.Log;
 
@@ -183,7 +186,7 @@ public class WifiConnectivityManager {
     private int mInitialScanState = INITIAL_SCAN_STATE_COMPLETE;
     private boolean mAutoJoinEnabledExternal = true; // enabled by default
     private boolean mUntrustedConnectionAllowed = false;
-    private boolean mRestrictedConnectionAllowed = false;
+    private Set<Integer> mRestrictedConnectionAllowedUids = new ArraySet<>();
     private boolean mOemPaidConnectionAllowed = false;
     private boolean mOemPrivateConnectionAllowed = false;
     @MultiInternetManager.MultiInternetState
@@ -203,6 +206,7 @@ public class WifiConnectivityManager {
     private boolean mDelayedPnoScanPending = false;
     private boolean mPeriodicScanTimerSet = false;
     private Object mPeriodicScanTimerToken = new Object();
+    private Object mDelayedStartPeriodicScanToken = new Object();
     private boolean mDelayedPartialScanTimerSet = false;
     private boolean mWatchdogScanTimerSet = false;
     private boolean mIsLocationModeEnabled;
@@ -217,6 +221,8 @@ public class WifiConnectivityManager {
     // scan schedule and scan type override set via WifiManager#setScreenOnScanSchedule
     private int[] mExternalSingleScanScheduleSec;
     private int[] mExternalSingleScanType;
+
+    private int mNextScreenOnConnectivityScanDelayMs = 0;
 
     // Scanning Schedules for screen-on periodic scan
     // Default schedule used in case of invalid configuration
@@ -518,7 +524,7 @@ public class WifiConnectivityManager {
             if (oemPaidOrOemPrivateRequestorWs != null
                     && mActiveModeWarden.canRequestMoreClientModeManagersInRole(
                             oemPaidOrOemPrivateRequestorWs,
-                            ROLE_CLIENT_SECONDARY_LONG_LIVED)) {
+                            ROLE_CLIENT_SECONDARY_LONG_LIVED, false)) {
                 // Add a placeholder CMM state to ensure network selection is performed for a
                 // potential second STA creation.
                 cmmStates.add(new WifiNetworkSelector.ClientModeManagerState());
@@ -530,7 +536,7 @@ public class WifiConnectivityManager {
             if (mMultiInternetConnectionRequestorWs == null) {
                 Log.e(TAG, "mMultiInternetConnectionRequestorWs is null!");
             } else if (mActiveModeWarden.canRequestMoreClientModeManagersInRole(
-                        mMultiInternetConnectionRequestorWs, ROLE_CLIENT_SECONDARY_LONG_LIVED)) {
+                    mMultiInternetConnectionRequestorWs, ROLE_CLIENT_SECONDARY_LONG_LIVED, false)) {
                 cmmStates.add(new WifiNetworkSelector.ClientModeManagerState());
             }
         }
@@ -556,7 +562,7 @@ public class WifiConnectivityManager {
         List<WifiCandidates.Candidate> candidates = mNetworkSelector.getCandidatesFromScan(
                 scanDetails, bssidBlocklist, cmmStates, mUntrustedConnectionAllowed,
                 mOemPaidConnectionAllowed, mOemPrivateConnectionAllowed,
-                mRestrictedConnectionAllowed, isMultiInternetConnectionRequested());
+                mRestrictedConnectionAllowedUids, isMultiInternetConnectionRequested());
         mLatestCandidates = candidates;
         mLatestCandidatesTimestampMs = mClock.getElapsedSinceBootMillis();
 
@@ -1264,11 +1270,12 @@ public class WifiConnectivityManager {
                             handleScreenStateChanged(false);
                         }
                     }
-                }, filter, null, mEventHandler, Context.RECEIVER_NOT_EXPORTED);
+                }, filter, null, mEventHandler);
         handleScreenStateChanged(mPowerManager.isInteractive());
 
         // Listen to WifiConfigManager network update events
-        mConfigManager.addOnNetworkUpdateListener(new OnNetworkUpdateListener());
+        mEventHandler.postAtFrontOfQueue(() ->
+                mConfigManager.addOnNetworkUpdateListener(new OnNetworkUpdateListener()));
         // Listen to WifiNetworkSuggestionsManager suggestion update events
         mWifiNetworkSuggestionsManager.addOnSuggestionUpdateListener(
                 new OnSuggestionUpdateListener());
@@ -2086,6 +2093,13 @@ public class WifiConnectivityManager {
     }
 
     /**
+     * Sets the next screen-on connectivity scan delay in milliseconds.
+     */
+    public void setOneShotScreenOnConnectivityScanDelayMillis(int delayMs) {
+        mNextScreenOnConnectivityScanDelayMs = delayMs;
+    }
+
+    /**
      * Pass device mobility state to WifiChannelUtilization and
      * alter the PNO scan interval based on the current device mobility state.
      * If the device is stationary, it will likely not find many new Wifi networks. Thus, increase
@@ -2183,10 +2197,11 @@ public class WifiConnectivityManager {
     /**
      * Sets a external PNO scan request
      */
-    public void setExternalPnoScanRequest(int uid, @NonNull IBinder binder,
-            @NonNull IPnoScanResultsCallback callback, @NonNull List<WifiSsid> ssids,
-            @NonNull int[] frequencies) {
-        if (mExternalPnoScanRequestManager.setRequest(uid, binder, callback, ssids, frequencies)) {
+    public void setExternalPnoScanRequest(int uid, @NonNull String packageName,
+            @NonNull IBinder binder, @NonNull IPnoScanResultsCallback callback,
+            @NonNull List<WifiSsid> ssids, @NonNull int[] frequencies) {
+        if (mExternalPnoScanRequestManager.setRequest(
+                uid, packageName, binder, callback, ssids, frequencies)) {
             if (mPnoScanStarted) {
                 Log.d(TAG, "Restarting PNO Scan with external requested SSIDs");
                 stopPnoScan();
@@ -2426,6 +2441,16 @@ public class WifiConnectivityManager {
             // cancel any queued PNO scans since the screen is turned on.
             mDelayedPnoScanPending = false;
             mEventHandler.removeCallbacksAndMessages(mDelayedPnoScanToken);
+
+            if (mNextScreenOnConnectivityScanDelayMs > 0) {
+                mEventHandler.postDelayed(() -> {
+                    startConnectivityScan(SCAN_ON_SCHEDULE);
+                }, mDelayedStartPeriodicScanToken, mNextScreenOnConnectivityScanDelayMs);
+                mNextScreenOnConnectivityScanDelayMs = 0;
+                return;
+            }
+        } else {
+            mEventHandler.removeCallbacksAndMessages(mDelayedStartPeriodicScanToken);
         }
         startConnectivityScan(SCAN_ON_SCHEDULE);
     }
@@ -2663,11 +2688,13 @@ public class WifiConnectivityManager {
      * Handler when a WiFi connection attempt ended.
      *
      * @param failureCode {@link WifiMetrics.ConnectionEvent} failure code.
+     * @param failureReason {@link WifiMetricsProto.ConnectionEvent} Level2FailureReason
      * @param bssid the failed network.
      * @param config identifies the failed network.
      */
     public void handleConnectionAttemptEnded(@NonNull ClientModeManager clientModeManager,
-            int failureCode, @NonNull String bssid, @NonNull WifiConfiguration config) {
+            int failureCode, int failureReason, @NonNull String bssid,
+            @NonNull WifiConfiguration config) {
         List<ClientModeManager> internetConnectivityCmms =
                 mActiveModeWarden.getInternetConnectivityClientModeManagers();
         if (!internetConnectivityCmms.contains(clientModeManager)) {
@@ -2684,13 +2711,15 @@ public class WifiConnectivityManager {
             // Only attempt to reconnect when connection on the primary CMM fails, since MBB
             // CMM will be destroyed after the connection failure.
             if (clientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
-                retryConnectionOnLatestCandidates(clientModeManager, bssid, config);
+                retryConnectionOnLatestCandidates(clientModeManager, bssid, config,
+                        failureCode == FAILURE_AUTHENTICATION_FAILURE
+                                && failureReason == AUTH_FAILURE_EAP_FAILURE);
             }
         }
     }
 
     private void retryConnectionOnLatestCandidates(@NonNull ClientModeManager clientModeManager,
-            String bssid, @NonNull WifiConfiguration configuration) {
+            String bssid, @NonNull WifiConfiguration configuration, boolean ignoreSameNetwork) {
         try {
             if (mLatestCandidates == null || mLatestCandidates.size() == 0
                     || mClock.getElapsedSinceBootMillis() - mLatestCandidatesTimestampMs
@@ -2699,9 +2728,16 @@ public class WifiConnectivityManager {
                 return;
             }
             MacAddress macAddress = MacAddress.fromString(bssid);
+            ScanResultMatchInfo scanResultMatchInfo =
+                    ScanResultMatchInfo.fromWifiConfiguration(configuration);
             int prevNumCandidates = mLatestCandidates.size();
             mLatestCandidates = mLatestCandidates.stream()
                     .filter(candidate -> {
+                        // filter out the same network if needed
+                        if (ignoreSameNetwork && scanResultMatchInfo.matchForNetworkSelection(
+                                candidate.getKey().matchInfo) != null) {
+                            return false;
+                        }
                         // filter out the candidate with the BSSID that just failed
                         if (macAddress.equals(candidate.getKey().bssid)) {
                             return false;
@@ -2754,7 +2790,7 @@ public class WifiConnectivityManager {
         setAutoJoinEnabled(mAutoJoinEnabledExternal
                 && (mUntrustedConnectionAllowed || mOemPaidConnectionAllowed
                 || mOemPrivateConnectionAllowed || mTrustedConnectionAllowed
-                || mRestrictedConnectionAllowed || hasMultiInternetConnection())
+                || mRestrictedConnectionAllowedUids.size() != 0 || hasMultiInternetConnection())
                 && !mSpecificNetworkRequestInProgress);
         startConnectivityScan(SCAN_IMMEDIATELY);
     }
@@ -2784,13 +2820,29 @@ public class WifiConnectivityManager {
     }
 
     /**
-     * Triggered when {@link RestrictedWifiNetworkFactory} has a pending ephemeral network request.
+     * Triggered when {@link RestrictedWifiNetworkFactory} has a new pending restricted network
+     * request.
+     * @param uid the uid of the latest requestor
      */
-    public void setRestrictionConnectionAllowed(boolean allowed) {
-        localLog("setRestrictionConnectionAllowed: allowed=" + allowed);
+    public void addRestrictionConnectionAllowedUid(int uid) {
+        localLog("addRestrictionConnectionAllowedUid: allowedUid=" + uid);
 
-        if (mRestrictedConnectionAllowed != allowed) {
-            mRestrictedConnectionAllowed = allowed;
+        int size = mRestrictedConnectionAllowedUids.size();
+        mRestrictedConnectionAllowedUids.add(uid);
+        if (size == 0) {
+            checkAllStatesAndEnableAutoJoin();
+        }
+    }
+
+    /**
+     * Triggered when {@link RestrictedWifiNetworkFactory} release a restricted network request.
+     * @param uid the uid of the latest released requestor
+     */
+    public void removeRestrictionConnectionAllowedUid(int uid) {
+        localLog("removeRestrictionConnectionAllowedUid: allowedUid=" + uid);
+
+        mRestrictedConnectionAllowedUids.remove(uid);
+        if (mRestrictedConnectionAllowedUids.size() == 0) {
             checkAllStatesAndEnableAutoJoin();
         }
     }

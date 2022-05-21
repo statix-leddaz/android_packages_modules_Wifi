@@ -372,25 +372,6 @@ public class WifiVendorHal {
     }
 
     /**
-     * Bring up the HIDL Vendor HAL and configure for AP (Access Point) mode
-     *
-     * @return true for success
-     */
-    public boolean startVendorHalAp() {
-        synchronized (sLock) {
-            if (!startVendorHal()) {
-                return false;
-            }
-            if (TextUtils.isEmpty(createApIface(null, null,
-                    SoftApConfiguration.BAND_2GHZ, false))) {
-                stopVendorHal();
-                return false;
-            }
-            return true;
-        }
-    }
-
-    /**
      * Bring up the HIDL Vendor HAL and configure for STA (Station) mode
      *
      * @return true for success
@@ -564,17 +545,19 @@ public class WifiVendorHal {
      * @param requestorWs Requestor worksource.
      * @param band The requesting band for this AP interface.
      * @param isBridged Whether or not AP interface is a bridge interface.
+     * @param softApManager SoftApManager of the request.
      * @return iface name on success, null otherwise.
      */
     public String createApIface(@Nullable InterfaceDestroyedListener destroyedListener,
             @NonNull WorkSource requestorWs,
             @SoftApConfiguration.BandType int band,
-            boolean isBridged) {
+            boolean isBridged,
+            @NonNull SoftApManager softApManager) {
         synchronized (sLock) {
             IWifiApIface iface = mHalDeviceManager.createApIface(
                     getNecessaryCapabilitiesForSoftApMode(band),
                     new ApInterfaceDestroyedListenerInternal(destroyedListener), mHalEventHandler,
-                    requestorWs, isBridged);
+                    requestorWs, isBridged, softApManager);
             if (iface == null) {
                 mLog.err("Failed to create AP iface").flush();
                 return nullResult();
@@ -3131,7 +3114,7 @@ public class WifiVendorHal {
         return android.hardware.wifi.V1_5.IWifiStaIface.castFrom(iface);
     }
 
-   /**
+    /**
      * Method to mock out the V1_6 IWifiStaIface retrieval in unit tests.
      *
      * @param ifaceName Name of the interface
@@ -3407,11 +3390,33 @@ public class WifiVendorHal {
     }
 
     /**
+     * Returns whether the given HdmIfaceTypeForCreation combo is supported or not.
+     */
+    public boolean canDeviceSupportCreateTypeCombo(SparseArray<Integer> combo) {
+        synchronized (sLock) {
+            return mHalDeviceManager.canDeviceSupportCreateTypeCombo(combo);
+        }
+    }
+
+    /**
+     * Returns whether a new iface can be created without tearing down any existing ifaces.
+     */
+    public boolean canDeviceSupportAdditionalIface(
+            @HalDeviceManager.HdmIfaceTypeForCreation int createIfaceType,
+            @NonNull WorkSource requestorWs) {
+        synchronized (sLock) {
+            List<Pair<Integer, WorkSource>> creationImpact =
+                    mHalDeviceManager.reportImpactToCreateIface(createIfaceType, true, requestorWs);
+            return creationImpact != null && creationImpact.isEmpty();
+        }
+    }
+
+    /**
      * Returns whether STA + AP concurrency is supported or not.
      */
     public boolean isStaApConcurrencySupported() {
         synchronized (sLock) {
-            return mHalDeviceManager.canSupportCreateTypeCombo(new SparseArray<Integer>() {{
+            return mHalDeviceManager.canDeviceSupportCreateTypeCombo(new SparseArray<Integer>() {{
                     put(HDM_CREATE_IFACE_STA, 1);
                     put(HDM_CREATE_IFACE_AP, 1);
                 }});
@@ -3423,7 +3428,7 @@ public class WifiVendorHal {
      */
     public boolean isStaStaConcurrencySupported() {
         synchronized (sLock) {
-            return mHalDeviceManager.canSupportCreateTypeCombo(new SparseArray<Integer>() {{
+            return mHalDeviceManager.canDeviceSupportCreateTypeCombo(new SparseArray<Integer>() {{
                     put(HDM_CREATE_IFACE_STA, 2);
                 }});
         }

@@ -288,7 +288,8 @@ public class SoftApManagerTest extends WifiBaseTest {
         when(mWifiNative.setApMacAddress(any(), any())).thenReturn(true);
         when(mWifiNative.startSoftAp(eq(TEST_INTERFACE_NAME), any(), anyBoolean(),
                 any(WifiNative.SoftApHalCallback.class))).thenReturn(true);
-        when(mWifiNative.setupInterfaceForSoftApMode(any(), any(), anyInt(), anyBoolean()))
+        when(mWifiNative.setupInterfaceForSoftApMode(any(), any(), anyInt(), anyBoolean(),
+                any()))
                 .thenReturn(TEST_INTERFACE_NAME);
         when(mFrameworkFacade.getIntegerSetting(
                 mContext, Settings.Global.SOFT_AP_TIMEOUT_ENABLED, 1)).thenReturn(1);
@@ -485,7 +486,7 @@ public class SoftApManagerTest extends WifiBaseTest {
     public void testSetupForSoftApModeNullApInterfaceNameFailureIncrementsMetrics()
             throws Exception {
         when(mWifiNative.setupInterfaceForSoftApMode(
-                    any(), any(), anyInt(), anyBoolean())).thenReturn(null);
+                    any(), any(), anyInt(), anyBoolean(), any())).thenReturn(null);
         when(mWifiApConfigStore.getApConfiguration()).thenReturn(null);
         SoftApModeConfiguration nullApConfig =
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
@@ -514,7 +515,7 @@ public class SoftApManagerTest extends WifiBaseTest {
     public void testSetupForSoftApModeEmptyInterfaceNameFailureIncrementsMetrics()
             throws Exception {
         when(mWifiNative.setupInterfaceForSoftApMode(
-                    any(), any(), anyInt(), anyBoolean())).thenReturn("");
+                    any(), any(), anyInt(), anyBoolean(), any())).thenReturn("");
         SoftApModeConfiguration nullApConfig =
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
                 mTestSoftApCapability);
@@ -2100,7 +2101,8 @@ public class SoftApManagerTest extends WifiBaseTest {
         verify(mFakeSoftApNotifier).dismissSoftApShutdownTimeoutExpiredNotification();
         order.verify(mWifiNative).setupInterfaceForSoftApMode(
                 mWifiNativeInterfaceCallbackCaptor.capture(), eq(TEST_WORKSOURCE),
-                eq(expectedConfig.getBand()), eq(expectedConfig.getBands().length > 1));
+                eq(expectedConfig.getBand()), eq(expectedConfig.getBands().length > 1),
+                eq(mSoftApManager));
         ArgumentCaptor<SoftApConfiguration> configCaptor =
                 ArgumentCaptor.forClass(SoftApConfiguration.class);
         order.verify(mCallback).onStateChanged(WifiManager.WIFI_AP_STATE_ENABLING, 0);
@@ -2609,7 +2611,7 @@ public class SoftApManagerTest extends WifiBaseTest {
         mSoftApManager = createSoftApManager(dualBandConfig,
                 TEST_COUNTRY_CODE, ROLE_SOFTAP_TETHERED);
         verify(mWifiNative).setupInterfaceForSoftApMode(
-                any(), any(), eq(SoftApConfiguration.BAND_2GHZ), eq(true));
+                any(), any(), eq(SoftApConfiguration.BAND_2GHZ), eq(true), eq(mSoftApManager));
     }
 
     @Test
@@ -3129,6 +3131,29 @@ public class SoftApManagerTest extends WifiBaseTest {
     }
 
     @Test
+    public void testBridgedModeDowngradeIfaceInstanceForRemoval() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
+        SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
+                WifiManager.IFACE_IP_MODE_TETHERED, generateBridgedModeSoftApConfig(null),
+                mTestSoftApCapability);
+        startSoftApAndVerifyEnabled(apConfig);
+
+        // SoftApInfo updated
+        mockSoftApInfoUpdateAndVerifyAfterSapStarted(true /* bridged mode*/, true);
+
+        // Instance for removal should always be 5GHz (i.e. the second instance).
+        assertThat(mSoftApManager.getBridgedApDowngradeIfaceInstanceForRemoval())
+                .isEqualTo(mTestSoftApInfoOnSecondInstance.getApInstanceIdentifier());
+
+        // Trigger onInstanceFailure to simulate instance removal
+        mSoftApHalCallbackCaptor.getValue().onInstanceFailure(TEST_SECOND_INSTANCE_NAME);
+        mLooper.dispatchAll();
+
+        // Bridged AP with a single instance should not be downgraded, so return null.
+        assertThat(mSoftApManager.getBridgedApDowngradeIfaceInstanceForRemoval()).isNull();
+    }
+
+    @Test
     public void testUpdateCountryCodeWhenConfigDisabled() throws Exception {
         when(mResources.getBoolean(R.bool.config_wifiSoftApDynamicCountryCodeUpdateSupported))
                 .thenReturn(false);
@@ -3189,7 +3214,7 @@ public class SoftApManagerTest extends WifiBaseTest {
     }
 
     @Test
-    public void testFallbackToSingleModeDueToCurrentConcurrencyCombo()
+    public void testFallbackToSingleModeDueToUnableToCreateBridgedAp()
             throws Exception {
         assumeTrue(SdkLevel.isAtLeastS());
         Builder configBuilder = new SoftApConfiguration.Builder(
@@ -3201,7 +3226,27 @@ public class SoftApManagerTest extends WifiBaseTest {
         // Reset band to 2.4G | 5G to generate expected configuration since it should fallback to
         // single AP mode
         configBuilder.setBand(SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ);
+        when(mWifiNative.isHalStarted()).thenReturn(true);
         when(mWifiNative.isItPossibleToCreateBridgedApIface(any())).thenReturn(false);
+        startSoftApAndVerifyEnabled(apConfig, TEST_COUNTRY_CODE, configBuilder.build());
+    }
+
+    @Test
+    public void testFallbackToSingleModeIfBridgedApWillTearDownExistingIface()
+            throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
+        Builder configBuilder = new SoftApConfiguration.Builder(
+                generateBridgedModeSoftApConfig(null));
+
+        SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
+                WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
+                mTestSoftApCapability);
+        // Reset band to 2.4G | 5G to generate expected configuration since it should fallback to
+        // single AP mode
+        configBuilder.setBand(SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ);
+        when(mWifiNative.isHalStarted()).thenReturn(true);
+        when(mWifiNative.isItPossibleToCreateBridgedApIface(any())).thenReturn(true);
+        when(mWifiNative.shouldDowngradeToSingleApForConcurrency(any())).thenReturn(true);
         startSoftApAndVerifyEnabled(apConfig, TEST_COUNTRY_CODE, configBuilder.build());
     }
 
@@ -3245,8 +3290,7 @@ public class SoftApManagerTest extends WifiBaseTest {
         verify(mContext).registerReceiver(mBroadcastReceiverCaptor.capture(),
                 argThat((IntentFilter filter) ->
                         filter.hasAction(Intent.ACTION_POWER_CONNECTED)
-                                && filter.hasAction(Intent.ACTION_POWER_DISCONNECTED)),
-                eq(Context.RECEIVER_NOT_EXPORTED));
+                                && filter.hasAction(Intent.ACTION_POWER_DISCONNECTED)));
         mBroadcastReceiverCaptor.getValue().onReceive(mContext,
                 new Intent(Intent.ACTION_POWER_CONNECTED));
         mLooper.dispatchAll();

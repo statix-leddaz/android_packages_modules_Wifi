@@ -71,9 +71,12 @@ public class InsecureEapNetworkHandler {
     private final Handler mHandler;
 
     @NonNull
-    private WifiConfiguration mCurConfig = null;;
+    private WifiConfiguration mCurConfig = null;
+    private int mPendingCaCertDepth = -1;
     @Nullable
     private X509Certificate mPendingCaCert = null;
+    @Nullable
+    private X509Certificate mPendingServerCert = null;
     // This is updated on setting a pending CA cert.
     private CertificateSubjectInfo mPendingCaCertSubjectInfo = null;
     // This is updated on setting a pending CA cert.
@@ -149,6 +152,7 @@ public class InsecureEapNetworkHandler {
             return;
         }
 
+        clearConnection();
         registerCertificateNotificationReceiver();
         mCurConfig = config;
         // Remove cached PMK in the framework and supplicant to avoid
@@ -158,27 +162,38 @@ public class InsecureEapNetworkHandler {
     }
 
     /** Clear data on disconnecting a connection. */
-    public void clearConnection() {
+    private void clearConnection() {
         unregisterCertificateNotificationReceiver();
         dismissDialogAndNotification();
         clearInternalData();
     }
 
     /**
-     * Store the received Root CA certifiate for later use.
+     * Store the received certifiate for later use.
      *
      * @param ssid the target network SSID.
+     * @param depth the depth of this cert. The Root CA should be 0 or
+     *        a positive number, and the server cert is 0.
      * @param cert the Root CA certificate from the server.
      * @return true if the cert is cached; otherwise, false.
      */
-    public boolean setPendingCaCertificate(@NonNull String ssid, @NonNull X509Certificate cert) {
+    public boolean setPendingCertificate(@NonNull String ssid, int depth,
+            @NonNull X509Certificate cert) {
+        Log.d(TAG, "setPendingCertificate: " + "ssid=" + ssid + " depth=" + depth
+                + " current config=" + mCurConfig);
         if (TextUtils.isEmpty(ssid)) return false;
         if (null == mCurConfig) return false;
         if (!ssid.equals(mCurConfig.SSID)) return false;
         if (null == cert) return false;
-        if (null != mPendingCaCertSubjectInfo) {
-            Log.w(TAG, "There is already pending CA cert, ignore new one.");
-            return false;
+        if (depth < 0) return false;
+        // 0 is the tail, i.e. the server cert.
+        if (depth == 0 && null == mPendingServerCert) {
+            mPendingServerCert = cert;
+            Log.d(TAG, "Pending server certificate: " + mPendingServerCert);
+        }
+        if (depth < mPendingCaCertDepth) {
+            Log.d(TAG, "Ignore intermediate cert." + cert);
+            return true;
         }
 
         mPendingCaCertSubjectInfo = CertificateSubjectInfo.parse(
@@ -193,8 +208,9 @@ public class InsecureEapNetworkHandler {
             Log.e(TAG, "CA cert has no valid issuer.");
             return false;
         }
+        mPendingCaCertDepth = depth;
         mPendingCaCert = cert;
-        Log.d(TAG, "Pending Root CA certificate: " + mPendingCaCert.toString());
+        Log.d(TAG, "Pending Root CA certificate: " + mPendingCaCert);
         return true;
     }
 
@@ -230,6 +246,10 @@ public class InsecureEapNetworkHandler {
             Log.d(TAG, "No valid CA cert for TLS-based connection.");
             handleError(mCurConfig.SSID);
             return true;
+        } else if (null == mPendingServerCert) {
+            Log.d(TAG, "No valid Server cert for TLS-based connection.");
+            handleError(mCurConfig.SSID);
+            return true;
         }
 
         Log.d(TAG, "startUserApprovalIfNecessaryForInsecureEapNetwork: mIsUserSelected="
@@ -254,8 +274,7 @@ public class InsecureEapNetworkHandler {
             filter.addAction(ACTION_CERT_NOTIF_ACCEPT);
             filter.addAction(ACTION_CERT_NOTIF_REJECT);
         }
-        mContext.registerReceiver(mCertNotificationReceiver, filter, null, mHandler,
-                Context.RECEIVER_NOT_EXPORTED);
+        mContext.registerReceiver(mCertNotificationReceiver, filter, null, mHandler);
         mIsCertNotificationReceiverRegistered = true;
     }
 
@@ -273,18 +292,16 @@ public class InsecureEapNetworkHandler {
         if (!mIsTrustOnFirstUseSupported) {
             mWifiConfigManager.setUserApproveNoCaCert(mCurConfig.networkId, true);
         } else {
-            if (null == mPendingCaCert) {
+            if (null == mPendingCaCert || null == mPendingServerCert) {
                 handleError(ssid);
                 return;
             }
-            if (!mWifiConfigManager.updateCaCertificate(mCurConfig.networkId, mPendingCaCert)) {
-                // Since Root CA certificate is installed, reset these flags.
-                mWifiConfigManager.setUserApproveNoCaCert(mCurConfig.networkId, false);
-                mWifiConfigManager.enableTrustOnFirstUse(mCurConfig.networkId, false);
-            } else {
+            if (!mWifiConfigManager.updateCaCertificate(
+                    mCurConfig.networkId, mPendingCaCert, mPendingServerCert)) {
                 // The user approved this network,
                 // keep the connection regardless of the result.
-                Log.e(TAG, "Cannot update CA cert to network " + mCurConfig.getProfileKey());
+                Log.e(TAG, "Cannot update CA cert to network " + mCurConfig.getProfileKey()
+                        + ", CA cert = " + mPendingCaCert);
             }
         }
         mWifiConfigManager.allowAutojoin(mCurConfig.networkId, true);
@@ -317,7 +334,7 @@ public class InsecureEapNetworkHandler {
     private void askForUserApprovalForCaCertificate() {
         if (mCurConfig == null || TextUtils.isEmpty(mCurConfig.SSID)) return;
         if (mIsTrustOnFirstUseSupported) {
-            if (null == mPendingCaCert) {
+            if (null == mPendingCaCert || null == mPendingServerCert) {
                 Log.e(TAG, "Cannot launch a dialog for TOFU without "
                         + "a valid pending CA certificate.");
                 return;
@@ -423,6 +440,7 @@ public class InsecureEapNetworkHandler {
         if (mCurConfig == null) return;
         if (mIsTrustOnFirstUseSupported) {
             if (null == mPendingCaCert) return;
+            if (null == mPendingServerCert) return;
         }
         dismissDialogAndNotification();
 
@@ -480,7 +498,9 @@ public class InsecureEapNetworkHandler {
     }
 
     private void clearInternalData() {
+        mPendingCaCertDepth = -1;
         mPendingCaCert = null;
+        mPendingServerCert = null;
         mPendingCaCertSubjectInfo = null;
         mPendingCaCertIssuerInfo = null;
         mCurConfig = null;

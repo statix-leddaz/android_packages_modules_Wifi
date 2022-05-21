@@ -17,6 +17,7 @@
 package com.android.server.wifi.aware;
 
 import static android.hardware.wifi.V1_0.NanRangingIndication.EGRESS_MET_MASK;
+import static android.net.wifi.WifiAvailableChannel.OP_MODE_WIFI_AWARE;
 
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.hamcrest.core.IsNull.notNullValue;
@@ -60,7 +61,9 @@ import android.hardware.wifi.V1_0.NanRangingIndication;
 import android.hardware.wifi.V1_0.NanStatusType;
 import android.location.LocationManager;
 import android.net.ConnectivityManager;
+import android.net.wifi.WifiAvailableChannel;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiScanner;
 import android.net.wifi.aware.AwareResources;
 import android.net.wifi.aware.ConfigRequest;
 import android.net.wifi.aware.IWifiAwareDiscoverySessionCallback;
@@ -73,7 +76,9 @@ import android.net.wifi.aware.WifiAwareManager;
 import android.net.wifi.util.HexEncoding;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.Message;
 import android.os.PowerManager;
 import android.os.Process;
@@ -94,6 +99,9 @@ import com.android.server.wifi.HalDeviceManager;
 import com.android.server.wifi.InterfaceConflictManager;
 import com.android.server.wifi.MockResources;
 import com.android.server.wifi.WifiBaseTest;
+import com.android.server.wifi.WifiInjector;
+import com.android.server.wifi.WifiNative;
+import com.android.server.wifi.WifiThreadRunner;
 import com.android.server.wifi.util.NetdWrapper;
 import com.android.server.wifi.util.WaitingState;
 import com.android.server.wifi.util.WifiPermissionsUtil;
@@ -117,6 +125,7 @@ import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -142,10 +151,12 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
     TestAlarmManager mAlarmManager;
     @Mock private PowerManager mMockPowerManager;
     @Mock private WifiManager mMockWifiManager;
+    @Mock private WifiNative mWifiNative;
     private BroadcastReceiver mPowerBcastReceiver;
     private BroadcastReceiver mLocationModeReceiver;
     private BroadcastReceiver mWifiStateChangedReceiver;
     @Mock private WifiAwareDataPathStateManager mMockAwareDataPathStatemanager;
+    @Mock private WifiInjector mWifiInjector;
 
     @Rule
     public ErrorCollector collector = new ErrorCollector();
@@ -153,6 +164,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
     private static final byte[] ALL_ZERO_MAC = new byte[] {0, 0, 0, 0, 0, 0};
     private MockResources mResources;
     private Bundle mExtras = new Bundle();
+    private WifiManager.ActiveCountryCodeChangedCallback mActiveCountryCodeChangedCallback;
+    private HandlerThread mWifiHandlerThread;
 
     /**
      * Pre-test configuration. Initialize and install mocks.
@@ -196,15 +209,27 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
 
         ArgumentCaptor<BroadcastReceiver> bcastRxCaptor = ArgumentCaptor.forClass(
                 BroadcastReceiver.class);
-        mDut = new WifiAwareStateManager();
+        mWifiHandlerThread = new HandlerThread("WifiHandlerThread");
+        mWifiHandlerThread.start();
+        Looper wifiLooper = mWifiHandlerThread.getLooper();
+        Handler wifiHandler = new Handler(wifiLooper);
+        WifiThreadRunner wifiThreadRunner = new WifiThreadRunner(wifiHandler);
+        when(mWifiInjector.getWifiNative()).thenReturn(mWifiNative);
+        when(mWifiInjector.getWifiThreadRunner()).thenReturn(wifiThreadRunner);
+        mDut = new WifiAwareStateManager(mWifiInjector);
         mDut.setNative(mMockNativeManager, mMockNative);
         mDut.start(mMockContext, mMockLooper.getLooper(), mAwareMetricsMock,
                 mWifiPermissionsUtil, mPermissionsWrapperMock, new Clock(),
                 mock(NetdWrapper.class), mInterfaceConflictManager);
         mDut.startLate();
         mMockLooper.dispatchAll();
+        ArgumentCaptor<WifiManager.ActiveCountryCodeChangedCallback> callbackArgumentCaptor =
+                ArgumentCaptor.forClass(WifiManager.ActiveCountryCodeChangedCallback.class);
+        verify(mMockWifiManager).registerActiveCountryCodeChangedCallback(any(),
+                callbackArgumentCaptor.capture());
+        mActiveCountryCodeChangedCallback = callbackArgumentCaptor.getValue();
         verify(mMockContext, times(3)).registerReceiver(bcastRxCaptor.capture(),
-                any(IntentFilter.class), eq(Context.RECEIVER_NOT_EXPORTED));
+                any(IntentFilter.class));
         mPowerBcastReceiver = bcastRxCaptor.getAllValues().get(0);
         mLocationModeReceiver = bcastRxCaptor.getAllValues().get(1);
         mWifiStateChangedReceiver = bcastRxCaptor.getAllValues().get(2);
@@ -225,6 +250,7 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
     @After
     public void tearDown() throws Exception {
         mMockNative.validateUniqueTransactionIds();
+        mWifiHandlerThread.quit();
     }
 
     /**
@@ -933,6 +959,177 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         mMockLooper.dispatchAll();
 
         validateInternalSessionInfoCleanedUp(clientId, sessionId.getValue());
+
+        verifyNoMoreInteractions(mockSessionCallback, mMockNative, mAwareMetricsMock);
+    }
+
+    /**
+     * Validates publish with instant communication with correct channel freq
+     */
+    @Test
+    public void testPublishSuccessInstantCommunicationMode() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        final int clientId = 2005;
+        final int uid = 1000;
+        final int pid = 2000;
+        final String callingPackage = "com.google.somePackage";
+        final String callingFeature = "com.google.someFeature";
+        final int reasonTerminate = NanStatusType.SUCCESS;
+        final byte publishId = 15;
+
+        ConfigRequest configRequest = new ConfigRequest.Builder().build();
+        PublishConfig publishConfig = new PublishConfig.Builder()
+                .setInstantCommunicationModeEnabled(true, WifiScanner.WIFI_BAND_5_GHZ).build();
+
+        IWifiAwareEventCallback mockCallback = mock(IWifiAwareEventCallback.class);
+        IWifiAwareDiscoverySessionCallback mockSessionCallback = mock(
+                IWifiAwareDiscoverySessionCallback.class);
+        ArgumentCaptor<Short> transactionId = ArgumentCaptor.forClass(Short.class);
+        ArgumentCaptor<Integer> sessionId = ArgumentCaptor.forClass(Integer.class);
+        InOrder inOrder = inOrder(mockCallback, mockSessionCallback, mMockNative, mMockContext);
+        InOrder inOrderM = inOrder(mAwareMetricsMock);
+
+        mDut.enableUsage();
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).getCapabilities(transactionId.capture());
+        inOrderM.verify(mAwareMetricsMock).recordEnableUsage();
+
+        // (0) connect
+        mDut.connect(clientId, uid, pid, callingPackage, callingFeature, mockCallback,
+                configRequest, false, mExtras);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).enableAndConfigure(transactionId.capture(),
+                eq(configRequest), eq(false), eq(true), eq(true), eq(false), eq(false), eq(false),
+                anyInt());
+        mDut.onConfigSuccessResponse(transactionId.getValue());
+        mMockLooper.dispatchAll();
+        assertTrue(mDut.isDeviceAttached());
+        inOrder.verify(mockCallback).onConnectSuccess(clientId);
+        inOrderM.verify(mAwareMetricsMock).recordAttachSession(eq(uid), eq(false), any());
+
+        // (1) initial publish
+        mDut.publish(clientId, publishConfig, mockSessionCallback);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).publish(transactionId.capture(), eq((byte) 0),
+                eq(publishConfig));
+
+        // (2) publish success
+        mDut.onSessionConfigSuccessResponse(transactionId.getValue(), true, publishId);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mockSessionCallback).onSessionStarted(sessionId.capture());
+        inOrderM.verify(mAwareMetricsMock).recordDiscoverySession(eq(uid), any());
+        inOrderM.verify(mAwareMetricsMock).recordDiscoveryStatus(uid, NanStatusType.SUCCESS, true);
+        validateCorrectAwareResourcesChangeBroadcast(inOrder);
+        assertEquals(1, mDut.getAvailableAwareResources().getAvailablePublishSessionsCount());
+        assertEquals(2, mDut.getAvailableAwareResources().getAvailableSubscribeSessionsCount());
+        assertEquals(0, mDut.getAvailableAwareResources().getAvailableDataPathsCount());
+
+        // (3) Verify reconfig to enable instant mode. And 5G is invalid
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).enableAndConfigure(transactionId.capture(),
+                any(), eq(false), eq(false), eq(true), eq(false), eq(false), eq(true),
+                eq(2437));
+        mDut.onConfigSuccessResponse(transactionId.getValue());
+        mMockLooper.dispatchAll();
+
+        // (4) country code change, 5G is valid
+        when(mWifiNative.getUsableChannels(WifiScanner.WIFI_BAND_5_GHZ, OP_MODE_WIFI_AWARE,
+                WifiAvailableChannel.FILTER_NAN_INSTANT_MODE))
+                .thenReturn(List.of(new WifiAvailableChannel(5220,
+                                WifiAvailableChannel.OP_MODE_WIFI_AWARE),
+                        new WifiAvailableChannel(5745, WifiAvailableChannel.OP_MODE_WIFI_AWARE)));
+        mActiveCountryCodeChangedCallback.onActiveCountryCodeChanged("US");
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).enableAndConfigure(transactionId.capture(),
+                any(), eq(false), eq(false), eq(true), eq(false), eq(false), eq(true),
+                eq(5745));
+        mDut.onConfigSuccessResponse(transactionId.getValue());
+        mMockLooper.dispatchAll();
+
+        verifyNoMoreInteractions(mockSessionCallback, mMockNative, mAwareMetricsMock);
+    }
+
+    /**
+     * Validates subscribe with instant communication with correct channel freq
+     */
+    @Test
+    public void testSubscribeSuccessInstantCommunicationMode() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        final int clientId = 2005;
+        final int uid = 1000;
+        final int pid = 2000;
+        final String callingPackage = "com.google.somePackage";
+        final String callingFeature = "com.google.someFeature";
+        final int reasonTerminate = NanStatusType.SUCCESS;
+        final byte subscribeId = 15;
+
+        ConfigRequest configRequest = new ConfigRequest.Builder().build();
+        SubscribeConfig subscribeConfig = new SubscribeConfig.Builder()
+                .setInstantCommunicationModeEnabled(true, WifiScanner.WIFI_BAND_5_GHZ).build();
+
+        IWifiAwareEventCallback mockCallback = mock(IWifiAwareEventCallback.class);
+        IWifiAwareDiscoverySessionCallback mockSessionCallback = mock(
+                IWifiAwareDiscoverySessionCallback.class);
+        ArgumentCaptor<Short> transactionId = ArgumentCaptor.forClass(Short.class);
+        ArgumentCaptor<Integer> sessionId = ArgumentCaptor.forClass(Integer.class);
+        InOrder inOrder = inOrder(mockCallback, mockSessionCallback, mMockNative, mMockContext);
+        InOrder inOrderM = inOrder(mAwareMetricsMock);
+
+        mDut.enableUsage();
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).getCapabilities(transactionId.capture());
+        inOrderM.verify(mAwareMetricsMock).recordEnableUsage();
+
+        // (0) connect
+        mDut.connect(clientId, uid, pid, callingPackage, callingFeature, mockCallback,
+                configRequest, false, mExtras);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).enableAndConfigure(transactionId.capture(),
+                eq(configRequest), eq(false), eq(true), eq(true), eq(false), eq(false), eq(false),
+                anyInt());
+        mDut.onConfigSuccessResponse(transactionId.getValue());
+        mMockLooper.dispatchAll();
+        assertTrue(mDut.isDeviceAttached());
+        inOrder.verify(mockCallback).onConnectSuccess(clientId);
+        inOrderM.verify(mAwareMetricsMock).recordAttachSession(eq(uid), eq(false), any());
+
+        // (1) initial subscribe
+        mDut.subscribe(clientId, subscribeConfig, mockSessionCallback);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).subscribe(transactionId.capture(), eq((byte) 0),
+                eq(subscribeConfig));
+
+        // (2) subscribe success
+        mDut.onSessionConfigSuccessResponse(transactionId.getValue(), false, subscribeId);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mockSessionCallback).onSessionStarted(sessionId.capture());
+        inOrderM.verify(mAwareMetricsMock).recordDiscoverySession(eq(uid), any());
+        inOrderM.verify(mAwareMetricsMock).recordDiscoveryStatus(uid, NanStatusType.SUCCESS, false);
+        validateCorrectAwareResourcesChangeBroadcast(inOrder);
+        assertEquals(2, mDut.getAvailableAwareResources().getAvailablePublishSessionsCount());
+        assertEquals(1, mDut.getAvailableAwareResources().getAvailableSubscribeSessionsCount());
+        assertEquals(0, mDut.getAvailableAwareResources().getAvailableDataPathsCount());
+
+        // (3) Verify reconfig to enable instant mode. And 5G is invalid
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).enableAndConfigure(transactionId.capture(),
+                any(), eq(false), eq(false), eq(true), eq(false), eq(false), eq(true),
+                eq(2437));
+        mDut.onConfigSuccessResponse(transactionId.getValue());
+        mMockLooper.dispatchAll();
+
+        // (4) country code change, 5G is valid
+        when(mWifiNative.getUsableChannels(WifiScanner.WIFI_BAND_5_GHZ, OP_MODE_WIFI_AWARE,
+                WifiAvailableChannel.FILTER_NAN_INSTANT_MODE))
+                .thenReturn(List.of(new WifiAvailableChannel(5220,
+                        WifiAvailableChannel.OP_MODE_WIFI_AWARE)));
+        mActiveCountryCodeChangedCallback.onActiveCountryCodeChanged("US");
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).enableAndConfigure(transactionId.capture(),
+                any(), eq(false), eq(false), eq(true), eq(false), eq(false), eq(true),
+                eq(5220));
+        mDut.onConfigSuccessResponse(transactionId.getValue());
+        mMockLooper.dispatchAll();
 
         verifyNoMoreInteractions(mockSessionCallback, mMockNative, mAwareMetricsMock);
     }
@@ -4293,6 +4490,7 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         collector.checkThat("intent action", intent.getValue().getAction(),
                 equalTo(WifiAwareManager.ACTION_WIFI_AWARE_STATE_CHANGED));
     }
+
     /**
      * Validates that the broadcast sent on Aware status change is correct.
      */

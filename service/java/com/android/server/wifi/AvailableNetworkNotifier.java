@@ -47,8 +47,10 @@ import android.util.ArraySet;
 import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.ConnectToNetworkNotificationAndActionCount;
 import com.android.server.wifi.util.ActionListenerWrapper;
+import com.android.server.wifi.util.WifiPermissionsUtil;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -131,6 +133,7 @@ public class AvailableNetworkNotifier {
     private final ConnectToNetworkNotificationBuilder mNotificationBuilder;
     private final MakeBeforeBreakManager mMakeBeforeBreakManager;
     private final WifiNotificationManager mWifiNotificationManager;
+    private final WifiPermissionsUtil mWifiPermissionsUtil;
 
     @VisibleForTesting
     ScanResult mRecommendedNetwork;
@@ -168,7 +171,8 @@ public class AvailableNetworkNotifier {
             ConnectHelper connectHelper,
             ConnectToNetworkNotificationBuilder connectToNetworkNotificationBuilder,
             MakeBeforeBreakManager makeBeforeBreakManager,
-            WifiNotificationManager wifiNotificationManager) {
+            WifiNotificationManager wifiNotificationManager,
+            WifiPermissionsUtil wifiPermissionsUtil) {
         mTag = tag;
         mStoreDataIdentifier = storeDataIdentifier;
         mToggleSettingsName = toggleSettingsName;
@@ -184,6 +188,7 @@ public class AvailableNetworkNotifier {
         mNotificationBuilder = connectToNetworkNotificationBuilder;
         mMakeBeforeBreakManager = makeBeforeBreakManager;
         mWifiNotificationManager = wifiNotificationManager;
+        mWifiPermissionsUtil = wifiPermissionsUtil;
         mScreenOn = false;
         wifiConfigStore.registerStoreData(new SsidSetStoreData(mStoreDataIdentifier,
                 new AvailableNetworkNotifierStoreData()));
@@ -202,8 +207,7 @@ public class AvailableNetworkNotifier {
         filter.addAction(ACTION_PICK_WIFI_NETWORK);
         filter.addAction(ACTION_PICK_WIFI_NETWORK_AFTER_CONNECT_FAILURE);
         mContext.registerReceiver(
-                mBroadcastReceiver, filter, null /* broadcastPermission */, mHandler,
-                Context.RECEIVER_NOT_EXPORTED);
+                mBroadcastReceiver, filter, null /* broadcastPermission */, mHandler);
     }
 
     private final BroadcastReceiver mBroadcastReceiver =
@@ -271,9 +275,13 @@ public class AvailableNetworkNotifier {
     }
 
     private boolean isControllerEnabled() {
-        return mSettingEnabled && !mContext.getSystemService(UserManager.class)
-                .hasUserRestrictionForUser(UserManager.DISALLOW_CONFIG_WIFI,
-                    UserHandle.CURRENT);
+        UserManager userManager = mContext.getSystemService(UserManager.class);
+        UserHandle currentUser = UserHandle.of(mWifiPermissionsUtil.getCurrentUser());
+        return mSettingEnabled
+                && !userManager.hasUserRestrictionForUser(
+                        UserManager.DISALLOW_CONFIG_WIFI, currentUser)
+                && !(SdkLevel.isAtLeastT() && userManager.hasUserRestrictionForUser(
+                        UserManager.DISALLOW_ADD_WIFI_CONFIG, currentUser));
     }
 
     /**
@@ -452,7 +460,7 @@ public class AvailableNetworkNotifier {
                             // only keep netId, discard other fields
                             new NetworkUpdateResult(result.getNetworkId()),
                             new ActionListenerWrapper(listener),
-                            Process.SYSTEM_UID));
+                            Process.SYSTEM_UID, mContext.getOpPackageName()));
             addNetworkToBlocklist(mRecommendedNetwork.SSID);
         }
 

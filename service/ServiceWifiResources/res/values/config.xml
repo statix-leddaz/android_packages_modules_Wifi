@@ -126,6 +126,13 @@
          the sum of rssi base score and throughput score-->
     <integer translatable="false" name="config_wifiFrameworkCurrentNetworkBonusPercent">20</integer>
     <integer translatable="false" name="config_wifiFrameworkSecureNetworkBonus">40</integer>
+    <!-- Integer specifying the bonus to give to a 6Ghz candidate during network selection scoring -->
+    <integer translatable="false" name="config_wifiBand6GhzBonus">0</integer>
+    <!-- Integer specifying the expected amount of score to reach the next tier during candidate
+         scoring. This value should be configured according to the value of parameters that
+         determine the scoring buckets such as config_wifiFrameworkSavedNetworkBonus and
+         config_wifiFrameworkUnmeteredNetworkBonus. -->
+    <integer translatable="false" name="config_wifiScoringBucketStepSize">500</integer>
 
     <!-- The duration in minutes to strongly favor the last-selected network over other options. -->
     <integer translatable="false" name="config_wifiFrameworkLastSelectionMinutes">480</integer>
@@ -312,6 +319,11 @@
     <!-- Wifi driver supports 60GHz band for softap when chip support 60GHz -->
     <bool translatable="false" name="config_wifiSoftap60ghzSupported">false</bool>
 
+    <!-- Indicates that the framework should auto append lower bands to band configuration for
+         avoiding coexistence handling. For example: 5g only band will change to 2.4g|5g and
+         6g band will change to 2.4|5g|6g band -->
+    <bool translatable="false" name="config_wifiSoftapAutoAppendLowerBandsToBandConfigurationEnabled">true</bool>
+
     <!-- Indicates that local-only hotspot should be brought up at 6GHz if possible.
          This option is for automotive builds only (the one that have
          PackageManager#FEATURE_AUTOMOTIVE) -->
@@ -347,6 +359,14 @@
 
     <!-- Indicates that dynamic country code update in AP mode is supported on this device -->
     <bool translatable="false" name="config_wifiSoftApDynamicCountryCodeUpdateSupported">false</bool>
+
+    <!-- list of SSIDs to force disable MAC randomization -->
+    <string-array translatable="false" name="config_wifiForceDisableMacRandomizationSsidList">
+        <!-- SSIDs are expected in quoted format:
+        <item>\"SSID_1\"</item>
+        <item>\"SSID_2\"</item>
+        -->
+    </string-array>
 
     <!-- list of SSIDs to enable non-persistent MAC randomization on -->
     <string-array translatable="false" name="config_wifi_non_persistent_randomization_ssid_allowlist">
@@ -689,6 +709,11 @@
     <!-- Enable the default coex channel avoidance algorithm and disable the functionality of
          WifiManager#setCoexUnsafeChannels. -->
     <bool translatable="false" name="config_wifiDefaultCoexAlgorithmEnabled">false</bool>
+    <!-- If the default coex channel avoidance algorithm is enabled, then avoid channels that
+         conflict with GPS L1. -->
+    <bool translatable="false" name="config_wifiCoexForGpsL1">false</bool>
+    <!-- The distance in KHz between Wi-Fi-based interference and GPS L1 that is considered unsafe. -->
+    <integer translatable="false" name="config_wifiCoexGpsL1ThresholdKhz">10000</integer>
     <!-- Filepath of the xml table of parameters used by Wifi coex channel avoidance. -->
     <string translatable="false" name="config_wifiCoexTableFilepath">/vendor/etc/wifi/coex_table.xml</string>
     <!-- A value to indicate how many failures are needed to temporarily or permanently
@@ -846,4 +871,10 @@
     <!-- Indicates the number of octets to mask for each BSSID in the SecurityLog output.
          The first N octets will each be replaced with 'xx' in the formatted BSSID string. -->
     <integer translatable="false" name="config_wifiNumMaskedBssidOctetsInSecurityLog">4</integer>
+    <!-- Indicates whether or not the network-centric QoS policy feature is enabled. -->
+    <bool translatable="false" name="config_wifiNetworkCentricQosPolicyFeatureEnabled">false</bool>
+
+    <!-- The world mode country code value definition in the wifi driver -->
+    <string translatable="false" name="config_wifiDriverWorldModeCountryCode">00</string>
+
 </resources>
