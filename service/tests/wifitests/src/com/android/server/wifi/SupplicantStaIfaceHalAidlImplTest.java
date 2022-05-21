@@ -1016,13 +1016,19 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         mISupplicantStaIfaceCallback.onDisconnected(
                 NativeUtil.macAddressToByteArray(BSSID), true, reasonCode);
         verify(mWifiMonitor, times(0))
-                .broadcastAuthenticationFailureEvent(any(), anyInt(), anyInt());
+                .broadcastAuthenticationFailureEvent(any(), anyInt(), anyInt(), any(), any());
 
         mISupplicantStaIfaceCallback.onDisconnected(
                 NativeUtil.macAddressToByteArray(BSSID), false, reasonCode);
         verify(mWifiMonitor, times(0))
-                .broadcastAuthenticationFailureEvent(any(), anyInt(), anyInt());
+                .broadcastAuthenticationFailureEvent(any(), anyInt(), anyInt(), any(), any());
 
+
+        mISupplicantStaIfaceCallback.onStateChanged(
+                StaIfaceCallbackState.ASSOCIATING,
+                NativeUtil.macAddressToByteArray(BSSID),
+                SUPPLICANT_NETWORK_ID,
+                NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(SUPPLICANT_SSID)), false);
         mISupplicantStaIfaceCallback.onStateChanged(
                 StaIfaceCallbackState.FOURWAY_HANDSHAKE,
                 NativeUtil.macAddressToByteArray(BSSID),
@@ -1032,7 +1038,8 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
                 NativeUtil.macAddressToByteArray(BSSID), false, reasonCode);
 
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(
-                eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD), eq(-1));
+                eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD), eq(-1),
+                eq(SUPPLICANT_SSID), eq(MacAddress.fromString(BSSID)));
     }
 
     /**
@@ -1049,13 +1056,18 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         mISupplicantStaIfaceCallback.onDisconnected(
                 NativeUtil.macAddressToByteArray(BSSID), true, reasonCode);
         verify(mWifiMonitor, times(0))
-                .broadcastAuthenticationFailureEvent(any(), anyInt(), anyInt());
+                .broadcastAuthenticationFailureEvent(any(), anyInt(), anyInt(), any(), any());
 
         mISupplicantStaIfaceCallback.onDisconnected(
                 NativeUtil.macAddressToByteArray(BSSID), false, reasonCode);
         verify(mWifiMonitor, times(0))
-                .broadcastAuthenticationFailureEvent(any(), anyInt(), anyInt());
+                .broadcastAuthenticationFailureEvent(any(), anyInt(), anyInt(), any(), any());
 
+        mISupplicantStaIfaceCallback.onStateChanged(
+                StaIfaceCallbackState.ASSOCIATING,
+                NativeUtil.macAddressToByteArray(BSSID),
+                SUPPLICANT_NETWORK_ID,
+                NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(SUPPLICANT_SSID)), false);
         mISupplicantStaIfaceCallback.onStateChanged(
                 StaIfaceCallbackState.ASSOCIATED,
                 NativeUtil.macAddressToByteArray(BSSID),
@@ -1071,7 +1083,8 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
                 NativeUtil.macAddressToByteArray(BSSID), false, reasonCode);
 
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(
-                eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE), eq(-1));
+                eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE), eq(-1),
+                eq(SUPPLICANT_SSID), eq(MacAddress.fromString(BSSID)));
     }
 
     /**
@@ -1095,7 +1108,8 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
                 statusCode, false);
         mISupplicantStaIfaceCallback.onAssociationRejected(rejectionData);
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(eq(WLAN0_IFACE_NAME),
-                eq(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD), eq(-1));
+                eq(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD), eq(-1), eq(SUPPLICANT_SSID),
+                eq(MacAddress.fromString(BSSID)));
         ArgumentCaptor<AssocRejectEventInfo> assocRejectEventInfoCaptor =
                 ArgumentCaptor.forClass(AssocRejectEventInfo.class);
         verify(mWifiMonitor).broadcastAssociationRejectionEvent(
@@ -1132,7 +1146,7 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
                 statusCode, false);
         mISupplicantStaIfaceCallback.onAssociationRejected(rejectionData);
         verify(mWifiMonitor, never()).broadcastAuthenticationFailureEvent(eq(WLAN0_IFACE_NAME),
-                anyInt(), anyInt());
+                anyInt(), anyInt(), any(), any());
         ArgumentCaptor<AssocRejectEventInfo> assocRejectEventInfoCaptor =
                 ArgumentCaptor.forClass(AssocRejectEventInfo.class);
         verify(mWifiMonitor).broadcastAssociationRejectionEvent(
@@ -1169,7 +1183,8 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
                 statusCode, false);
         mISupplicantStaIfaceCallback.onAssociationRejected(rejectionData);
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(eq(WLAN0_IFACE_NAME),
-                eq(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD), eq(-1));
+                eq(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD), eq(-1), eq(SUPPLICANT_SSID),
+                eq(MacAddress.fromString(BSSID)));
         ArgumentCaptor<AssocRejectEventInfo> assocRejectEventInfoCaptor =
                 ArgumentCaptor.forClass(AssocRejectEventInfo.class);
         verify(mWifiMonitor).broadcastAssociationRejectionEvent(
@@ -1206,7 +1221,7 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         mISupplicantStaIfaceCallback.onDisconnected(
                 NativeUtil.macAddressToByteArray(BSSID), true, reasonCode);
         verify(mWifiMonitor, times(0)).broadcastAuthenticationFailureEvent(any(), anyInt(),
-                anyInt());
+                anyInt(), any(), any());
     }
 
     /**
@@ -1229,7 +1244,7 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         mISupplicantStaIfaceCallback.onDisconnected(
                 NativeUtil.macAddressToByteArray(BSSID), true, reasonCode);
         verify(mWifiMonitor, times(0)).broadcastAuthenticationFailureEvent(any(), anyInt(),
-                anyInt());
+                anyInt(), any(), any());
     }
 
     /**
@@ -1244,7 +1259,7 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         mISupplicantStaIfaceCallback.onDisconnected(
                 NativeUtil.macAddressToByteArray(BSSID), false, reasonCode);
         verify(mWifiMonitor, times(0)).broadcastAuthenticationFailureEvent(any(), anyInt(),
-                anyInt());
+                anyInt(), any(), any());
     }
 
     /**
@@ -1255,10 +1270,20 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         executeAndValidateInitializationSequence();
         assertNotNull(mISupplicantStaIfaceCallback);
 
+        mISupplicantStaIfaceCallback.onStateChanged(
+                StaIfaceCallbackState.ASSOCIATING,
+                NativeUtil.macAddressToByteArray(BSSID),
+                SUPPLICANT_NETWORK_ID,
+                NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(SUPPLICANT_SSID)), false);
+        mISupplicantStaIfaceCallback.onStateChanged(
+                StaIfaceCallbackState.COMPLETED,
+                NativeUtil.macAddressToByteArray(BSSID), SUPPLICANT_NETWORK_ID,
+                NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(SUPPLICANT_SSID)), false);
         mISupplicantStaIfaceCallback.onAuthenticationTimeout(
                 NativeUtil.macAddressToByteArray(BSSID));
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(eq(WLAN0_IFACE_NAME),
-                eq(WifiManager.ERROR_AUTH_FAILURE_TIMEOUT), eq(-1));
+                eq(WifiManager.ERROR_AUTH_FAILURE_TIMEOUT), eq(-1), eq(SUPPLICANT_SSID),
+                eq(MacAddress.fromString(BSSID)));
     }
 
     /**
@@ -1300,8 +1325,9 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         assertNotNull(mISupplicantStaIfaceCallback);
 
         mISupplicantStaIfaceCallback.onEapFailure(bssid.toByteArray(), eapFailureCode);
-        verify(mWifiMonitor).broadcastEapFailureEvent(
-                eq(WLAN0_IFACE_NAME), eq(eapFailureCode), eq(bssid));
+        verify(mWifiMonitor).broadcastAuthenticationFailureEvent(
+                eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE),
+                eq(eapFailureCode), any(), eq(bssid));
     }
 
     /**
@@ -1775,7 +1801,7 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
     }
 
     /**
-     * Test adding PMK cache entry returns failure if this is a psk network.
+     * Tests that PMK cache entry is not added for PSK network.
      */
     @Test
     public void testAddPmkEntryIsOmittedWithPskNetwork() throws Exception {
@@ -1783,6 +1809,27 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         WifiConfiguration config = new WifiConfiguration();
         config.networkId = testFrameworkNetworkId;
         config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+
+        setupMocksForPmkCache();
+        setupMocksForConnectSequence(false);
+        executeAndValidateInitializationSequence();
+        assertTrue(mDut.connectToNetwork(WLAN0_IFACE_NAME, config));
+
+        verify(mPmkCacheManager, never()).add(any(), anyInt(), anyLong(), any());
+        verify(mSupplicantStaNetworkMock, never()).setPmkCache(any(byte[].class));
+        verify(mISupplicantStaIfaceCallback, never()).onPmkCacheAdded(
+                anyLong(), any(byte[].class));
+    }
+
+    /**
+     * Tests that PMK cache entry is not added for DPP network.
+     */
+    @Test
+    public void testAddPmkEntryIsOmittedWithDppNetwork() throws Exception {
+        int testFrameworkNetworkId = 9;
+        WifiConfiguration config = new WifiConfiguration();
+        config.networkId = testFrameworkNetworkId;
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_DPP);
 
         setupMocksForPmkCache();
         setupMocksForConnectSequence(false);
@@ -1984,7 +2031,7 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         mISupplicantStaIfaceCallback.onDisconnected(
                 NativeUtil.macAddressToByteArray(BSSID), true, reasonCode);
         verify(mWifiMonitor, times(0)).broadcastAuthenticationFailureEvent(any(), anyInt(),
-                anyInt());
+                anyInt(), any(), any());
     }
 
     /**
@@ -2008,7 +2055,7 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         mISupplicantStaIfaceCallback.onDisconnected(
                 NativeUtil.macAddressToByteArray(BSSID), true, reasonCode);
         verify(mWifiMonitor, times(0)).broadcastAuthenticationFailureEvent(any(), anyInt(),
-                anyInt());
+                anyInt(), any(), any());
     }
 
     /**
