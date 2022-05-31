@@ -16,6 +16,24 @@
       "message": "remove Ignore-AOSP-First",
       "revId": "19eb9225a35f18ce88ffc050c775374f8ed9239f",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "998ed0b4_5b740ef7",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1949655
+      },
+      "writtenOn": "2022-05-31T12:13:44Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "ae6888d6_1470bce6",
+      "revId": "19eb9225a35f18ce88ffc050c775374f8ed9239f",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
