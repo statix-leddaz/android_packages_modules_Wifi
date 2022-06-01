@@ -1487,6 +1487,35 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiThreadRunner.post(() -> mCoexManager.unregisterRemoteCoexCallback(callback));
     }
 
+    private Runnable mRecoverSoftApStateIfNeeded = new Runnable() {
+        @Override
+        public void run() {
+            mTetheredSoftApTracker.setFailedWhileEnabling();
+        }
+    };
+
+    private boolean checkSetEnablingIfAllowed() {
+        Boolean resultSetEnablingIfAllowed = mWifiThreadRunner.call(() -> {
+            if (mWifiThreadRunner.hasCallbacks(mRecoverSoftApStateIfNeeded)) {
+                Log.i(TAG, "An error happened, state is recovering, reject more requests");
+                return false;
+            }
+            return mTetheredSoftApTracker.setEnablingIfAllowed();
+        }, null);
+
+        if (resultSetEnablingIfAllowed == null) {
+            Log.i(TAG, "Timeout happened ! Recover SAP state if needed");
+            mWifiThreadRunner.removeCallbacks(mRecoverSoftApStateIfNeeded);
+            mWifiThreadRunner.post(mRecoverSoftApStateIfNeeded);
+            return false;
+        }
+
+        if (!resultSetEnablingIfAllowed) {
+            mLog.err("Tethering is already active or in recovering.").flush();
+        }
+        return resultSetEnablingIfAllowed;
+    }
+
     /**
      * see {@link android.net.wifi.WifiManager#startSoftAp(WifiConfiguration)}
      * @param wifiConfig SSID, security and channel details as part of WifiConfiguration
@@ -1510,8 +1539,8 @@ public class WifiServiceImpl extends BaseWifiService {
             }
         }
 
-        if (!mTetheredSoftApTracker.setEnablingIfAllowed()) {
-            mLog.err("Tethering is already active.").flush();
+        // TODO: b/233363886, handle timeout in general way.
+        if (!checkSetEnablingIfAllowed()) {
             return false;
         }
 
@@ -1555,9 +1584,8 @@ public class WifiServiceImpl extends BaseWifiService {
 
         mLog.info("startTetheredHotspot uid=%").c(callingUid).flush();
 
-        if (!mWifiThreadRunner.call(
-                () -> mTetheredSoftApTracker.setEnablingIfAllowed(), false)) {
-            mLog.err("Tethering is already active.").flush();
+        // TODO: b/233363886, handle timeout in general way.
+        if (!checkSetEnablingIfAllowed()) {
             return false;
         }
 
@@ -3361,7 +3389,7 @@ public class WifiServiceImpl extends BaseWifiService {
 
         // if we're being called from the SYSTEM_UID then allow usage of the AttributionSource to
         // reassign the WifiConfiguration to another app (reassignment == creatorUid)
-        if (SdkLevel.isAtLeastS() && uidToUse == Process.SYSTEM_UID) {
+        if (SdkLevel.isAtLeastS() && UserHandle.getAppId(uidToUse) == Process.SYSTEM_UID) {
             if (extras == null) {
                 throw new SecurityException("extras bundle is null");
             }
