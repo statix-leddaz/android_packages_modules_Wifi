@@ -1469,6 +1469,8 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
+        // No decorated pseudonum, no need to send back to the supplicant.
+        verify(mWifiNative, never()).setEapAnonymousIdentity(any(), any());
         assertEquals(pseudonym,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
         // Verify that WifiConfigManager#addOrUpdateNetwork() was called if there we received a
@@ -1525,6 +1527,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
+        verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym + "@" + realm));
         assertEquals(pseudonym + "@" + realm,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
         // Verify that WifiConfigManager#addOrUpdateNetwork() was called if there we received a
@@ -1578,6 +1581,8 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
+        // No decorated pseudonum, no need to send back to the supplicant.
+        verify(mWifiNative, never()).setEapAnonymousIdentity(any(), any());
         assertEquals(pseudonym,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
         // Verify that WifiConfigManager#addOrUpdateNetwork() was called if there we received a
@@ -1636,6 +1641,8 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
+        // No decorated pseudonum, no need to send back to the supplicant.
+        verify(mWifiNative, never()).setEapAnonymousIdentity(any(), any());
         assertEquals(pseudonym,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
         // Verify that WifiConfigManager#addOrUpdateNetwork() was called if there we received a
@@ -2198,12 +2205,16 @@ public class ClientModeImplTest extends WifiBaseTest {
         verify(mWifiLastResortWatchdog, times(2)).noteConnectionFailureAndTriggerIfNeeded(
                 eq(TEST_SSID), eq(TEST_BSSID_STR),
                 eq(WifiLastResortWatchdog.FAILURE_CODE_DHCP), anyBoolean());
-        verify(mWifiBlocklistMonitor, times(2)).handleBssidConnectionFailure(eq(TEST_BSSID_STR),
+        verify(mWifiBlocklistMonitor).handleBssidConnectionFailure(eq(TEST_BSSID_STR),
                 eq(mTestConfig), eq(WifiBlocklistMonitor.REASON_DHCP_FAILURE), anyInt());
         verify(mWifiBlocklistMonitor, never()).handleDhcpProvisioningSuccess(
                 TEST_BSSID_STR, TEST_SSID);
         verify(mWifiBlocklistMonitor, never()).handleNetworkValidationSuccess(
                 TEST_BSSID_STR, TEST_SSID);
+        DisconnectEventInfo disconnectEventInfo =
+                new DisconnectEventInfo(mConnectedNetwork.SSID, TEST_BSSID_STR, 3, true);
+        mCmi.sendMessage(WifiMonitor.NETWORK_DISCONNECTION_EVENT, disconnectEventInfo);
+        mLooper.dispatchAll();
     }
 
     /**
@@ -4295,17 +4306,17 @@ public class ClientModeImplTest extends WifiBaseTest {
                 .setCandidate(getGoogleGuestScanDetail(TEST_RSSI, TEST_BSSID_STR, sFreq)
                         .getScanResult());
         testDhcpFailure();
-        verify(mWifiDiagnostics, atLeastOnce()).reportConnectionEvent(
+        verify(mWifiDiagnostics).reportConnectionEvent(
                 eq(WifiDiagnostics.CONNECTION_EVENT_FAILED), any());
-        verify(mWifiConnectivityManager, atLeastOnce()).handleConnectionAttemptEnded(
+        verify(mWifiConnectivityManager).handleConnectionAttemptEnded(
                 mClientModeManager,
                 WifiMetrics.ConnectionEvent.FAILURE_DHCP,
                 WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, TEST_BSSID_STR,
                 mTestConfig);
-        verify(mWifiNetworkFactory, atLeastOnce()).handleConnectionAttemptEnded(
+        verify(mWifiNetworkFactory).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_DHCP), any(WifiConfiguration.class),
                 eq(TEST_BSSID_STR));
-        verify(mWifiNetworkSuggestionsManager, atLeastOnce()).handleConnectionAttemptEnded(
+        verify(mWifiNetworkSuggestionsManager).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_DHCP), any(WifiConfiguration.class),
                 any(String.class));
         verify(mWifiMetrics, never())
