@@ -527,7 +527,9 @@ public class WifiServiceImpl extends BaseWifiService {
             if (!mWifiConfigManager.loadFromStore()) {
                 Log.e(TAG, "Failed to load from config store");
             }
-            mWifiConfigManager.updateTrustOnFirstUseFlag(isTrustOnFirstUseSupported());
+            if (!mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()) {
+                mWifiConfigManager.updateTrustOnFirstUseFlag(isTrustOnFirstUseSupported());
+            }
             mWifiConfigManager.incrementNumRebootsSinceLastUse();
             // config store is read, check if verbose logging is enabled.
             enableVerboseLoggingInternal(
@@ -734,7 +736,7 @@ public class WifiServiceImpl extends BaseWifiService {
                         @Override
                         public void onReceive(Context context, Intent intent) {
                             String action = intent.getAction();
-                            if (action.equals(Intent.ACTION_USER_REMOVED)) {
+                            if (Intent.ACTION_USER_REMOVED.equals(action)) {
                                 UserHandle userHandle =
                                         intent.getParcelableExtra(Intent.EXTRA_USER);
                                 if (userHandle == null) {
@@ -744,8 +746,8 @@ public class WifiServiceImpl extends BaseWifiService {
                                 }
                                 mWifiConfigManager
                                         .removeNetworksForUser(userHandle.getIdentifier());
-                            } else if (action.equals(
-                                    BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)) {
+                            } else if (BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED
+                                    .equals(action)) {
                                 int state = intent.getIntExtra(
                                         BluetoothAdapter.EXTRA_CONNECTION_STATE,
                                         BluetoothAdapter.STATE_DISCONNECTED);
@@ -756,7 +758,7 @@ public class WifiServiceImpl extends BaseWifiService {
                                         mActiveModeWarden.getClientModeManagers()) {
                                     cmm.onBluetoothConnectionStateChanged();
                                 }
-                            } else if (action.equals(BluetoothAdapter.ACTION_STATE_CHANGED)) {
+                            } else if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
                                 int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE,
                                         BluetoothAdapter.STATE_OFF);
                                 boolean isEnabled = state != BluetoothAdapter.STATE_OFF;
@@ -765,10 +767,10 @@ public class WifiServiceImpl extends BaseWifiService {
                                         mActiveModeWarden.getClientModeManagers()) {
                                     cmm.onBluetoothConnectionStateChanged();
                                 }
-                            } else if (action.equals(
-                                    PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)) {
+                            } else if (PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED
+                                    .equals(action)) {
                                 handleIdleModeChanged();
-                            } else if (action.equals(Intent.ACTION_SHUTDOWN)) {
+                            } else if (Intent.ACTION_SHUTDOWN.equals(action)) {
                                 handleShutDown();
                             }
                         }
@@ -1485,6 +1487,35 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiThreadRunner.post(() -> mCoexManager.unregisterRemoteCoexCallback(callback));
     }
 
+    private Runnable mRecoverSoftApStateIfNeeded = new Runnable() {
+        @Override
+        public void run() {
+            mTetheredSoftApTracker.setFailedWhileEnabling();
+        }
+    };
+
+    private boolean checkSetEnablingIfAllowed() {
+        Boolean resultSetEnablingIfAllowed = mWifiThreadRunner.call(() -> {
+            if (mWifiThreadRunner.hasCallbacks(mRecoverSoftApStateIfNeeded)) {
+                Log.i(TAG, "An error happened, state is recovering, reject more requests");
+                return false;
+            }
+            return mTetheredSoftApTracker.setEnablingIfAllowed();
+        }, null);
+
+        if (resultSetEnablingIfAllowed == null) {
+            Log.i(TAG, "Timeout happened ! Recover SAP state if needed");
+            mWifiThreadRunner.removeCallbacks(mRecoverSoftApStateIfNeeded);
+            mWifiThreadRunner.post(mRecoverSoftApStateIfNeeded);
+            return false;
+        }
+
+        if (!resultSetEnablingIfAllowed) {
+            mLog.err("Tethering is already active or in recovering.").flush();
+        }
+        return resultSetEnablingIfAllowed;
+    }
+
     /**
      * see {@link android.net.wifi.WifiManager#startSoftAp(WifiConfiguration)}
      * @param wifiConfig SSID, security and channel details as part of WifiConfiguration
@@ -1508,8 +1539,8 @@ public class WifiServiceImpl extends BaseWifiService {
             }
         }
 
-        if (!mTetheredSoftApTracker.setEnablingIfAllowed()) {
-            mLog.err("Tethering is already active.").flush();
+        // TODO: b/233363886, handle timeout in general way.
+        if (!checkSetEnablingIfAllowed()) {
             return false;
         }
 
@@ -1553,9 +1584,8 @@ public class WifiServiceImpl extends BaseWifiService {
 
         mLog.info("startTetheredHotspot uid=%").c(callingUid).flush();
 
-        if (!mWifiThreadRunner.call(
-                () -> mTetheredSoftApTracker.setEnablingIfAllowed(), false)) {
-            mLog.err("Tethering is already active.").flush();
+        // TODO: b/233363886, handle timeout in general way.
+        if (!checkSetEnablingIfAllowed()) {
             return false;
         }
 
@@ -2017,8 +2047,7 @@ public class WifiServiceImpl extends BaseWifiService {
                         sendHotspotStartedMessageToAllLOHSRequestInfoEntriesLocked();
                         break;
                     case WifiManager.IFACE_IP_MODE_TETHERED:
-                        if (mLohsInterfaceName != null
-                                && mLohsInterfaceName.equals(ifaceName)) {
+                        if (TextUtils.equals(mLohsInterfaceName, ifaceName)) {
                             /* This shouldn't happen except in a race, but if it does, tear down
                              * the LOHS and let tethering win.
                              *
@@ -2040,7 +2069,7 @@ public class WifiServiceImpl extends BaseWifiService {
                             sendHotspotFailedMessageToAllLOHSRequestInfoEntriesLocked(
                                     LocalOnlyHotspotCallback.ERROR_GENERIC);
                             stopSoftApInternal(WifiManager.IFACE_IP_MODE_UNSPECIFIED);
-                        } else if (ifaceName.equals(mLohsInterfaceName)) {
+                        } else if (TextUtils.equals(mLohsInterfaceName, ifaceName)) {
                             mLohsInterfaceName = null;
                             mLohsInterfaceMode = mode;
                             sendHotspotFailedMessageToAllLOHSRequestInfoEntriesLocked(
@@ -3359,7 +3388,7 @@ public class WifiServiceImpl extends BaseWifiService {
 
         // if we're being called from the SYSTEM_UID then allow usage of the AttributionSource to
         // reassign the WifiConfiguration to another app (reassignment == creatorUid)
-        if (SdkLevel.isAtLeastS() && uidToUse == Process.SYSTEM_UID) {
+        if (SdkLevel.isAtLeastS() && UserHandle.getAppId(uidToUse) == Process.SYSTEM_UID) {
             if (extras == null) {
                 throw new SecurityException("extras bundle is null");
             }
@@ -3490,8 +3519,7 @@ public class WifiServiceImpl extends BaseWifiService {
 
         if (config.isEnterprise() && config.enterpriseConfig.isEapMethodServerCertUsed()
                 && !config.enterpriseConfig.isMandatoryParameterSetForServerCertValidation()) {
-            if (!(mContext.getResources().getBoolean(
-                    R.bool.config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW)
+            if (!(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()
                     && isSettingsOrSuw(Binder.getCallingPid(), Binder.getCallingUid()))) {
                 Log.e(TAG, "Enterprise network configuration is missing either a Root CA "
                         + "or a domain name");
@@ -4510,7 +4538,7 @@ public class WifiServiceImpl extends BaseWifiService {
                     String ip = tokens[0];
                     String mac = tokens[3];
 
-                    if (remoteIpAddress.equals(ip)) {
+                    if (TextUtils.equals(remoteIpAddress, ip)) {
                         macAddress = mac;
                         break;
                     }
