@@ -1069,6 +1069,11 @@ public class WifiPermissionsUtil {
             return false;
         }
         String[] packages = mContext.getPackageManager().getPackagesForUid(uid);
+        if (packages == null) {
+            Log.w(TAG, "isProfileOwnerOfOrganizationOwnedDevice(): could not find packages for uid="
+                    + uid);
+            return false;
+        }
         for (String packageName : packages) {
             if (devicePolicyManager.isProfileOwnerApp(packageName)) return true;
         }
@@ -1152,7 +1157,7 @@ public class WifiPermissionsUtil {
      * @return true if the given UID belongs to the given user.
      */
     public boolean doesUidBelongToUser(int uid, int userId) {
-        if (uid == android.os.Process.SYSTEM_UID
+        if (UserHandle.getAppId(uid) == android.os.Process.SYSTEM_UID
                 // UIDs with the NETWORK_SETTINGS permission are always allowed since they are
                 // acting on behalf of the user.
                 || checkNetworkSettingsPermission(uid)) {
