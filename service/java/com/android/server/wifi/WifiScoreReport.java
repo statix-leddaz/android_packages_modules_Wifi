@@ -43,10 +43,8 @@ import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.util.Calendar;
 import java.util.LinkedList;
-import java.util.Locale;
 
 /**
  * Class used to calculate scores for connected wifi networks and report it to the associated
@@ -803,7 +801,6 @@ public class WifiScoreReport {
      */
     private void logLinkMetrics(long now, int netId, int s1, int s2, int score) {
         if (now < FIRST_REASONABLE_WALL_CLOCK) return;
-        double rssi = mWifiInfo.getRssi();
         double filteredRssi = -1;
         double rssiThreshold = -1;
         if (mWifiConnectedNetworkScorerHolder == null) {
@@ -823,16 +820,25 @@ public class WifiScoreReport {
         long totalBeaconRx = mWifiMetrics.getTotalBeaconRxCount();
         String s;
         try {
-            String timestamp = new SimpleDateFormat("MM-dd HH:mm:ss.SSS").format(new Date(now));
-            s = String.format(Locale.US, // Use US to avoid comma/decimal confusion
-                    "%s,%d,%d,%.1f,%.1f,%.1f,%d,%d,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%d,%d,%d,%d,%d",
-                    timestamp, mSessionNumber, netId,
-                    rssi, filteredRssi, rssiThreshold, freq, txLinkSpeed, rxLinkSpeed,
-                    txThroughputMbps, rxThroughputMbps, totalBeaconRx,
-                    txSuccessRate, txRetriesRate, txBadRate, rxSuccessRate,
-                    mNudYes, mNudCount,
-                    s1, s2, score);
-
+            Calendar c = Calendar.getInstance();
+            c.setTimeInMillis(now);
+            // Date format: "%tm-%td %tH:%tM:%tS.%tL"
+            String timestamp = new StringBuilder().append(c.get(Calendar.MONTH)).append("-")
+                    .append(c.get(Calendar.DAY_OF_MONTH)).append(" ")
+                    .append(c.get(Calendar.HOUR_OF_DAY)).append(":")
+                    .append(c.get(Calendar.MINUTE)).append(":")
+                    .append(c.get(Calendar.SECOND)).append(".")
+                    .append(c.get(Calendar.MILLISECOND)).toString();
+            s = timestamp + "," + mSessionNumber + "," + netId + "," + mWifiInfo.getRssi()
+                    + "," + Math.round(filteredRssi * 100) / 100 + "," + rssiThreshold
+                    + "," + freq + "," + txLinkSpeed
+                    + "," + rxLinkSpeed + "," + txThroughputMbps
+                    + "," + rxThroughputMbps + "," + totalBeaconRx
+                    + "," + Math.round(txSuccessRate * 100) / 100
+                    + "," + Math.round(txRetriesRate * 100) / 100
+                    + "," + Math.round(txBadRate * 100) / 100
+                    + "," + Math.round(rxSuccessRate * 100) / 100
+                    + "," + mNudYes + "," + mNudCount + "," + s1 + "," + s2 + "," + score;
         } catch (Exception e) {
             Log.e(TAG, "format problem", e);
             return;

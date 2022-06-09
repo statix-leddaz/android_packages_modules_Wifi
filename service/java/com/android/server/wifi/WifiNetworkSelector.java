@@ -391,7 +391,7 @@ public class WifiNetworkSelector {
      */
     public static String toScanId(@Nullable ScanResult scanResult) {
         return scanResult == null ? "NULL"
-                : String.format("%s:%s", scanResult.SSID, scanResult.BSSID);
+                : scanResult.SSID + ":" + scanResult.BSSID;
     }
 
     /**
@@ -927,8 +927,6 @@ public class WifiNetworkSelector {
             registeredNominator.update(scanDetails);
         }
 
-        updateCandidatesSecurityParams(scanDetails);
-
         // Shall we start network selection at all?
         if (!multiInternetNetworkAllowed && !isNetworkSelectionNeeded(scanDetails, cmmStates)) {
             return null;
@@ -954,7 +952,7 @@ public class WifiNetworkSelector {
                 // will be replaced.
                 MacAddress bssid = MacAddress.fromString(currentBssid);
                 SecurityParams params = currentNetwork.getNetworkSelectionStatus()
-                        .getCandidateSecurityParams();
+                        .getLastUsedSecurityParams();
                 if (null == params) {
                     localLog("No known candidate security params for current network.");
                     continue;
@@ -1019,6 +1017,47 @@ public class WifiNetworkSelector {
         if (mConnectableNetworks.size() != wifiCandidates.size()) {
             localLog("Connectable: " + mConnectableNetworks.size()
                     + " Candidates: " + wifiCandidates.size());
+        }
+        return wifiCandidates.getCandidates();
+    }
+
+    /**
+     * Add all results as candidates for the user selected network and let network selection
+     * chooses the proper one for the user selected network.
+     * @param config                  The configuration for the user selected network.
+     * @param scanDetails              List of ScanDetail for the user selected network.
+     * @return list of valid Candidate(s)
+     */
+    public List<WifiCandidates.Candidate> getCandidatesForUserSelection(
+            WifiConfiguration config, @NonNull List<ScanDetail> scanDetails) {
+        if (scanDetails.size() == 0) {
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "No scan result for the user selected network.");
+                return null;
+            }
+        }
+
+        mConnectableNetworks.clear();
+        WifiCandidates wifiCandidates = new WifiCandidates(mWifiScoreCard, mContext);
+        for (ScanDetail scanDetail: scanDetails) {
+            WifiCandidates.Key key = wifiCandidates.keyFromScanDetailAndConfig(
+                    scanDetail, config);
+            if (null == key) continue;
+
+            boolean added = wifiCandidates.add(key, config,
+                    WifiNetworkSelector.NetworkNominator.NOMINATOR_ID_CURRENT,
+                    scanDetail.getScanResult().level,
+                    scanDetail.getScanResult().frequency,
+                    scanDetail.getScanResult().channelWidth,
+                    0.0 /* lastSelectionWeightBetweenZeroAndOne */,
+                    false /* isMetered */,
+                    WifiNetworkSelector.isFromCarrierOrPrivilegedApp(config),
+                    predictThroughput(scanDetail));
+            if (!added) continue;
+
+            mConnectableNetworks.add(Pair.create(scanDetail, config));
+            mWifiConfigManager.updateScanDetailForNetwork(
+                    config.networkId, scanDetail);
         }
         return wifiCandidates.getCandidates();
     }
@@ -1100,7 +1139,7 @@ public class WifiNetworkSelector {
                 && configWithPassword.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE)
                 && !configWithPassword.preSharedKey.startsWith("\"")
                 && configWithPassword.preSharedKey.length() == 64
-                && configWithPassword.preSharedKey.matches(String.format("[0-9A-Fa-f]{%d}", 64))) {
+                && configWithPassword.preSharedKey.matches("[0-9A-Fa-f]{64}")) {
             localLog("Remove SAE type for " + configWithPassword.SSID + " with 64-octet Hex PSK.");
             scanResultParamsList
                     .removeIf(p -> p.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE));
@@ -1280,7 +1319,8 @@ public class WifiNetworkSelector {
         }
         if (config.isPasspoint()) {
             config.SSID = choice.candidateKey.matchInfo.networkSsid;
-            mWifiConfigManager.addOrUpdateNetwork(config, config.creatorUid, config.creatorName);
+            mWifiConfigManager.addOrUpdateNetwork(config, config.creatorUid, config.creatorName,
+                    false);
         }
     }
 
@@ -1453,13 +1493,5 @@ public class WifiNetworkSelector {
         mWifiChannelUtilization = wifiChannelUtilization;
         mWifiGlobals = wifiGlobals;
         mScanRequestProxy = scanRequestProxy;
-    }
-
-    private void updateCandidatesSecurityParams(List<ScanDetail> scanDetails) {
-        for (ScanDetail scanDetail : scanDetails) {
-            WifiConfiguration network =
-                    mWifiConfigManager.getSavedNetworkForScanDetail(scanDetail);
-            updateNetworkCandidateSecurityParams(network, scanDetail);
-        }
     }
 }

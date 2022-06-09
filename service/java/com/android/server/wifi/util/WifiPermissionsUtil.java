@@ -22,6 +22,7 @@ import static android.Manifest.permission.NEARBY_WIFI_DEVICES;
 import static android.Manifest.permission.RENOUNCE_PERMISSIONS;
 import static android.Manifest.permission.REQUEST_COMPANION_PROFILE_AUTOMOTIVE_PROJECTION;
 import static android.content.pm.PackageManager.GET_PERMISSIONS;
+import static android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES;
 
 import android.Manifest;
 import android.annotation.NonNull;
@@ -151,8 +152,8 @@ public class WifiPermissionsUtil {
      * @return true if the app does have the permission, false otherwise.
      */
     public boolean checkConfigOverridePermission(int uid) {
-        int permission = mWifiPermissionsWrapper.getOverrideWifiConfigPermission(uid);
-        return permission == PackageManager.PERMISSION_GRANTED;
+        return mWifiPermissionsWrapper.getOverrideWifiConfigPermission(uid)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
     /**
@@ -240,22 +241,40 @@ public class WifiPermissionsUtil {
         // There are 2 ways to disavow location. Skip location permission check if any of the
         // 2 ways are used to disavow location usage.
         // First check if the app renounced location.
-        if (attributionSource.getRenouncedPermissions().contains(ACCESS_FINE_LOCATION)
-                && mWifiPermissionsWrapper.getUidPermission(RENOUNCE_PERMISSIONS, uid)
-                == PackageManager.PERMISSION_GRANTED) {
-            // TODO(b/197776854): check along the AttributionSource chain for any app that
-            // renounced location instead of only the direct caller.
-            if (mVerboseLoggingEnabled) {
-                Log.v(TAG, "package=" + packageName + " UID=" + uid
-                        + " has renounced location permission - bypassing location check.");
+        // Check every step along the attribution chain for a renouncement.
+        AttributionSource currentAttrib = attributionSource;
+        while (true) {
+            int curUid = currentAttrib.getUid();
+            String curPackageName = currentAttrib.getPackageName();
+            // If location has been renounced anywhere in the chain we treat it as a disavowal.
+            if (currentAttrib.getRenouncedPermissions().contains(ACCESS_FINE_LOCATION)
+                    && mWifiPermissionsWrapper.getUidPermission(RENOUNCE_PERMISSIONS, curUid)
+                    == PackageManager.PERMISSION_GRANTED) {
+                if (mVerboseLoggingEnabled) {
+                    Log.v(TAG, "package=" + curPackageName + " UID=" + curUid
+                            + " has renounced location permission - bypassing location check.");
+                }
+                return;
             }
-            return;
+            AttributionSource nextAttrib = currentAttrib.getNext();
+            if (nextAttrib == null) {
+                break;
+            }
+            currentAttrib = nextAttrib;
         }
         // If the app did not renounce location, check if "neverForLocation" is set.
         PackageManager pm = mContext.getPackageManager();
         try {
-            PackageInfo pkgInfo = pm.getPackageInfo(packageName, GET_PERMISSIONS);
-            for (int i = 0; i < pkgInfo.requestedPermissions.length; i++) {
+            PackageInfo pkgInfo = pm.getPackageInfo(packageName,
+                    GET_PERMISSIONS | MATCH_UNINSTALLED_PACKAGES);
+            int requestedPermissionsLength = pkgInfo.requestedPermissions == null
+                    || pkgInfo.requestedPermissionsFlags == null ? 0
+                    : pkgInfo.requestedPermissions.length;
+            if (requestedPermissionsLength == 0) {
+                Log.e(TAG, "package=" + packageName + " unexpectedly has null "
+                        + "requestedPermissions or requestPermissionFlags.");
+            }
+            for (int i = 0; i < requestedPermissionsLength; i++) {
                 if (pkgInfo.requestedPermissions[i].equals(NEARBY_WIFI_DEVICES)
                         && (pkgInfo.requestedPermissionsFlags[i]
                         & PackageInfo.REQUESTED_PERMISSION_NEVER_FOR_LOCATION) != 0) {
@@ -404,7 +423,7 @@ public class WifiPermissionsUtil {
      */
     public void enforceFineLocationPermission(String pkgName, @Nullable String featureId,
             int uid) {
-        if (!checkCallersFineLocationPermission(pkgName, featureId, uid, false)) {
+        if (!checkCallersFineLocationPermission(pkgName, featureId, uid, false, false)) {
             throw new SecurityException("UID " + uid + " does not have Fine Location permission");
         }
     }
@@ -419,22 +438,28 @@ public class WifiPermissionsUtil {
      * @param hideFromAppOps True to invoke {@link AppOpsManager#checkOp(int, int, String)}, false
      *                       to invoke {@link AppOpsManager#noteOp(String, int, String, String,
      *                       String)}.
+     * @param ignoreLocationSettings Whether this request can bypass location settings.
      */
     private boolean checkCallersFineLocationPermission(String pkgName, @Nullable String featureId,
-            int uid, boolean hideFromAppOps) {
+            int uid, boolean hideFromAppOps, boolean ignoreLocationSettings) {
         // Having FINE permission implies having COARSE permission (but not the reverse)
         if (mWifiPermissionsWrapper.getUidPermission(
                 ACCESS_FINE_LOCATION, uid)
                 == PackageManager.PERMISSION_DENIED) {
             return false;
         }
+
+        boolean isAllowed;
         if (hideFromAppOps) {
             // Don't note the operation, just check if the app is allowed to perform the operation.
-            return checkAppOpAllowed(AppOpsManager.OPSTR_FINE_LOCATION, pkgName, uid);
+            isAllowed = checkAppOpAllowed(AppOpsManager.OPSTR_FINE_LOCATION, pkgName, uid);
         } else {
-            return noteAppOpAllowed(AppOpsManager.OPSTR_FINE_LOCATION, pkgName, featureId, uid,
+            isAllowed = noteAppOpAllowed(AppOpsManager.OPSTR_FINE_LOCATION, pkgName, featureId, uid,
                     null);
         }
+        // If the ignoreLocationSettings is true, we always return true. This is for the emergency
+        // location service use case. But still notify the operation manager.
+        return isAllowed || ignoreLocationSettings;
     }
 
     /**
@@ -594,8 +619,8 @@ public class WifiPermissionsUtil {
         }
         // LocationAccess by App: caller must have fine & hardware Location permission to have
         // access to location information.
-        if (!checkCallersFineLocationPermission(pkgName, featureId, uid, hideFromAppOps)
-                || !checkCallersHardwareLocationPermission(uid)) {
+        if (!checkCallersFineLocationPermission(pkgName, featureId, uid, hideFromAppOps,
+                ignoreLocationSettings) || !checkCallersHardwareLocationPermission(uid)) {
             throw new SecurityException("UID " + uid + " has no location permission");
         }
         // Check if Wifi Scan request is an operation allowed for this App.
@@ -840,6 +865,15 @@ public class WifiPermissionsUtil {
     }
 
     /**
+     * Returns true if the |uid| holds CAMERA permission.
+     */
+    public boolean checkCameraPermission(int uid) {
+        return mWifiPermissionsWrapper.getUidPermission(
+                android.Manifest.permission.CAMERA, uid)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
      * Returns true if the |callingUid|/\callingPackage| holds SYSTEM_ALERT_WINDOW permission.
      */
     public boolean checkSystemAlertWindowPermission(int callingUid, String callingPackage) {
@@ -1035,6 +1069,11 @@ public class WifiPermissionsUtil {
             return false;
         }
         String[] packages = mContext.getPackageManager().getPackagesForUid(uid);
+        if (packages == null) {
+            Log.w(TAG, "isProfileOwnerOfOrganizationOwnedDevice(): could not find packages for uid="
+                    + uid);
+            return false;
+        }
         for (String packageName : packages) {
             if (devicePolicyManager.isProfileOwnerApp(packageName)) return true;
         }
@@ -1118,7 +1157,7 @@ public class WifiPermissionsUtil {
      * @return true if the given UID belongs to the given user.
      */
     public boolean doesUidBelongToUser(int uid, int userId) {
-        if (uid == android.os.Process.SYSTEM_UID
+        if (UserHandle.getAppId(uid) == android.os.Process.SYSTEM_UID
                 // UIDs with the NETWORK_SETTINGS permission are always allowed since they are
                 // acting on behalf of the user.
                 || checkNetworkSettingsPermission(uid)) {
@@ -1165,9 +1204,15 @@ public class WifiPermissionsUtil {
                 WifiPermissionsUtil.retrieveDevicePolicyManagerFromContext(mContext);
         if (devicePolicyManager == null) return false;
 
-        int adminMinimumSecurityLevel =
-                devicePolicyManager.getMinimumRequiredWifiSecurityLevel();
-        WifiSsidPolicy policy = devicePolicyManager.getWifiSsidPolicy();
+        int adminMinimumSecurityLevel = 0;
+        WifiSsidPolicy policy;
+        long ident = Binder.clearCallingIdentity();
+        try {
+            adminMinimumSecurityLevel = devicePolicyManager.getMinimumRequiredWifiSecurityLevel();
+            policy = devicePolicyManager.getWifiSsidPolicy();
+        } finally {
+            Binder.restoreCallingIdentity(ident);
+        }
 
         //check minimum security level restriction
         if (adminMinimumSecurityLevel != 0) {
@@ -1208,5 +1253,20 @@ public class WifiPermissionsUtil {
             }
         }
         return false;
+    }
+
+    /**
+     * Returns the foreground userId
+     */
+    public int getCurrentUser() {
+        //set the default to undefined user id (UserHandle.USER_NULL)
+        int user = -10000;
+        long ident = Binder.clearCallingIdentity();
+        try {
+            user = mWifiPermissionsWrapper.getCurrentUser();
+        } finally {
+            Binder.restoreCallingIdentity(ident);
+        }
+        return user;
     }
 }

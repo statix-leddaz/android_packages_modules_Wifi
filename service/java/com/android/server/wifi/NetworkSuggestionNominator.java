@@ -132,7 +132,7 @@ public class NetworkSuggestionNominator implements WifiNetworkSelector.NetworkNo
             return;
         }
         NetworkUpdateResult result = mWifiConfigManager.addOrUpdateNetwork(
-                config, ewns.perAppInfo.uid, ewns.perAppInfo.packageName);
+                config, ewns.perAppInfo.uid, ewns.perAppInfo.packageName, false);
         if (!result.isSuccess()) {
             mLocalLog.log("Failed to add network suggestion");
             return;
@@ -441,9 +441,8 @@ public class NetworkSuggestionNominator implements WifiNetworkSelector.NetworkNo
                 List<PerNetworkSuggestionMatchMetaInfo> matchedNetworkInfos =
                         mAppInfos.valueAt(i).getHighestPriorityNetworks();
                 for (PerNetworkSuggestionMatchMetaInfo matchedNetworkInfo : matchedNetworkInfos) {
-                    mLocalLog.log(String.format("network suggestion candidate %s nominated",
-                                toNetworkString(matchedNetworkInfo.wCmConfiguredNetwork)));
-
+                    mLocalLog.log("network suggestion candidate " + toNetworkString(
+                            matchedNetworkInfo.wCmConfiguredNetwork) + " nominated");
                     onConnectableListener.onConnectable(
                             matchedNetworkInfo.matchingScanDetail,
                             matchedNetworkInfo.wCmConfiguredNetwork);
