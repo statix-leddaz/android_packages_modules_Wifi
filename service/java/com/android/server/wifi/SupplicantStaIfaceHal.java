@@ -1834,6 +1834,7 @@ public class SupplicantStaIfaceHal {
         }
     }
 
+
     /**
      * Returns a bitmask of advanced capabilities: WPA3 SAE/SUITE B and OWE
      * Bitmask used is:
@@ -2203,6 +2204,21 @@ public class SupplicantStaIfaceHal {
             }
             return mStaIfaceHal.generateSelfDppConfiguration(ifaceName, ssid, privEcKey);
         }
+    }
+
+    /**
+     * This set anonymous identity to supplicant.
+     *
+     * @param ifaceName Name of the interface.
+     * @param anonymousIdentity the anonymouns identity.
+     * @return true if succeeds, false otherwise.
+     */
+    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity) {
+        String methodStr = "setEapAnonymousIdentity";
+        if (mStaIfaceHal == null) {
+            return handleNullHal(methodStr);
+        }
+        return mStaIfaceHal.setEapAnonymousIdentity(ifaceName, anonymousIdentity);
     }
 
     private boolean handleNullHal(String methodStr) {

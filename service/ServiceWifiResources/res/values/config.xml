@@ -319,6 +319,11 @@
     <!-- Wifi driver supports 60GHz band for softap when chip support 60GHz -->
     <bool translatable="false" name="config_wifiSoftap60ghzSupported">false</bool>
 
+    <!-- Indicates that the framework should auto append lower bands to band configuration for
+         avoiding coexistence handling. For example: 5g only band will change to 2.4g|5g and
+         6g band will change to 2.4|5g|6g band -->
+    <bool translatable="false" name="config_wifiSoftapAutoAppendLowerBandsToBandConfigurationEnabled">true</bool>
+
     <!-- Indicates that local-only hotspot should be brought up at 6GHz if possible.
          This option is for automotive builds only (the one that have
          PackageManager#FEATURE_AUTOMOTIVE) -->
@@ -354,6 +359,14 @@
 
     <!-- Indicates that dynamic country code update in AP mode is supported on this device -->
     <bool translatable="false" name="config_wifiSoftApDynamicCountryCodeUpdateSupported">false</bool>
+
+    <!-- list of SSIDs to force disable MAC randomization -->
+    <string-array translatable="false" name="config_wifiForceDisableMacRandomizationSsidList">
+        <!-- SSIDs are expected in quoted format:
+        <item>\"SSID_1\"</item>
+        <item>\"SSID_2\"</item>
+        -->
+    </string-array>
 
     <!-- list of SSIDs to enable non-persistent MAC randomization on -->
     <string-array translatable="false" name="config_wifi_non_persistent_randomization_ssid_allowlist">
@@ -550,6 +563,7 @@
     <integer translatable="false" name="config_wifiBssidBlocklistMonitorDhcpFailureThreshold"> 2 </integer>
     <integer translatable="false" name="config_wifiBssidBlocklistMonitorAbnormalDisconnectThreshold"> 3 </integer>
     <integer translatable="false" name="config_wifiBssidBlocklistMonitorNonlocalDisconnectConnectingThreshold"> 2 </integer>
+    <integer translatable="false" name="config_wifiBssidBlocklistMonitorNoResponseThreshold"> 1 </integer>
 
     <!-- Base duration to block a BSSID after consecutive failures happen. (default = 5 mins)
     The blocklist duration is increased exponentially for a BSSID that consecutively gets added to the blocklist.
@@ -863,5 +877,21 @@
 
     <!-- The world mode country code value definition in the wifi driver -->
     <string translatable="false" name="config_wifiDriverWorldModeCountryCode">00</string>
+
+    <!-- Indicates whether or not the AP WAN Link Status ANQP element is used to filter candidate
+         networks. Note that even if enabled (overlay = true) that invalid elements (all zeros
+         are still ignored).
+         If disabled (overlay = false) then the
+         `config_wifiPasspointUseApWanLinkStatusAnqpElementFqdnAllowList`
+         specifies a list of FQDNs for which the element will still be considered. -->
+    <bool translatable="false" name="config_wifiPasspointUseApWanLinkStatusAnqpElement">true</bool>
+    <!-- list of FQDNs for which to use the AP WAN Link Status ANQP element. Overrides any
+         configuration specified in `config_wifiPasspointUseApWanLinkStatusAnqpElement`. -->
+    <string-array translatable="false" name="config_wifiPasspointUseApWanLinkStatusAnqpElementFqdnAllowlist">
+        <!-- Below is a sample configuration for this list:
+        <item>XYZ</item>
+        <item>ABC</item>
+        -->
+    </string-array>
 
 </resources>

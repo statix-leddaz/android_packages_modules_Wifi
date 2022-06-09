@@ -106,6 +106,7 @@
           <item type="bool" name="config_wifiSoftap5ghzSupported" />
           <item type="bool" name="config_wifiSoftap6ghzSupported" />
           <item type="bool" name="config_wifiSoftap60ghzSupported" />
+          <item type="bool" name="config_wifiSoftapAutoAppendLowerBandsToBandConfigurationEnabled" />
           <item type="bool" name="config_wifiSoftapHeSuBeamformerSupported" />
           <item type="bool" name="config_wifiSoftapHeSuBeamformeeSupported" />
           <item type="bool" name="config_wifiSoftapHeMuBeamformerSupported" />
@@ -119,6 +120,7 @@
           <item type="bool" name="config_wifi_ap_mac_randomization_supported" />
           <item type="bool" name="config_wifiBridgedSoftApSupported" />
           <item type="bool" name="config_wifiStaWithBridgedSoftApConcurrencySupported" />
+          <item type="array" name="config_wifiForceDisableMacRandomizationSsidList" />
           <item type="array" name="config_wifi_non_persistent_randomization_ssid_allowlist" />
           <item type="array" name="config_wifi_non_persistent_randomization_ssid_blocklist" />
           <item type="integer" name="config_wifiRecentFailureReasonExpirationMinutes" />
@@ -160,6 +162,7 @@
           <item type="integer" name="config_wifiBssidBlocklistMonitorConnectedScoreBaseBlockDurationMs" />
           <item type="integer" name="config_wifiBssidBlocklistMonitorFailureStreakCap" />
           <item type="integer" name="config_wifiBssidBlocklistAbnormalDisconnectTimeWindowMs" />
+          <item type="integer" name="config_wifiBssidBlocklistMonitorNoResponseThreshold" />
           <item type="bool" name="config_wifiScanHiddenNetworksScanOnlyMode" />
           <item type="integer" name="config_wifiHardwareSoftapMaxClientCount" />
           <item type="bool" name="config_wifiIsUnusableEventMetricsEnabled" />
@@ -238,6 +241,8 @@
           <item type="array" name="config_wifiExcludedFromUserApprovalForD2dInterfacePriority" />
           <item type="bool" name="config_wifiNetworkCentricQosPolicyFeatureEnabled" />
           <item type="string" name="config_wifiDriverWorldModeCountryCode" />
+          <item type="bool" name="config_wifiPasspointUseApWanLinkStatusAnqpElement" />
+          <item type="array" name="config_wifiPasspointUseApWanLinkStatusAnqpElementFqdnAllowlist" />
           <!-- Params from config.xml that can be overlayed -->
 
           <!-- Params from strings.xml that can be overlayed -->
@@ -326,6 +331,10 @@
           <item type="style" name="wifi_item_content" />
           <item type="style" name="wifi_section" />
           <item type="style" name="wifi_p2p_invitation_received_dialog" />
+          <item type="style" name="wifi_p2p_dialog_row_label" />
+          <item type="style" name="wifi_p2p_dialog_row_content" />
+          <item type="style" name="wifi_p2p_dialog_enter_pin_message" />
+          <item type="style" name="wifi_p2p_dialog_pin_input" />
           <!-- Params from styles.xml that can be overlayed -->
 
           <!-- Params from drawable/ that can be overlayed -->

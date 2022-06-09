@@ -945,7 +945,12 @@ public class WifiMetrics {
             StringBuilder sb = new StringBuilder();
             Calendar c = Calendar.getInstance();
             c.setTimeInMillis(mWallClockTimeMs);
-            sb.append(String.format("%tm-%td %tH:%tM:%tS.%tL", c, c, c, c, c, c));
+            sb.append(c.get(Calendar.MONTH)).append("-")
+                    .append(c.get(Calendar.DAY_OF_MONTH)).append(" ")
+                    .append(c.get(Calendar.HOUR_OF_DAY)).append(":")
+                    .append(c.get(Calendar.MINUTE)).append(":")
+                    .append(c.get(Calendar.SECOND)).append(".")
+                    .append(c.get(Calendar.MILLISECOND));
             String eventType = "UNKNOWN";
             switch (mUserActionEvent.eventType) {
                 case UserActionEvent.EVENT_FORGET_WIFI:
@@ -1065,6 +1070,8 @@ public class WifiMetrics {
         public static final int FAILURE_ASSOCIATION_TIMED_OUT = 11;
         // NETWORK_NOT_FOUND
         public static final int FAILURE_NETWORK_NOT_FOUND = 12;
+        // Connection attempt aborted by the watchdog because the AP didn't respond.
+        public static final int FAILURE_NO_RESPONSE = 13;
 
         RouterFingerPrint mRouterFingerPrint;
         private String mConfigSsid;
@@ -1091,8 +1098,16 @@ public class WifiMetrics {
             Calendar c = Calendar.getInstance();
             synchronized (mLock) {
                 c.setTimeInMillis(mConnectionEvent.startTimeMillis);
-                sb.append(mConnectionEvent.startTimeMillis == 0 ? "            <null>" :
-                        String.format("%tm-%td %tH:%tM:%tS.%tL", c, c, c, c, c, c));
+                if (mConnectionEvent.startTimeMillis == 0) {
+                    sb.append("            <null>");
+                } else {
+                    sb.append(c.get(Calendar.MONTH)).append("-")
+                            .append(c.get(Calendar.DAY_OF_MONTH)).append(" ")
+                            .append(c.get(Calendar.HOUR_OF_DAY)).append(":")
+                            .append(c.get(Calendar.MINUTE)).append(":")
+                            .append(c.get(Calendar.SECOND)).append(".")
+                            .append(c.get(Calendar.MILLISECOND));
+                }
                 sb.append(", SSID=");
                 sb.append(mConfigSsid);
                 sb.append(", BSSID=");
@@ -1158,6 +1173,9 @@ public class WifiMetrics {
                         break;
                     case FAILURE_NETWORK_NOT_FOUND:
                         sb.append("FAILURE_NETWORK_NOT_FOUND");
+                        break;
+                    case FAILURE_NO_RESPONSE:
+                        sb.append("FAILURE_NO_RESPONSE");
                         break;
                     default:
                         sb.append("UNKNOWN");
@@ -1238,8 +1256,8 @@ public class WifiMetrics {
                         sb.append("NOMINATOR_OPEN_NETWORK_AVAILABLE");
                         break;
                     default:
-                        sb.append(String.format("UnrecognizedNominator(%d)",
-                                mConnectionEvent.connectionNominator));
+                        sb.append("UnrecognizedNominator(" + mConnectionEvent.connectionNominator
+                                + ")");
                 }
                 sb.append(", networkSelectorExperimentId=");
                 sb.append(mConnectionEvent.networkSelectorExperimentId);
@@ -2092,6 +2110,7 @@ public class WifiMetrics {
         }
     }
 
+    // TODO(b/177341879): Add failure type ConnectionEvent.FAILURE_NO_RESPONSE into Westworld.
     private int getConnectionResultFailureCode(int level2FailureCode, int level2FailureReason) {
         switch (level2FailureCode) {
             case ConnectionEvent.FAILURE_NONE:
@@ -2115,11 +2134,8 @@ public class WifiMetrics {
                 return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_NETWORK_DISCONNECTION;
             case ConnectionEvent.FAILURE_ROAM_TIMEOUT:
                 return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_ROAM_TIMEOUT;
-            case ConnectionEvent.FAILURE_NEW_CONNECTION_ATTEMPT:
-            case ConnectionEvent.FAILURE_REDUNDANT_CONNECTION_ATTEMPT:
-                return -1;
             default:
-                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_UNKNOWN;
+                return -1;
         }
     }
 
