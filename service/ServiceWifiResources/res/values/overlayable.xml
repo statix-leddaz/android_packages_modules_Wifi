@@ -241,6 +241,8 @@
           <item type="array" name="config_wifiExcludedFromUserApprovalForD2dInterfacePriority" />
           <item type="bool" name="config_wifiNetworkCentricQosPolicyFeatureEnabled" />
           <item type="string" name="config_wifiDriverWorldModeCountryCode" />
+          <item type="bool" name="config_wifiPasspointUseApWanLinkStatusAnqpElement" />
+          <item type="array" name="config_wifiPasspointUseApWanLinkStatusAnqpElementFqdnAllowlist" />
           <!-- Params from config.xml that can be overlayed -->
 
           <!-- Params from strings.xml that can be overlayed -->
@@ -329,6 +331,10 @@
           <item type="style" name="wifi_item_content" />
           <item type="style" name="wifi_section" />
           <item type="style" name="wifi_p2p_invitation_received_dialog" />
+          <item type="style" name="wifi_p2p_dialog_row_label" />
+          <item type="style" name="wifi_p2p_dialog_row_content" />
+          <item type="style" name="wifi_p2p_dialog_enter_pin_message" />
+          <item type="style" name="wifi_p2p_dialog_pin_input" />
           <!-- Params from styles.xml that can be overlayed -->
 
           <!-- Params from drawable/ that can be overlayed -->
