@@ -736,7 +736,7 @@ public class WifiServiceImpl extends BaseWifiService {
                         @Override
                         public void onReceive(Context context, Intent intent) {
                             String action = intent.getAction();
-                            if (action.equals(Intent.ACTION_USER_REMOVED)) {
+                            if (Intent.ACTION_USER_REMOVED.equals(action)) {
                                 UserHandle userHandle =
                                         intent.getParcelableExtra(Intent.EXTRA_USER);
                                 if (userHandle == null) {
@@ -746,8 +746,8 @@ public class WifiServiceImpl extends BaseWifiService {
                                 }
                                 mWifiConfigManager
                                         .removeNetworksForUser(userHandle.getIdentifier());
-                            } else if (action.equals(
-                                    BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)) {
+                            } else if (BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED
+                                    .equals(action)) {
                                 int state = intent.getIntExtra(
                                         BluetoothAdapter.EXTRA_CONNECTION_STATE,
                                         BluetoothAdapter.STATE_DISCONNECTED);
@@ -758,7 +758,7 @@ public class WifiServiceImpl extends BaseWifiService {
                                         mActiveModeWarden.getClientModeManagers()) {
                                     cmm.onBluetoothConnectionStateChanged();
                                 }
-                            } else if (action.equals(BluetoothAdapter.ACTION_STATE_CHANGED)) {
+                            } else if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
                                 int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE,
                                         BluetoothAdapter.STATE_OFF);
                                 boolean isEnabled = state != BluetoothAdapter.STATE_OFF;
@@ -767,10 +767,10 @@ public class WifiServiceImpl extends BaseWifiService {
                                         mActiveModeWarden.getClientModeManagers()) {
                                     cmm.onBluetoothConnectionStateChanged();
                                 }
-                            } else if (action.equals(
-                                    PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)) {
+                            } else if (PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED
+                                    .equals(action)) {
                                 handleIdleModeChanged();
-                            } else if (action.equals(Intent.ACTION_SHUTDOWN)) {
+                            } else if (Intent.ACTION_SHUTDOWN.equals(action)) {
                                 handleShutDown();
                             }
                         }
@@ -1747,30 +1747,32 @@ public class WifiServiceImpl extends BaseWifiService {
                             mLohsSoftApTracker.getSoftApCapability(),
                             WifiManager.IFACE_IP_MODE_LOCAL_ONLY);
                 }
-                int itemCount = mRegisteredDriverCountryCodeListeners.beginBroadcast();
-                for (int i = 0; i < itemCount; i++) {
-                    try {
-                        WifiPermissionsUtil.CallerIdentity identity =
-                                (WifiPermissionsUtil.CallerIdentity)
-                                mRegisteredDriverCountryCodeListeners.getBroadcastCookie(i);
-                        if (!mWifiPermissionsUtil.checkCallersCoarseLocationPermission(
-                                identity.getPackageName(), identity.getFeatureId(),
-                                identity.getUid(), null)) {
-                            Log.i(TAG, "ReceiverIdentity=" + identity.toString()
-                                    + " doesn't have ACCESS_COARSE_LOCATION permission now");
-                            continue;
+                if (SdkLevel.isAtLeastT()) {
+                    int itemCount = mRegisteredDriverCountryCodeListeners.beginBroadcast();
+                    for (int i = 0; i < itemCount; i++) {
+                        try {
+                            WifiPermissionsUtil.CallerIdentity identity =
+                                    (WifiPermissionsUtil.CallerIdentity)
+                                    mRegisteredDriverCountryCodeListeners.getBroadcastCookie(i);
+                            if (!mWifiPermissionsUtil.checkCallersCoarseLocationPermission(
+                                    identity.getPackageName(), identity.getFeatureId(),
+                                    identity.getUid(), null)) {
+                                Log.i(TAG, "ReceiverIdentity=" + identity.toString()
+                                        + " doesn't have ACCESS_COARSE_LOCATION permission now");
+                                continue;
+                            }
+                            if (isVerboseLoggingEnabled()) {
+                                Log.i(TAG, "onDriverCountryCodeChanged, ReceiverIdentity="
+                                        + identity.toString());
+                            }
+                            mRegisteredDriverCountryCodeListeners.getBroadcastItem(i)
+                                    .onDriverCountryCodeChanged(countryCode);
+                        } catch (RemoteException e) {
+                            Log.e(TAG, "onDriverCountryCodeChanged: remote exception -- " + e);
                         }
-                        if (isVerboseLoggingEnabled()) {
-                            Log.i(TAG, "onDriverCountryCodeChanged, ReceiverIdentity="
-                                    + identity.toString());
-                        }
-                        mRegisteredDriverCountryCodeListeners.getBroadcastItem(i)
-                                .onDriverCountryCodeChanged(countryCode);
-                    } catch (RemoteException e) {
-                        Log.e(TAG, "onDriverCountryCodeChanged: remote exception -- " + e);
                     }
+                    mRegisteredDriverCountryCodeListeners.finishBroadcast();
                 }
-                mRegisteredDriverCountryCodeListeners.finishBroadcast();
             });
         }
     }
@@ -2047,8 +2049,7 @@ public class WifiServiceImpl extends BaseWifiService {
                         sendHotspotStartedMessageToAllLOHSRequestInfoEntriesLocked();
                         break;
                     case WifiManager.IFACE_IP_MODE_TETHERED:
-                        if (mLohsInterfaceName != null
-                                && mLohsInterfaceName.equals(ifaceName)) {
+                        if (TextUtils.equals(mLohsInterfaceName, ifaceName)) {
                             /* This shouldn't happen except in a race, but if it does, tear down
                              * the LOHS and let tethering win.
                              *
@@ -2070,7 +2071,7 @@ public class WifiServiceImpl extends BaseWifiService {
                             sendHotspotFailedMessageToAllLOHSRequestInfoEntriesLocked(
                                     LocalOnlyHotspotCallback.ERROR_GENERIC);
                             stopSoftApInternal(WifiManager.IFACE_IP_MODE_UNSPECIFIED);
-                        } else if (ifaceName.equals(mLohsInterfaceName)) {
+                        } else if (TextUtils.equals(mLohsInterfaceName, ifaceName)) {
                             mLohsInterfaceName = null;
                             mLohsInterfaceMode = mode;
                             sendHotspotFailedMessageToAllLOHSRequestInfoEntriesLocked(
@@ -2535,8 +2536,12 @@ public class WifiServiceImpl extends BaseWifiService {
         final int pid = Binder.getCallingPid();
 
         mLog.info("stopLocalOnlyHotspot uid=% pid=%").c(uid).c(pid).flush();
-
-        mLohsSoftApTracker.stopByPid(pid);
+        // Force to disable lohs when caller is shell with root permission
+        if (uid == Process.ROOT_UID) {
+            mLohsSoftApTracker.stopAll();
+        } else {
+            mLohsSoftApTracker.stopByPid(pid);
+        }
     }
 
     @Override
@@ -4210,9 +4215,13 @@ public class WifiServiceImpl extends BaseWifiService {
      * @throws IllegalArgumentException if the arguments are null or invalid
      */
     @Override
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     public void registerDriverCountryCodeChangedListener(@NonNull
             IOnWifiDriverCountryCodeChangedListener listener, @Nullable String packageName,
             @Nullable String featureId) {
+        if (!SdkLevel.isAtLeastT()) {
+            throw new UnsupportedOperationException();
+        }
         // verify arguments
         if (listener == null) {
             throw new IllegalArgumentException("listener must not be null");
@@ -4250,8 +4259,12 @@ public class WifiServiceImpl extends BaseWifiService {
      * @throws IllegalArgumentException if the arguments are null or invalid
      */
     @Override
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     public void unregisterDriverCountryCodeChangedListener(@NonNull
             IOnWifiDriverCountryCodeChangedListener listener) {
+        if (!SdkLevel.isAtLeastT()) {
+            throw new UnsupportedOperationException();
+        }
         // verify arguments
         if (listener == null) {
             throw new IllegalArgumentException("listener must not be null");
@@ -4539,7 +4552,7 @@ public class WifiServiceImpl extends BaseWifiService {
                     String ip = tokens[0];
                     String mac = tokens[3];
 
-                    if (remoteIpAddress.equals(ip)) {
+                    if (TextUtils.equals(remoteIpAddress, ip)) {
                         macAddress = mac;
                         break;
                     }
