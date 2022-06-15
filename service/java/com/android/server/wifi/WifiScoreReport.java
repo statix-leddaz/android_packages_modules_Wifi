@@ -39,13 +39,13 @@ import androidx.annotation.RequiresApi;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.ActiveModeManager.ClientRole;
+import com.android.server.wifi.util.StringUtil;
 import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.Calendar;
 import java.util.LinkedList;
-import java.util.Locale;
 
 /**
  * Class used to calculate scores for connected wifi networks and report it to the associated
@@ -802,7 +802,6 @@ public class WifiScoreReport {
      */
     private void logLinkMetrics(long now, int netId, int s1, int s2, int score) {
         if (now < FIRST_REASONABLE_WALL_CLOCK) return;
-        double rssi = mWifiInfo.getRssi();
         double filteredRssi = -1;
         double rssiThreshold = -1;
         if (mWifiConnectedNetworkScorerHolder == null) {
@@ -824,16 +823,18 @@ public class WifiScoreReport {
         try {
             Calendar c = Calendar.getInstance();
             c.setTimeInMillis(now);
-            String timestamp = String.format("%tm-%td %tH:%tM:%tS.%tL", c, c, c, c, c, c);
-            s = String.format(Locale.US, // Use US to avoid comma/decimal confusion
-                    "%s,%d,%d,%.1f,%.1f,%.1f,%d,%d,%d,%d,%d,%d,%.2f,%.2f,%.2f,%.2f,%d,%d,%d,%d,%d",
-                    timestamp, mSessionNumber, netId,
-                    rssi, filteredRssi, rssiThreshold, freq, txLinkSpeed, rxLinkSpeed,
-                    txThroughputMbps, rxThroughputMbps, totalBeaconRx,
-                    txSuccessRate, txRetriesRate, txBadRate, rxSuccessRate,
-                    mNudYes, mNudCount,
-                    s1, s2, score);
-
+            // Date format: "%tm-%td %tH:%tM:%tS.%tL"
+            String timestamp = StringUtil.calendarToString(c);
+            s = timestamp + "," + mSessionNumber + "," + netId + "," + mWifiInfo.getRssi()
+                    + "," + StringUtil.doubleToString(filteredRssi, 1) + "," + rssiThreshold
+                    + "," + freq + "," + txLinkSpeed
+                    + "," + rxLinkSpeed + "," + txThroughputMbps
+                    + "," + rxThroughputMbps + "," + totalBeaconRx
+                    + "," + StringUtil.doubleToString(txSuccessRate, 2)
+                    + "," + StringUtil.doubleToString(txRetriesRate, 2)
+                    + "," + StringUtil.doubleToString(txBadRate, 2)
+                    + "," + StringUtil.doubleToString(rxSuccessRate, 2)
+                    + "," + mNudYes + "," + mNudCount + "," + s1 + "," + s2 + "," + score;
         } catch (Exception e) {
             Log.e(TAG, "format problem", e);
             return;

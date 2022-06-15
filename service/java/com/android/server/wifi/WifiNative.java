@@ -2175,6 +2175,15 @@ public class WifiNative {
     }
 
     /**
+     * Set supplicant log level
+     *
+     * @param turnOnVerbose Whether to turn on verbose logging or not.
+     */
+    public void setSupplicantLogLevel(boolean turnOnVerbose) {
+        mSupplicantStaIfaceHal.setLogLevel(turnOnVerbose);
+    }
+
+    /**
      * Trigger a reconnection if the iface is disconnected.
      *
      * @param ifaceName Name of the interface.
@@ -4358,6 +4367,21 @@ public class WifiNative {
     public boolean generateSelfDppConfiguration(@NonNull String ifaceName, @NonNull String ssid,
             byte[] privEcKey) {
         return mSupplicantStaIfaceHal.generateSelfDppConfiguration(ifaceName, ssid, privEcKey);
+    }
+
+    /**
+     * This set anonymous identity to supplicant.
+     *
+     * @param ifaceName Name of the interface.
+     * @param anonymousIdentity the anonymouns identity.
+     * @return true if succeeds, false otherwise.
+     */
+    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity) {
+        if (null == anonymousIdentity) {
+            Log.e(TAG, "Cannot set null anonymous identity.");
+            return false;
+        }
+        return mSupplicantStaIfaceHal.setEapAnonymousIdentity(ifaceName, anonymousIdentity);
     }
 
     /**

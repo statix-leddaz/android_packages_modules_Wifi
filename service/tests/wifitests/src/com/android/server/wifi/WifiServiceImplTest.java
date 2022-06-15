@@ -9155,9 +9155,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_GRANTED);
 
         // First set flag to not allow
-        when(mResources.getBoolean(
-                R.bool.config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW))
-                .thenReturn(false);
+        when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(false);
         when(mWifiConfigManager.addOrUpdateNetwork(any(),  anyInt(), any(), eq(false))).thenReturn(
                 new NetworkUpdateResult(0));
 
@@ -9174,9 +9172,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiConfigManager, never()).addOrUpdateNetwork(any(),  anyInt(), any(), eq(false));
 
         // Set flag to allow
-        when(mResources.getBoolean(
-                R.bool.config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW))
-                .thenReturn(true);
+        when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(true);
 
         // Verify operation succeeds
         mLooper.startAutoDispatch();
@@ -9196,9 +9192,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Test
     public void testAddInsecureEnterpirseNetworkWithNoNetworkSettingsPerm() throws Exception {
         // First set flag to not allow
-        when(mResources.getBoolean(
-                R.bool.config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW))
-                .thenReturn(false);
+        when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(false);
 
         // Create an insecure Enterprise network
         WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
@@ -9213,9 +9207,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiConfigManager, never()).addOrUpdateNetwork(any(),  anyInt(), any(), eq(false));
 
         // Set flag to allow
-        when(mResources.getBoolean(
-                R.bool.config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW))
-                .thenReturn(true);
+        when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(true);
 
         // Verify operation still fails
         mLooper.startAutoDispatch();
@@ -9603,8 +9595,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mWifiServiceImpl.setExternalPnoScanRequest(mAppBinder, callback, ssids, frequencies,
                 TEST_PACKAGE_NAME, TEST_FEATURE_ID);
         mLooper.dispatchAll();
-        verify(mWifiConnectivityManager).setExternalPnoScanRequest(anyInt(), any(), eq(callback),
-                eq(ssids), eq(frequencies));
+        verify(mWifiConnectivityManager).setExternalPnoScanRequest(anyInt(), any(), any(),
+                eq(callback), eq(ssids), eq(frequencies));
     }
 
     @Test
@@ -9680,6 +9672,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test(expected = SecurityException.class)
     public void registerDriverCountryCodeChangedListenerThrowsSecurityExceptionWithoutPermission() {
+        assumeTrue(SdkLevel.isAtLeastT());
         doThrow(new SecurityException())
                 .when(mWifiPermissionsUtil).enforceCoarseLocationPermission(eq(TEST_PACKAGE_NAME),
                                                                       eq(TEST_FEATURE_ID),
@@ -9694,6 +9687,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void registerDriverCountryCodeChangedListenerThrowsIllegalArgumentException() {
+        assumeTrue(SdkLevel.isAtLeastT());
         try {
             mWifiServiceImpl.registerDriverCountryCodeChangedListener(
                     null, TEST_PACKAGE_NAME, TEST_FEATURE_ID);
@@ -9708,6 +9702,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void registerDriverCountryCodeChangedListenerFailureOnLinkToDeath() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
         doThrow(new RemoteException())
                 .when(mAppBinder).linkToDeath(any(IBinder.DeathRecipient.class), anyInt());
         mWifiServiceImpl.registerDriverCountryCodeChangedListener(
@@ -9740,6 +9735,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testDriverCountryCodeChangedDropWhenRegisterPermissionRemoved() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
         when(mWifiPermissionsUtil.checkCallersCoarseLocationPermission(
                 eq(TEST_PACKAGE_NAME), eq(TEST_FEATURE_ID), anyInt(), any())).thenReturn(true);
         verifyRegisterDriverCountryCodeChangedListenerSucceededAndTriggerListener(
@@ -9764,6 +9760,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void unregisterDriverCountryCodeChangedListenerRemovesListener() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
         when(mWifiPermissionsUtil.checkCallersCoarseLocationPermission(
                 eq(TEST_PACKAGE_NAME), eq(TEST_FEATURE_ID), anyInt(), any())).thenReturn(true);
         verifyRegisterDriverCountryCodeChangedListenerSucceededAndTriggerListener(
@@ -10483,9 +10480,11 @@ public class WifiServiceImplTest extends WifiBaseTest {
         reset(mClientSoftApCallback);
         when(mWifiPermissionsUtil.checkCallersCoarseLocationPermission(
                 eq(TEST_PACKAGE_NAME), eq(TEST_FEATURE_ID), anyInt(), any())).thenReturn(true);
-        verifyRegisterDriverCountryCodeChangedListenerSucceededAndTriggerListener(
-                mIOnWifiDriverCountryCodeChangedListener);
-        reset(mIOnWifiDriverCountryCodeChangedListener);
+        if (SdkLevel.isAtLeastT()) {
+            verifyRegisterDriverCountryCodeChangedListenerSucceededAndTriggerListener(
+                    mIOnWifiDriverCountryCodeChangedListener);
+            reset(mIOnWifiDriverCountryCodeChangedListener);
+        }
         ArgumentCaptor<SoftApCapability> capabilityArgumentCaptor = ArgumentCaptor.forClass(
                 SoftApCapability.class);
         // Country code update with HAL started
@@ -10501,8 +10500,10 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
         mWifiServiceImpl.mCountryCodeTracker.onDriverCountryCodeChanged(TEST_COUNTRY_CODE);
         mLooper.dispatchAll();
-        verify(mIOnWifiDriverCountryCodeChangedListener)
-                .onDriverCountryCodeChanged(TEST_COUNTRY_CODE);
+        if (SdkLevel.isAtLeastT()) {
+            verify(mIOnWifiDriverCountryCodeChangedListener)
+                    .onDriverCountryCodeChanged(TEST_COUNTRY_CODE);
+        }
         verify(mClientSoftApCallback).onCapabilityChanged(capabilityArgumentCaptor.capture());
         assertEquals(1, capabilityArgumentCaptor.getValue()
                 .getSupportedChannelList(SoftApConfiguration.BAND_2GHZ).length);
@@ -10513,8 +10514,10 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mWifiNative.isHalStarted()).thenReturn(false);
         mWifiServiceImpl.mCountryCodeTracker.onCountryCodeChangePending(TEST_NEW_COUNTRY_CODE);
         mLooper.dispatchAll();
-        verify(mIOnWifiDriverCountryCodeChangedListener, never())
-                .onDriverCountryCodeChanged(TEST_NEW_COUNTRY_CODE);
+        if (SdkLevel.isAtLeastT()) {
+            verify(mIOnWifiDriverCountryCodeChangedListener, never())
+                    .onDriverCountryCodeChanged(TEST_NEW_COUNTRY_CODE);
+        }
         verify(mClientSoftApCallback)
                 .onCapabilityChanged(capabilityArgumentCaptor.capture());
         // The supported channels in soft AP capability got invalidated.
