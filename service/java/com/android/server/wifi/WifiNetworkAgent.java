@@ -46,7 +46,6 @@ public class WifiNetworkAgent extends NetworkAgent {
         void onRemoveKeepalivePacketFilter(int slot);
         void onSignalStrengthThresholdsUpdated(@NonNull int[] thresholds);
         void onAutomaticReconnectDisabled();
-        void onDscpPolicyStatusUpdated(int policyId, int status);
     }
 
     private final Callback mCallback;
@@ -126,11 +125,6 @@ public class WifiNetworkAgent extends NetworkAgent {
     @Override
     public void onAutomaticReconnectDisabled() {
         mCallback.onAutomaticReconnectDisabled();
-    }
-
-    @Override
-    public void onDscpPolicyStatusUpdated(int policyId, int status) {
-        mCallback.onDscpPolicyStatusUpdated(policyId, status);
     }
 
     @NonNull

@@ -81,7 +81,7 @@ public class HSOsuProvidersElement extends ANQPElement {
             numProviders--;
         }
 
-        return new HSOsuProvidersElement(WifiSsid.fromBytes(ssidBytes), providers);
+        return new HSOsuProvidersElement(WifiSsid.createFromByteArray(ssidBytes), providers);
     }
 
     public WifiSsid getOsuSsid() {

@@ -19,7 +19,6 @@ package com.android.server.wifi.aware;
 import android.net.wifi.aware.ConfigRequest;
 import android.net.wifi.aware.PublishConfig;
 import android.net.wifi.aware.SubscribeConfig;
-import android.net.wifi.aware.WifiAwareDataPathSecurityConfig;
 import android.util.SparseIntArray;
 
 /**
@@ -50,8 +49,7 @@ public class TestUtils {
 
         public boolean enableAndConfigure(short transactionId, ConfigRequest configRequest,
                 boolean notifyIdentityChange, boolean initialConfiguration, boolean isInteractive,
-                boolean isIdle, boolean rangingEnabled, boolean isInstantCommunicationEnabled,
-                int instantModeChannel) {
+                boolean isIdle, boolean rangingEnabled, boolean isInstantCommunicationEnabled) {
             addTransactionId(transactionId);
             return true;
         }
@@ -104,17 +102,15 @@ public class TestUtils {
         }
 
         public boolean initiateDataPath(short transactionId, int peerId, int channelRequestType,
-                int channel, byte[] peer, String interfaceName,
-                boolean isOutOfBand, byte[] appInfo, Capabilities capabilities,
-                WifiAwareDataPathSecurityConfig securityConfig) {
+                int channel, byte[] peer, String interfaceName, byte[] pmk, String passphrase,
+                boolean isOutOfBand, byte[] appInfo, Capabilities capabilities) {
             addTransactionId(transactionId);
             return true;
         }
 
         public boolean respondToDataPathRequest(short transactionId, boolean accept, int ndpId,
-                String interfaceName, byte[] appInfo,
-                boolean isOutOfBand, Capabilities capabilities,
-                WifiAwareDataPathSecurityConfig securityConfig) {
+                String interfaceName, byte[] pmk, String passphrase, byte[] appInfo,
+                boolean isOutOfBand, Capabilities capabilities) {
             addTransactionId(transactionId);
             return true;
         }

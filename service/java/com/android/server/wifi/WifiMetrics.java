@@ -30,6 +30,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.hardware.wifi.supplicant.V1_0.ISupplicantStaIfaceCallback;
 import android.net.wifi.EAPConstants;
 import android.net.wifi.IOnWifiUsabilityStatsListener;
 import android.net.wifi.ScanResult;
@@ -48,7 +49,6 @@ import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.ProvisioningCallback;
 import android.net.wifi.hotspot2.ProvisioningCallback.OsuFailure;
 import android.net.wifi.nl80211.WifiNl80211Manager;
-import android.net.wifi.util.ScanResultUtil;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -70,8 +70,6 @@ import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
 
 import com.android.internal.annotations.VisibleForTesting;
-import com.android.server.wifi.SupplicantStaIfaceHal.StaIfaceReasonCode;
-import com.android.server.wifi.SupplicantStaIfaceHal.StaIfaceStatusCode;
 import com.android.server.wifi.aware.WifiAwareMetrics;
 import com.android.server.wifi.hotspot2.ANQPNetworkKey;
 import com.android.server.wifi.hotspot2.NetworkDetail;
@@ -128,7 +126,7 @@ import com.android.server.wifi.util.IntCounter;
 import com.android.server.wifi.util.IntHistogram;
 import com.android.server.wifi.util.MetricsUtils;
 import com.android.server.wifi.util.ObjectCounter;
-import com.android.server.wifi.util.StringUtil;
+import com.android.server.wifi.util.ScanResultUtil;
 import com.android.wifi.resources.R;
 
 import org.json.JSONArray;
@@ -946,7 +944,7 @@ public class WifiMetrics {
             StringBuilder sb = new StringBuilder();
             Calendar c = Calendar.getInstance();
             c.setTimeInMillis(mWallClockTimeMs);
-            sb.append(StringUtil.calendarToString(c));
+            sb.append(String.format("%tm-%td %tH:%tM:%tS.%tL", c, c, c, c, c, c));
             String eventType = "UNKNOWN";
             switch (mUserActionEvent.eventType) {
                 case UserActionEvent.EVENT_FORGET_WIFI:
@@ -1066,8 +1064,6 @@ public class WifiMetrics {
         public static final int FAILURE_ASSOCIATION_TIMED_OUT = 11;
         // NETWORK_NOT_FOUND
         public static final int FAILURE_NETWORK_NOT_FOUND = 12;
-        // Connection attempt aborted by the watchdog because the AP didn't respond.
-        public static final int FAILURE_NO_RESPONSE = 13;
 
         RouterFingerPrint mRouterFingerPrint;
         private String mConfigSsid;
@@ -1094,11 +1090,8 @@ public class WifiMetrics {
             Calendar c = Calendar.getInstance();
             synchronized (mLock) {
                 c.setTimeInMillis(mConnectionEvent.startTimeMillis);
-                if (mConnectionEvent.startTimeMillis == 0) {
-                    sb.append("            <null>");
-                } else {
-                    sb.append(StringUtil.calendarToString(c));
-                }
+                sb.append(mConnectionEvent.startTimeMillis == 0 ? "            <null>" :
+                        String.format("%tm-%td %tH:%tM:%tS.%tL", c, c, c, c, c, c));
                 sb.append(", SSID=");
                 sb.append(mConfigSsid);
                 sb.append(", BSSID=");
@@ -1164,9 +1157,6 @@ public class WifiMetrics {
                         break;
                     case FAILURE_NETWORK_NOT_FOUND:
                         sb.append("FAILURE_NETWORK_NOT_FOUND");
-                        break;
-                    case FAILURE_NO_RESPONSE:
-                        sb.append("FAILURE_NO_RESPONSE");
                         break;
                     default:
                         sb.append("UNKNOWN");
@@ -1247,8 +1237,8 @@ public class WifiMetrics {
                         sb.append("NOMINATOR_OPEN_NETWORK_AVAILABLE");
                         break;
                     default:
-                        sb.append("UnrecognizedNominator(" + mConnectionEvent.connectionNominator
-                                + ")");
+                        sb.append(String.format("UnrecognizedNominator(%d)",
+                                mConnectionEvent.connectionNominator));
                 }
                 sb.append(", networkSelectorExperimentId=");
                 sb.append(mConnectionEvent.networkSelectorExperimentId);
@@ -1852,7 +1842,7 @@ public class WifiMetrics {
                         config.macRandomizationSetting
                         != WifiConfiguration.RANDOMIZATION_NONE;
                 currentConnectionEvent.mConnectionEvent.useAggressiveMac =
-                        mWifiConfigManager.shouldUseNonPersistentRandomization(config);
+                        mWifiConfigManager.shouldUseEnhancedRandomization(config);
                 currentConnectionEvent.mConnectionEvent.connectionNominator =
                         mNetworkIdToNominatorId.get(config.networkId,
                                 WifiMetricsProto.ConnectionEvent.NOMINATOR_UNKNOWN);
@@ -2101,7 +2091,6 @@ public class WifiMetrics {
         }
     }
 
-    // TODO(b/177341879): Add failure type ConnectionEvent.FAILURE_NO_RESPONSE into Westworld.
     private int getConnectionResultFailureCode(int level2FailureCode, int level2FailureReason) {
         switch (level2FailureCode) {
             case ConnectionEvent.FAILURE_NONE:
@@ -2125,8 +2114,11 @@ public class WifiMetrics {
                 return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_NETWORK_DISCONNECTION;
             case ConnectionEvent.FAILURE_ROAM_TIMEOUT:
                 return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_ROAM_TIMEOUT;
-            default:
+            case ConnectionEvent.FAILURE_NEW_CONNECTION_ATTEMPT:
+            case ConnectionEvent.FAILURE_REDUNDANT_CONNECTION_ATTEMPT:
                 return -1;
+            default:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_UNKNOWN;
         }
     }
 
@@ -2229,9 +2221,9 @@ public class WifiMetrics {
     }
 
     /**
-     * Developer options toggle value for non-persistent MAC randomization.
+     * Developer options toggle value for enhanced MAC randomization.
      */
-    public void setNonPersistentMacRandomizationForceEnabled(boolean enabled) {
+    public void setEnhancedMacRandomizationForceEnabled(boolean enabled) {
         synchronized (mLock) {
             mWifiLogProto.isEnhancedMacRandomizationForceEnabled = enabled;
         }
@@ -3192,91 +3184,91 @@ public class WifiMetrics {
     /**
      * Increment number of times the HAL crashed.
      */
-    public synchronized void incrementNumHalCrashes() {
-        mWifiLogProto.numHalCrashes++;
-        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
-                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__HAL_CRASH);
+    public void incrementNumHalCrashes() {
+        synchronized (mLock) {
+            mWifiLogProto.numHalCrashes++;
+        }
     }
 
     /**
      * Increment number of times the Wificond crashed.
      */
-    public synchronized void incrementNumWificondCrashes() {
-        mWifiLogProto.numWificondCrashes++;
-        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
-                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__WIFICOND_CRASH);
+    public void incrementNumWificondCrashes() {
+        synchronized (mLock) {
+            mWifiLogProto.numWificondCrashes++;
+        }
     }
 
     /**
      * Increment number of times the supplicant crashed.
      */
-    public synchronized void incrementNumSupplicantCrashes() {
-        mWifiLogProto.numSupplicantCrashes++;
-        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
-                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__SUPPLICANT_CRASH);
+    public void incrementNumSupplicantCrashes() {
+        synchronized (mLock) {
+            mWifiLogProto.numSupplicantCrashes++;
+        }
     }
 
     /**
      * Increment number of times the hostapd crashed.
      */
-    public synchronized void incrementNumHostapdCrashes() {
-        mWifiLogProto.numHostapdCrashes++;
-        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
-                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__HOSTAPD_CRASH);
+    public void incrementNumHostapdCrashes() {
+        synchronized (mLock) {
+            mWifiLogProto.numHostapdCrashes++;
+        }
     }
 
     /**
      * Increment number of times the wifi on failed due to an error in HAL.
      */
-    public synchronized void incrementNumSetupClientInterfaceFailureDueToHal() {
-        mWifiLogProto.numSetupClientInterfaceFailureDueToHal++;
-        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
-                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__CLIENT_FAILURE_HAL);
+    public void incrementNumSetupClientInterfaceFailureDueToHal() {
+        synchronized (mLock) {
+            mWifiLogProto.numSetupClientInterfaceFailureDueToHal++;
+        }
     }
 
     /**
      * Increment number of times the wifi on failed due to an error in wificond.
      */
-    public synchronized void incrementNumSetupClientInterfaceFailureDueToWificond() {
-        mWifiLogProto.numSetupClientInterfaceFailureDueToWificond++;
-        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
-                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__CLIENT_FAILURE_WIFICOND);
+    public void incrementNumSetupClientInterfaceFailureDueToWificond() {
+        synchronized (mLock) {
+            mWifiLogProto.numSetupClientInterfaceFailureDueToWificond++;
+        }
     }
 
     /**
      * Increment number of times the wifi on failed due to an error in supplicant.
      */
-    public synchronized void incrementNumSetupClientInterfaceFailureDueToSupplicant() {
-        mWifiLogProto.numSetupClientInterfaceFailureDueToSupplicant++;
-        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
-                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__CLIENT_FAILURE_SUPPLICANT);
+    public void incrementNumSetupClientInterfaceFailureDueToSupplicant() {
+        synchronized (mLock) {
+            mWifiLogProto.numSetupClientInterfaceFailureDueToSupplicant++;
+        }
     }
 
     /**
      * Increment number of times the SoftAp on failed due to an error in HAL.
      */
-    public synchronized void incrementNumSetupSoftApInterfaceFailureDueToHal() {
-        mWifiLogProto.numSetupSoftApInterfaceFailureDueToHal++;
-        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
-                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__SOFT_AP_FAILURE_HAL);
+    public void incrementNumSetupSoftApInterfaceFailureDueToHal() {
+        synchronized (mLock) {
+            mWifiLogProto.numSetupSoftApInterfaceFailureDueToHal++;
+        }
     }
 
     /**
      * Increment number of times the SoftAp on failed due to an error in wificond.
      */
-    public synchronized void incrementNumSetupSoftApInterfaceFailureDueToWificond() {
-        mWifiLogProto.numSetupSoftApInterfaceFailureDueToWificond++;
-        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
-                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__SOFT_AP_FAILURE_WIFICOND);
+    public void incrementNumSetupSoftApInterfaceFailureDueToWificond() {
+        synchronized (mLock) {
+            mWifiLogProto.numSetupSoftApInterfaceFailureDueToWificond++;
+        }
     }
 
     /**
      * Increment number of times the SoftAp on failed due to an error in hostapd.
      */
-    public synchronized void incrementNumSetupSoftApInterfaceFailureDueToHostapd() {
-        mWifiLogProto.numSetupSoftApInterfaceFailureDueToHostapd++;
-        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
-                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__SOFT_AP_FAILURE_HOSTAPD);
+    public void incrementNumSetupSoftApInterfaceFailureDueToHostapd() {
+        synchronized (mLock) {
+            mWifiLogProto.numSetupSoftApInterfaceFailureDueToHostapd++;
+        }
     }
 
     /**
@@ -3667,6 +3659,7 @@ public class WifiMetrics {
             if (args != null && args.length > 0 && PROTO_DUMP_ARG.equals(args[0])) {
                 // Dump serialized WifiLog proto
                 consolidateProto();
+
                 byte[] wifiMetricsProto = WifiMetricsProto.WifiLog.toByteArray(mWifiLogProto);
                 String metricsProtoDump = Base64.encodeToString(wifiMetricsProto, Base64.DEFAULT);
                 if (args.length > 1 && CLEAN_DUMP_ARG.equals(args[1])) {
@@ -5397,9 +5390,7 @@ public class WifiMetrics {
                 break;
             case WifiMonitor.AUTHENTICATION_FAILURE_EVENT:
                 event.type = StaEvent.TYPE_AUTHENTICATION_FAILURE_EVENT;
-                AuthenticationFailureEventInfo authenticationFailureEventInfo =
-                        (AuthenticationFailureEventInfo) msg.obj;
-                switch (authenticationFailureEventInfo.reasonCode) {
+                switch (msg.arg1) {
                     case WifiManager.ERROR_AUTH_FAILURE_NONE:
                         event.authFailureReason = StaEvent.AUTH_FAILURE_NONE;
                         break;
@@ -5677,7 +5668,7 @@ public class WifiMetrics {
                 sb.append("ASSOCIATION_REJECTION_EVENT")
                         .append(" timedOut=").append(event.associationTimedOut)
                         .append(" status=").append(event.status).append(":")
-                        .append(StaIfaceStatusCode.toString(event.status));
+                        .append(ISupplicantStaIfaceCallback.StatusCode.toString(event.status));
                 break;
             case StaEvent.TYPE_AUTHENTICATION_FAILURE_EVENT:
                 sb.append("AUTHENTICATION_FAILURE_EVENT reason=").append(event.authFailureReason)
@@ -5690,7 +5681,7 @@ public class WifiMetrics {
                 sb.append("NETWORK_DISCONNECTION_EVENT")
                         .append(" local_gen=").append(event.localGen)
                         .append(" reason=").append(event.reason).append(":")
-                        .append(StaIfaceReasonCode.toString(
+                        .append(ISupplicantStaIfaceCallback.ReasonCode.toString(
                                 (event.reason >= 0 ? event.reason : -1 * event.reason)));
                 break;
             case StaEvent.TYPE_CMD_ASSOCIATED_BSSID:

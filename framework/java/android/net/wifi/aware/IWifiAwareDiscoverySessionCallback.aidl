@@ -28,10 +28,9 @@ oneway interface IWifiAwareDiscoverySessionCallback
     void onSessionConfigFail(int reason);
     void onSessionTerminated(int reason);
 
-    void onMatch(int peerId, in byte[] serviceSpecificInfo, in byte[] matchFilter,
-            int peerCipherSuite, in byte[] scid);
+    void onMatch(int peerId, in byte[] serviceSpecificInfo, in byte[] matchFilter);
     void onMatchWithDistance(int peerId, in byte[] serviceSpecificInfo, in byte[] matchFilter,
-            int distanceMm, int peerCipherSuite, in byte[] scid);
+            int distanceMm);
 
     void onMessageSendSuccess(int messageId);
     void onMessageSendFail(int messageId, int reason);

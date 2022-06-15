@@ -49,16 +49,10 @@ public class AggressiveConnectedScore extends ConnectedScore {
         mFrequencyMHz = 5000;
     }
 
-    /**
-     * Generate the Wi-Fi network score.
-     * @return the generated Wi-Fi network score.
-     */
     @Override
     public int generateScore() {
-        final int transitionScore = isPrimary() ? WIFI_TRANSITION_SCORE
-                : WIFI_SECONDARY_TRANSITION_SCORE;
         int threshRssi = mScoringParams.getSufficientRssi(mFrequencyMHz);
-        int score = (mRssi - threshRssi) + transitionScore;
+        int score = (mRssi - threshRssi) + WIFI_TRANSITION_SCORE;
         return score;
     }
 }

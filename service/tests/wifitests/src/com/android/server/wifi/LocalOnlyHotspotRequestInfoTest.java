@@ -26,7 +26,6 @@ import android.os.IBinder;
 import android.os.Process;
 import android.os.RemoteException;
 import android.os.WorkSource;
-import android.os.test.TestLooper;
 
 import androidx.test.filters.SmallTest;
 
@@ -45,7 +44,6 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
     private static final String TAG = "LocalOnlyHotspotRequestInfoTest";
     private static final WorkSource TEST_WORKSOURCE = new WorkSource();
 
-    private TestLooper mLooper;
     @Mock IBinder mAppBinder;
     @Mock ILocalOnlyHotspotCallback mCallback;
     @Mock LocalOnlyHotspotRequestInfo.RequestingApplicationDeathCallback mDeathCallback;
@@ -58,7 +56,6 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
-        mLooper = new TestLooper();
         when(mCallback.asBinder()).thenReturn(mAppBinder);
         mRemoteException = new RemoteException("Test Remote Exception");
     }
@@ -69,7 +66,7 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
      */
     @Test
     public void verifyBinderLinkToDeathIsCalled() throws Exception {
-        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(mLooper.getLooper(),
+        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(
                 TEST_WORKSOURCE, mCallback, mDeathCallback, null);
         verify(mAppBinder).linkToDeath(eq(mLOHSRequestInfo), eq(0));
     }
@@ -79,7 +76,7 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
      */
     @Test(expected = NullPointerException.class)
     public void verifyNullCallbackChecked() throws Exception {
-        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(mLooper.getLooper(),
+        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(
                 TEST_WORKSOURCE, null, mDeathCallback, null);
     }
 
@@ -88,7 +85,7 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
      */
     @Test(expected = NullPointerException.class)
     public void verifyNullDeathCallbackChecked() throws Exception {
-        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(mLooper.getLooper(),
+        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(
                 TEST_WORKSOURCE, mCallback, null, null);
     }
 
@@ -97,7 +94,7 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
      */
     @Test
     public void verifyUnlinkDeathRecipientUnlinksFromBinder() throws Exception {
-        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(mLooper.getLooper(),
+        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(
                 TEST_WORKSOURCE, mCallback, mDeathCallback, null);
         mLOHSRequestInfo.unlinkDeathRecipient();
         verify(mAppBinder).unlinkToDeath(eq(mLOHSRequestInfo), eq(0));
@@ -108,10 +105,9 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
      */
     @Test
     public void verifyBinderDeathTriggersCallback() {
-        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(mLooper.getLooper(),
+        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(
                 TEST_WORKSOURCE, mCallback, mDeathCallback, null);
         mLOHSRequestInfo.binderDied();
-        mLooper.dispatchAll();
         verify(mDeathCallback).onLocalOnlyHotspotRequestorDeath(eq(mLOHSRequestInfo));
     }
 
@@ -122,9 +118,8 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
     public void verifyRemoteExceptionTriggersCallback() throws Exception {
         doThrow(mRemoteException).when(mAppBinder)
                 .linkToDeath(any(IBinder.DeathRecipient.class), eq(0));
-        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(mLooper.getLooper(),
+        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(
                 TEST_WORKSOURCE, mCallback, mDeathCallback, null);
-        mLooper.dispatchAll();
         verify(mDeathCallback).onLocalOnlyHotspotRequestorDeath(eq(mLOHSRequestInfo));
     }
 
@@ -133,7 +128,7 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
      */
     @Test
     public void verifyPid() {
-        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(mLooper.getLooper(),
+        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(
                 TEST_WORKSOURCE, mCallback, mDeathCallback, null);
         assertEquals(Process.myPid(), mLOHSRequestInfo.getPid());
     }
@@ -143,7 +138,7 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
         SoftApConfiguration config = new SoftApConfiguration.Builder()
                 .setSsid("customSsid")
                 .build();
-        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(mLooper.getLooper(),
+        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(
                 TEST_WORKSOURCE, mCallback, mDeathCallback, config);
         assertEquals(config, mLOHSRequestInfo.getCustomConfig());
     }
@@ -153,7 +148,7 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
      */
     @Test
     public void verifySendFailedMessage() throws Exception {
-        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(mLooper.getLooper(),
+        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(
                 TEST_WORKSOURCE, mCallback, mDeathCallback, null);
         mLOHSRequestInfo.sendHotspotFailedMessage(
                 WifiManager.LocalOnlyHotspotCallback.ERROR_GENERIC);
@@ -165,7 +160,7 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
      */
     @Test
     public void verifySendStartedMessage() throws Exception {
-        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(mLooper.getLooper(),
+        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(
                 TEST_WORKSOURCE, mCallback, mDeathCallback, null);
         SoftApConfiguration config = mock(SoftApConfiguration.class);
         mLOHSRequestInfo.sendHotspotStartedMessage(config);
@@ -181,7 +176,7 @@ public class LocalOnlyHotspotRequestInfoTest extends WifiBaseTest {
      */
     @Test
     public void verifySendStoppedMessage() throws Exception {
-        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(mLooper.getLooper(),
+        mLOHSRequestInfo = new LocalOnlyHotspotRequestInfo(
                 TEST_WORKSOURCE, mCallback, mDeathCallback, null);
         mLOHSRequestInfo.sendHotspotStoppedMessage();
         verify(mCallback).onHotspotStopped();

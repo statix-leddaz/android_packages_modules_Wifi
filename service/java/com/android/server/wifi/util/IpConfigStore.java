@@ -112,14 +112,14 @@ public class IpConfigStore {
                 do {
                     key = in.readUTF();
                     try {
-                        if (ID_KEY.equals(key)) {
+                        if (key.equals(ID_KEY)) {
                             if (version < 3) {
                                 int id = in.readInt();
                                 uniqueToken = String.valueOf(id);
                             } else {
                                 uniqueToken = in.readUTF();
                             }
-                        } else if (IP_ASSIGNMENT_KEY.equals(key)) {
+                        } else if (key.equals(IP_ASSIGNMENT_KEY)) {
                             ipAssignment = IpAssignment.valueOf(in.readUTF());
                         } else if (key.equals(LINK_ADDRESS_KEY)) {
                             LinkAddress linkAddr = new LinkAddress(
@@ -127,7 +127,7 @@ public class IpConfigStore {
                             if (linkAddr.getAddress() instanceof Inet4Address) {
                                 staticIPBuilder.setIpAddress(linkAddr);
                             }
-                        } else if (GATEWAY_KEY.equals(key)) {
+                        } else if (key.equals(GATEWAY_KEY)) {
                             LinkAddress dest = null;
                             InetAddress gateway = null;
                             if (version == 1) {
@@ -155,19 +155,19 @@ public class IpConfigStore {
                                     loge("Non-IPv4 default or duplicate route: " + route);
                                 }
                             }
-                        } else if (DNS_KEY.equals(key)) {
+                        } else if (key.equals(DNS_KEY)) {
                             dnsServerAddresses.add(InetAddresses.parseNumericAddress(in.readUTF()));
-                        } else if (PROXY_SETTINGS_KEY.equals(key)) {
+                        } else if (key.equals(PROXY_SETTINGS_KEY)) {
                             proxySettings = ProxySettings.valueOf(in.readUTF());
-                        } else if (PROXY_HOST_KEY.equals(key)) {
+                        } else if (key.equals(PROXY_HOST_KEY)) {
                             proxyHost = in.readUTF();
-                        } else if (PROXY_PORT_KEY.equals(key)) {
+                        } else if (key.equals(PROXY_PORT_KEY)) {
                             proxyPort = in.readInt();
-                        } else if (PROXY_PAC_FILE.equals(key)) {
+                        } else if (key.equals(PROXY_PAC_FILE)) {
                             pacFileUrl = in.readUTF();
-                        } else if (EXCLUSION_LIST_KEY.equals(key)) {
+                        } else if (key.equals(EXCLUSION_LIST_KEY)) {
                             exclusionList = in.readUTF();
-                        } else if (EOS.equals(key)) {
+                        } else if (key.equals(EOS)) {
                             break;
                         } else {
                             loge("Ignore unknown key " + key + "while reading");

@@ -16,7 +16,6 @@
 
 package android.net.wifi.aware;
 
-import static android.net.wifi.ScanResult.CHANNEL_WIDTH_80MHZ;
 import static android.net.wifi.aware.WifiAwareManager.WIFI_AWARE_DISCOVERY_LOST_REASON_PEER_NOT_VISIBLE;
 import static android.net.wifi.aware.WifiAwareNetworkSpecifier.NETWORK_SPECIFIER_TYPE_IB;
 
@@ -161,12 +160,6 @@ public class WifiAwareManagerTest {
         verify(mockAwareService).isDeviceAttached();
     }
 
-    @Test
-    public void testIsSetChannelOnDataPathSupported() throws Exception {
-        mDut.isSetChannelOnDataPathSupported();
-        verify(mockAwareService).isSetChannelOnDataPathSupported();
-    }
-
     /**
      * Validate pass-through of isInstantCommunicationModeEnabled() and
      * enableInstantCommunicationMode() API
@@ -211,7 +204,7 @@ public class WifiAwareManagerTest {
         // (1) connect + success
         mDut.attach(mockCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).connect(binder.capture(), any(), any(),
-                clientProxyCallback.capture(), isNull(), eq(false), any());
+                clientProxyCallback.capture(), isNull(), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(sessionCaptor.capture());
@@ -221,7 +214,7 @@ public class WifiAwareManagerTest {
         PublishConfig publishConfig = new PublishConfig.Builder().build();
         session.publish(publishConfig, mockSessionCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).publish(any(), any(), eq(clientId), eq(publishConfig),
-                any(), any());
+                any());
 
         // (3) disconnect
         session.close();
@@ -234,7 +227,7 @@ public class WifiAwareManagerTest {
         // (5) connect
         mDut.attach(mockCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).connect(binder.capture(), any(), any(), any(), isNull(),
-                eq(false), any());
+                eq(false));
 
         verifyNoMoreInteractions(mockCallback, mockSessionCallback, mockAwareService);
     }
@@ -256,7 +249,7 @@ public class WifiAwareManagerTest {
         // (1) connect + failure
         mDut.attach(mockCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                isNull(), eq(false), any());
+                isNull(), eq(false));
         clientProxyCallback.getValue().onConnectFail(reason);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttachFailed();
@@ -264,7 +257,7 @@ public class WifiAwareManagerTest {
         // (2) connect + success
         mDut.attach(mockCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                isNull(), eq(false), any());
+                isNull(), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(sessionCaptor.capture());
@@ -274,12 +267,7 @@ public class WifiAwareManagerTest {
         SubscribeConfig subscribeConfig = new SubscribeConfig.Builder().build();
         session.subscribe(subscribeConfig, mockSessionCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).subscribe(any(), any(), eq(clientId), eq(subscribeConfig),
-                any(), any());
-
-        // (5) Terminate attach session
-        clientProxyCallback.getValue().onAttachTerminate();
-        mMockLooper.dispatchAll();
-        inOrder.verify(mockCallback).onAwareSessionTerminated();
+                any());
 
         verifyNoMoreInteractions(mockCallback, mockSessionCallback, mockAwareService);
     }
@@ -299,7 +287,7 @@ public class WifiAwareManagerTest {
         // (1) connect + success
         mDut.attach(mockCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                isNull(), eq(false), any());
+                isNull(), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(any());
@@ -307,7 +295,7 @@ public class WifiAwareManagerTest {
         // (2) connect + success
         mDut.attach(mockCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                isNull(), eq(false), any());
+                isNull(), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId + 1);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(any());
@@ -354,7 +342,7 @@ public class WifiAwareManagerTest {
         // (0) connect + success
         mDut.attach(mMockLooperHandler, configRequest, mockCallback, null);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                eq(configRequest), eq(false), any());
+                eq(configRequest), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(sessionCaptor.capture());
@@ -363,7 +351,7 @@ public class WifiAwareManagerTest {
         // (1) publish
         session.publish(publishConfig, mockSessionCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).publish(any(), any(), eq(clientId), eq(publishConfig),
-                sessionProxyCallback.capture(), any());
+                sessionProxyCallback.capture());
 
         // (2) publish session created
         sessionProxyCallback.getValue().onSessionStarted(sessionId);
@@ -372,8 +360,7 @@ public class WifiAwareManagerTest {
 
         // (3) ...
         publishSession.getValue().sendMessage(peerHandle, messageId, string1.getBytes());
-        sessionProxyCallback.getValue().onMatch(peerHandle.peerId, string1.getBytes(), matchFilter,
-                0, new byte[0]);
+        sessionProxyCallback.getValue().onMatch(peerHandle.peerId, string1.getBytes(), matchFilter);
         sessionProxyCallback.getValue().onMessageReceived(peerHandle.peerId, string1.getBytes());
         sessionProxyCallback.getValue().onMessageSendFail(messageId, reason);
         sessionProxyCallback.getValue().onMessageSendSuccess(messageId);
@@ -384,7 +371,6 @@ public class WifiAwareManagerTest {
         inOrder.verify(mockSessionCallback).onServiceDiscovered(peerIdCaptor.capture(),
                 eq(string1.getBytes()),
                 matchFilterCaptor.capture());
-        inOrder.verify(mockSessionCallback).onServiceDiscovered(any(ServiceDiscoveryInfo.class));
 
         // note: need to capture/compare elements since the Mockito eq() is a shallow comparator
         List<byte[]> parsedMatchFilter = new TlvBufferUtils.TlvIterable(0, 1, matchFilter).toList();
@@ -455,7 +441,7 @@ public class WifiAwareManagerTest {
         // (1) connect successfully
         mDut.attach(mMockLooperHandler, configRequest, mockCallback, null);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                eq(configRequest), eq(false), any());
+                eq(configRequest), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(sessionCaptor.capture());
@@ -464,7 +450,7 @@ public class WifiAwareManagerTest {
         // (2) publish: successfully - then terminated
         session.publish(publishConfig, mockSessionCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).publish(any(), any(), eq(clientId), eq(publishConfig),
-                sessionProxyCallback.capture(), any());
+                sessionProxyCallback.capture());
         sessionProxyCallback.getValue().onSessionStarted(sessionId);
         sessionProxyCallback.getValue().onSessionTerminated(0);
         mMockLooper.dispatchAll();
@@ -512,7 +498,7 @@ public class WifiAwareManagerTest {
         // (0) connect + success
         mDut.attach(mMockLooperHandler, configRequest, mockCallback, null);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                eq(configRequest), eq(false), any());
+                eq(configRequest), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(sessionCaptor.capture());
@@ -521,7 +507,7 @@ public class WifiAwareManagerTest {
         // (1) subscribe
         session.subscribe(subscribeConfig, mockSessionCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).subscribe(any(), any(), eq(clientId), eq(subscribeConfig),
-                sessionProxyCallback.capture(), any());
+                sessionProxyCallback.capture());
 
         // (2) subscribe session created
         sessionProxyCallback.getValue().onSessionStarted(sessionId);
@@ -530,10 +516,9 @@ public class WifiAwareManagerTest {
 
         // (3) ...
         subscribeSession.getValue().sendMessage(peerHandle, messageId, string1.getBytes());
-        sessionProxyCallback.getValue().onMatch(peerHandle.peerId, string1.getBytes(), matchFilter,
-                0, new byte[0]);
+        sessionProxyCallback.getValue().onMatch(peerHandle.peerId, string1.getBytes(), matchFilter);
         sessionProxyCallback.getValue().onMatchWithDistance(peerHandle.peerId, string1.getBytes(),
-                matchFilter, distanceMm, 0, new byte[0]);
+                matchFilter, distanceMm);
         sessionProxyCallback.getValue().onMessageReceived(peerHandle.peerId, string1.getBytes());
         sessionProxyCallback.getValue().onMessageSendFail(messageId, reason);
         sessionProxyCallback.getValue().onMessageSendSuccess(messageId);
@@ -542,12 +527,9 @@ public class WifiAwareManagerTest {
         inOrder.verify(mockAwareService).sendMessage(eq(clientId), eq(sessionId),
                 eq(peerHandle.peerId), eq(string1.getBytes()), eq(messageId), eq(0));
         inOrder.verify(mockSessionCallback).onServiceDiscovered(peerIdCaptor.capture(),
-                eq(string1.getBytes()), any());
-        inOrder.verify(mockSessionCallback).onServiceDiscovered(any(ServiceDiscoveryInfo.class));
+                eq(string1.getBytes()), isNull());
         inOrder.verify(mockSessionCallback).onServiceDiscoveredWithinRange(peerIdCaptor.capture(),
-                eq(string1.getBytes()), any(), eq(distanceMm));
-        inOrder.verify(mockSessionCallback).onServiceDiscoveredWithinRange(
-                any(ServiceDiscoveryInfo.class), eq(distanceMm));
+                eq(string1.getBytes()), isNull(), eq(distanceMm));
         assertEquals((peerIdCaptor.getValue()).peerId, peerHandle.peerId);
         inOrder.verify(mockSessionCallback).onMessageReceived(peerIdCaptor.capture(),
                 eq(string1.getBytes()));
@@ -608,7 +590,7 @@ public class WifiAwareManagerTest {
         // (1) connect successfully
         mDut.attach(mMockLooperHandler, configRequest, mockCallback, null);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                eq(configRequest), eq(false), any());
+                eq(configRequest), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(sessionCaptor.capture());
@@ -617,7 +599,7 @@ public class WifiAwareManagerTest {
         // (2) subscribe: successfully - then terminated
         session.subscribe(subscribeConfig, mockSessionCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).subscribe(any(), any(), eq(clientId), eq(subscribeConfig),
-                sessionProxyCallback.capture(), any());
+                sessionProxyCallback.capture());
         sessionProxyCallback.getValue().onSessionStarted(sessionId);
         sessionProxyCallback.getValue().onSessionTerminated(0);
         mMockLooper.dispatchAll();
@@ -1026,7 +1008,7 @@ public class WifiAwareManagerTest {
         // (1) connect successfully
         mDut.attach(mMockLooperHandler, configRequest, mockCallback, null);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                eq(configRequest), eq(false), any());
+                eq(configRequest), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(sessionCaptor.capture());
@@ -1035,7 +1017,7 @@ public class WifiAwareManagerTest {
         // (2) publish successfully
         session.publish(publishConfig, mockSessionCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).publish(any(), any(), eq(clientId), eq(publishConfig),
-                sessionProxyCallback.capture(), any());
+                sessionProxyCallback.capture());
         sessionProxyCallback.getValue().onSessionStarted(sessionId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockSessionCallback).onPublishStarted(publishSession.capture());
@@ -1074,16 +1056,14 @@ public class WifiAwareManagerTest {
         collector.checkThat("client_id", clientId, equalTo(ns.clientId));
         collector.checkThat("session_id", sessionId, equalTo(ns.sessionId));
         collector.checkThat("peer_id", peerHandle.peerId, equalTo(ns.peerId));
-        collector.checkThat("pmk", pmk , equalTo(ns
-                .getWifiAwareDataPathSecurityConfig().getPmk()));
+        collector.checkThat("pmk", pmk , equalTo(ns.pmk));
 
         collector.checkThat("role", WifiAwareManager.WIFI_AWARE_DATA_PATH_ROLE_RESPONDER,
                 equalTo(nsb.role));
         collector.checkThat("client_id", clientId, equalTo(nsb.clientId));
         collector.checkThat("session_id", sessionId, equalTo(nsb.sessionId));
         collector.checkThat("peer_id", peerHandle.peerId, equalTo(nsb.peerId));
-        collector.checkThat("pmk", pmk , equalTo(nsb
-                .getWifiAwareDataPathSecurityConfig().getPmk()));
+        collector.checkThat("pmk", pmk , equalTo(nsb.pmk));
         collector.checkThat("port", port, equalTo(nsb.port));
         collector.checkThat("transportProtocol", transportProtocol, equalTo(nsb.transportProtocol));
 
@@ -1094,7 +1074,7 @@ public class WifiAwareManagerTest {
                         peerHandle, passphrase);
         nsb = new WifiAwareNetworkSpecifier.Builder(publishSession.getValue(),
                 peerHandle).setPskPassphrase(passphrase).setPort(port).setTransportProtocol(
-                transportProtocol).setChannelFrequencyMhz(5750, true).build();
+                transportProtocol).build();
 
         // validate format
         collector.checkThat("role", WifiAwareManager.WIFI_AWARE_DATA_PATH_ROLE_RESPONDER,
@@ -1102,20 +1082,16 @@ public class WifiAwareManagerTest {
         collector.checkThat("client_id", clientId, equalTo(ns.clientId));
         collector.checkThat("session_id", sessionId, equalTo(ns.sessionId));
         collector.checkThat("peer_id", peerHandle.peerId, equalTo(ns.peerId));
-        collector.checkThat("passphrase", passphrase, equalTo(ns
-                .getWifiAwareDataPathSecurityConfig().getPskPassphrase()));
+        collector.checkThat("passphrase", passphrase, equalTo(ns.passphrase));
 
         collector.checkThat("role", WifiAwareManager.WIFI_AWARE_DATA_PATH_ROLE_RESPONDER,
                 equalTo(nsb.role));
         collector.checkThat("client_id", clientId, equalTo(nsb.clientId));
         collector.checkThat("session_id", sessionId, equalTo(nsb.sessionId));
         collector.checkThat("peer_id", peerHandle.peerId, equalTo(nsb.peerId));
-        collector.checkThat("passphrase", passphrase, equalTo(nsb
-                .getWifiAwareDataPathSecurityConfig().getPskPassphrase()));
+        collector.checkThat("passphrase", passphrase, equalTo(nsb.passphrase));
         collector.checkThat("port", port, equalTo(nsb.port));
         collector.checkThat("transportProtocol", transportProtocol, equalTo(nsb.transportProtocol));
-        collector.checkThat("channel", 5750, equalTo(nsb.getChannelFrequencyMhz()));
-        collector.checkThat("ForceChannel", true, equalTo(nsb.isChannelRequired()));
 
         verifyNoMoreInteractions(mockCallback, mockSessionCallback, mockAwareService,
                 mockPublishSession, mockRttListener);
@@ -1145,7 +1121,7 @@ public class WifiAwareManagerTest {
         // (1) connect successfully
         mDut.attach(mMockLooperHandler, configRequest, mockCallback, null);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                eq(configRequest), eq(false), any());
+                eq(configRequest), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(sessionCaptor.capture());
@@ -1167,8 +1143,7 @@ public class WifiAwareManagerTest {
         collector.checkThat("role", role, equalTo(ns.role));
         collector.checkThat("client_id", clientId, equalTo(ns.clientId));
         collector.checkThat("peer_mac", someMac, equalTo(ns.peerMac));
-        collector.checkThat("pmk", pmk, equalTo(
-                ns.getWifiAwareDataPathSecurityConfig().getPmk()));
+        collector.checkThat("pmk", pmk, equalTo(ns.pmk));
 
         // (4) request an encrypted (Passphrase) direct network specifier
         ns = (WifiAwareNetworkSpecifier) session.createNetworkSpecifierPassphrase(role, someMac,
@@ -1178,8 +1153,7 @@ public class WifiAwareManagerTest {
         collector.checkThat("role", role, equalTo(ns.role));
         collector.checkThat("client_id", clientId, equalTo(ns.clientId));
         collector.checkThat("peer_mac", someMac, equalTo(ns.peerMac));
-        collector.checkThat("passphrase", passphrase, equalTo(
-                ns.getWifiAwareDataPathSecurityConfig().getPskPassphrase()));
+        collector.checkThat("passphrase", passphrase, equalTo(ns.passphrase));
 
         verifyNoMoreInteractions(mockCallback, mockSessionCallback, mockAwareService,
                 mockPublishSession, mockRttListener);
@@ -1331,7 +1305,7 @@ public class WifiAwareManagerTest {
         // (1) connect successfully
         mDut.attach(mMockLooperHandler, configRequest, mockCallback, null);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                eq(configRequest), eq(false), any());
+                eq(configRequest), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(sessionCaptor.capture());
@@ -1340,7 +1314,7 @@ public class WifiAwareManagerTest {
         // (2) publish successfully
         session.publish(publishConfig, mockSessionCallback, mMockLooperHandler);
         inOrder.verify(mockAwareService).publish(any(), any(), eq(clientId), eq(publishConfig),
-                sessionProxyCallback.capture(), any());
+                sessionProxyCallback.capture());
         sessionProxyCallback.getValue().onSessionStarted(sessionId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockSessionCallback).onPublishStarted(publishSession.capture());
@@ -1431,23 +1405,6 @@ public class WifiAwareManagerTest {
     public void testNetworkSpecifierDirectNullPeerResponderLegacyApi() throws Exception {
         mockApplicationInfo.targetSdkVersion = Build.VERSION_CODES.O;
         executeNetworkSpecifierDirect(null, false, null, PASSPHRASE_VALID, false);
-    }
-
-    /**
-     * Validate that a valid {@link WifiAwareNetworkSpecifier.Builder} can be reusable.
-     */
-    @Test
-    public void testNetworkSpecifierBuilderReusable() throws Exception {
-        final PeerHandle peerHandle = new PeerHandle(123412);
-        final byte[] pmk = PMK_VALID;
-
-        DiscoverySession publishSession = executeSessionStartup(true);
-
-        WifiAwareNetworkSpecifier.Builder nsBuilder = new WifiAwareNetworkSpecifier
-                .Builder(publishSession, peerHandle).setPmk(pmk);
-        nsBuilder.build();
-        // Verify that calling build second time will also success.
-        nsBuilder.build();
     }
 
     /**
@@ -1583,7 +1540,7 @@ public class WifiAwareManagerTest {
         // (1) connect successfully
         mDut.attach(mMockLooperHandler, configRequest, mockCallback, null);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                eq(configRequest), eq(false), any());
+                eq(configRequest), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(sessionCaptor.capture());
@@ -1623,7 +1580,7 @@ public class WifiAwareManagerTest {
         // (1) connect successfully
         mDut.attach(mMockLooperHandler, configRequest, mockCallback, null);
         inOrder.verify(mockAwareService).connect(any(), any(), any(), clientProxyCallback.capture(),
-                eq(configRequest), eq(false), any());
+                eq(configRequest), eq(false));
         clientProxyCallback.getValue().onConnectSuccess(clientId);
         mMockLooper.dispatchAll();
         inOrder.verify(mockCallback).onAttached(sessionCaptor.capture());
@@ -1633,7 +1590,7 @@ public class WifiAwareManagerTest {
             // (2) publish successfully
             session.publish(publishConfig, mockSessionCallback, mMockLooperHandler);
             inOrder.verify(mockAwareService).publish(any(), any(), eq(clientId), eq(publishConfig),
-                    sessionProxyCallback.capture(), any());
+                    sessionProxyCallback.capture());
             sessionProxyCallback.getValue().onSessionStarted(sessionId);
             mMockLooper.dispatchAll();
             inOrder.verify(mockSessionCallback).onPublishStarted(publishSession.capture());
@@ -1642,7 +1599,7 @@ public class WifiAwareManagerTest {
             // (2) subscribe successfully
             session.subscribe(subscribeConfig, mockSessionCallback, mMockLooperHandler);
             inOrder.verify(mockAwareService).subscribe(any(), any(), eq(clientId),
-                    eq(subscribeConfig), sessionProxyCallback.capture(), any());
+                    eq(subscribeConfig), sessionProxyCallback.capture());
             sessionProxyCallback.getValue().onSessionStarted(sessionId);
             mMockLooper.dispatchAll();
             inOrder.verify(mockSessionCallback).onSubscribeStarted(subscribeSession.capture());
@@ -1657,7 +1614,7 @@ public class WifiAwareManagerTest {
         WifiAwareNetworkSpecifier ns = new WifiAwareNetworkSpecifier(NETWORK_SPECIFIER_TYPE_IB,
                 WifiAwareManager.WIFI_AWARE_DATA_PATH_ROLE_RESPONDER, 5, 568, 334,
                 HexEncoding.decode("000102030405".toCharArray(), false),
-                "01234567890123456789012345678901".getBytes(), null, 666, 4);
+                "01234567890123456789012345678901".getBytes(), "blah blah", 666, 4);
 
         Parcel parcelW = Parcel.obtain();
         ns.writeToParcel(parcelW, 0);
@@ -1676,8 +1633,6 @@ public class WifiAwareManagerTest {
 
     @Test
     public void testWifiAwareNetworkCapabilitiesParcel() throws UnknownHostException {
-        final WifiAwareChannelInfo channelInfo = new WifiAwareChannelInfo(5750,
-                CHANNEL_WIDTH_80MHZ, 2);
         final Inet6Address inet6 = MacAddress.fromString(
                 "11:22:33:44:55:66").getLinkLocalIpv6FromEui48Mac();
         // note: placeholder scope = 5
@@ -1686,8 +1641,7 @@ public class WifiAwareManagerTest {
         final int transportProtocol = 6;
 
         assertEquals(inet6Scoped.toString(), "/fe80::1322:33ff:fe44:5566%5");
-        WifiAwareNetworkInfo cap = new WifiAwareNetworkInfo(inet6Scoped, port, transportProtocol,
-                List.of(channelInfo));
+        WifiAwareNetworkInfo cap = new WifiAwareNetworkInfo(inet6Scoped, port, transportProtocol);
 
         Parcel parcelW = Parcel.obtain();
         cap.writeToParcel(parcelW, 0);
@@ -1703,7 +1657,6 @@ public class WifiAwareManagerTest {
         assertEquals(cap.getPeerIpv6Addr().toString(), "/fe80::1322:33ff:fe44:5566%5");
         assertEquals(cap, rereadCap);
         assertEquals(cap.hashCode(), rereadCap.hashCode());
-        assertEquals(cap.getChannelInfoList(), rereadCap.getChannelInfoList());
     }
 
     // ParcelablePeerHandle tests

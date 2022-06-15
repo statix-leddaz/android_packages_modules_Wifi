@@ -181,8 +181,7 @@ public class WifiScanner {
      * This constant is used for {@link ScanSettings#setRnrSetting(int)}.
      * <p>
      * Scan 6Ghz APs co-located with 2.4/5Ghz APs using Reduced Neighbor Report (RNR) if the 6Ghz
-     * band is explicitly requested to be scanned and the current country code supports scanning
-     * of at least one 6Ghz channel. The 6Ghz band is explicitly requested if the
+     * band is explicitly requested to be scanned. The 6Ghz band is explicitly requested if the
      * ScanSetting.band parameter is set to one of:
      * <li> {@link #WIFI_BAND_6_GHZ} </li>
      * <li> {@link #WIFI_BAND_24_5_6_GHZ} </li>
@@ -195,8 +194,7 @@ public class WifiScanner {
     /**
      * This constant is used for {@link ScanSettings#setRnrSetting(int)}.
      * <p>
-     * Request to scan 6Ghz APs co-located with 2.4/5Ghz APs using Reduced Neighbor Report (RNR)
-     * when the current country code supports scanning of at least one 6Ghz channel.
+     * Request to scan 6Ghz APs co-located with 2.4/5Ghz APs using Reduced Neighbor Report (RNR).
      **/
     public static final int WIFI_RNR_ENABLED = 1;
     /**
@@ -330,11 +328,6 @@ public class WifiScanner {
      * @see ScanSettings#type
      */
     public static final int SCAN_TYPE_HIGH_ACCURACY = 2;
-    /**
-     * Max valid value of SCAN_TYPE_
-     * @hide
-     */
-    public static final int SCAN_TYPE_MAX = 2;
 
     /** {@hide} */
     public static final String SCAN_PARAMS_SCAN_SETTINGS_KEY = "ScanSettings";
@@ -1087,22 +1080,13 @@ public class WifiScanner {
      * Afterwards (assuming onSuccess was called), all subsequent single scan results will be
      * delivered to the listener. It is possible that onFullResult will not be called for all
      * results of the first scan if the listener was registered during the scan.
-     * <p>
-     * On {@link android.os.Build.VERSION_CODES#TIRAMISU} or above this API can be called by
-     * an app with either {@link android.Manifest.permission#LOCATION_HARDWARE} or
-     * {@link android.Manifest.permission#NETWORK_STACK}. On platform versions prior to
-     * {@link android.os.Build.VERSION_CODES#TIRAMISU}, the caller must have
-     * {@link android.Manifest.permission#NETWORK_STACK}.
      *
      * @param executor the Executor on which to run the callback.
      * @param listener specifies the object to report events to. This object is also treated as a
      *                 key for this request, and must also be specified to cancel the request.
      *                 Multiple requests should also not share this object.
-     * @throws SecurityException if the caller does not have permission.
      */
-    @RequiresPermission(anyOf = {
-            Manifest.permission.LOCATION_HARDWARE,
-            Manifest.permission.NETWORK_STACK})
+    @RequiresPermission(Manifest.permission.NETWORK_STACK)
     public void registerScanListener(@NonNull @CallbackExecutor Executor executor,
             @NonNull ScanListener listener) {
         Objects.requireNonNull(executor, "executor cannot be null");
@@ -1134,26 +1118,6 @@ public class WifiScanner {
         if (key == INVALID_KEY) return;
         validateChannel();
         mAsyncChannel.sendMessage(CMD_DEREGISTER_SCAN_LISTENER, 0, key);
-    }
-
-    /**
-     * Check whether the Wi-Fi subsystem has started a scan and is waiting for scan results.
-     * @return true if a scan initiated via
-     *         {@link WifiScanner#startScan(ScanSettings, ScanListener)} or
-     *         {@link WifiManager#startScan()} is in progress.
-     *         false if there is currently no scanning initiated by {@link WifiScanner} or
-     *         {@link WifiManager}, but it's still possible the wifi radio is scanning for
-     *         another reason.
-     * @hide
-     */
-    @SystemApi
-    @RequiresPermission(android.Manifest.permission.LOCATION_HARDWARE)
-    public boolean isScanning() {
-        try {
-            return mService.isScanning();
-        } catch (RemoteException e) {
-            throw e.rethrowFromSystemServer();
-        }
     }
 
     /** start wifi scan in background
@@ -1317,20 +1281,12 @@ public class WifiScanner {
         scanParams.putString(REQUEST_FEATURE_ID_KEY, mContext.getAttributionTag());
         Message reply = mAsyncChannel.sendMessageSynchronously(CMD_GET_SINGLE_SCAN_RESULTS, 0, 0,
                 scanParams);
-        if (reply.what == WifiScanner.CMD_OP_SUCCEEDED
-                && reply.obj instanceof ParcelableScanResults) {
-            ScanResult[] results = ((ParcelableScanResults) reply.obj).getResults();
-            if (results != null) {
-                return Arrays.asList(results);
-            }
+        if (reply.what == WifiScanner.CMD_OP_SUCCEEDED) {
+            return Arrays.asList(((ParcelableScanResults) reply.obj).getResults());
         }
-        if (reply.obj instanceof OperationResult) {
-            OperationResult result = (OperationResult) reply.obj;
-            Log.e(TAG, "Error retrieving SingleScan results reason: " + result.reason
-                    + " description: " + result.description);
-        } else {
-            Log.e(TAG, "Error retrieving SingleScan results - invalid object: " + reply.obj);
-        }
+        OperationResult result = (OperationResult) reply.obj;
+        Log.e(TAG, "Error retrieving SingleScan results reason: " + result.reason
+                + " description: " + result.description);
         return new ArrayList<>();
     }
 

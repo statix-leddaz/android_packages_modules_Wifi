@@ -20,10 +20,6 @@ import android.net.wifi.AnqpInformationElement;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiSsid;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-
-import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.wifi.hotspot2.NetworkDetail;
 import com.android.server.wifi.hotspot2.Utils;
 import com.android.server.wifi.hotspot2.anqp.ANQPElement;
@@ -44,85 +40,48 @@ public class ScanDetail {
     private long mSeen = 0;
     private byte[] mInformationElementRawData;
 
-    /**
-     * Main constructor used when converting from NativeScanResult
-     */
-    public ScanDetail(@Nullable NetworkDetail networkDetail, @Nullable WifiSsid wifiSsid,
-            @Nullable String bssid, @Nullable String caps, int level, int frequency, long tsf,
-            @Nullable ScanResult.InformationElement[] informationElements,
-            @Nullable List<String> anqpLines, @Nullable byte[] informationElementRawData) {
+    public ScanDetail(NetworkDetail networkDetail, WifiSsid wifiSsid, String bssid,
+            String caps, int level, int frequency, long tsf,
+            ScanResult.InformationElement[] informationElements, List<String> anqpLines,
+            byte[] informationElementRawData) {
         mNetworkDetail = networkDetail;
-        long hessid = 0L;
-        int anqpDomainId = ScanResult.UNSPECIFIED;
-        byte[] osuProviders = null;
-        int channelWidth = ScanResult.UNSPECIFIED;
-        int centerFreq0 = ScanResult.UNSPECIFIED;
-        int centerFreq1 = ScanResult.UNSPECIFIED;
-        boolean isPasspoint = false;
-        boolean is80211McResponder = false;
-        if (networkDetail != null) {
-            hessid = networkDetail.getHESSID();
-            anqpDomainId = networkDetail.getAnqpDomainID();
-            osuProviders = networkDetail.getOsuProviders();
-            channelWidth = networkDetail.getChannelWidth();
-            centerFreq0 = networkDetail.getCenterfreq0();
-            centerFreq1 = networkDetail.getCenterfreq1();
-            isPasspoint = caps.contains("EAP")
-                    && networkDetail.isInterworking() && networkDetail.getHSRelease() != null;
-            is80211McResponder = networkDetail.is80211McResponderSupport();
-        }
-        mScanResult = new ScanResult(wifiSsid, bssid, hessid, anqpDomainId, osuProviders, caps,
-                level, frequency, tsf);
+        mScanResult = new ScanResult(wifiSsid, bssid, networkDetail.getHESSID(),
+                networkDetail.getAnqpDomainID(), networkDetail.getOsuProviders(),
+                caps, level, frequency, tsf);
         mSeen = System.currentTimeMillis();
         mScanResult.seen = mSeen;
-        mScanResult.channelWidth = channelWidth;
-        mScanResult.centerFreq0 = centerFreq0;
-        mScanResult.centerFreq1 = centerFreq1;
+        mScanResult.channelWidth = networkDetail.getChannelWidth();
+        mScanResult.centerFreq0 = networkDetail.getCenterfreq0();
+        mScanResult.centerFreq1 = networkDetail.getCenterfreq1();
         mScanResult.informationElements = informationElements;
         mScanResult.anqpLines = anqpLines;
-        if (is80211McResponder) {
+        if (networkDetail.is80211McResponderSupport()) {
             mScanResult.setFlag(ScanResult.FLAG_80211mc_RESPONDER);
         }
-        if (isPasspoint) {
+        if (networkDetail.isInterworking() && networkDetail.getHSRelease() != null) {
             mScanResult.setFlag(ScanResult.FLAG_PASSPOINT_NETWORK);
         }
         mInformationElementRawData = informationElementRawData;
     }
 
-    /**
-     * Creates a ScanDetail without NetworkDetail for unit testing
-     */
-    @VisibleForTesting
-    public ScanDetail(@Nullable WifiSsid wifiSsid, @Nullable String bssid, String caps, int level,
-            int frequency, long tsf, long seen) {
-        this(null, wifiSsid, bssid, caps, level, frequency, tsf, null, null, null);
+    public ScanDetail(WifiSsid wifiSsid, String bssid, String caps, int level, int frequency,
+                      long tsf, long seen) {
+        mNetworkDetail = null;
+        mScanResult = new ScanResult(wifiSsid, bssid, 0L, -1, null, caps, level, frequency, tsf);
         mSeen = seen;
-        mScanResult.seen = seen;
+        mScanResult.seen = mSeen;
+        mScanResult.channelWidth = 0;
+        mScanResult.centerFreq0 = 0;
+        mScanResult.centerFreq1 = 0;
+        mScanResult.flags = 0;
     }
 
-    /**
-     * Create a ScanDetail from a ScanResult
-     */
-    public ScanDetail(@NonNull ScanResult scanResult) {
+    public ScanDetail(ScanResult scanResult, NetworkDetail networkDetail) {
         mScanResult = scanResult;
-        mNetworkDetail = new NetworkDetail(
-                scanResult.BSSID,
-                scanResult.informationElements,
-                scanResult.anqpLines,
-                scanResult.frequency);
+        mNetworkDetail = networkDetail;
         // Only inherit |mScanResult.seen| if it was previously set. This ensures that |mSeen|
         // will always contain a valid timestamp.
         mSeen = (mScanResult.seen == 0) ? System.currentTimeMillis() : mScanResult.seen;
-    }
-
-    /**
-     * Copy constructor
-     */
-    public ScanDetail(@NonNull ScanDetail scanDetail) {
-        mScanResult = new ScanResult(scanDetail.mScanResult);
-        mNetworkDetail = new NetworkDetail(scanDetail.mNetworkDetail);
-        mSeen = scanDetail.mSeen;
-        mInformationElementRawData = scanDetail.mInformationElementRawData;
     }
 
     /**
@@ -182,8 +141,9 @@ public class ScanDetail {
         if (networkDetail != null) {
             return networkDetail.toKeyString();
         } else {
-            return "'" + mScanResult.BSSID + "':" + Utils.macToSimpleString(
-                    Utils.parseMac(mScanResult.BSSID));
+            return String.format("'%s':%012x",
+                                 mScanResult.BSSID,
+                                 Utils.parseMac(mScanResult.BSSID));
         }
     }
 
@@ -213,10 +173,11 @@ public class ScanDetail {
     @Override
     public String toString() {
         try {
-            return "'" + mScanResult.BSSID + "'/" + Utils.macToSimpleString(
-                    Utils.parseMac(mScanResult.BSSID));
+            return String.format("'%s'/%012x",
+                                 mScanResult.SSID,
+                                 Utils.parseMac(mScanResult.BSSID));
         } catch (IllegalArgumentException iae) {
-            return "'" + mScanResult.BSSID + "'/----";
+            return String.format("'%s'/----", mScanResult.BSSID);
         }
     }
 }

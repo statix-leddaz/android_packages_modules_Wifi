@@ -34,8 +34,6 @@ import android.database.ContentObserver;
 import android.net.wifi.IActionListener;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
-import android.net.wifi.WifiContext;
-import android.net.wifi.util.ScanResultUtil;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Process;
@@ -47,10 +45,9 @@ import android.util.ArraySet;
 import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
-import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.ConnectToNetworkNotificationAndActionCount;
 import com.android.server.wifi.util.ActionListenerWrapper;
-import com.android.server.wifi.util.WifiPermissionsUtil;
+import com.android.server.wifi.util.ScanResultUtil;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -133,7 +130,6 @@ public class AvailableNetworkNotifier {
     private final ConnectToNetworkNotificationBuilder mNotificationBuilder;
     private final MakeBeforeBreakManager mMakeBeforeBreakManager;
     private final WifiNotificationManager mWifiNotificationManager;
-    private final WifiPermissionsUtil mWifiPermissionsUtil;
 
     @VisibleForTesting
     ScanResult mRecommendedNetwork;
@@ -171,8 +167,7 @@ public class AvailableNetworkNotifier {
             ConnectHelper connectHelper,
             ConnectToNetworkNotificationBuilder connectToNetworkNotificationBuilder,
             MakeBeforeBreakManager makeBeforeBreakManager,
-            WifiNotificationManager wifiNotificationManager,
-            WifiPermissionsUtil wifiPermissionsUtil) {
+            WifiNotificationManager wifiNotificationManager) {
         mTag = tag;
         mStoreDataIdentifier = storeDataIdentifier;
         mToggleSettingsName = toggleSettingsName;
@@ -188,7 +183,6 @@ public class AvailableNetworkNotifier {
         mNotificationBuilder = connectToNetworkNotificationBuilder;
         mMakeBeforeBreakManager = makeBeforeBreakManager;
         mWifiNotificationManager = wifiNotificationManager;
-        mWifiPermissionsUtil = wifiPermissionsUtil;
         mScreenOn = false;
         wifiConfigStore.registerStoreData(new SsidSetStoreData(mStoreDataIdentifier,
                 new AvailableNetworkNotifierStoreData()));
@@ -214,8 +208,7 @@ public class AvailableNetworkNotifier {
             new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context context, Intent intent) {
-                    if (!TextUtils.equals(mTag,
-                            intent.getStringExtra(AVAILABLE_NETWORK_NOTIFIER_TAG))) {
+                    if (!mTag.equals(intent.getStringExtra(AVAILABLE_NETWORK_NOTIFIER_TAG))) {
                         return;
                     }
                     switch (intent.getAction()) {
@@ -276,13 +269,9 @@ public class AvailableNetworkNotifier {
     }
 
     private boolean isControllerEnabled() {
-        UserManager userManager = mContext.getSystemService(UserManager.class);
-        UserHandle currentUser = UserHandle.of(mWifiPermissionsUtil.getCurrentUser());
-        return mSettingEnabled
-                && !userManager.hasUserRestrictionForUser(
-                        UserManager.DISALLOW_CONFIG_WIFI, currentUser)
-                && !(SdkLevel.isAtLeastT() && userManager.hasUserRestrictionForUser(
-                        UserManager.DISALLOW_ADD_WIFI_CONFIG, currentUser));
+        return mSettingEnabled && !mContext.getSystemService(UserManager.class)
+                .hasUserRestrictionForUser(UserManager.DISALLOW_CONFIG_WIFI,
+                    UserHandle.CURRENT);
     }
 
     /**
@@ -461,7 +450,7 @@ public class AvailableNetworkNotifier {
                             // only keep netId, discard other fields
                             new NetworkUpdateResult(result.getNetworkId()),
                             new ActionListenerWrapper(listener),
-                            Process.SYSTEM_UID, mContext.getOpPackageName()));
+                            Process.SYSTEM_UID));
             addNetworkToBlocklist(mRecommendedNetwork.SSID);
         }
 

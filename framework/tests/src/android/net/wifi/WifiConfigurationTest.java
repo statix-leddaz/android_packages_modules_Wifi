@@ -17,7 +17,6 @@
 package android.net.wifi;
 
 import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_EAP;
-import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_EAP_SUITE_B;
 import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE;
 import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT;
 import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_OPEN;
@@ -30,7 +29,6 @@ import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_SAE;
 import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_WAPI_CERT;
 import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_WAPI_PSK;
 import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_WEP;
-import static android.net.wifi.WifiConfiguration.getSecurityTypeName;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -42,14 +40,12 @@ import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
 
 import android.net.MacAddress;
-import android.net.ProxyInfo;
 import android.net.wifi.WifiConfiguration.GroupCipher;
 import android.net.wifi.WifiConfiguration.KeyMgmt;
 import android.net.wifi.WifiConfiguration.NetworkSelectionStatus;
 import android.net.wifi.WifiConfiguration.PairwiseCipher;
 import android.net.wifi.WifiConfiguration.Protocol;
 import android.os.Parcel;
-import android.os.ParcelUuid;
 import android.util.Pair;
 
 import androidx.test.filters.SmallTest;
@@ -73,18 +69,6 @@ public class WifiConfigurationTest {
     private static final int TEST_CARRIER_ID = 1234;
     private static final int TEST_SUB_ID = 3;
     private static final String TEST_PACKAGE_NAME = "google.com";
-    private static final int[] SECURITY_TYPES_EXCEPT_PASSPOINT = {
-            SECURITY_TYPE_OPEN,
-            SECURITY_TYPE_WEP,
-            SECURITY_TYPE_PSK,
-            SECURITY_TYPE_EAP,
-            SECURITY_TYPE_SAE,
-            SECURITY_TYPE_EAP_SUITE_B,
-            SECURITY_TYPE_OWE,
-            SECURITY_TYPE_WAPI_PSK,
-            SECURITY_TYPE_WAPI_CERT,
-            SECURITY_TYPE_EAP_WPA3_ENTERPRISE,
-            SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT};
 
     @Before
     public void setUp() {
@@ -102,7 +86,6 @@ public class WifiConfigurationTest {
     public void testWifiConfigurationParcel() {
         String cookie = "C O.o |<IE";
         WifiConfiguration config = new WifiConfiguration();
-        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
         config.setPasspointManagementObjectTree(cookie);
         config.trusted = false;
         config.oemPaid = true;
@@ -115,9 +98,6 @@ public class WifiConfigurationTest {
         MacAddress macBeforeParcel = config.getRandomizedMacAddress();
         config.subscriptionId = 1;
         config.carrierId = 1189;
-        config.restricted = true;
-        config.isCurrentlyConnected = true;
-        config.setSubscriptionGroup(ParcelUuid.fromString("0000110B-0000-1000-8000-00805F9B34FB"));
         Parcel parcelW = Parcel.obtain();
         config.writeToParcel(parcelW, 0);
         byte[] bytes = parcelW.marshall();
@@ -138,17 +118,6 @@ public class WifiConfigurationTest {
         assertTrue(reconfig.oemPaid);
         assertTrue(reconfig.oemPrivate);
         assertTrue(reconfig.carrierMerged);
-        assertEquals(config.carrierId, reconfig.carrierId);
-        assertEquals(config.subscriptionId, reconfig.subscriptionId);
-        assertEquals(config.getSubscriptionGroup(), reconfig.getSubscriptionGroup());
-        assertTrue(reconfig.restricted);
-        assertTrue(reconfig.isCurrentlyConnected);
-        assertEquals(config.getBssidAllowlist(), reconfig.getBssidAllowlist());
-        assertEquals(
-                SecurityParams.createSecurityParamsBySecurityType(
-                        WifiConfiguration.SECURITY_TYPE_PSK),
-                reconfig.getSecurityParams(
-                        WifiConfiguration.SECURITY_TYPE_PSK));
 
         Parcel parcelWW = Parcel.obtain();
         reconfig.writeToParcel(parcelWW, 0);
@@ -172,8 +141,6 @@ public class WifiConfigurationTest {
         MacAddress macBeforeParcel = config.getRandomizedMacAddress();
         config.subscriptionId = 1;
         config.carrierId = 1189;
-        config.restricted = true;
-        config.isCurrentlyConnected = true;
 
         WifiConfiguration reconfig = new WifiConfiguration(config);
 
@@ -186,10 +153,6 @@ public class WifiConfigurationTest {
         assertTrue(reconfig.oemPaid);
         assertTrue(reconfig.oemPrivate);
         assertTrue(reconfig.carrierMerged);
-        assertEquals(config.carrierId, reconfig.carrierId);
-        assertEquals(config.subscriptionId, reconfig.subscriptionId);
-        assertTrue(reconfig.restricted);
-        assertTrue(reconfig.isCurrentlyConnected);
     }
 
     @Test
@@ -605,43 +568,6 @@ public class WifiConfigurationTest {
     }
 
     /**
-     * Ensure that {@link NetworkSelectionStatus#setCandidateSecurityParams(SecurityParams)}
-     * and {{@link NetworkSelectionStatus#getCandidateSecurityParams()} work
-     * as expectation.
-     */
-    @Test
-    public void testCandidateSecurityParams() {
-        NetworkSelectionStatus status = new NetworkSelectionStatus();
-        SecurityParams params = SecurityParams.createSecurityParamsBySecurityType(
-                SECURITY_TYPE_PSK);
-        status.setCandidateSecurityParams(params);
-        assertEquals(params, status.getCandidateSecurityParams());
-    }
-
-    /**
-     * Ensure that {@link NetworkSelectionStatus#setLastUsedSecurityParams(SecurityParams)}
-     * and {{@link NetworkSelectionStatus#getLastUsedSecurityParams()} work
-     * as expectation.
-     */
-    @Test
-    public void testLastUsedSecurityParams() {
-        NetworkSelectionStatus status = new NetworkSelectionStatus();
-        SecurityParams params = SecurityParams.createSecurityParamsBySecurityType(
-                SECURITY_TYPE_PSK);
-        status.setLastUsedSecurityParams(params);
-        assertEquals(params, status.getLastUsedSecurityParams());
-    }
-
-
-    @Test
-    public void testSetHttpProxyShouldNotCrashOnBadInput() {
-        ProxyInfo badHttpProxy = new ProxyInfo((ProxyInfo) null);
-
-        WifiConfiguration wifiConfiguration = new WifiConfiguration();
-        wifiConfiguration.setHttpProxy(badHttpProxy);
-    }
-
-    /**
      * Ensure that {@link WifiConfiguration#setSecurityParams(int)} sets up the
      * {@link WifiConfiguration} object correctly for SAE security type.
      * @throws Exception
@@ -1019,17 +945,6 @@ public class WifiConfigurationTest {
         }
     }
 
-    private String createNetworkKey(String ssid, String keyMgmt, String providerName,
-            int carrierId, int subId, boolean isFromSuggestion) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(ssid).append(keyMgmt);
-        if (isFromSuggestion) {
-            sb.append("_").append(providerName).append('-')
-                    .append(carrierId).append('-').append(subId);
-        }
-        return sb.toString();
-    }
-
     /** Verify that adding security types works as expected. */
     @Test
     public void testAddSecurityTypes() {
@@ -1314,70 +1229,5 @@ public class WifiConfigurationTest {
         WifiConfiguration config = new WifiConfiguration();
         List<SecurityParams> list = null;
         config.setSecurityParams(list);
-    }
-
-    /**
-     * Verifies that getNetworkKeyFromSecurityType returns the correct String
-     * for networks of various different security types, the result should be stable.
-     *
-     * Note: DO NOT update the test if it happens failure! Fixed it is necessary, otherwise
-     * we will break Wi-Fi data usage functionality.
-     */
-    @Test
-    public void testGetNetworkKeyFromSecurityTypeString() {
-        WifiConfiguration config = new WifiConfiguration();
-        final String mSsid = "TestAP";
-        config.SSID = mSsid;
-        config.carrierId = TEST_CARRIER_ID;
-        config.subscriptionId = TEST_SUB_ID;
-        config.creatorName = TEST_PACKAGE_NAME;
-
-        for (int securityType : SECURITY_TYPES_EXCEPT_PASSPOINT) {
-            assertEquals(createNetworkKey(mSsid, getSecurityTypeName(securityType),
-                    TEST_PACKAGE_NAME, TEST_CARRIER_ID, TEST_SUB_ID, false),
-                    config.getNetworkKeyFromSecurityType(securityType));
-        }
-
-        // Test for passpoint configuration.
-        config.setPasspointUniqueId(TEST_PASSPOINT_UNIQUE_ID);
-        assertEquals(TEST_SUB_ID + "-" + TEST_PASSPOINT_UNIQUE_ID,
-                config.getNetworkKeyFromSecurityType(SECURITY_TYPE_PASSPOINT_R1_R2));
-    }
-
-    /**
-     * Verifies that getAllNetworkKeys returns the correct String set
-     * for networks of various different security types, the result should be stable.
-     *
-     * Note: DO NOT update the test if it happens failure! Fixed it is necessary, otherwise
-     * we will break Wi-Fi data usage functionality.
-     */
-    @Test
-    public void testGetAllPersistableNetworkKeysString() {
-        WifiConfiguration config = new WifiConfiguration();
-        final String mSsid = "TestAP";
-        config.SSID = mSsid;
-        config.carrierId = TEST_CARRIER_ID;
-        config.subscriptionId = TEST_SUB_ID;
-        config.creatorName = TEST_PACKAGE_NAME;
-        for (int securityType : SECURITY_TYPES_EXCEPT_PASSPOINT) {
-            config.setSecurityParams(securityType);
-            assertTrue(config.getAllNetworkKeys().contains(
-                    createNetworkKey(mSsid, getSecurityTypeName(securityType),
-                    TEST_PACKAGE_NAME, TEST_CARRIER_ID, TEST_SUB_ID, false)));
-        }
-
-        // Test with multi-security types
-        config.setSecurityParams(SECURITY_TYPE_PSK);
-        config.addSecurityParams(SECURITY_TYPE_SAE);
-        assertTrue(config.getAllNetworkKeys().contains(
-                createNetworkKey(mSsid, getSecurityTypeName(SECURITY_TYPE_PSK),
-                TEST_PACKAGE_NAME, TEST_CARRIER_ID, TEST_SUB_ID, false)));
-        assertTrue(config.getAllNetworkKeys().contains(
-                createNetworkKey(mSsid, getSecurityTypeName(SECURITY_TYPE_SAE),
-                TEST_PACKAGE_NAME, TEST_CARRIER_ID, TEST_SUB_ID, false)));
-        // Test for passpoint configuration.
-        config.setPasspointUniqueId(TEST_PASSPOINT_UNIQUE_ID);
-        assertTrue(config.getAllNetworkKeys().contains(
-                config.getNetworkKeyFromSecurityType(SECURITY_TYPE_PASSPOINT_R1_R2)));
     }
 }

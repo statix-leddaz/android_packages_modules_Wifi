@@ -97,7 +97,7 @@ public class IMSIParameter {
             return mImsi.regionMatches(false, 0, fullIMSI, 0, mImsi.length());
         } else {
             // Exact matching.
-            return TextUtils.equals(mImsi, fullIMSI);
+            return mImsi.equals(fullIMSI);
         }
     }
 

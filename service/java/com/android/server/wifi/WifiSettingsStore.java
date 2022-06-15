@@ -50,8 +50,11 @@ public class WifiSettingsStore {
     }
 
     public synchronized boolean isWifiToggleEnabled() {
-        return mPersistWifiState == WIFI_ENABLED
-                || mPersistWifiState == WIFI_ENABLED_AIRPLANE_OVERRIDE;
+        if (mAirplaneModeOn) {
+            return mPersistWifiState == WIFI_ENABLED_AIRPLANE_OVERRIDE;
+        } else {
+            return mPersistWifiState != WIFI_DISABLED;
+        }
     }
 
     /**
@@ -72,14 +75,6 @@ public class WifiSettingsStore {
 
     public synchronized boolean isWifiScoringEnabled() {
         return getPersistedWifiScoringEnabled();
-    }
-
-    public synchronized boolean isWifiPasspointEnabled() {
-        return getPersistedWifiPasspointEnabled();
-    }
-
-    public synchronized int getWifiMultiInternetMode() {
-        return getPersistedWifiMultiInternetMode();
     }
 
     public synchronized boolean handleWifiToggled(boolean wifiEnabled) {
@@ -104,17 +99,13 @@ public class WifiSettingsStore {
         return true;
     }
 
-    synchronized boolean updateAirplaneModeTracker() {
+    synchronized boolean handleAirplaneModeToggled() {
         // Is Wi-Fi sensitive to airplane mode changes ?
         if (!isAirplaneSensitive()) {
             return false;
         }
 
         mAirplaneModeOn = getPersistedAirplaneModeOn();
-        return true;
-    }
-
-    synchronized void handleAirplaneModeToggled() {
         if (mAirplaneModeOn) {
             // Wifi disabled due to airplane on
             if (mPersistWifiState == WIFI_ENABLED) {
@@ -127,6 +118,7 @@ public class WifiSettingsStore {
                 persistWifiState(WIFI_ENABLED);
             }
         }
+        return true;
     }
 
     synchronized void handleWifiScanAlwaysAvailableToggled(boolean isAvailable) {
@@ -138,27 +130,11 @@ public class WifiSettingsStore {
         return true;
     }
 
-    /**
-     * Handle the Wifi Passpoint enable/disable status change.
-     */
-    public synchronized void handleWifiPasspointEnabled(boolean enabled) {
-        persistWifiPasspointEnabledState(enabled);
-    }
-
-    /**
-     * Handle the Wifi Multi Internet state change.
-     */
-    public synchronized void handleWifiMultiInternetMode(int mode) {
-        persistWifiMultiInternetMode(mode);
-    }
-
     void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         pw.println("WifiState " + getPersistedWifiState());
         pw.println("AirplaneModeOn " + getPersistedAirplaneModeOn());
         pw.println("ScanAlwaysAvailable " + getPersistedScanAlwaysAvailable());
         pw.println("WifiScoringState " + getPersistedWifiScoringEnabled());
-        pw.println("WifiPasspointState " + getPersistedWifiPasspointEnabled());
-        pw.println("WifiMultiInternetMode " + getPersistedWifiMultiInternetMode());
     }
 
     private void persistWifiState(int state) {
@@ -175,16 +151,6 @@ public class WifiSettingsStore {
     private void persistWifiScoringEnabledState(boolean enabled) {
         mSettingsConfigStore.put(
                 WifiSettingsConfigStore.WIFI_SCORING_ENABLED, enabled);
-    }
-
-    private void persistWifiPasspointEnabledState(boolean enabled) {
-        mSettingsConfigStore.put(
-                WifiSettingsConfigStore.WIFI_PASSPOINT_ENABLED, enabled);
-    }
-
-    private void persistWifiMultiInternetMode(int mode) {
-        mSettingsConfigStore.put(
-                WifiSettingsConfigStore.WIFI_MULTI_INTERNET_MODE, mode);
     }
 
     /* Does Wi-Fi need to be disabled when airplane mode is on ? */
@@ -226,15 +192,5 @@ public class WifiSettingsStore {
     private boolean getPersistedWifiScoringEnabled() {
         return mSettingsConfigStore.get(
                 WifiSettingsConfigStore.WIFI_SCORING_ENABLED);
-    }
-
-    private boolean getPersistedWifiPasspointEnabled() {
-        return mSettingsConfigStore.get(
-                WifiSettingsConfigStore.WIFI_PASSPOINT_ENABLED);
-    }
-
-    private int getPersistedWifiMultiInternetMode() {
-        return mSettingsConfigStore.get(
-                WifiSettingsConfigStore.WIFI_MULTI_INTERNET_MODE);
     }
 }

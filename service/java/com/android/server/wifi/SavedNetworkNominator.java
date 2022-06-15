@@ -17,7 +17,6 @@
 package com.android.server.wifi;
 
 import android.annotation.NonNull;
-import android.net.MacAddress;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.telephony.TelephonyManager;
@@ -28,8 +27,6 @@ import com.android.server.wifi.hotspot2.PasspointNetworkNominateHelper;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * This class is the WifiNetworkSelector.NetworkNominator implementation for
@@ -84,7 +81,7 @@ public class SavedNetworkNominator implements WifiNetworkSelector.NetworkNominat
     public void update(List<ScanDetail> scanDetails) {
         // Update the matching profiles into WifiConfigManager, help displaying Passpoint networks
         // in Wifi Picker
-        mPasspointNetworkNominateHelper.updatePasspointConfig(scanDetails);
+        mPasspointNetworkNominateHelper.getPasspointNetworkCandidates(scanDetails, false);
     }
 
     /**
@@ -93,10 +90,9 @@ public class SavedNetworkNominator implements WifiNetworkSelector.NetworkNominat
      */
     @Override
     public void nominateNetworks(List<ScanDetail> scanDetails,
-            boolean untrustedNetworkAllowed /* unused */,
-            boolean oemPaidNetworkAllowed /* unused */,
-            boolean oemPrivateNetworkAllowed /* unused */,
-            Set<Integer> restrictedNetworkAllowedUids /* unused */,
+                    boolean untrustedNetworkAllowed /* unused */,
+                    boolean oemPaidNetworkAllowed /* unused */,
+                    boolean oemPrivateNetworkAllowed /* unused */,
             @NonNull OnConnectableListener onConnectableListener) {
         findMatchedSavedNetworks(scanDetails, onConnectableListener);
         findMatchedPasspointNetworks(scanDetails, onConnectableListener);
@@ -118,7 +114,9 @@ public class SavedNetworkNominator implements WifiNetworkSelector.NetworkNominat
 
             /**
              * Ignore Passpoint and Ephemeral networks. They are configured networks,
-             * but without being persisted to the storage.
+             * but without being persisted to the storage. They are nominated by
+             * {@link PasspointNetworkNominator} and {@link ScoredNetworkNominator}
+             * respectively.
              */
             if (network.isPasspoint() || network.isEphemeral()) {
                 continue;
@@ -155,23 +153,6 @@ public class SavedNetworkNominator implements WifiNetworkSelector.NetworkNominat
                         + " has specified BSSID " + network.BSSID + ". Skip "
                         + scanResult.BSSID);
                 continue;
-            }
-            List<MacAddress> bssidList = network.getBssidAllowlistInternal();
-            if (bssidList != null) {
-                if (bssidList.isEmpty()) {
-                    localLog("Network " + WifiNetworkSelector.toNetworkString(network)
-                            + " has specified BSSID list " + bssidList + ". Skip "
-                            + scanResult.BSSID);
-                    continue;
-                }
-                Set<String> bssidSet = bssidList.stream().map(MacAddress::toString)
-                        .collect(Collectors.toSet());
-                if (!bssidSet.contains(scanResult.BSSID)) {
-                    localLog("Network " + WifiNetworkSelector.toNetworkString(network)
-                            + " has specified BSSID list " + bssidList + ". Skip "
-                            + scanResult.BSSID);
-                    continue;
-                }
             }
             if (isNetworkSimBasedCredential(network) && !isSimBasedNetworkAbleToAutoJoin(network)) {
                 localLog("Ignoring SIM auto join disabled SSID: " + network.SSID);

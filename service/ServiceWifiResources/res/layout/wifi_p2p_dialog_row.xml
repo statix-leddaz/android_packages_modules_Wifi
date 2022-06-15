@@ -17,10 +17,12 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     style="@style/wifi_item">
     <TextView
-            android:id="@+id/name"
-            style="@style/wifi_p2p_dialog_row_label"/>
+            style="@style/wifi_item_label"
+            android:id="@+id/name" />
 
     <TextView
             android:id="@+id/value"
-            style="@style/wifi_p2p_dialog_row_content"/>
+            style="@style/wifi_item_content"
+            android:textStyle="bold"
+            android:textAlignment="viewStart" />
 </LinearLayout>

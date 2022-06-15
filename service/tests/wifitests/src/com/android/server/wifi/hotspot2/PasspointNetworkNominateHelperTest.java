@@ -16,8 +16,6 @@
 
 package com.android.server.wifi.hotspot2;
 
-import static android.net.wifi.WifiConfiguration.RANDOMIZATION_NONE;
-
 import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_EAP;
 
 import static org.junit.Assert.assertEquals;
@@ -35,13 +33,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.initMocks;
 
-import android.content.res.Resources;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.HomeSp;
-import android.net.wifi.util.ScanResultUtil;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.util.LocalLog;
@@ -51,13 +47,12 @@ import androidx.test.filters.SmallTest;
 
 import com.android.server.wifi.NetworkUpdateResult;
 import com.android.server.wifi.ScanDetail;
-import com.android.server.wifi.WifiCarrierInfoManager;
 import com.android.server.wifi.WifiConfigManager;
 import com.android.server.wifi.WifiConfigurationTestUtil;
 import com.android.server.wifi.hotspot2.anqp.ANQPElement;
 import com.android.server.wifi.hotspot2.anqp.Constants.ANQPElementType;
 import com.android.server.wifi.hotspot2.anqp.HSWanMetricsElement;
-import com.android.wifi.resources.R;
+import com.android.server.wifi.util.ScanResultUtil;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -97,8 +92,6 @@ public class PasspointNetworkNominateHelperTest {
     @Mock WifiConfigManager mWifiConfigManager;
     @Mock SubscriptionManager mSubscriptionManager;
     @Mock LocalLog mLocalLog;
-    @Mock WifiCarrierInfoManager mWifiCarrierInfoManager;
-    @Mock Resources mResources;
     PasspointNetworkNominateHelper mNominateHelper;
 
     /**
@@ -167,14 +160,9 @@ public class PasspointNetworkNominateHelperTest {
         initMocks(this);
         sTestProvider1 = generateProvider(TEST_CONFIG1);
         sTestProvider2 = generateProvider(TEST_CONFIG2);
-        when(mResources.getStringArray(
-                R.array.config_wifiPasspointUseApWanLinkStatusAnqpElementFqdnAllowlist))
-                .thenReturn(new String[0]);
 
-        mNominateHelper = new PasspointNetworkNominateHelper(mPasspointManager, mWifiConfigManager,
-                mLocalLog, mWifiCarrierInfoManager, mResources);
-        // Always assume Passpoint is enabled as we don't disable it in the test.
-        when(mPasspointManager.isWifiPasspointEnabled()).thenReturn(true);
+        mNominateHelper = new PasspointNetworkNominateHelper(
+                mPasspointManager, mWifiConfigManager, mLocalLog);
     }
 
     /**
@@ -222,8 +210,6 @@ public class PasspointNetworkNominateHelperTest {
     public void evaluateScansWithNetworkMatchingHomeProvider() throws Exception {
         List<ScanDetail> scanDetails = Arrays.asList(generateScanDetail(TEST_SSID1, TEST_BSSID1),
                 generateScanDetail(TEST_SSID2, TEST_BSSID2));
-        when(mWifiCarrierInfoManager.shouldDisableMacRandomization(anyString(), anyInt(), anyInt()))
-                .thenReturn(true);
 
         // Setup matching providers for ScanDetail with TEST_SSID1.
         List<Pair<PasspointProvider, PasspointMatch>> homeProvider = new ArrayList<>();
@@ -234,7 +220,7 @@ public class PasspointNetworkNominateHelperTest {
         when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider)
                 .thenReturn(null);
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
         List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
                 .getPasspointNetworkCandidates(scanDetails, false);
@@ -243,14 +229,12 @@ public class PasspointNetworkNominateHelperTest {
         // Verify the content of the WifiConfiguration that was added to WifiConfigManager.
         ArgumentCaptor<WifiConfiguration> addedConfig =
                 ArgumentCaptor.forClass(WifiConfiguration.class);
-        verify(mWifiConfigManager).addOrUpdateNetwork(addedConfig.capture(), anyInt(), any(),
-                eq(false));
-        assertEquals(ScanResultUtil.createQuotedSsid(TEST_SSID1), addedConfig.getValue().SSID);
+        verify(mWifiConfigManager).addOrUpdateNetwork(addedConfig.capture(), anyInt(), any());
+        assertEquals(ScanResultUtil.createQuotedSSID(TEST_SSID1), addedConfig.getValue().SSID);
         assertEquals(TEST_FQDN1, addedConfig.getValue().FQDN);
         assertNotNull(addedConfig.getValue().enterpriseConfig);
         assertEquals("", addedConfig.getValue().enterpriseConfig.getAnonymousIdentity());
         assertTrue(addedConfig.getValue().isHomeProviderNetwork);
-        assertEquals(RANDOMIZATION_NONE, addedConfig.getValue().macRandomizationSetting);
         verify(mWifiConfigManager).enableNetwork(
                 eq(TEST_NETWORK_ID), eq(false), eq(TEST_UID), any());
         verify(mWifiConfigManager).setNetworkCandidateScanResult(
@@ -283,7 +267,7 @@ public class PasspointNetworkNominateHelperTest {
         when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider)
                 .thenReturn(null);
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
         List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
                 .getPasspointNetworkCandidates(scanDetails, false);
@@ -292,9 +276,8 @@ public class PasspointNetworkNominateHelperTest {
         // Verify the content of the WifiConfiguration that was added to WifiConfigManager.
         ArgumentCaptor<WifiConfiguration> addedConfig =
                 ArgumentCaptor.forClass(WifiConfiguration.class);
-        verify(mWifiConfigManager).addOrUpdateNetwork(addedConfig.capture(), anyInt(), any(),
-                eq(false));
-        assertEquals(ScanResultUtil.createQuotedSsid(TEST_SSID1), addedConfig.getValue().SSID);
+        verify(mWifiConfigManager).addOrUpdateNetwork(addedConfig.capture(), anyInt(), any());
+        assertEquals(ScanResultUtil.createQuotedSSID(TEST_SSID1), addedConfig.getValue().SSID);
         assertEquals(TEST_FQDN1, addedConfig.getValue().FQDN);
         assertNotNull(addedConfig.getValue().enterpriseConfig);
         assertEquals("", addedConfig.getValue().enterpriseConfig.getAnonymousIdentity());
@@ -324,8 +307,7 @@ public class PasspointNetworkNominateHelperTest {
         // for the second (TEST_SSID2);
         when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(roamingProvider)
                 .thenReturn(null);
-        when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(), any(),
-                eq(false)))
+        when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(), any()))
                 .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
         List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
@@ -335,9 +317,8 @@ public class PasspointNetworkNominateHelperTest {
         // Verify the content of the WifiConfiguration that was added to WifiConfigManager.
         ArgumentCaptor<WifiConfiguration> addedConfig =
                 ArgumentCaptor.forClass(WifiConfiguration.class);
-        verify(mWifiConfigManager).addOrUpdateNetwork(addedConfig.capture(), anyInt(), any(),
-                eq(false));
-        assertEquals(ScanResultUtil.createQuotedSsid(TEST_SSID1), addedConfig.getValue().SSID);
+        verify(mWifiConfigManager).addOrUpdateNetwork(addedConfig.capture(), anyInt(), any());
+        assertEquals(ScanResultUtil.createQuotedSSID(TEST_SSID1), addedConfig.getValue().SSID);
         assertEquals(TEST_FQDN1, addedConfig.getValue().FQDN);
         assertNotNull(addedConfig.getValue().enterpriseConfig);
         assertEquals("", addedConfig.getValue().enterpriseConfig.getAnonymousIdentity());
@@ -372,7 +353,7 @@ public class PasspointNetworkNominateHelperTest {
         when(mPasspointManager.matchProvider(any(ScanResult.class)))
                 .thenReturn(homeProvider).thenReturn(roamingProvider);
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID))
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID))
                 .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID + 1));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID + 1))
@@ -382,7 +363,7 @@ public class PasspointNetworkNominateHelperTest {
         assertEquals(2, candidates.size());
 
         verify(mWifiConfigManager, times(2))
-                .addOrUpdateNetwork(any(), anyInt(), any(), eq(false));
+                .addOrUpdateNetwork(any(), anyInt(), any());
     }
 
     /**
@@ -408,7 +389,7 @@ public class PasspointNetworkNominateHelperTest {
         when(mSubscriptionManager.getActiveSubscriptionInfoList())
                 .thenReturn(Arrays.asList(mock(SubscriptionInfo.class)));
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(config);
 
         List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
@@ -433,13 +414,13 @@ public class PasspointNetworkNominateHelperTest {
         // Setup currently connected network.
         WifiConfiguration currentNetwork = new WifiConfiguration();
         currentNetwork.networkId = TEST_NETWORK_ID;
-        currentNetwork.SSID = ScanResultUtil.createQuotedSsid(TEST_SSID1);
+        currentNetwork.SSID = ScanResultUtil.createQuotedSSID(TEST_SSID1);
         String currentBssid = TEST_BSSID1;
 
         // Match the current connected network to a home provider.
         when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider);
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(currentNetwork);
 
         List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
@@ -493,7 +474,7 @@ public class PasspointNetworkNominateHelperTest {
         List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
                 .getPasspointNetworkCandidates(scanDetails, false);
         verify(mWifiConfigManager, never()).addOrUpdateNetwork(any(WifiConfiguration.class),
-                anyInt(), any(), eq(false));
+                anyInt(), any());
         assertTrue(candidates.isEmpty());
     }
 
@@ -512,7 +493,7 @@ public class PasspointNetworkNominateHelperTest {
         // Return homeProvider for the first ScanDetail (TEST_SSID1).
         when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider);
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
         when(mWifiConfigManager.isNetworkTemporarilyDisabledByUser(TEST_FQDN1))
                 .thenReturn(true);
@@ -522,108 +503,32 @@ public class PasspointNetworkNominateHelperTest {
     }
 
     /**
-     * Verify that when the WAN metrics status is 'LINK_STATUS_DOWN', it will not return as
-     * candidate when use wan link status.
+     * Verify that when the WAN metrics status is 'LINK_STATUS_DOWN', it should be ignored.
+     * @throws Exception
      */
     @Test
-    public void evaluateScansWithNetworkMatchingHomeProviderUseAnqpLinkDown() throws Exception {
-        when(mResources.getBoolean(R.bool.config_wifiPasspointUseApWanLinkStatusAnqpElement))
-                .thenReturn(true);
-        List<ScanDetail> scanDetails = Arrays.asList(generateScanDetail(TEST_SSID1, TEST_BSSID1),
-                generateScanDetail(TEST_SSID2, TEST_BSSID2));
+    public void evaluateScansWithNetworkMatchingHomeProviderWithAnqpLinkDown() throws Exception {
+        List<ScanDetail> scanDetails = Arrays.asList(generateScanDetail(TEST_SSID1, TEST_BSSID1));
         // Setup matching providers for ScanDetail with TEST_SSID1.
         List<Pair<PasspointProvider, PasspointMatch>> homeProvider = new ArrayList<>();
         homeProvider.add(Pair.create(sTestProvider1, PasspointMatch.HomeProvider));
 
         when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider);
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID))
-                .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID + 1));
-        when(mWifiConfigManager.getConfiguredNetwork(anyInt())).thenReturn(TEST_CONFIG1);
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
+        when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
         // Setup WAN metrics status is 'LINK_STATUS_DOWN'
         HSWanMetricsElement wm = mock(HSWanMetricsElement.class);
         Map<ANQPElementType, ANQPElement> anqpElements = new HashMap<>();
         anqpElements.put(ANQPElementType.HSWANMetrics, wm);
-        when(mPasspointManager.getANQPElements(scanDetails.get(0).getScanResult()))
+        when(mPasspointManager.getANQPElements(any(ScanResult.class)))
                 .thenReturn(anqpElements);
         when(wm.getStatus()).thenReturn(HSWanMetricsElement.LINK_STATUS_DOWN);
         when(wm.isElementInitialized()).thenReturn(true);
 
         List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
                 .getPasspointNetworkCandidates(scanDetails, false);
-        assertEquals(1, candidates.size());
-    }
-
-    /**
-     * Verify that when the WAN metrics status is 'LINK_STATUS_DOWN', it will return as
-     * candidate when not use wan link status.
-     */
-
-    @Test
-    public void evaluateScansWithNetworkMatchingHomeProviderNotUseAnqpLinkDown() throws Exception {
-        when(mResources.getBoolean(R.bool.config_wifiPasspointUseApWanLinkStatusAnqpElement))
-                .thenReturn(false);
-        List<ScanDetail> scanDetails = Arrays.asList(generateScanDetail(TEST_SSID1, TEST_BSSID1),
-                generateScanDetail(TEST_SSID2, TEST_BSSID2));
-        // Setup matching providers for ScanDetail with TEST_SSID1.
-        List<Pair<PasspointProvider, PasspointMatch>> homeProvider = new ArrayList<>();
-        homeProvider.add(Pair.create(sTestProvider1, PasspointMatch.HomeProvider));
-
-        when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider);
-        when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID))
-                .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID + 1));
-        when(mWifiConfigManager.getConfiguredNetwork(anyInt())).thenReturn(TEST_CONFIG1);
-        // Setup WAN metrics status is 'LINK_STATUS_DOWN'
-        HSWanMetricsElement wm = mock(HSWanMetricsElement.class);
-        Map<ANQPElementType, ANQPElement> anqpElements = new HashMap<>();
-        anqpElements.put(ANQPElementType.HSWANMetrics, wm);
-        when(mPasspointManager.getANQPElements(scanDetails.get(0).getScanResult()))
-                .thenReturn(anqpElements);
-        when(wm.getStatus()).thenReturn(HSWanMetricsElement.LINK_STATUS_DOWN);
-        when(wm.isElementInitialized()).thenReturn(true);
-
-        List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
-                .getPasspointNetworkCandidates(scanDetails, false);
-        assertEquals(2, candidates.size());
-    }
-
-    /**
-     * Verify that when the WAN metrics status is 'LINK_STATUS_DOWN', it will not return as
-     * candidate when not use wan link status but FQDN in the allow list
-     */
-
-    @Test
-    public void evaluateScansWithNetworkMatchingHomeProviderNotUseAnqpLinkDownInFqdnList()
-            throws Exception {
-        when(mResources.getBoolean(R.bool.config_wifiPasspointUseApWanLinkStatusAnqpElement))
-                .thenReturn(false);
-        when(mResources.getStringArray(
-                R.array.config_wifiPasspointUseApWanLinkStatusAnqpElementFqdnAllowlist))
-                .thenReturn(new String[]{TEST_FQDN1});
-        List<ScanDetail> scanDetails = Arrays.asList(generateScanDetail(TEST_SSID1, TEST_BSSID1),
-                generateScanDetail(TEST_SSID2, TEST_BSSID2));
-        // Setup matching providers for ScanDetail with TEST_SSID1.
-        List<Pair<PasspointProvider, PasspointMatch>> homeProvider = new ArrayList<>();
-        homeProvider.add(Pair.create(sTestProvider1, PasspointMatch.HomeProvider));
-
-        when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider);
-        when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID))
-                .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID + 1));
-        when(mWifiConfigManager.getConfiguredNetwork(anyInt())).thenReturn(TEST_CONFIG1);
-        // Setup WAN metrics status is 'LINK_STATUS_DOWN'
-        HSWanMetricsElement wm = mock(HSWanMetricsElement.class);
-        Map<ANQPElementType, ANQPElement> anqpElements = new HashMap<>();
-        anqpElements.put(ANQPElementType.HSWANMetrics, wm);
-        when(mPasspointManager.getANQPElements(scanDetails.get(0).getScanResult()))
-                .thenReturn(anqpElements);
-        when(wm.getStatus()).thenReturn(HSWanMetricsElement.LINK_STATUS_DOWN);
-        when(wm.isElementInitialized()).thenReturn(true);
-
-        List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
-                .getPasspointNetworkCandidates(scanDetails, false);
-        assertEquals(1, candidates.size());
+        assertTrue(candidates.isEmpty());
     }
 
     /**
@@ -646,7 +551,7 @@ public class PasspointNetworkNominateHelperTest {
         when(mPasspointManager.matchProvider(any(ScanResult.class)))
                 .thenReturn(roamingProvider).thenReturn(homeProvider);
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
 
         List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
@@ -654,7 +559,7 @@ public class PasspointNetworkNominateHelperTest {
         // verify Only home provider matched candidate will by chosen
         assertEquals(1, candidates.size());
         assertTrue(candidates.get(0).second.isHomeProviderNetwork);
-        assertEquals(ScanResultUtil.createQuotedSsid(TEST_SSID2), candidates.get(0).second.SSID);
+        assertEquals(ScanResultUtil.createQuotedSSID(TEST_SSID2), candidates.get(0).second.SSID);
     }
 
     /**
@@ -678,7 +583,7 @@ public class PasspointNetworkNominateHelperTest {
         when(mPasspointManager.matchProvider(any(ScanResult.class)))
                 .thenReturn(homeProvider).thenReturn(roamingProvider);
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID))
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID))
                 .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID2));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID2)).thenReturn(TEST_CONFIG2);
@@ -689,9 +594,9 @@ public class PasspointNetworkNominateHelperTest {
         // the second (TEST_SSID2).
         assertEquals(2, candidates.size());
         assertTrue(candidates.stream().anyMatch(c -> c.second.isHomeProviderNetwork
-                && c.second.SSID.equals(ScanResultUtil.createQuotedSsid(TEST_SSID1))));
+                && c.second.SSID.equals(ScanResultUtil.createQuotedSSID(TEST_SSID1))));
         assertTrue(candidates.stream().anyMatch(c -> !c.second.isHomeProviderNetwork
-                && c.second.SSID.equals(ScanResultUtil.createQuotedSsid(TEST_SSID2))));
+                && c.second.SSID.equals(ScanResultUtil.createQuotedSSID(TEST_SSID2))));
     }
 
     /**
@@ -715,9 +620,9 @@ public class PasspointNetworkNominateHelperTest {
         when(mPasspointManager.matchProvider(any(ScanResult.class)))
                 .thenReturn(homeProviders);
         when(mWifiConfigManager.addOrUpdateNetwork(eq(TEST_CONFIG1), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(mWifiConfigManager.addOrUpdateNetwork(eq(suggestionConfig), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID2));
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID2));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID2))
                 .thenReturn(suggestionConfig);
@@ -777,7 +682,7 @@ public class PasspointNetworkNominateHelperTest {
         when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider)
                 .thenReturn(null);
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
         List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
                 .getPasspointNetworkCandidates(scanDetails, false);
@@ -799,7 +704,7 @@ public class PasspointNetworkNominateHelperTest {
 
         when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider);
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
 
         // Setup an uninitialized WAN Metrics element (or initialized with 0's)
@@ -832,17 +737,16 @@ public class PasspointNetworkNominateHelperTest {
         // Add a homeProvider for the scan detail passed in earlier
         when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider);
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
+                any())).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
 
         // Refreshing the network candidates with the old scans should now result in a match
-        mNominateHelper.updateBestMatchScanDetailForProviders();
+        mNominateHelper.refreshPasspointNetworkCandidates(false);
         // Verify the content of the WifiConfiguration that was added to WifiConfigManager.
         ArgumentCaptor<WifiConfiguration> addedConfig =
                 ArgumentCaptor.forClass(WifiConfiguration.class);
-        verify(mWifiConfigManager).addOrUpdateNetwork(addedConfig.capture(), anyInt(), any(),
-                eq(false));
-        assertEquals(ScanResultUtil.createQuotedSsid(TEST_SSID1), addedConfig.getValue().SSID);
+        verify(mWifiConfigManager).addOrUpdateNetwork(addedConfig.capture(), anyInt(), any());
+        assertEquals(ScanResultUtil.createQuotedSSID(TEST_SSID1), addedConfig.getValue().SSID);
         assertEquals(TEST_FQDN1, addedConfig.getValue().FQDN);
         assertNotNull(addedConfig.getValue().enterpriseConfig);
         assertEquals("", addedConfig.getValue().enterpriseConfig.getAnonymousIdentity());
@@ -853,97 +757,5 @@ public class PasspointNetworkNominateHelperTest {
                 eq(TEST_NETWORK_ID), any(ScanResult.class), anyInt(), any());
         verify(mWifiConfigManager).updateScanDetailForNetwork(
                 eq(TEST_NETWORK_ID), any(ScanDetail.class));
-    }
-
-    /**
-     * Verify that when the WAN metrics status is 'LINK_STATUS_DOWN', it should be added to the
-     * WifiConfigManager and NOT set No Internet.
-     */
-    @Test
-    public void updateScansWithNetworkMatchingHomeProviderWithAnqpLinkDown() {
-        List<ScanDetail> scanDetails = Arrays.asList(generateScanDetail(TEST_SSID1, TEST_BSSID1));
-        // Setup matching providers for ScanDetail with TEST_SSID1.
-        List<Pair<PasspointProvider, PasspointMatch>> homeProvider = new ArrayList<>();
-        homeProvider.add(Pair.create(sTestProvider1, PasspointMatch.HomeProvider));
-
-        when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider);
-        when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
-        when(mWifiConfigManager.getConfiguredNetwork(anyInt())).thenReturn(TEST_CONFIG1);
-        // Setup WAN metrics status is 'LINK_STATUS_DOWN'
-        HSWanMetricsElement wm = mock(HSWanMetricsElement.class);
-        Map<ANQPElementType, ANQPElement> anqpElements = new HashMap<>();
-        anqpElements.put(ANQPElementType.HSWANMetrics, wm);
-        when(mPasspointManager.getANQPElements(any(ScanResult.class)))
-                .thenReturn(anqpElements);
-        when(wm.getStatus()).thenReturn(HSWanMetricsElement.LINK_STATUS_DOWN);
-        when(wm.isElementInitialized()).thenReturn(true);
-
-        mNominateHelper.updatePasspointConfig(scanDetails);
-        verify(mWifiConfigManager, never())
-                .incrementNetworkNoInternetAccessReports(eq(TEST_NETWORK_ID));
-        verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(eq(TEST_NETWORK_ID),
-                eq(WifiConfiguration.NetworkSelectionStatus.DISABLED_NO_INTERNET_PERMANENT));
-    }
-
-    /**
-     * Verify that both home and roaming providers for same scan detail will be added to
-     * WifiConfigManager.
-     */
-    @Test
-    public void updateScansWithBothHomeProviderAndRoamingProvider() {
-        List<ScanDetail> scanDetails = Arrays.asList(generateScanDetail(TEST_SSID1, TEST_BSSID1));
-        // Setup matching providers for ScanDetail with TEST_SSID1.
-        List<Pair<PasspointProvider, PasspointMatch>> matchedProvider = new ArrayList<>();
-        matchedProvider.add(Pair.create(sTestProvider1, PasspointMatch.HomeProvider));
-        matchedProvider.add(Pair.create(sTestProvider2, PasspointMatch.RoamingProvider));
-
-        when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(matchedProvider);
-        when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID))
-                .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID2));
-        when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
-        when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID2)).thenReturn(TEST_CONFIG2);
-        mNominateHelper.updatePasspointConfig(scanDetails);
-        verify(mWifiConfigManager, times(2))
-                .addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(), any(), eq(false));
-        verify(mWifiConfigManager)
-                .enableNetwork(eq(TEST_NETWORK_ID), eq(false), anyInt(), any());
-        verify(mWifiConfigManager)
-                .enableNetwork(eq(TEST_NETWORK_ID2), eq(false), anyInt(), any());
-        verify(mWifiConfigManager)
-                .setNetworkCandidateScanResult(eq(TEST_NETWORK_ID), any(), anyInt(), any());
-        verify(mWifiConfigManager)
-                .setNetworkCandidateScanResult(eq(TEST_NETWORK_ID2), any(), anyInt(), any());
-        verify(mWifiConfigManager)
-                .updateScanDetailForNetwork(eq(TEST_NETWORK_ID), eq(scanDetails.get(0)));
-        verify(mWifiConfigManager)
-                .updateScanDetailForNetwork(eq(TEST_NETWORK_ID2), eq(scanDetails.get(0)));
-    }
-
-    /**
-     * Verify when ScanDetails matches both home and roaming providers, only home provider will be
-     * return as candidate.
-     */
-    @Test
-    public void evaluateScansWithBothHomeProviderAndRoamingProvider() {
-        List<ScanDetail> scanDetails = Arrays.asList(generateScanDetail(TEST_SSID1, TEST_BSSID1));
-        // Setup matching providers for ScanDetail with TEST_SSID1.
-        List<Pair<PasspointProvider, PasspointMatch>> matchedProvider = new ArrayList<>();
-        matchedProvider.add(Pair.create(sTestProvider1, PasspointMatch.HomeProvider));
-        matchedProvider.add(Pair.create(sTestProvider2, PasspointMatch.RoamingProvider));
-
-        when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(matchedProvider);
-        when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID))
-                .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID2));
-        when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
-        when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID2)).thenReturn(TEST_CONFIG2);
-        List<Pair<ScanDetail, WifiConfiguration>> candidates = mNominateHelper
-                .getPasspointNetworkCandidates(scanDetails, false);
-        assertEquals(1, candidates.size());
-        verify(mWifiConfigManager).addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
-                any(), eq(false));
-        assertTrue(candidates.get(0).second.isHomeProviderNetwork);
     }
 }

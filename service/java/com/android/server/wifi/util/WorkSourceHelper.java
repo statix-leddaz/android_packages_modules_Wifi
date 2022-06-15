@@ -23,16 +23,10 @@ import android.annotation.NonNull;
 import android.app.ActivityManager;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
-import android.content.res.Resources;
 import android.os.Process;
 import android.os.UserHandle;
 import android.os.WorkSource;
-import android.text.TextUtils;
 import android.util.Log;
-
-import com.android.wifi.resources.R;
-
-import java.util.Arrays;
 
 /**
  * Class for wrapping a WorkSource object and providing some (wifi specific) utility methods.
@@ -47,23 +41,16 @@ public class WorkSourceHelper {
     private final WifiPermissionsUtil mWifiPermissionsUtil;
     private final ActivityManager mActivityManager;
     private final PackageManager mPackageManager;
-    private final Resources mResources;
 
     public WorkSourceHelper(
             @NonNull WorkSource workSource,
             @NonNull WifiPermissionsUtil wifiPermissionsUtil,
             @NonNull ActivityManager activityManager,
-            @NonNull PackageManager packageManager,
-            @NonNull Resources resources) {
+            @NonNull PackageManager packageManager) {
         mWorkSource = workSource;
         mWifiPermissionsUtil = wifiPermissionsUtil;
         mActivityManager = activityManager;
         mPackageManager = packageManager;
-        mResources = resources;
-    }
-
-    public WorkSource getWorkSource() {
-        return mWorkSource;
     }
 
     @Override
@@ -125,16 +112,7 @@ public class WorkSourceHelper {
     /**
      * Check if the request comes from foreground app.
      */
-    private boolean isForegroundApp(@NonNull String requestorPackageName,
-            boolean allowOverlayBypass) {
-        if (allowOverlayBypass) {
-            String[] exceptionList = mResources.getStringArray(
-                    R.array.config_wifiInterfacePriorityTreatAsForegroundList);
-            if (exceptionList != null && Arrays.stream(exceptionList).anyMatch(
-                    s -> TextUtils.equals(requestorPackageName, s))) {
-                return true;
-            }
-        }
+    private boolean isForegroundApp(@NonNull String requestorPackageName) {
         try {
             return mActivityManager.getPackageImportance(requestorPackageName)
                     <= IMPORTANCE_FOREGROUND;
@@ -147,13 +125,10 @@ public class WorkSourceHelper {
     /**
      * Returns whether any of the one or more worksource objects contains a foreground app
      * request.
-     *
-     * @param allowOverlayBypass Use the `config_wifiInterfacePriorityTreatAsForegroundList` overlay
-     *                           to consider the specified packages are foreground.
      */
-    public boolean hasAnyForegroundAppRequest(boolean allowOverlayBypass) {
+    public boolean hasAnyForegroundAppRequest() {
         for (int i = 0; i < mWorkSource.size(); i++) {
-            if (isForegroundApp(mWorkSource.getPackageName(i), allowOverlayBypass)) return true;
+            if (isForegroundApp(mWorkSource.getPackageName(i))) return true;
         }
         return false;
     }

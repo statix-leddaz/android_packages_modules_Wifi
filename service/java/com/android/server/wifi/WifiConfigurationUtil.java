@@ -218,24 +218,6 @@ public class WifiConfigurationUtil {
 
     /**
      * Compare existing and new WifiConfiguration objects after a network update and return if
-     * Repeater Enabled flag has changed or not. In case the there is no existing WifiConfiguration,
-     * checks if Repeater Enabled flag has changed from the default value of false.
-     *
-     * @param existingConfig Existing WifiConfiguration object corresponding to the network.
-     * @param newConfig      New WifiConfiguration object corresponding to the network.
-     * @return true if RepeaterEnabled flag has changed, or if there is no existing config, and
-     * the flag is set to true, false otherwise.
-     */
-    public static boolean hasRepeaterEnabledChanged(WifiConfiguration existingConfig,
-            WifiConfiguration newConfig) {
-        if (existingConfig == null) {
-            return newConfig.isRepeaterEnabled();
-        }
-        return (newConfig.isRepeaterEnabled() != existingConfig.isRepeaterEnabled());
-    }
-
-    /**
-     * Compare existing and new WifiConfiguration objects after a network update and return if
      * MAC randomization setting has changed or not.
      * @param existingConfig Existing WifiConfiguration object corresponding to the network.
      * @param newConfig      New WifiConfiguration object corresponding to the network.
@@ -267,11 +249,8 @@ public class WifiConfigurationUtil {
                 return true;
             }
             if (existingEnterpriseConfig.isAuthenticationSimBased()) {
-                // The anonymous identity will be decorated with 3gpp realm in the service.
-                if (!TextUtils.equals(existingEnterpriseConfig.getAnonymousIdentity(),
-                        newEnterpriseConfig.getAnonymousIdentity())) {
-                    return true;
-                }
+                // No other credential changes for SIM based methods.
+                // The SIM card is the credential.
                 return false;
             }
             if (existingEnterpriseConfig.getPhase2Method()
@@ -686,15 +665,13 @@ public class WifiConfigurationUtil {
      * 9. {@link WifiConfiguration#getIpConfiguration()}
      *
      * @param config {@link WifiConfiguration} received from an external application.
-     * @param supportedFeatureSet bitmask for supported features using {@code WIFI_FEATURE_}
      * @param isAdd {@link #VALIDATE_FOR_ADD} to indicate a network config received for an add,
      *              {@link #VALIDATE_FOR_UPDATE} for a network config received for an update.
      *              These 2 cases need to be handled differently because the config received for an
      *              update could contain only the fields that are being changed.
      * @return true if the parameters are valid, false otherwise.
      */
-    public static boolean validate(WifiConfiguration config, long supportedFeatureSet,
-            boolean isAdd) {
+    public static boolean validate(WifiConfiguration config, boolean isAdd) {
         if (!validateSsid(config.SSID, isAdd)) {
             return false;
         }
@@ -720,11 +697,7 @@ public class WifiConfigurationUtil {
                 && !validatePassword(config.preSharedKey, isAdd, true)) {
             return false;
         }
-        if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_DPP)
-                && (supportedFeatureSet & WifiManager.WIFI_FEATURE_DPP_AKM) == 0) {
-            Log.e(TAG, "DPP AKM is not supported");
-            return false;
-        }
+
         if (!validateEnterpriseConfig(config, isAdd)) {
             return false;
         }
@@ -787,12 +760,7 @@ public class WifiConfigurationUtil {
         return false;
     }
 
-    /**
-     * Check if the network specifier matches all networks.
-     * @param specifier The network specifier
-     * @return true if it matches all networks.
-     */
-    public static boolean isMatchAllNetworkSpecifier(WifiNetworkSpecifier specifier) {
+    private static boolean isMatchAllNetworkSpecifier(WifiNetworkSpecifier specifier) {
         PatternMatcher ssidPatternMatcher = specifier.ssidPatternMatcher;
         Pair<MacAddress, MacAddress> bssidPatternMatcher = specifier.bssidPatternMatcher;
         if (ssidPatternMatcher.match(MATCH_EMPTY_SSID_PATTERN_PATH)

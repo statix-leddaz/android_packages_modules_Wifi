@@ -21,29 +21,25 @@ import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_SAE;
 import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_WAPI_PSK;
 import static com.android.server.wifi.WifiConfigurationTestUtil.generateWifiConfig;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
 
 import android.app.test.MockAnswerUtil.AnswerWithArguments;
+import android.net.NetworkKey;
+import android.net.RssiCurve;
+import android.net.ScoredNetwork;
+import android.net.WifiKey;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiSsid;
-import android.net.wifi.util.ScanResultUtil;
 import android.text.TextUtils;
 
 import com.android.server.wifi.hotspot2.NetworkDetail;
 import com.android.server.wifi.util.InformationElementUtil;
 import com.android.server.wifi.util.NativeUtil;
+import com.android.server.wifi.util.ScanResultUtil;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -57,7 +53,6 @@ import java.util.Set;
  */
 public class WifiNetworkSelectorTestUtil {
     private static final String TAG = "WifiNetworkSelectorTestUtil";
-    private static final long SUPPORTED_FEATURES_ALL = Long.MAX_VALUE;
     /**
      * A class that holds a list of scanDetail and their associated WifiConfiguration.
      */
@@ -219,7 +214,7 @@ public class WifiNetworkSelectorTestUtil {
         long timeStamp = clock.getElapsedSinceBootMillis();
         for (int index = 0; index < ssids.length; index++) {
             byte[] ssid = NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(ssids[index]));
-            ScanDetail scanDetail = new ScanDetail(WifiSsid.fromBytes(ssid),
+            ScanDetail scanDetail = new ScanDetail(WifiSsid.createFromByteArray(ssid),
                     bssids[index], caps[index], levels[index], freqs[index], timeStamp, 0);
             scanDetailList.add(scanDetail);
         }
@@ -250,7 +245,7 @@ public class WifiNetworkSelectorTestUtil {
                 InformationElementUtil.parseInformationElements(iesByteStream[index]);
             NetworkDetail nd = new NetworkDetail(bssids[index], ies, new ArrayList<String>(),
                     freqs[index]);
-            ScanDetail scanDetail = new ScanDetail(nd, WifiSsid.fromBytes(ssid),
+            ScanDetail scanDetail = new ScanDetail(nd, WifiSsid.createFromByteArray(ssid),
                     bssids[index], caps[index], levels[index], freqs[index], timeStamp,
                     ies, new ArrayList<String>(),
                     ScanResults.generateIERawDatafromScanResultIE(ies));
@@ -292,7 +287,7 @@ public class WifiNetworkSelectorTestUtil {
                     || (securities[index] & SECURITY_WAPI_PSK) != 0) {
                 configs[index].preSharedKey = "\"PA55W0RD\""; // needed to validate with PSK
             }
-            if (!WifiConfigurationUtil.validate(configs[index], SUPPORTED_FEATURES_ALL, true)) {
+            if (!WifiConfigurationUtil.validate(configs[index], true)) {
                 throw new IllegalArgumentException("Invalid generated config: " + configs[index]);
             }
         }
@@ -315,7 +310,7 @@ public class WifiNetworkSelectorTestUtil {
                     public WifiConfiguration answer(ScanDetail scanDetail) {
                         for (WifiConfiguration config : configs) {
                             if (TextUtils.equals(config.SSID,
-                                    ScanResultUtil.createQuotedSsid(scanDetail.getSSID()))) {
+                                    ScanResultUtil.createQuotedSSID(scanDetail.getSSID()))) {
                                 return config;
                             }
                         }
@@ -439,6 +434,47 @@ public class WifiNetworkSelectorTestUtil {
                         eq(scanDetails.get(i)))).thenReturn(null);
             }
         }
+    }
+
+
+    /**
+     * Configure the score cache for externally scored networks
+     *
+     * @param scoreCache   Wifi network score cache to be configured
+     * @param scanDetails  a list of ScanDetail
+     * @param scores       scores of the networks
+     * @param meteredHints hints of if the networks are metered
+     */
+    public static void configureScoreCache(WifiNetworkScoreCache scoreCache,
+            List<ScanDetail> scanDetails, Integer[] scores, boolean[] meteredHints) {
+        List<ScoredNetwork> networks = new ArrayList<>();
+
+        for (int i = 0; i < scanDetails.size(); i++) {
+            ScanDetail scanDetail = scanDetails.get(i);
+            ScanResult scanResult = scanDetail.getScanResult();
+            WifiKey wifiKey = new WifiKey("\"" + scanResult.SSID + "\"", scanResult.BSSID);
+            NetworkKey ntwkKey = new NetworkKey(wifiKey);
+            RssiCurve rssiCurve;
+
+            if (scores != null) { // fixed score
+                byte rssiScore;
+                Integer score = scores[i];
+
+                if (scores[i] == null) {
+                    rssiScore = WifiNetworkScoreCache.INVALID_NETWORK_SCORE;
+                } else {
+                    rssiScore = scores[i].byteValue();
+                }
+                rssiCurve = new RssiCurve(-100, 100, new byte[] {rssiScore});
+            } else {
+                rssiCurve = new RssiCurve(-80, 20, new byte[] {-10, 0, 10, 20, 30, 40});
+            }
+            ScoredNetwork scoredNetwork = new ScoredNetwork(ntwkKey, rssiCurve, meteredHints[i]);
+
+            networks.add(scoredNetwork);
+        }
+
+        scoreCache.onScoresUpdated(networks);
     }
 
     /**

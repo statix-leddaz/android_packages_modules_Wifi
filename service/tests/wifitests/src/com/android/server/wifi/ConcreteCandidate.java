@@ -16,7 +16,6 @@
 
 package com.android.server.wifi;
 
-import android.net.wifi.WifiAnnotations;
 import android.util.ArrayMap;
 
 import com.android.server.wifi.proto.WifiScoreCardProto;
@@ -24,7 +23,6 @@ import com.android.server.wifi.proto.WifiScoreCardProto;
 import java.util.Map;
 
 public final class ConcreteCandidate implements WifiCandidates.Candidate {
-    private boolean mRestricted;
     private WifiCandidates.Key mKey;
     private int mNetworkConfigId = -1;
     private boolean mIsOpenNetwork;
@@ -35,7 +33,6 @@ public final class ConcreteCandidate implements WifiCandidates.Candidate {
     private boolean mIsTrusted = true;
     private boolean mIsOemPaid;
     private boolean mIsOemPrivate;
-    private boolean mSecondaryInternet;
     private boolean mCarrierOrPrivileged;
     private boolean mIsMetered;
     private boolean mHasNoInternetAccess;
@@ -44,7 +41,6 @@ public final class ConcreteCandidate implements WifiCandidates.Candidate {
     private double mLastSelectionWeight;
     private int mScanRssi = -127;
     private int mFrequency = -1;
-    private int mChannelWidth;
     private int mPredictedThroughputMbps = 0;
     private int mEstimatedPercentInternetAvailability = 50;
 
@@ -63,9 +59,7 @@ public final class ConcreteCandidate implements WifiCandidates.Candidate {
         mIsPasspoint = candidate.isPasspoint();
         mIsEphemeral = candidate.isEphemeral();
         mIsTrusted = candidate.isTrusted();
-        mRestricted = candidate.isRestricted();
         mIsOemPaid = candidate.isOemPaid();
-        mSecondaryInternet = candidate.isSecondaryInternet();
         mCarrierOrPrivileged = candidate.isCarrierOrPrivileged();
         mIsMetered = candidate.isMetered();
         mHasNoInternetAccess = candidate.hasNoInternetAccess();
@@ -74,7 +68,6 @@ public final class ConcreteCandidate implements WifiCandidates.Candidate {
         mLastSelectionWeight = candidate.getLastSelectionWeight();
         mScanRssi = candidate.getScanRssi();
         mFrequency = candidate.getFrequency();
-        mChannelWidth = candidate.getChannelWidth();
         mPredictedThroughputMbps = candidate.getPredictedThroughputMbps();
         mEstimatedPercentInternetAvailability = candidate
                 .getEstimatedPercentInternetAvailability();
@@ -164,11 +157,6 @@ public final class ConcreteCandidate implements WifiCandidates.Candidate {
     @Override
     public boolean isOemPrivate() {
         return mIsOemPrivate;
-    }
-
-    @Override
-    public boolean isSecondaryInternet() {
-        return mSecondaryInternet;
     }
 
     public ConcreteCandidate setCarrierOrPrivileged(boolean carrierOrPrivileged) {
@@ -266,19 +254,9 @@ public final class ConcreteCandidate implements WifiCandidates.Candidate {
         return this;
     }
 
-    public ConcreteCandidate setChannelWidth(@WifiAnnotations.ChannelWidth int channelWidth) {
-        mChannelWidth = channelWidth;
-        return this;
-    }
-
     @Override
     public int getFrequency() {
         return mFrequency;
-    }
-
-    @Override
-    public int getChannelWidth() {
-        return mChannelWidth;
     }
 
     public ConcreteCandidate setPredictedThroughputMbps(int predictedThroughputMbps) {
@@ -311,11 +289,6 @@ public final class ConcreteCandidate implements WifiCandidates.Candidate {
     @Override
     public WifiScoreCardProto.Signal getEventStatistics(WifiScoreCardProto.Event event) {
         return mEventStatisticsMap.get(event);
-    }
-
-    @Override
-    public boolean isRestricted() {
-        return mRestricted;
     }
 
 }

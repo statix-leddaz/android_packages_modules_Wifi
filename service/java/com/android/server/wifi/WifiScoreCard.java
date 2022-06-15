@@ -127,6 +127,7 @@ public class WifiScoreCard {
     private final String mL2KeySeed;
     private MemoryStore mMemoryStore;
     private final DeviceConfigFacade mDeviceConfigFacade;
+    private final FrameworkFacade mFrameworkFacade;
     private final Context mContext;
     private final LocalLog mLocalLog = new LocalLog(256);
     private final long[][][] mL2ErrorAccPercent =
@@ -274,13 +275,14 @@ public class WifiScoreCard {
      * @param l2KeySeed is for making our L2Keys usable only on this device
      */
     public WifiScoreCard(Clock clock, String l2KeySeed, DeviceConfigFacade deviceConfigFacade,
-            Context context) {
+            FrameworkFacade frameworkFacade, Context context) {
         mClock = clock;
         mContext = context;
         mL2KeySeed = l2KeySeed;
         mPlaceholderPerBssid = new PerBssid("", MacAddress.fromString(DEFAULT_MAC_ADDRESS));
         mPlaceholderPerNetwork = new PerNetwork("");
         mDeviceConfigFacade = deviceConfigFacade;
+        mFrameworkFacade = frameworkFacade;
     }
 
     /**
@@ -1131,10 +1133,8 @@ public class WifiScoreCard {
                             case WifiBlocklistMonitor.REASON_NONLOCAL_DISCONNECT_CONNECTING:
                                 mRecentStats.incrementCount(CNT_DISCONNECTION_NONLOCAL_CONNECTING);
                                 break;
-                            case WifiBlocklistMonitor.REASON_WRONG_PASSWORD:
-                                mRecentStats.incrementCount(CNT_CONSECUTIVE_WRONG_PASSWORD_FAILURE);
-                                break;
                             case WifiBlocklistMonitor.REASON_AP_UNABLE_TO_HANDLE_NEW_STA:
+                            case WifiBlocklistMonitor.REASON_WRONG_PASSWORD:
                             case WifiBlocklistMonitor.REASON_DHCP_FAILURE:
                             default:
                                 break;
@@ -1145,7 +1145,6 @@ public class WifiScoreCard {
                 case IP_CONFIGURATION_SUCCESS:
                     // Reset CNT_CONSECUTIVE_CONNECTION_FAILURE since L3 is also connected
                     mRecentStats.clearCount(CNT_CONSECUTIVE_CONNECTION_FAILURE);
-                    mRecentStats.clearCount(CNT_CONSECUTIVE_WRONG_PASSWORD_FAILURE);
                     changed = true;
                     logd(this.toString());
                     break;
@@ -1281,9 +1280,11 @@ public class WifiScoreCard {
          * Update link bandwidth estimates based on TrafficStats byte counts and radio on time
          */
         void updateLinkBandwidth(WifiLinkLayerStats oldStats, WifiLinkLayerStats newStats,
-                ExtendedWifiInfo wifiInfo, long txBytes, long rxBytes) {
+                ExtendedWifiInfo wifiInfo) {
             mBandwidthSampleValid[LINK_TX] = false;
             mBandwidthSampleValid[LINK_RX] = false;
+            long txBytes = mFrameworkFacade.getTotalTxBytes() - mFrameworkFacade.getMobileTxBytes();
+            long rxBytes = mFrameworkFacade.getTotalRxBytes() - mFrameworkFacade.getMobileRxBytes();
             // Sometimes TrafficStats byte counts return invalid values
             // Ignore next two polls if it happens
             boolean trafficValid = txBytes >= mLastTxBytes && rxBytes >= mLastRxBytes;
@@ -1910,9 +1911,8 @@ public class WifiScoreCard {
     public static final int CNT_DISCONNECTION = 8;
     public static final int CNT_CONSECUTIVE_CONNECTION_FAILURE = 9;
     public static final int CNT_DISCONNECTION_NONLOCAL_CONNECTING = 10;
-    public static final int CNT_CONSECUTIVE_WRONG_PASSWORD_FAILURE = 11;
     // Constant being used to keep track of how many counter there are.
-    public static final int NUMBER_CONNECTION_CNT_CODE = 12;
+    public static final int NUMBER_CONNECTION_CNT_CODE = 11;
     private static final String[] CONNECTION_CNT_NAME = {
         " ConnectAttempt: ",
         " ConnectFailure: ",
@@ -1924,8 +1924,7 @@ public class WifiScoreCard {
         " DisconnectNonlocal: ",
         " Disconnect: ",
         " ConsecutiveConnectFailure: ",
-        " ConnectFailureDiscon: ",
-        " ConsecutiveWrongPassword: "
+        " ConnectFailureDiscon: "
     };
 
     @IntDef(prefix = { "CNT_" }, value = {
@@ -1939,8 +1938,7 @@ public class WifiScoreCard {
         CNT_DISCONNECTION_NONLOCAL,
         CNT_DISCONNECTION,
         CNT_CONSECUTIVE_CONNECTION_FAILURE,
-        CNT_DISCONNECTION_NONLOCAL_CONNECTING,
-        CNT_CONSECUTIVE_WRONG_PASSWORD_FAILURE
+        CNT_DISCONNECTION_NONLOCAL_CONNECTING
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface ConnectionCountCode {}

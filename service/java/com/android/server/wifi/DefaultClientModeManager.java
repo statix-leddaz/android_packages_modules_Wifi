@@ -17,6 +17,7 @@
 package com.android.server.wifi;
 
 import android.annotation.Nullable;
+import android.net.wifi.WifiManager;
 import android.os.WorkSource;
 
 import java.io.FileDescriptor;
@@ -66,6 +67,11 @@ public class DefaultClientModeManager implements ClientModeManager, ClientModeDe
 
     @Override
     public void enableVerboseLogging(boolean verbose) { }
+
+    @Override
+    public int syncGetWifiState() {
+        return WifiManager.WIFI_STATE_DISABLED;
+    }
 
     @Override
     public long getId() {

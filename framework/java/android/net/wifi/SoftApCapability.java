@@ -119,29 +119,6 @@ public final class SoftApCapability implements Parcelable {
      */
     public static final long SOFTAP_FEATURE_BAND_60G_SUPPORTED = 1 << 8;
 
-    /**
-     * Support for 802.11be SAP.
-     * flag when {@code R.bool.config_wifiSoftapIeee80211beSupported} is true
-     *
-     * <p>
-     * Use this flag with {@link #areFeaturesSupported(long)}
-     * to verify that 802.11be is supported before enabling it using
-     * {@link SoftApConfiguration.Builder#setIeee80211beEnabled(boolean)}
-     */
-    public static final long SOFTAP_FEATURE_IEEE80211_BE = 1 << 9;
-
-    /*
-     * Support for WPA3-Opportunistic Wireless Encryption (OWE) transition.
-     * flag when {@code R.bool.config_wifiSoftapOweTransitionSupported} is true.
-     */
-    public static final long SOFTAP_FEATURE_WPA3_OWE_TRANSITION = 1 << 10;
-
-    /*
-     * Support for WPA3-Opportunistic Wireless Encryption (OWE).
-     * flag when {@code R.bool.config_wifiSoftapOweSupported} is true.
-     */
-    public static final long SOFTAP_FEATURE_WPA3_OWE = 1 << 11;
-
     /** @hide */
     @Retention(RetentionPolicy.SOURCE)
     @LongDef(flag = true, prefix = { "SOFTAP_FEATURE_" }, value = {
@@ -150,13 +127,10 @@ public final class SoftApCapability implements Parcelable {
             SOFTAP_FEATURE_WPA3_SAE,
             SOFTAP_FEATURE_MAC_ADDRESS_CUSTOMIZATION,
             SOFTAP_FEATURE_IEEE80211_AX,
-            SOFTAP_FEATURE_IEEE80211_BE,
             SOFTAP_FEATURE_BAND_24G_SUPPORTED,
             SOFTAP_FEATURE_BAND_5G_SUPPORTED,
             SOFTAP_FEATURE_BAND_6G_SUPPORTED,
-            SOFTAP_FEATURE_BAND_60G_SUPPORTED,
-            SOFTAP_FEATURE_WPA3_OWE_TRANSITION,
-            SOFTAP_FEATURE_WPA3_OWE,
+            SOFTAP_FEATURE_BAND_60G_SUPPORTED
     })
     public @interface HotspotFeatures {}
 
@@ -183,27 +157,6 @@ public final class SoftApCapability implements Parcelable {
      * A list storing supported 60G channels.
      */
     private int[] mSupportedChannelListIn60g = EMPTY_INT_ARRAY;
-
-    /**
-     * A base country code which is used when querying the supported channel list.
-     */
-    private String mCountryCodeFromDriver;
-
-    /**
-     * Set the country code which is used when querying the supported channel list.
-     * @hide
-     */
-    public void setCountryCode(String countryCode) {
-        mCountryCodeFromDriver = countryCode;
-    }
-
-    /**
-     * Get the country code which is used when querying the supported channel list.
-     * @hide
-     */
-    public String getCountryCode() {
-        return mCountryCodeFromDriver;
-    }
 
     /**
      * Get the maximum supported client numbers which AP resides on.
@@ -276,9 +229,7 @@ public final class SoftApCapability implements Parcelable {
      * @param band One of the following band types:
      * {@link SoftApConfiguration#BAND_2GHZ}, {@link SoftApConfiguration#BAND_5GHZ},
      * {@link SoftApConfiguration#BAND_6GHZ}, {@link SoftApConfiguration#BAND_60GHZ}.
-     * @return List of supported channels for the band. An empty list will be returned if the
-     * channels are obsolete. This happens when country code has changed but the channels
-     * are not updated from HAL when Wifi is disabled.
+     * @return List of supported channels for the band.
      *
      * @throws IllegalArgumentException when band type is invalid.
      */
@@ -309,7 +260,6 @@ public final class SoftApCapability implements Parcelable {
             mSupportedChannelListIn5g = source.mSupportedChannelListIn5g;
             mSupportedChannelListIn6g = source.mSupportedChannelListIn6g;
             mSupportedChannelListIn60g = source.mSupportedChannelListIn60g;
-            mCountryCodeFromDriver = source.mCountryCodeFromDriver;
         }
     }
 
@@ -341,7 +291,6 @@ public final class SoftApCapability implements Parcelable {
         dest.writeIntArray(mSupportedChannelListIn5g);
         dest.writeIntArray(mSupportedChannelListIn6g);
         dest.writeIntArray(mSupportedChannelListIn60g);
-        dest.writeString(mCountryCodeFromDriver);
     }
 
     @NonNull
@@ -354,7 +303,6 @@ public final class SoftApCapability implements Parcelable {
             capability.setSupportedChannelList(SoftApConfiguration.BAND_5GHZ, in.createIntArray());
             capability.setSupportedChannelList(SoftApConfiguration.BAND_6GHZ, in.createIntArray());
             capability.setSupportedChannelList(SoftApConfiguration.BAND_60GHZ, in.createIntArray());
-            capability.setCountryCode(in.readString());
             return capability;
         }
 
@@ -368,14 +316,13 @@ public final class SoftApCapability implements Parcelable {
     public String toString() {
         StringBuilder sbuf = new StringBuilder();
         sbuf.append("SupportedFeatures=").append(mSupportedFeatures);
-        sbuf.append(" MaximumSupportedClientNumber=").append(mMaximumSupportedClientNumber);
-        sbuf.append(" SupportedChannelListIn24g")
+        sbuf.append("MaximumSupportedClientNumber=").append(mMaximumSupportedClientNumber);
+        sbuf.append("SupportedChannelListIn24g")
                 .append(Arrays.toString(mSupportedChannelListIn24g));
-        sbuf.append(" SupportedChannelListIn5g").append(Arrays.toString(mSupportedChannelListIn5g));
-        sbuf.append(" SupportedChannelListIn6g").append(Arrays.toString(mSupportedChannelListIn6g));
-        sbuf.append(" SupportedChannelListIn60g")
+        sbuf.append("SupportedChannelListIn5g").append(Arrays.toString(mSupportedChannelListIn5g));
+        sbuf.append("SupportedChannelListIn6g").append(Arrays.toString(mSupportedChannelListIn6g));
+        sbuf.append("SupportedChannelListIn60g")
                 .append(Arrays.toString(mSupportedChannelListIn60g));
-        sbuf.append(" mCountryCodeFromDriver").append(mCountryCodeFromDriver);
         return sbuf.toString();
     }
 
@@ -389,8 +336,7 @@ public final class SoftApCapability implements Parcelable {
                 && Arrays.equals(mSupportedChannelListIn24g, capability.mSupportedChannelListIn24g)
                 && Arrays.equals(mSupportedChannelListIn5g, capability.mSupportedChannelListIn5g)
                 && Arrays.equals(mSupportedChannelListIn6g, capability.mSupportedChannelListIn6g)
-                && Arrays.equals(mSupportedChannelListIn60g, capability.mSupportedChannelListIn60g)
-                && Objects.equals(mCountryCodeFromDriver, capability.mCountryCodeFromDriver);
+                && Arrays.equals(mSupportedChannelListIn60g, capability.mSupportedChannelListIn60g);
     }
 
     @Override
@@ -399,7 +345,6 @@ public final class SoftApCapability implements Parcelable {
                 Arrays.hashCode(mSupportedChannelListIn24g),
                 Arrays.hashCode(mSupportedChannelListIn5g),
                 Arrays.hashCode(mSupportedChannelListIn6g),
-                Arrays.hashCode(mSupportedChannelListIn60g),
-                mCountryCodeFromDriver);
+                Arrays.hashCode(mSupportedChannelListIn60g));
     }
 }

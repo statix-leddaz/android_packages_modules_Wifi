@@ -16,7 +16,6 @@
 
 package com.android.server.wifi;
 
-import android.compat.Compatibility;
 import android.content.Context;
 import android.net.MacAddress;
 import android.net.wifi.SoftApConfiguration;
@@ -25,24 +24,16 @@ import android.net.wifi.WifiMigration;
 import android.util.BackupUtils;
 import android.util.Log;
 import android.util.SparseIntArray;
-import android.util.Xml;
 
-import com.android.internal.util.FastXmlSerializer;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.util.ApConfigUtil;
 import com.android.server.wifi.util.SettingsMigrationDataHolder;
-import com.android.server.wifi.util.XmlUtil;
-
-import org.xmlpull.v1.XmlPullParser;
-import org.xmlpull.v1.XmlPullParserException;
-import org.xmlpull.v1.XmlSerializer;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -61,14 +52,8 @@ public class SoftApBackupRestore {
     /**
      * Current backup data version.
      */
-    // Starting from SoftAp data backup version 9, framework support to back up configuration
-    // in XML format. This allows to restore the SoftAp configuration when the user downgrades
-    // the Android version. (From Any version >= 9 to version#9)
-    private static final int SUPPORTED_SAP_BACKUP_XML_DATA_VERSION = 9;
-    private static final int LAST_SAP_BACKUP_DATA_VERSION_IN_S = 8;
+    private static final int CURRENT_SAP_BACKUP_DATA_VERSION = 8;
     private static final int LAST_SAP_BACKUP_DATA_VERSION_IN_R = 7;
-    private static final String XML_TAG_DOCUMENT_HEADER = "SoftApBackupData";
-
 
     private static final int ETHER_ADDR_LEN = 6; // Byte array size of MacAddress
 
@@ -93,57 +78,44 @@ public class SoftApBackupRestore {
             Log.e(TAG, "Invalid configuration received");
             return new byte[0];
         }
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try {
-            final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            final DataOutputStream out = new DataOutputStream(baos);
-            if (SdkLevel.isAtLeastT()) {
-                out.writeInt(SUPPORTED_SAP_BACKUP_XML_DATA_VERSION);
-                final XmlSerializer xmlOut = new FastXmlSerializer();
-                xmlOut.setOutput(baos, StandardCharsets.UTF_8.name());
-                XmlUtil.writeDocumentStart(xmlOut, XML_TAG_DOCUMENT_HEADER);
-
-                // Start writing the XML stream.
-                XmlUtil.SoftApConfigurationXmlUtil.writeSoftApConfigurationToXml(xmlOut, config);
-
-                XmlUtil.writeDocumentEnd(xmlOut, XML_TAG_DOCUMENT_HEADER);
-
+            DataOutputStream out = new DataOutputStream(baos);
+            if (SdkLevel.isAtLeastS()) {
+                out.writeInt(CURRENT_SAP_BACKUP_DATA_VERSION);
             } else {
-                if (SdkLevel.isAtLeastS()) {
-                    out.writeInt(LAST_SAP_BACKUP_DATA_VERSION_IN_S);
-                } else {
-                    out.writeInt(LAST_SAP_BACKUP_DATA_VERSION_IN_R);
-                }
-                BackupUtils.writeString(out, config.getSsid());
-                out.writeInt(config.getBand());
-                out.writeInt(config.getChannel());
-                BackupUtils.writeString(out, config.getPassphrase());
-                out.writeInt(config.getSecurityType());
-                out.writeBoolean(config.isHiddenSsid());
-                out.writeInt(config.getMaxNumberOfClients());
-                out.writeLong(config.getShutdownTimeoutMillis());
-                out.writeBoolean(config.isClientControlByUserEnabled());
-                writeMacAddressList(out, config.getBlockedClientList());
-                writeMacAddressList(out, config.getAllowedClientList());
-                out.writeBoolean(config.isAutoShutdownEnabled());
-                if (SdkLevel.isAtLeastS()) {
-                    out.writeBoolean(config.isBridgedModeOpportunisticShutdownEnabled());
-                    out.writeInt(config.getMacRandomizationSetting());
-                    SparseIntArray channels = config.getChannels();
-                    int numOfChannels = channels.size();
-                    out.writeInt(numOfChannels);
-                    for (int i = 0; i < numOfChannels; i++) {
-                        out.writeInt(channels.keyAt(i));
-                        out.writeInt(channels.valueAt(i));
-                    }
-                    out.writeBoolean(config.isIeee80211axEnabled());
-                }
+                out.writeInt(LAST_SAP_BACKUP_DATA_VERSION_IN_R);
             }
-            return baos.toByteArray();
-        } catch (IOException | XmlPullParserException e) {
-            Log.e(TAG, "Error retrieving the backup data from SoftApConfiguration: " +  config
-                    + ", exception " + e);
+            BackupUtils.writeString(out, config.getSsid());
+            out.writeInt(config.getBand());
+            out.writeInt(config.getChannel());
+            BackupUtils.writeString(out, config.getPassphrase());
+            out.writeInt(config.getSecurityType());
+            out.writeBoolean(config.isHiddenSsid());
+            out.writeInt(config.getMaxNumberOfClients());
+            out.writeLong(config.getShutdownTimeoutMillis());
+            out.writeBoolean(config.isClientControlByUserEnabled());
+            writeMacAddressList(out, config.getBlockedClientList());
+            writeMacAddressList(out, config.getAllowedClientList());
+            out.writeBoolean(config.isAutoShutdownEnabled());
+            if (SdkLevel.isAtLeastS()) {
+                out.writeBoolean(config.isBridgedModeOpportunisticShutdownEnabled());
+                out.writeInt(config.getMacRandomizationSetting());
+                SparseIntArray channels = config.getChannels();
+                int numOfChannels = channels.size();
+                out.writeInt(numOfChannels);
+                for (int i = 0; i < numOfChannels; i++) {
+                    out.writeInt(channels.keyAt(i));
+                    out.writeInt(channels.valueAt(i));
+                }
+                out.writeBoolean(config.isIeee80211axEnabled());
+            }
+
+        } catch (IOException io) {
+            Log.e(TAG, "Invalid configuration received, IOException " + io);
+            return new byte[0];
         }
-        return new byte[0];
+        return baos.toByteArray();
     }
 
     /**
@@ -161,26 +133,12 @@ public class SoftApBackupRestore {
         try {
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(data));
             int version = in.readInt();
-            // Starting from T, frameworks support to downgrade restore configuration.
-            if ((!SdkLevel.isAtLeastT() && version > LAST_SAP_BACKUP_DATA_VERSION_IN_S)
-                    || version < 1) {
+            if (version < 1 || version > CURRENT_SAP_BACKUP_DATA_VERSION) {
                 throw new BackupUtils.BadVersionException("Unknown Backup Serialization Version");
             }
 
             if (version == 1) return null; // Version 1 is a bad dataset.
-            Log.i(TAG, "The backed-up version is " + version);
 
-            if (version >= SUPPORTED_SAP_BACKUP_XML_DATA_VERSION) {
-                final XmlPullParser xmlIn = Xml.newPullParser();
-                ByteArrayInputStream inputStream = new ByteArrayInputStream(data);
-                // The first 4 bytes are designed to store version
-                inputStream.skip(Integer.BYTES);
-                xmlIn.setInput(inputStream, StandardCharsets.UTF_8.name());
-                XmlUtil.gotoDocumentStart(xmlIn, XML_TAG_DOCUMENT_HEADER);
-                int rootTagDepth = xmlIn.getDepth();
-                return XmlUtil.SoftApConfigurationXmlUtil
-                        .parseFromXml(xmlIn, rootTagDepth, mSettingsMigrationDataHolder);
-            }
             configBuilder.setSsid(BackupUtils.readString(in));
 
             int band;
@@ -190,6 +148,7 @@ public class SoftApBackupRestore {
                 band = in.readInt();
             }
             int channel = in.readInt();
+
             if (channel == 0) {
                 configBuilder.setBand(band);
             } else {
@@ -207,17 +166,11 @@ public class SoftApBackupRestore {
             }
             if (version >= 5) {
                 configBuilder.setMaxNumberOfClients(in.readInt());
-                long shutDownMillis;
                 if (version >= 7) {
-                    shutDownMillis = in.readLong();
+                    configBuilder.setShutdownTimeoutMillis(in.readLong());
                 } else {
-                    shutDownMillis = Long.valueOf(in.readInt());
+                    configBuilder.setShutdownTimeoutMillis(Long.valueOf(in.readInt()));
                 }
-                if (shutDownMillis == 0 && Compatibility.isChangeEnabled(
-                        SoftApConfiguration.REMOVE_ZERO_FOR_TIMEOUT_SETTING)) {
-                    shutDownMillis = SoftApConfiguration.DEFAULT_TIMEOUT;
-                }
-                configBuilder.setShutdownTimeoutMillis(shutDownMillis);
                 configBuilder.setClientControlByUserEnabled(in.readBoolean());
                 int numberOfBlockedClient = in.readInt();
                 List<MacAddress> blockedList = new ArrayList<>(
@@ -251,12 +204,17 @@ public class SoftApBackupRestore {
                 configBuilder.setChannels(channels);
                 configBuilder.setIeee80211axEnabled(in.readBoolean());
             }
-            return configBuilder.build();
-        } catch (IOException | BackupUtils.BadVersionException
-                | IllegalArgumentException | XmlPullParserException e) {
-            Log.e(TAG, "Invalid backup data received, Exception: " + e);
+        } catch (IOException io) {
+            Log.e(TAG, "Invalid backup data received, IOException: " + io);
+            return null;
+        } catch (BackupUtils.BadVersionException badVersion) {
+            Log.e(TAG, "Invalid backup data received, BadVersionException: " + badVersion);
+            return null;
+        } catch (IllegalArgumentException ie) {
+            Log.e(TAG, "Invalid backup data received, IllegalArgumentException " + ie);
+            return null;
         }
-        return null;
+        return configBuilder.build();
     }
 
     private void writeMacAddressList(DataOutputStream out, List<MacAddress> macList)
