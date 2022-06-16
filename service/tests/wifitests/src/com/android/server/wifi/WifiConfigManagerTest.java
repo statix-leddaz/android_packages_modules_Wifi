@@ -7128,10 +7128,12 @@ public class WifiConfigManagerTest extends WifiBaseTest {
      */
     @Test
     public void testRemoveExcessNetworksOnAdd() {
-        mResources.setInteger(R.integer.config_wifiMaxNumWifiConfigurations, 9);
+        final int maxNumWifiConfigs = 8;
+        mResources.setInteger(R.integer.config_wifiMaxNumWifiConfigurations, maxNumWifiConfigs);
         List<WifiConfiguration> configsInDeletionOrder = new ArrayList<>();
         WifiConfiguration currentConfig = WifiConfigurationTestUtil.createPskNetwork();
         currentConfig.status = WifiConfiguration.Status.CURRENT;
+        currentConfig.isCurrentlyConnected = true;
         WifiConfiguration lessDeletionPriorityConfig = WifiConfigurationTestUtil.createPskNetwork();
         lessDeletionPriorityConfig.setDeletionPriority(1);
         WifiConfiguration newlyAddedConfig = WifiConfigurationTestUtil.createPskNetwork();
@@ -7148,13 +7150,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         WifiConfiguration noAssociationConfig = WifiConfigurationTestUtil.createOpenNetwork();
         noAssociationConfig.numRebootsSinceLastUse = 1;
         noAssociationConfig.numAssociation = 0;
-        WifiConfiguration invalidKeyMgmtConfig = WifiConfigurationTestUtil.createEapNetwork();
-        invalidKeyMgmtConfig.allowedKeyManagement.clear(WifiConfiguration.KeyMgmt.IEEE8021X);
-        invalidKeyMgmtConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA2_PSK);
-        noAssociationConfig.numRebootsSinceLastUse = 1;
-        noAssociationConfig.numAssociation = 0;
 
-        configsInDeletionOrder.add(invalidKeyMgmtConfig);
         configsInDeletionOrder.add(noAssociationConfig);
         configsInDeletionOrder.add(oneRebootOpenConfig);
         configsInDeletionOrder.add(oneRebootSaeConfig);
@@ -7164,12 +7160,18 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         configsInDeletionOrder.add(lessDeletionPriorityConfig);
         configsInDeletionOrder.add(currentConfig);
 
+        for (WifiConfiguration config : configsInDeletionOrder) {
+            verifyAddNetworkToWifiConfigManager(config);
+        }
+        assertEquals(mWifiConfigManager.getConfiguredNetworks().size(), maxNumWifiConfigs);
+
         // Add carrier configs to flush out the other configs, since they are deleted last.
         for (WifiConfiguration configToDelete : configsInDeletionOrder) {
             WifiConfiguration carrierConfig = WifiConfigurationTestUtil.createPskNetwork();
             carrierConfig.carrierId = 1;
             verifyAddNetworkToWifiConfigManager(carrierConfig);
 
+            assertEquals(mWifiConfigManager.getConfiguredNetworks().size(), maxNumWifiConfigs);
             for (WifiConfiguration savedConfig : mWifiConfigManager.getConfiguredNetworks()) {
                 if (savedConfig.networkId == configToDelete.networkId) {
                     fail("Config was not deleted: " + configToDelete);
