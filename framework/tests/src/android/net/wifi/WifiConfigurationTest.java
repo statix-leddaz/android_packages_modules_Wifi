@@ -116,7 +116,12 @@ public class WifiConfigurationTest {
         config.subscriptionId = 1;
         config.carrierId = 1189;
         config.restricted = true;
+        config.isCurrentlyConnected = true;
         config.setSubscriptionGroup(ParcelUuid.fromString("0000110B-0000-1000-8000-00805F9B34FB"));
+        config.getNetworkSelectionStatus().setDisableTime(12333);
+        config.getNetworkSelectionStatus().setDisableEndTime(45666);
+        assertEquals(12333, config.getNetworkSelectionStatus().getDisableTime());
+        assertEquals(45666, config.getNetworkSelectionStatus().getDisableEndTime());
         Parcel parcelW = Parcel.obtain();
         config.writeToParcel(parcelW, 0);
         byte[] bytes = parcelW.marshall();
@@ -141,12 +146,17 @@ public class WifiConfigurationTest {
         assertEquals(config.subscriptionId, reconfig.subscriptionId);
         assertEquals(config.getSubscriptionGroup(), reconfig.getSubscriptionGroup());
         assertTrue(reconfig.restricted);
+        assertTrue(reconfig.isCurrentlyConnected);
         assertEquals(config.getBssidAllowlist(), reconfig.getBssidAllowlist());
         assertEquals(
                 SecurityParams.createSecurityParamsBySecurityType(
                         WifiConfiguration.SECURITY_TYPE_PSK),
                 reconfig.getSecurityParams(
                         WifiConfiguration.SECURITY_TYPE_PSK));
+        assertEquals(config.getNetworkSelectionStatus().getDisableTime(),
+                reconfig.getNetworkSelectionStatus().getDisableTime());
+        assertEquals(config.getNetworkSelectionStatus().getDisableEndTime(),
+                reconfig.getNetworkSelectionStatus().getDisableEndTime());
 
         Parcel parcelWW = Parcel.obtain();
         reconfig.writeToParcel(parcelWW, 0);
@@ -171,6 +181,7 @@ public class WifiConfigurationTest {
         config.subscriptionId = 1;
         config.carrierId = 1189;
         config.restricted = true;
+        config.isCurrentlyConnected = true;
 
         WifiConfiguration reconfig = new WifiConfiguration(config);
 
@@ -186,6 +197,7 @@ public class WifiConfigurationTest {
         assertEquals(config.carrierId, reconfig.carrierId);
         assertEquals(config.subscriptionId, reconfig.subscriptionId);
         assertTrue(reconfig.restricted);
+        assertTrue(reconfig.isCurrentlyConnected);
     }
 
     @Test
