@@ -5219,11 +5219,14 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         if (targetedNetwork != null && targetedNetwork.enterpriseConfig != null
                                 && targetedNetwork.enterpriseConfig.isAuthenticationSimBased()) {
                             // only show EAP failure notification if primary
-                            if (mEapFailureNotifier
-                                    .onEapFailure(errorCode, targetedNetwork, isPrimary())) {
+                            WifiBlocklistMonitor.CarrierSpecificEapFailureConfig eapFailureConfig =
+                                    mEapFailureNotifier.onEapFailure(errorCode, targetedNetwork,
+                                            isPrimary());
+                            if (eapFailureConfig != null) {
                                 disableReason = WifiConfiguration.NetworkSelectionStatus
                                     .DISABLED_AUTHENTICATION_PRIVATE_EAP_ERROR;
-                                mWifiBlocklistMonitor.loadCarrierConfigsForDisableReasonInfos();
+                                mWifiBlocklistMonitor.loadCarrierConfigsForDisableReasonInfos(
+                                        eapFailureConfig);
                             }
                         }
                         handleEapAuthFailure(mTargetNetworkId, errorCode);
@@ -5791,8 +5794,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
          */
         private WifiLinkLayerStats updateLinkLayerStatsRssiDataStallScoreReport() {
             // Get Info and continue polling
-            long txBytes = mFacade.getTotalTxBytes() - mFacade.getMobileTxBytes();
-            long rxBytes = mFacade.getTotalRxBytes() - mFacade.getMobileRxBytes();
+            long txBytes = mFacade.getTxBytes(mInterfaceName);
+            long rxBytes = mFacade.getRxBytes(mInterfaceName);
             WifiLinkLayerStats stats = updateLinkLayerStatsRssiSpeedFrequencyCapabilities(txBytes,
                     rxBytes);
             mWifiMetrics.updateWifiUsabilityStatsEntries(mInterfaceName, mWifiInfo, stats);
