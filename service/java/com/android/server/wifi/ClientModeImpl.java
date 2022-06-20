@@ -3405,7 +3405,13 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
 
         if (lossInfo.reason == ReachabilityLossReason.ROAM) {
-            final WifiConfiguration config = getConnectedWifiConfigurationInternal();
+            WifiConfiguration config = getConnectedWifiConfigurationInternal();
+            if (config == null) {
+                // special case for IP reachability lost which happens right after linked network
+                // roaming. The linked network roaming reset the mLastNetworkId which results in
+                // the connected configuration to be null.
+                config = getConnectingWifiConfigurationInternal();
+            }
             final NetworkAgentConfig naConfig = getNetworkAgentConfigInternal(config);
             final NetworkCapabilities nc = getCapabilities(
                     getConnectedWifiConfigurationInternal(), getConnectedBssidInternal());
@@ -5213,11 +5219,14 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         if (targetedNetwork != null && targetedNetwork.enterpriseConfig != null
                                 && targetedNetwork.enterpriseConfig.isAuthenticationSimBased()) {
                             // only show EAP failure notification if primary
-                            if (mEapFailureNotifier
-                                    .onEapFailure(errorCode, targetedNetwork, isPrimary())) {
+                            WifiBlocklistMonitor.CarrierSpecificEapFailureConfig eapFailureConfig =
+                                    mEapFailureNotifier.onEapFailure(errorCode, targetedNetwork,
+                                            isPrimary());
+                            if (eapFailureConfig != null) {
                                 disableReason = WifiConfiguration.NetworkSelectionStatus
                                     .DISABLED_AUTHENTICATION_PRIVATE_EAP_ERROR;
-                                mWifiBlocklistMonitor.loadCarrierConfigsForDisableReasonInfos();
+                                mWifiBlocklistMonitor.loadCarrierConfigsForDisableReasonInfos(
+                                        eapFailureConfig);
                             }
                         }
                         handleEapAuthFailure(mTargetNetworkId, errorCode);
@@ -5785,8 +5794,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
          */
         private WifiLinkLayerStats updateLinkLayerStatsRssiDataStallScoreReport() {
             // Get Info and continue polling
-            long txBytes = mFacade.getTotalTxBytes() - mFacade.getMobileTxBytes();
-            long rxBytes = mFacade.getTotalRxBytes() - mFacade.getMobileRxBytes();
+            long txBytes = mFacade.getTxBytes(mInterfaceName);
+            long rxBytes = mFacade.getRxBytes(mInterfaceName);
             WifiLinkLayerStats stats = updateLinkLayerStatsRssiSpeedFrequencyCapabilities(txBytes,
                     rxBytes);
             mWifiMetrics.updateWifiUsabilityStatsEntries(mInterfaceName, mWifiInfo, stats);
