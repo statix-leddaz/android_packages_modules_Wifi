@@ -162,6 +162,15 @@ public class WifiConfigManager {
          * @param choiceKey The network profile key of the user connect choice that was removed.
          */
         default void onConnectChoiceRemoved(String choiceKey){ }
+
+        /**
+         * Invoke when security params changed, especially when NetworkTransitionDisable event
+         * received
+         * @param oldConfig The original WifiConfiguration
+         * @param securityParams the updated securityParams
+         */
+        default void onSecurityParamsUpdate(@NonNull WifiConfiguration oldConfig,
+                List<SecurityParams> securityParams) { }
     }
     /**
      * Max size of scan details to cache in {@link #mScanDetailCaches}.
@@ -1651,9 +1660,8 @@ public class WifiConfigManager {
         List<WifiConfiguration> configsToDelete = savedNetworks
                 .stream()
                 .sorted(Comparator.comparing((WifiConfiguration config) -> config.carrierId
-                        == TelephonyManager.UNKNOWN_CARRIER_ID)
-                        .thenComparing((WifiConfiguration config) -> config.status
-                                == WifiConfiguration.Status.CURRENT)
+                        != TelephonyManager.UNKNOWN_CARRIER_ID)
+                        .thenComparing((WifiConfiguration config) -> config.isCurrentlyConnected)
                         .thenComparing((WifiConfiguration config) -> config.getDeletionPriority())
                         .thenComparing((WifiConfiguration config) -> -config.numRebootsSinceLastUse)
                         .thenComparing((WifiConfiguration config) ->
@@ -2174,7 +2182,8 @@ public class WifiConfigManager {
      * 2. Increment |numAssociation| counter.
      * 3. Clear the disable reason counters in the associated |NetworkSelectionStatus|.
      * 4. Set the hasEverConnected| flag in the associated |NetworkSelectionStatus|.
-     * 5. Sets the status of network as |CURRENT|.
+     * 5. Set the status of network to |CURRENT|.
+     * 6. Set the |isCurrentlyConnected| flag to true.
      *
      * @param networkId network ID corresponding to the network.
      * @param shouldSetUserConnectChoice setup user connect choice on this network.
@@ -2204,6 +2213,7 @@ public class WifiConfigManager {
         config.getNetworkSelectionStatus().clearDisableReasonCounter();
         config.getNetworkSelectionStatus().setHasEverConnected(true);
         setNetworkStatus(config, WifiConfiguration.Status.CURRENT);
+        config.isCurrentlyConnected = true;
         saveToStore(false);
         return true;
     }
@@ -2223,8 +2233,9 @@ public class WifiConfigManager {
      * Updates a network configuration after disconnection from it.
      *
      * This method updates the following WifiConfiguration elements:
-     * 1. Set the |lastDisConnected| timestamp.
-     * 2. Sets the status of network back to |ENABLED|.
+     * 1. Set the |lastDisconnected| timestamp.
+     * 2. Set the status of network back to |ENABLED|.
+     * 3. Set the |isCurrentlyConnected| flag to false.
      *
      * @param networkId network ID corresponding to the network.
      * @return true if the network was found, false otherwise.
@@ -2245,6 +2256,7 @@ public class WifiConfigManager {
         if (config.status == WifiConfiguration.Status.CURRENT) {
             setNetworkStatus(config, WifiConfiguration.Status.ENABLED);
         }
+        config.isCurrentlyConnected = false;
         saveToStore(false);
         return true;
     }
@@ -3866,8 +3878,7 @@ public class WifiConfigManager {
      * @param indicationBit transition disable indication bits.
      * @return true if the network was found, false otherwise.
      */
-    public boolean updateNetworkTransitionDisable(
-            int networkId,
+    public boolean updateNetworkTransitionDisable(int networkId,
             @WifiMonitor.TransitionDisableIndication int indicationBit) {
         localLog("updateNetworkTransitionDisable: network ID=" + networkId
                 + " indication: " + indicationBit);
@@ -3876,21 +3887,33 @@ public class WifiConfigManager {
             Log.e(TAG, "Cannot find network for " + networkId);
             return false;
         }
+        WifiConfiguration copy = new WifiConfiguration(config);
+        boolean changed = false;
         if (0 != (indicationBit & WifiMonitor.TDI_USE_WPA3_PERSONAL)
                 && config.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE)) {
             config.setSecurityParamsEnabled(WifiConfiguration.SECURITY_TYPE_PSK, false);
+            changed = true;
         }
         if (0 != (indicationBit & WifiMonitor.TDI_USE_SAE_PK)) {
             config.enableSaePkOnlyMode(true);
+            changed = true;
         }
         if (0 != (indicationBit & WifiMonitor.TDI_USE_WPA3_ENTERPRISE)
                 && config.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE)) {
             config.setSecurityParamsEnabled(WifiConfiguration.SECURITY_TYPE_EAP, false);
+            changed = true;
         }
         if (0 != (indicationBit & WifiMonitor.TDI_USE_ENHANCED_OPEN)
                 && config.isSecurityType(WifiConfiguration.SECURITY_TYPE_OWE)) {
             config.setSecurityParamsEnabled(WifiConfiguration.SECURITY_TYPE_OPEN, false);
+            changed = true;
         }
+        if (changed) {
+            for (OnNetworkUpdateListener listener : mListeners) {
+                listener.onSecurityParamsUpdate(copy, config.getSecurityParamsList());
+            }
+        }
+
         return true;
     }
 
@@ -4116,14 +4139,13 @@ public class WifiConfigManager {
      * This method updates Trust On First Use flag according to
      * Trust On First Use support and No-Ca-Cert Approval.
      */
-    public void updateTrustOnFirstUseFlag(
-            boolean isTrustOnFirstUseSupported) {
+    public void updateTrustOnFirstUseFlag(boolean enableTrustOnFirstUse) {
         getInternalConfiguredNetworks().stream()
                 .filter(config -> config.isEnterprise())
                 .filter(config -> config.enterpriseConfig.isEapMethodServerCertUsed())
                 .filter(config -> !config.enterpriseConfig.hasCaCertificate())
                 .forEach(config ->
-                        config.enterpriseConfig.enableTrustOnFirstUse(isTrustOnFirstUseSupported));
+                        config.enterpriseConfig.enableTrustOnFirstUse(enableTrustOnFirstUse));
     }
 
     /**

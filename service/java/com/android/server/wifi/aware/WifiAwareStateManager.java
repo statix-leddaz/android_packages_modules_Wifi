@@ -1893,9 +1893,11 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                 }
                 case COMMAND_TYPE_DISABLE: {
                     mAwareIsDisabling = false;
-                    // Must trigger a state transition to execute the deferred connect command
+                    // Trigger the response from the framework as Aware interface will be removed
                     if (!mWifiAwareNativeApi.disable(mCurrentTransactionId)) {
                         onDisableResponse(mCurrentTransactionId, WifiStatusCode.ERROR_UNKNOWN);
+                    } else {
+                        onDisableResponse(mCurrentTransactionId, WifiStatusCode.SUCCESS);
                     }
                     break;
                 }
@@ -2083,8 +2085,10 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     waitForResponse = endDataPathLocal(mCurrentTransactionId, msg.arg2);
                     break;
                 case COMMAND_TYPE_DELAYED_INITIALIZATION:
-                    mWifiManager.registerActiveCountryCodeChangedCallback(
-                            new HandlerExecutor(mHandler), new CountryCodeChangeCallback());
+                    if (SdkLevel.isAtLeastT()) {
+                        mWifiManager.registerActiveCountryCodeChangedCallback(
+                                new HandlerExecutor(mHandler), new CountryCodeChangeCallback());
+                    }
                     mWifiAwareNativeManager.start(getHandler());
                     waitForResponse = false;
                     break;
