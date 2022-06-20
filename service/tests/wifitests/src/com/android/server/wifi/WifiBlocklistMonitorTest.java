@@ -97,7 +97,8 @@ public class WifiBlocklistMonitorTest {
                     Map.entry(WifiBlocklistMonitor.REASON_FRAMEWORK_DISCONNECT_MBO_OCE, 1),
                     Map.entry(WifiBlocklistMonitor.REASON_FRAMEWORK_DISCONNECT_FAST_RECONNECT, 1),
                     Map.entry(WifiBlocklistMonitor.REASON_FRAMEWORK_DISCONNECT_CONNECTED_SCORE, 1),
-                    Map.entry(WifiBlocklistMonitor.REASON_NONLOCAL_DISCONNECT_CONNECTING, 2)
+                    Map.entry(WifiBlocklistMonitor.REASON_NONLOCAL_DISCONNECT_CONNECTING, 2),
+                    Map.entry(WifiBlocklistMonitor.REASON_FAILURE_NO_RESPONSE, 1)
             );
     private static final int NUM_FAILURES_TO_BLOCKLIST =
             BLOCK_REASON_TO_DISABLE_THRESHOLD_MAP.get(TEST_L2_FAILURE);
@@ -175,6 +176,11 @@ public class WifiBlocklistMonitorTest {
                 R.integer.config_wifiBssidBlocklistMonitorNonlocalDisconnectConnectingThreshold,
                 BLOCK_REASON_TO_DISABLE_THRESHOLD_MAP.get(
                         WifiBlocklistMonitor.REASON_NONLOCAL_DISCONNECT_CONNECTING));
+        mResources.setInteger(
+                R.integer.config_wifiBssidBlocklistMonitorNoResponseThreshold,
+                BLOCK_REASON_TO_DISABLE_THRESHOLD_MAP.get(
+                        WifiBlocklistMonitor.REASON_FAILURE_NO_RESPONSE));
+
         mResources.setInteger(
                 R.integer.config_wifiDisableReasonAssociationRejectionThreshold,
                 NetworkSelectionStatus.DISABLE_REASON_INFOS
@@ -1301,12 +1307,12 @@ public class WifiBlocklistMonitorTest {
 
         // Verify exponential backoff on the disable duration based on number of BSSIDs in the
         // BSSID blocklist
+        when(mRecentStats.getCount(WifiScoreCard.CNT_CONSECUTIVE_CONNECTION_FAILURE)).thenReturn(
+                WifiBlocklistMonitor.NUM_CONSECUTIVE_FAILURES_PER_NETWORK_EXP_BACKOFF + 2);
         int disableReason = NetworkSelectionStatus.DISABLED_ASSOCIATION_REJECTION;
         verifyDisableNetwork(openNetwork, disableReason);
 
         // expect exponential backoff 2 times
-        when(mRecentStats.getCount(WifiScoreCard.CNT_CONSECUTIVE_CONNECTION_FAILURE)).thenReturn(
-                WifiBlocklistMonitor.NUM_CONSECUTIVE_FAILURES_PER_NETWORK_EXP_BACKOFF + 2);
         verifyNetworkIsEnabledAfter(openNetwork,
                 TEST_ELAPSED_UPDATE_NETWORK_SELECTION_TIME_MILLIS
                         + (mWifiBlocklistMonitor.getNetworkSelectionDisableTimeoutMillis(
@@ -1321,11 +1327,11 @@ public class WifiBlocklistMonitorTest {
     public void testTryEnableNetworkExponentialBackoffCapped() {
         WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
         int disableReason = NetworkSelectionStatus.DISABLED_ASSOCIATION_REJECTION;
+        when(mRecentStats.getCount(WifiScoreCard.CNT_CONSECUTIVE_CONNECTION_FAILURE)).thenReturn(
+                Integer.MAX_VALUE);
         verifyDisableNetwork(openNetwork, disableReason);
 
         // verify the exponential backoff is capped at WIFI_CONFIG_MAX_DISABLE_DURATION_MILLIS
-        when(mRecentStats.getCount(WifiScoreCard.CNT_CONSECUTIVE_CONNECTION_FAILURE)).thenReturn(
-                Integer.MAX_VALUE);
         verifyNetworkIsEnabledAfter(openNetwork,
                 TEST_ELAPSED_UPDATE_NETWORK_SELECTION_TIME_MILLIS
                         + WifiBlocklistMonitor.WIFI_CONFIG_MAX_DISABLE_DURATION_MILLIS);
