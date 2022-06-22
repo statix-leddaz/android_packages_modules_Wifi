@@ -4422,7 +4422,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
 
         when(mPasspointManager.addOrUpdateProvider(
                 any(PasspointConfiguration.class), anyInt(), eq(TEST_PACKAGE_NAME), eq(false),
-                eq(true))).thenReturn(true);
+                eq(true), eq(false))).thenReturn(true);
         mLooper.startAutoDispatch();
         assertEquals(0,
                 mWifiServiceImpl.addOrUpdateNetwork(config, TEST_PACKAGE_NAME, mAttribution));
@@ -4430,12 +4430,12 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verifyCheckChangePermission(TEST_PACKAGE_NAME);
         verify(mPasspointManager).addOrUpdateProvider(
                 any(PasspointConfiguration.class), anyInt(), eq(TEST_PACKAGE_NAME), eq(false),
-                eq(true));
+                eq(true), eq(false));
         reset(mPasspointManager);
 
         when(mPasspointManager.addOrUpdateProvider(
                 any(PasspointConfiguration.class), anyInt(), eq(TEST_PACKAGE_NAME), anyBoolean(),
-                anyBoolean())).thenReturn(false);
+                anyBoolean(), eq(false))).thenReturn(false);
         mLooper.startAutoDispatch();
         assertEquals(-1,
                 mWifiServiceImpl.addOrUpdateNetwork(config, TEST_PACKAGE_NAME, mAttribution));
@@ -4443,7 +4443,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verifyCheckChangePermission(TEST_PACKAGE_NAME);
         verify(mPasspointManager).addOrUpdateProvider(
                 any(PasspointConfiguration.class), anyInt(), eq(TEST_PACKAGE_NAME), anyBoolean(),
-                anyBoolean());
+                anyBoolean(), eq(false));
     }
 
     /**
@@ -7303,7 +7303,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
@@ -7311,7 +7311,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         reset(mPasspointManager);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(false);
         mLooper.startAutoDispatch();
         assertFalse(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
@@ -7331,13 +7331,14 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertFalse(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager, never())
-                .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean());
+                .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean(),
+                        eq(false));
 
     }
 
@@ -7356,13 +7357,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean());
+                anyBoolean(), eq(false));
     }
 
     /**
@@ -7381,13 +7382,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean());
+                anyBoolean(), eq(false));
     }
 
     /**
@@ -7409,13 +7410,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean());
+                anyBoolean(), eq(false));
     }
 
     /**
@@ -7437,13 +7438,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean());
+                anyBoolean(), eq(false));
     }
 
     /**
@@ -7466,13 +7467,14 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertFalse(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager, never())
-                .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean());
+                .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean(),
+                        eq(false));
     }
 
     /**
@@ -7496,13 +7498,14 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertFalse(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager, never())
-                .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean());
+                .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean(),
+                        eq(false));
     }
 
     /**
@@ -7527,13 +7530,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean());
+                anyBoolean(), eq(false));
     }
 
     /**
@@ -9672,6 +9675,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test(expected = SecurityException.class)
     public void registerDriverCountryCodeChangedListenerThrowsSecurityExceptionWithoutPermission() {
+        assumeTrue(SdkLevel.isAtLeastT());
         doThrow(new SecurityException())
                 .when(mWifiPermissionsUtil).enforceCoarseLocationPermission(eq(TEST_PACKAGE_NAME),
                                                                       eq(TEST_FEATURE_ID),
@@ -9686,6 +9690,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void registerDriverCountryCodeChangedListenerThrowsIllegalArgumentException() {
+        assumeTrue(SdkLevel.isAtLeastT());
         try {
             mWifiServiceImpl.registerDriverCountryCodeChangedListener(
                     null, TEST_PACKAGE_NAME, TEST_FEATURE_ID);
@@ -9700,6 +9705,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void registerDriverCountryCodeChangedListenerFailureOnLinkToDeath() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
         doThrow(new RemoteException())
                 .when(mAppBinder).linkToDeath(any(IBinder.DeathRecipient.class), anyInt());
         mWifiServiceImpl.registerDriverCountryCodeChangedListener(
@@ -9732,6 +9738,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testDriverCountryCodeChangedDropWhenRegisterPermissionRemoved() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
         when(mWifiPermissionsUtil.checkCallersCoarseLocationPermission(
                 eq(TEST_PACKAGE_NAME), eq(TEST_FEATURE_ID), anyInt(), any())).thenReturn(true);
         verifyRegisterDriverCountryCodeChangedListenerSucceededAndTriggerListener(
@@ -9756,6 +9763,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void unregisterDriverCountryCodeChangedListenerRemovesListener() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
         when(mWifiPermissionsUtil.checkCallersCoarseLocationPermission(
                 eq(TEST_PACKAGE_NAME), eq(TEST_FEATURE_ID), anyInt(), any())).thenReturn(true);
         verifyRegisterDriverCountryCodeChangedListenerSucceededAndTriggerListener(
@@ -10475,9 +10483,11 @@ public class WifiServiceImplTest extends WifiBaseTest {
         reset(mClientSoftApCallback);
         when(mWifiPermissionsUtil.checkCallersCoarseLocationPermission(
                 eq(TEST_PACKAGE_NAME), eq(TEST_FEATURE_ID), anyInt(), any())).thenReturn(true);
-        verifyRegisterDriverCountryCodeChangedListenerSucceededAndTriggerListener(
-                mIOnWifiDriverCountryCodeChangedListener);
-        reset(mIOnWifiDriverCountryCodeChangedListener);
+        if (SdkLevel.isAtLeastT()) {
+            verifyRegisterDriverCountryCodeChangedListenerSucceededAndTriggerListener(
+                    mIOnWifiDriverCountryCodeChangedListener);
+            reset(mIOnWifiDriverCountryCodeChangedListener);
+        }
         ArgumentCaptor<SoftApCapability> capabilityArgumentCaptor = ArgumentCaptor.forClass(
                 SoftApCapability.class);
         // Country code update with HAL started
@@ -10493,8 +10503,10 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
         mWifiServiceImpl.mCountryCodeTracker.onDriverCountryCodeChanged(TEST_COUNTRY_CODE);
         mLooper.dispatchAll();
-        verify(mIOnWifiDriverCountryCodeChangedListener)
-                .onDriverCountryCodeChanged(TEST_COUNTRY_CODE);
+        if (SdkLevel.isAtLeastT()) {
+            verify(mIOnWifiDriverCountryCodeChangedListener)
+                    .onDriverCountryCodeChanged(TEST_COUNTRY_CODE);
+        }
         verify(mClientSoftApCallback).onCapabilityChanged(capabilityArgumentCaptor.capture());
         assertEquals(1, capabilityArgumentCaptor.getValue()
                 .getSupportedChannelList(SoftApConfiguration.BAND_2GHZ).length);
@@ -10505,8 +10517,10 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mWifiNative.isHalStarted()).thenReturn(false);
         mWifiServiceImpl.mCountryCodeTracker.onCountryCodeChangePending(TEST_NEW_COUNTRY_CODE);
         mLooper.dispatchAll();
-        verify(mIOnWifiDriverCountryCodeChangedListener, never())
-                .onDriverCountryCodeChanged(TEST_NEW_COUNTRY_CODE);
+        if (SdkLevel.isAtLeastT()) {
+            verify(mIOnWifiDriverCountryCodeChangedListener, never())
+                    .onDriverCountryCodeChanged(TEST_NEW_COUNTRY_CODE);
+        }
         verify(mClientSoftApCallback)
                 .onCapabilityChanged(capabilityArgumentCaptor.capture());
         // The supported channels in soft AP capability got invalidated.
@@ -10560,7 +10574,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 TEST_PACKAGE_NAME));
         mLooper.dispatchAll();
         verify(mPasspointManager, never()).addOrUpdateProvider(any(), anyInt(), anyString(),
-                anyBoolean(), anyBoolean());
+                anyBoolean(), anyBoolean(), eq(false));
 
         WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork(TEST_SSID);
         assertEquals(-1, mWifiServiceImpl.addOrUpdateNetwork(config, TEST_PACKAGE_NAME,
