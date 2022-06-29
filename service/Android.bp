@@ -105,7 +105,10 @@ java_library {
         // the necessary core platform APIs.
         "libprotobuf-java-lite",
         "libnanohttpd",
-        "services.net-module-wifi",
+        "modules-utils-locallog",
+        "netd-client",
+        "networkstack-client",
+        "net-utils-services-common",
         "wifi-lite-protos",
         "wifi-nano-protos",
     ],
