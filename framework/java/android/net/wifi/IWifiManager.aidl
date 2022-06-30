@@ -25,6 +25,7 @@ import android.net.DhcpOption;
 import android.net.Network;
 import android.net.wifi.CoexUnsafeChannel;
 import android.net.wifi.IActionListener;
+import android.net.wifi.IBooleanListener;
 import android.net.wifi.ICoexCallback;
 import android.net.wifi.IDppCallback;
 import android.net.wifi.IInterfaceCreationInfoCallback;
@@ -49,6 +50,7 @@ import android.net.wifi.WifiAvailableChannel;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiNetworkSelectionConfig;
 import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiSsid;
 
@@ -70,7 +72,11 @@ interface IWifiManager
 
     oneway void getWifiActivityEnergyInfoAsync(in IOnWifiActivityEnergyInfoListener listener);
 
+    void setNetworkSelectionConfig(in WifiNetworkSelectionConfig nsConfig);
+
     void setScreenOnScanSchedule(in int[] scanScheduleSeconds, in int[] scanType);
+
+    void setOneShotScreenOnConnectivityScanDelayMillis(int delayMs);
 
     ParceledListSlice getConfiguredNetworks(String packageName, String featureId, boolean callerNetworksOnly);
 
@@ -113,6 +119,8 @@ interface IWifiManager
     boolean disableNetwork(int netId, String packageName);
 
     void allowAutojoinGlobal(boolean choice);
+
+    void queryAutojoinGlobal(in IBooleanListener listener);
 
     void allowAutojoin(int netId, boolean choice);
 
@@ -299,9 +307,9 @@ interface IWifiManager
 
     void updateWifiUsabilityScore(int seqNum, int score, int predictionHorizonSec);
 
-    oneway void connect(in WifiConfiguration config, int netId, in IActionListener listener);
+    oneway void connect(in WifiConfiguration config, int netId, in IActionListener listener, in String packageName);
 
-    oneway void save(in WifiConfiguration config, in IActionListener listener);
+    oneway void save(in WifiConfiguration config, in IActionListener listener, in String packageName);
 
     oneway void forget(int netId, in IActionListener listener);
 
@@ -378,7 +386,9 @@ interface IWifiManager
 
     boolean setStaConcurrencyForMultiInternetMode(int mode);
 
-    void validateCurrentWifiMeetsAdminRequirements();
+    void notifyMinimumRequiredWifiSecurityLevelChanged(int level);
+
+    void notifyWifiSsidPolicyChanged(int policyType, in List<WifiSsid> ssids);
 
     String[] getOemPrivilegedWifiAdminPackages();
 
@@ -390,5 +400,5 @@ interface IWifiManager
 
     void removeCustomDhcpOptions(in WifiSsid ssid, in byte[] oui);
 
-    void reportImpactToCreateIfaceRequest(String packageName, int interfaceType, boolean queryForNewInterface, in IInterfaceCreationInfoCallback callback);
+    void reportCreateInterfaceImpact(String packageName, int interfaceType, boolean requireNewInterface, in IInterfaceCreationInfoCallback callback);
 }

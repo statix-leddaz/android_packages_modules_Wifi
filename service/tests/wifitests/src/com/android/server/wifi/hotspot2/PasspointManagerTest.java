@@ -304,6 +304,7 @@ public class PasspointManagerTest extends WifiBaseTest {
         // SIM is absent
         when(mSubscriptionManager.getActiveSubscriptionInfoList())
                 .thenReturn(Collections.emptyList());
+        mLooper.dispatchAll();
         verify(mWifiConfigManager).addOnNetworkUpdateListener(mNetworkListenerCaptor.capture());
     }
 
@@ -434,9 +435,9 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(isSuggestion), eq(mClock))).thenReturn(provider);
         when(provider.getPackageName()).thenReturn(packageName);
         assertTrue(mManager.addOrUpdateProvider(
-                config, TEST_CREATOR_UID, TEST_PACKAGE, isSuggestion, true));
+                config, TEST_CREATOR_UID, TEST_PACKAGE, isSuggestion, true, false));
         verify(mPasspointNetworkNominateHelper, atLeastOnce())
-                .refreshPasspointNetworkCandidates(isSuggestion);
+                .updateBestMatchScanDetailForProviders();
         return provider;
     }
 
@@ -549,7 +550,7 @@ public class PasspointManagerTest extends WifiBaseTest {
     @Test
     public void addProviderWithNullConfig() throws Exception {
         assertFalse(mManager.addOrUpdateProvider(null, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics, never()).incrementNumPasspointProviderInstallSuccess();
     }
@@ -562,7 +563,7 @@ public class PasspointManagerTest extends WifiBaseTest {
     @Test
     public void addProviderWithEmptyConfig() throws Exception {
         assertFalse(mManager.addOrUpdateProvider(new PasspointConfiguration(), TEST_CREATOR_UID,
-                TEST_PACKAGE, false, true));
+                TEST_PACKAGE, false, true, false));
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics, never()).incrementNumPasspointProviderInstallSuccess();
     }
@@ -580,7 +581,7 @@ public class PasspointManagerTest extends WifiBaseTest {
         // EAP-TLS not allowed for user credential.
         config.getCredential().getUserCredential().setEapType(EAPConstants.EAP_TLS);
         assertFalse(mManager.addOrUpdateProvider(config, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics, never()).incrementNumPasspointProviderInstallSuccess();
     }
@@ -603,7 +604,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(false), eq(mClock))).thenReturn(provider);
         assertFalse(mManager.addOrUpdateProvider(config, TEST_CREATOR_UID,
-                TEST_PACKAGE, false, true));
+                TEST_PACKAGE, false, true, false));
 
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics, never()).incrementNumPasspointProviderInstallSuccess();
@@ -624,7 +625,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(false), eq(mClock))).thenReturn(provider);
         assertTrue(mManager.addOrUpdateProvider(config, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
         verifyInstalledConfig(config);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();
@@ -781,7 +782,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(false), eq(mClock))).thenReturn(provider);
         assertTrue(mManager.addOrUpdateProvider(config, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
         verifyInstalledConfig(config);
         verify(mWifiConfigManager).saveToStore(true);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
@@ -847,7 +848,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 mMacAddressUtil, mWifiPermissionsUtil);
 
         assertTrue(ut.addOrUpdateProvider(config, TEST_CREATOR_UID, TEST_PACKAGE,
-                true, true));
+                true, true, false));
 
         assertEquals(TEST_CARRIER_ID, config.getCarrierId());
     }
@@ -868,7 +869,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(false), eq(mClock))).thenReturn(origProvider);
         assertTrue(mManager.addOrUpdateProvider(origConfig, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
         verifyInstalledConfig(origConfig);
         verify(mWifiConfigManager).saveToStore(true);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
@@ -891,17 +892,18 @@ public class PasspointManagerTest extends WifiBaseTest {
         when(mWifiConfigManager.getConfiguredNetwork(origWifiConfig.getProfileKey()))
                 .thenReturn(origWifiConfig);
         when(mWifiConfigManager.addOrUpdateNetwork(
-                origWifiConfig, TEST_CREATOR_UID, TEST_PACKAGE))
+                origWifiConfig, TEST_CREATOR_UID, TEST_PACKAGE, false))
                 .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         when(origProvider.getAnonymousIdentity()).thenReturn(TEST_ANONYMOUS_IDENTITY);
         when(origProvider.getConnectChoice()).thenReturn(USER_CONNECT_CHOICE);
         when(origProvider.getConnectChoiceRssi()).thenReturn(TEST_RSSI);
         assertTrue(mManager.addOrUpdateProvider(origConfig, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
         verify(mWifiConfigManager, never()).removePasspointConfiguredNetwork(
                 origWifiConfig.getProfileKey());
         verify(mWifiConfigManager).addOrUpdateNetwork(
-                argThat((c) -> c.FQDN.equals(TEST_FQDN)), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE));
+                argThat((c) -> c.FQDN.equals(TEST_FQDN)), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
+                eq(false));
         verify(mWifiConfigManager).allowAutojoin(TEST_NETWORK_ID, origWifiConfig.allowAutojoin);
         verify(mWifiConfigManager).saveToStore(true);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
@@ -924,7 +926,7 @@ public class PasspointManagerTest extends WifiBaseTest {
         when(mWifiConfigManager.getConfiguredNetwork(origProvider.getWifiConfig()
                 .getProfileKey())).thenReturn(origWifiConfig);
         assertTrue(mManager.addOrUpdateProvider(newConfig, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
 
         List<PasspointConfiguration> installedConfigs =
                 mManager.getProviderConfigs(TEST_CREATOR_UID, true);
@@ -961,7 +963,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE), eq(false),
                 eq(mClock))).thenReturn(provider);
         assertFalse(mManager.addOrUpdateProvider(config, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics, never()).incrementNumPasspointProviderInstallSuccess();
     }
@@ -981,7 +983,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(false), eq(mClock))).thenReturn(provider);
         assertTrue(mManager.addOrUpdateProvider(config, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
         verifyInstalledConfig(config);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();
@@ -1003,7 +1005,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(false), eq(mClock))).thenReturn(provider);
         assertTrue(mManager.addOrUpdateProvider(config, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
         verifyInstalledConfig(config);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();
@@ -1104,47 +1106,6 @@ public class PasspointManagerTest extends WifiBaseTest {
         Pair<PasspointProvider, PasspointMatch> result = results.get(0);
         assertEquals(PasspointMatch.RoamingProvider, result.second);
         assertEquals(TEST_FQDN, result.first.getConfig().getHomeSp().getFqdn());
-    }
-
-    /**
-     * When multiple providers matched for a single scanResult, when there is any home provider
-     * available, return all matched home provider. Otherwise return all roaming provider.
-     */
-    @Test
-    public void matchScanResultWithMultipleProviderAsHomeAndRoaming() {
-        // Only add roaming providers.
-        PasspointProvider roamingProvider1 =
-                addTestProvider(TEST_FQDN, TEST_FRIENDLY_NAME, TEST_PACKAGE, false, null);
-        PasspointProvider roamingProvider2 =
-                addTestProvider(TEST_FQDN2, TEST_FRIENDLY_NAME2, TEST_PACKAGE1, false, null);
-        ANQPData entry = new ANQPData(mClock, null);
-        when(mAnqpCache.getEntry(TEST_ANQP_KEY)).thenReturn(entry);
-        when(roamingProvider1.match(anyMap(), any(RoamingConsortium.class), any(ScanResult.class)))
-                .thenReturn(PasspointMatch.RoamingProvider);
-        when(roamingProvider2.match(anyMap(), any(RoamingConsortium.class), any(ScanResult.class)))
-                .thenReturn(PasspointMatch.RoamingProvider);
-        List<Pair<PasspointProvider, PasspointMatch>> results =
-                mManager.matchProvider(createTestScanResult());
-        // Return all matched roaming providers.
-        assertEquals(2, results.size());
-        for (Pair<PasspointProvider, PasspointMatch> result : results) {
-            assertEquals(PasspointMatch.RoamingProvider, result.second);
-        }
-        // Add home providers.
-        PasspointProvider homeProvider1 =
-                addTestProvider(TEST_FQDN + "home", TEST_FRIENDLY_NAME, TEST_PACKAGE, false, null);
-        PasspointProvider homeProvider2 = addTestProvider(TEST_FQDN2 + "home", TEST_FRIENDLY_NAME2,
-                TEST_PACKAGE1, false, null);
-        when(homeProvider1.match(anyMap(), any(RoamingConsortium.class), any(ScanResult.class)))
-                .thenReturn(PasspointMatch.HomeProvider);
-        when(homeProvider2.match(anyMap(), any(RoamingConsortium.class), any(ScanResult.class)))
-                .thenReturn(PasspointMatch.HomeProvider);
-        results = mManager.matchProvider(createTestScanResult());
-        // When home providers are available, should return all home providers.
-        assertEquals(2, results.size());
-        for (Pair<PasspointProvider, PasspointMatch> result : results) {
-            assertEquals(PasspointMatch.HomeProvider, result.second);
-        }
     }
 
     /**
@@ -1664,7 +1625,8 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(TEST_PACKAGE), eq(false), eq(mClock))).thenReturn(provider);
 
         assertTrue(
-                mManager.addOrUpdateProvider(config, TEST_CREATOR_UID, TEST_PACKAGE, false, true));
+                mManager.addOrUpdateProvider(config, TEST_CREATOR_UID, TEST_PACKAGE, false, true,
+                        false));
         verifyInstalledConfig(config);
         reset(mWifiConfigManager);
     }
@@ -2020,7 +1982,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(false), eq(mClock))).thenReturn(provider);
         assertTrue(mManager.addOrUpdateProvider(config, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
         verifyInstalledConfig(config);
         verify(mWifiConfigManager).saveToStore(true);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
@@ -2060,7 +2022,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(false), eq(mClock))).thenReturn(provider);
         assertTrue(mManager.addOrUpdateProvider(config, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
         verifyInstalledConfig(config);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();
@@ -2087,7 +2049,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(true), eq(mClock))).thenReturn(provider);
         assertTrue(mManager.addOrUpdateProvider(config, TEST_CREATOR_UID, TEST_PACKAGE,
-                true, true));
+                true, true, false));
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();
         verify(mAppOpsManager, never()).startWatchingMode(eq(OPSTR_CHANGE_WIFI_STATE),
@@ -2158,7 +2120,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(true), eq(mClock))).thenReturn(origProvider);
         assertTrue(mManager.addOrUpdateProvider(origConfig, TEST_CREATOR_UID, TEST_PACKAGE,
-                true, true));
+                true, true, false));
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();
         reset(mWifiMetrics);
@@ -2179,14 +2141,15 @@ public class PasspointManagerTest extends WifiBaseTest {
         when(mWifiConfigManager.getConfiguredNetwork(origWifiConfig.getProfileKey()))
                 .thenReturn(origWifiConfig);
         when(mWifiConfigManager.addOrUpdateNetwork(
-                origWifiConfig, TEST_CREATOR_UID, TEST_PACKAGE))
+                origWifiConfig, TEST_CREATOR_UID, TEST_PACKAGE, false))
                 .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         assertTrue(mManager.addOrUpdateProvider(origConfig, TEST_CREATOR_UID, TEST_PACKAGE,
-                true, true));
+                true, true, false));
         verify(mWifiConfigManager, never()).removePasspointConfiguredNetwork(
                 origWifiConfig.getProfileKey());
         verify(mWifiConfigManager).addOrUpdateNetwork(
-                argThat((c) -> c.FQDN.equals(TEST_FQDN)), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE));
+                argThat((c) -> c.FQDN.equals(TEST_FQDN)), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
+                eq(false));
         verify(mWifiConfigManager).allowAutojoin(TEST_NETWORK_ID, origWifiConfig.allowAutojoin);
         verify(mWifiConfigManager).saveToStore(true);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
@@ -2206,7 +2169,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(true), eq(mClock))).thenReturn(newProvider);
         assertTrue(mManager.addOrUpdateProvider(newConfig, TEST_CREATOR_UID, TEST_PACKAGE,
-                true, true));
+                true, true, false));
         verify(mWifiConfigManager).saveToStore(true);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();
@@ -2239,7 +2202,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(true), eq(mClock))).thenReturn(origProvider);
         assertTrue(mManager.addOrUpdateProvider(origConfig, TEST_CREATOR_UID, TEST_PACKAGE,
-                true, true));
+                true, true, false));
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();
         reset(mWifiMetrics);
@@ -2260,7 +2223,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(false), eq(mClock))).thenReturn(newProvider);
         assertTrue(mManager.addOrUpdateProvider(newConfig, TEST_CREATOR_UID, TEST_PACKAGE,
-                false, true));
+                false, true, false));
         verify(mWifiConfigManager).saveToStore(true);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();
@@ -2292,7 +2255,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
                 eq(false), eq(mClock))).thenReturn(origProvider);
         assertTrue(mManager.addOrUpdateProvider(origConfig, TEST_CREATOR_UID, TEST_PACKAGE, false,
-                true));
+                true, false));
         verifyInstalledConfig(origConfig);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();
@@ -2317,7 +2280,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE1),
                 eq(true), eq(mClock))).thenReturn(newProvider);
         assertTrue(mManager.addOrUpdateProvider(newConfig, TEST_CREATOR_UID, TEST_PACKAGE1, true,
-                true));
+                true, false));
         verify(mWifiConfigManager).saveToStore(true);
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();
@@ -2498,7 +2461,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(true), eq(mClock))).thenReturn(provider);
         when(provider.getPackageName()).thenReturn(TEST_PACKAGE);
         assertTrue(mManager.addOrUpdateProvider(
-                config, TEST_CREATOR_UID, TEST_PACKAGE, true, false));
+                config, TEST_CREATOR_UID, TEST_PACKAGE, true, false, false));
         verify(provider).setTrusted(false);
     }
 
@@ -2517,8 +2480,46 @@ public class PasspointManagerTest extends WifiBaseTest {
                 eq(true), eq(mClock))).thenReturn(provider);
         when(provider.getPackageName()).thenReturn(TEST_PACKAGE);
         assertFalse(mManager.addOrUpdateProvider(
-                config, TEST_CREATOR_UID, TEST_PACKAGE, false, false));
+                config, TEST_CREATOR_UID, TEST_PACKAGE, false, false, false));
         verify(provider, never()).setTrusted(false);
+    }
+
+    /**
+     * Verify add restrict passpoint network from suggestion success.
+     */
+    @Test
+    public void testAddRestrictPasspointNetworkFromSuggestion() {
+        WifiConfiguration wifiConfig = new WifiConfiguration();
+        wifiConfig.FQDN = TEST_FQDN;
+        PasspointConfiguration config =
+                createTestConfigWithUserCredential(TEST_FQDN, TEST_FRIENDLY_NAME);
+        PasspointProvider provider = createMockProvider(config, wifiConfig, true);
+        when(mObjectFactory.makePasspointProvider(eq(config), eq(mWifiKeyStore),
+                eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
+                eq(true), eq(mClock))).thenReturn(provider);
+        when(provider.getPackageName()).thenReturn(TEST_PACKAGE);
+        assertTrue(mManager.addOrUpdateProvider(
+                config, TEST_CREATOR_UID, TEST_PACKAGE, true, true, true));
+        verify(provider).setRestricted(true);
+    }
+
+    /**
+     * Verify add restrict passpoint network not from suggestion fail.
+     */
+    @Test
+    public void testAddRestrictPasspointNetworkNotFromSuggestion() {
+        WifiConfiguration wifiConfig = new WifiConfiguration();
+        wifiConfig.FQDN = TEST_FQDN;
+        PasspointConfiguration config =
+                createTestConfigWithUserCredential(TEST_FQDN, TEST_FRIENDLY_NAME);
+        PasspointProvider provider = createMockProvider(config, wifiConfig, false);
+        when(mObjectFactory.makePasspointProvider(eq(config), eq(mWifiKeyStore),
+                eq(mWifiCarrierInfoManager), anyLong(), eq(TEST_CREATOR_UID), eq(TEST_PACKAGE),
+                eq(true), eq(mClock))).thenReturn(provider);
+        when(provider.getPackageName()).thenReturn(TEST_PACKAGE);
+        assertFalse(mManager.addOrUpdateProvider(
+                config, TEST_CREATOR_UID, TEST_PACKAGE, false, true, true));
+        verify(provider, never()).setRestricted(anyBoolean());
     }
 
     /**
@@ -2659,7 +2660,7 @@ public class PasspointManagerTest extends WifiBaseTest {
             eq(true), eq(mClock))).thenReturn(provider);
         when(provider.getPackageName()).thenReturn(TEST_PACKAGE);
         assertTrue(mManager.addOrUpdateProvider(
-                config, TEST_CREATOR_UID, TEST_PACKAGE, true, false));
+                config, TEST_CREATOR_UID, TEST_PACKAGE, true, false, false));
         verify(mWifiMetrics).incrementNumPasspointProviderWithSelfSignedRootCa();
         verify(mWifiMetrics, never()).incrementNumPasspointProviderWithNoRootCa();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
@@ -2684,7 +2685,7 @@ public class PasspointManagerTest extends WifiBaseTest {
             eq(true), eq(mClock))).thenReturn(provider);
         when(provider.getPackageName()).thenReturn(TEST_PACKAGE);
         assertTrue(mManager.addOrUpdateProvider(
-                config, TEST_CREATOR_UID, TEST_PACKAGE, true, false));
+                config, TEST_CREATOR_UID, TEST_PACKAGE, true, false, false));
         verify(mWifiMetrics).incrementNumPasspointProviderWithNoRootCa();
         verify(mWifiMetrics, never()).incrementNumPasspointProviderWithSelfSignedRootCa();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
@@ -2709,7 +2710,7 @@ public class PasspointManagerTest extends WifiBaseTest {
             eq(true), eq(mClock))).thenReturn(provider);
         when(provider.getPackageName()).thenReturn(TEST_PACKAGE);
         assertTrue(mManager.addOrUpdateProvider(
-                config, TEST_CREATOR_UID, TEST_PACKAGE, true, false));
+                config, TEST_CREATOR_UID, TEST_PACKAGE, true, false, false));
         verify(mWifiMetrics).incrementNumPasspointProviderWithSubscriptionExpiration();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallation();
         verify(mWifiMetrics).incrementNumPasspointProviderInstallSuccess();

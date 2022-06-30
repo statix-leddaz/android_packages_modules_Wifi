@@ -15,6 +15,7 @@
  */
 package com.android.server.wifi;
 
+import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.content.Context;
 import android.net.MacAddress;
@@ -22,10 +23,16 @@ import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiConfiguration;
 import android.os.Handler;
 import android.util.Log;
+import android.util.Range;
 
 import com.android.internal.annotations.VisibleForTesting;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import javax.annotation.concurrent.ThreadSafe;
@@ -599,6 +606,151 @@ public class SupplicantStaIfaceHal {
                 default:
                     return "Unknown StaIfaceStatusCode: " + code;
             }
+        }
+    }
+
+    protected static final int SUPPLICANT_EVENT_CONNECTED = 0;
+    protected static final int SUPPLICANT_EVENT_DISCONNECTED = 1;
+    protected static final int SUPPLICANT_EVENT_ASSOCIATING = 2;
+    protected static final int SUPPLICANT_EVENT_ASSOCIATED = 3;
+    protected static final int SUPPLICANT_EVENT_EAP_METHOD_SELECTED = 4;
+    protected static final int SUPPLICANT_EVENT_EAP_FAILURE = 5;
+    protected static final int SUPPLICANT_EVENT_SSID_TEMP_DISABLED = 6;
+    protected static final int SUPPLICANT_EVENT_OPEN_SSL_FAILURE = 7;
+
+    @IntDef(prefix = { "SUPPLICANT_EVENT_" }, value = {
+            SUPPLICANT_EVENT_CONNECTED,
+            SUPPLICANT_EVENT_DISCONNECTED,
+            SUPPLICANT_EVENT_ASSOCIATING,
+            SUPPLICANT_EVENT_ASSOCIATED,
+            SUPPLICANT_EVENT_EAP_METHOD_SELECTED,
+            SUPPLICANT_EVENT_EAP_FAILURE,
+            SUPPLICANT_EVENT_SSID_TEMP_DISABLED,
+            SUPPLICANT_EVENT_OPEN_SSL_FAILURE,
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    protected @interface SupplicantEventCode {}
+
+    protected static String supplicantEventCodeToString(@SupplicantEventCode int eventCode) {
+        switch (eventCode) {
+            case SUPPLICANT_EVENT_CONNECTED:
+                return "CONNECTED";
+            case SUPPLICANT_EVENT_DISCONNECTED:
+                return "DISCONNECTED";
+            case SUPPLICANT_EVENT_ASSOCIATING:
+                return "ASSOCIATING";
+            case SUPPLICANT_EVENT_ASSOCIATED:
+                return "ASSOCIATED";
+            case SUPPLICANT_EVENT_EAP_METHOD_SELECTED:
+                return "EAP_METHOD_SELECTED";
+            case SUPPLICANT_EVENT_EAP_FAILURE:
+                return "EAP_FAILURE";
+            case SUPPLICANT_EVENT_SSID_TEMP_DISABLED:
+                return "SSID_TEMP_DISABLED";
+            case SUPPLICANT_EVENT_OPEN_SSL_FAILURE:
+                return "OPEN_SSL_FAILURE";
+            default:
+                return "Invalid SupplicantEventCode: " + eventCode;
+        }
+    }
+
+    protected static final int QOS_POLICY_REQUEST_ADD = 0;
+    protected static final int QOS_POLICY_REQUEST_REMOVE = 1;
+
+    @IntDef(prefix = { "QOS_POLICY_REQUEST_" }, value = {
+            QOS_POLICY_REQUEST_ADD,
+            QOS_POLICY_REQUEST_REMOVE
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    protected @interface QosPolicyRequestType {}
+
+    protected static class QosPolicyRequest {
+        public final byte policyId;
+        public final @QosPolicyRequestType int requestType;
+        public final byte dscp;
+        public final QosPolicyClassifierParams classifierParams;
+
+        public QosPolicyRequest(byte halPolicyId, @QosPolicyRequestType int halRequestType,
+                byte halDscp, @NonNull QosPolicyClassifierParams frameworkClassifierParams) {
+            policyId = halPolicyId;
+            dscp = halDscp;
+            requestType = halRequestType;
+            classifierParams = frameworkClassifierParams;
+        }
+
+        public boolean isAddRequest() {
+            return requestType == QOS_POLICY_REQUEST_ADD;
+        }
+
+        public boolean isRemoveRequest() {
+            return requestType == QOS_POLICY_REQUEST_REMOVE;
+        }
+
+        @Override
+        public String toString() {
+            return "policyId: " + policyId + ", isAddRequest: " + this.isAddRequest()
+                    + ", isRemoveRequest: " + this.isRemoveRequest() + ", dscp: " + dscp
+                    + ", classifierParams: {" + classifierParams + "}";
+        }
+    }
+
+    protected static class QosPolicyClassifierParams {
+        public InetAddress srcIp = null;
+        public InetAddress dstIp = null;
+        public Range dstPortRange = null;
+        public final int srcPort;
+        public final int protocol;
+
+        public final boolean hasSrcIp;
+        public final boolean hasDstIp;
+        public boolean isValid = true;
+
+        public QosPolicyClassifierParams(boolean halHasSrcIp, byte[] halSrcIp, boolean halHasDstIp,
+                byte[] halDstIp, int halSrcPort, @NonNull int[] halDstPortRange,
+                int halProtocol) {
+            srcPort = halSrcPort;
+            protocol = halProtocol;
+
+            hasSrcIp = halHasSrcIp;
+            if (hasSrcIp) {
+                try {
+                    srcIp = InetAddress.getByAddress(halSrcIp);
+                } catch (UnknownHostException e) {
+                    isValid = false;
+                }
+            }
+
+            hasDstIp = halHasDstIp;
+            if (hasDstIp) {
+                try {
+                    dstIp = InetAddress.getByAddress(halDstIp);
+                } catch (UnknownHostException e) {
+                    isValid = false;
+                }
+            }
+
+            if (halDstPortRange[0] > halDstPortRange[1]) {
+                isValid = false;
+            } else {
+                dstPortRange = new Range(halDstPortRange[0], halDstPortRange[1]);
+            }
+        }
+
+        @Override
+        public String toString() {
+            return "isValid: " + isValid + ", hasSrcIp: " + hasSrcIp + ", hasDstIp: " + hasDstIp
+                    + ", srcIp: " + srcIp + ", dstIp: " + dstIp + ", dstPortRange: " + dstPortRange
+                    + ", srcPort: " + srcPort + ", protocol: " + protocol;
+        }
+    }
+
+    protected static class QosPolicyStatus {
+        public final int policyId;
+        public final int dscpPolicyStatus;
+
+        public QosPolicyStatus(int id, int status) {
+            policyId = id;
+            dscpPolicyStatus = status;
         }
     }
 
@@ -1811,14 +1963,14 @@ public class SupplicantStaIfaceHal {
      */
     public boolean startDppConfiguratorInitiator(@NonNull String ifaceName, int peerBootstrapId,
             int ownBootstrapId, @NonNull String ssid, String password, String psk,
-            int netRole, int securityAkm) {
+            int netRole, int securityAkm, byte[] privEcKey) {
         synchronized (mLock) {
             String methodStr = "startDppConfiguratorInitiator";
             if (mStaIfaceHal == null) {
                 return handleNullHal(methodStr);
             }
             return mStaIfaceHal.startDppConfiguratorInitiator(ifaceName, peerBootstrapId,
-                    ownBootstrapId, ssid, password, psk, netRole, securityAkm);
+                    ownBootstrapId, ssid, password, psk, netRole, securityAkm, privEcKey);
         }
     }
 
@@ -1925,6 +2077,24 @@ public class SupplicantStaIfaceHal {
     }
 
     /**
+     * Set whether the network-centric QoS policy feature is enabled or not for this interface.
+     *
+     * @param ifaceName name of the interface.
+     * @param isEnabled true if feature is enabled, false otherwise.
+     * @return true if operation is successful, false otherwise.
+     */
+    public boolean setNetworkCentricQosPolicyFeatureEnabled(@NonNull String ifaceName,
+            boolean isEnabled) {
+        synchronized (mLock) {
+            String methodStr = "setNetworkCentricQosPolicyFeatureEnabled";
+            if (mStaIfaceHal == null) {
+                return handleNullHal(methodStr);
+            }
+            return mStaIfaceHal.setNetworkCentricQosPolicyFeatureEnabled(ifaceName, isEnabled);
+        }
+    }
+
+    /**
      * Check if we've roamed to a linked network and make the linked network the current network
      * if we have.
      *
@@ -1982,6 +2152,73 @@ public class SupplicantStaIfaceHal {
             }
             return mStaIfaceHal.getCurrentNetworkSecurityParams(ifaceName);
         }
+    }
+
+    /**
+     * Sends a QoS policy response.
+     *
+     * @param ifaceName Name of the interface.
+     * @param qosPolicyRequestId Dialog token to identify the request.
+     * @param morePolicies Flag to indicate more QoS policies can be accommodated.
+     * @param qosPolicyStatusList List of framework QosPolicyStatus objects.
+     * @return true if response is sent successfully, false otherwise.
+     */
+    public boolean sendQosPolicyResponse(String ifaceName, int qosPolicyRequestId,
+            boolean morePolicies, @NonNull List<QosPolicyStatus> qosPolicyStatusList) {
+        String methodStr = "sendQosPolicyResponse";
+        if (mStaIfaceHal == null) {
+            handleNullHal(methodStr);
+            return false;
+        }
+        return mStaIfaceHal.sendQosPolicyResponse(ifaceName, qosPolicyRequestId,
+                morePolicies, qosPolicyStatusList);
+    }
+
+    /**
+     * Indicates the removal of all active QoS policies configured by the AP.
+     *
+     * @param ifaceName Name of the interface.
+     */
+    public boolean removeAllQosPolicies(String ifaceName) {
+        String methodStr = "removeAllQosPolicies";
+        if (mStaIfaceHal == null) {
+            return handleNullHal(methodStr);
+        }
+        return mStaIfaceHal.removeAllQosPolicies(ifaceName);
+    }
+
+    /**
+     * Generate DPP credential for network access
+     *
+     * @param ifaceName Name of the interface.
+     * @param ssid ssid of the network
+     * @param privEcKey Private EC Key for DPP Configurator
+     * Returns true when operation is successful. On error, false is returned.
+     */
+    public boolean generateSelfDppConfiguration(@NonNull String ifaceName, @NonNull String ssid,
+            byte[] privEcKey) {
+        synchronized (mLock) {
+            String methodStr = "generateSelfDppConfiguration";
+            if (mStaIfaceHal == null) {
+                return handleNullHal(methodStr);
+            }
+            return mStaIfaceHal.generateSelfDppConfiguration(ifaceName, ssid, privEcKey);
+        }
+    }
+
+    /**
+     * This set anonymous identity to supplicant.
+     *
+     * @param ifaceName Name of the interface.
+     * @param anonymousIdentity the anonymouns identity.
+     * @return true if succeeds, false otherwise.
+     */
+    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity) {
+        String methodStr = "setEapAnonymousIdentity";
+        if (mStaIfaceHal == null) {
+            return handleNullHal(methodStr);
+        }
+        return mStaIfaceHal.setEapAnonymousIdentity(ifaceName, anonymousIdentity);
     }
 
     private boolean handleNullHal(String methodStr) {

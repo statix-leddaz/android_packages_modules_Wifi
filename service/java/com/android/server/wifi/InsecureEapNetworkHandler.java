@@ -18,13 +18,10 @@ package com.android.server.wifi;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.app.AlertDialog;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.DialogInterface;
-import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.drawable.Icon;
@@ -33,16 +30,8 @@ import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.os.Handler;
-import android.provider.Browser;
-import android.text.SpannableString;
-import android.text.Spanned;
 import android.text.TextUtils;
-import android.text.method.LinkMovementMethod;
-import android.text.style.URLSpan;
 import android.util.Log;
-import android.view.View;
-import android.view.WindowManager;
-import android.widget.TextView;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
@@ -51,6 +40,8 @@ import com.android.server.wifi.util.NativeUtil;
 import com.android.wifi.resources.R;
 
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
+import java.util.List;
 
 /** This class is used to handle insecure EAP networks. */
 public class InsecureEapNetworkHandler {
@@ -75,21 +66,27 @@ public class InsecureEapNetworkHandler {
     private final WifiNative mWifiNative;
     private final FrameworkFacade mFacade;
     private final WifiNotificationManager mNotificationManager;
+    private final WifiDialogManager mWifiDialogManager;
     private final boolean mIsTrustOnFirstUseSupported;
+    private final boolean mIsInsecureEnterpriseConfigurationAllowed;
     private final InsecureEapNetworkHandlerCallbacks mCallbacks;
     private final String mInterfaceName;
     private final Handler mHandler;
 
     @NonNull
-    private WifiConfiguration mCurConfig = null;;
+    private WifiConfiguration mCurConfig = null;
+    private int mPendingCaCertDepth = -1;
     @Nullable
     private X509Certificate mPendingCaCert = null;
+    @Nullable
+    private X509Certificate mPendingServerCert = null;
     // This is updated on setting a pending CA cert.
     private CertificateSubjectInfo mPendingCaCertSubjectInfo = null;
     // This is updated on setting a pending CA cert.
     private CertificateSubjectInfo mPendingCaCertIssuerInfo = null;
-    @Nullable
-    private AlertDialog mTofuAlertDialog = null;
+    // Record the whole server cert chain from Root CA to the server cert.
+    private List<X509Certificate> mServerCertChain = new ArrayList<>();
+    private WifiDialogManager.DialogHandle mTofuAlertDialog = null;
     private boolean mIsCertNotificationReceiverRegistered = false;
 
     BroadcastReceiver mCertNotificationReceiver = new BroadcastReceiver() {
@@ -100,11 +97,11 @@ public class InsecureEapNetworkHandler {
             // This is an onGoing notification, dismiss it once an action is sent.
             dismissDialogAndNotification();
             Log.d(TAG, "Received CertNotification: ssid=" + ssid + ", action=" + action);
-            if (action.equals(ACTION_CERT_NOTIF_TAP)) {
+            if (TextUtils.equals(action, ACTION_CERT_NOTIF_TAP)) {
                 askForUserApprovalForCaCertificate();
-            } else if (action.equals(ACTION_CERT_NOTIF_ACCEPT)) {
+            } else if (TextUtils.equals(action, ACTION_CERT_NOTIF_ACCEPT)) {
                 handleAccept(ssid);
-            } else if (action.equals(ACTION_CERT_NOTIF_REJECT)) {
+            } else if (TextUtils.equals(action, ACTION_CERT_NOTIF_REJECT)) {
                 handleReject(ssid);
             }
         }
@@ -115,7 +112,9 @@ public class InsecureEapNetworkHandler {
             @NonNull WifiNative wifiNative,
             @NonNull FrameworkFacade facade,
             @NonNull WifiNotificationManager notificationManager,
+            @NonNull WifiDialogManager wifiDialogManager,
             boolean isTrustOnFirstUseSupported,
+            boolean isInsecureEnterpriseConfigurationAllowed,
             @NonNull InsecureEapNetworkHandlerCallbacks callbacks,
             @NonNull String interfaceName,
             @NonNull Handler handler) {
@@ -124,7 +123,9 @@ public class InsecureEapNetworkHandler {
         mWifiNative = wifiNative;
         mFacade = facade;
         mNotificationManager = notificationManager;
+        mWifiDialogManager = wifiDialogManager;
         mIsTrustOnFirstUseSupported = isTrustOnFirstUseSupported;
+        mIsInsecureEnterpriseConfigurationAllowed = isInsecureEnterpriseConfigurationAllowed;
         mCallbacks = callbacks;
         mInterfaceName = interfaceName;
         mHandler = handler;
@@ -148,17 +149,24 @@ public class InsecureEapNetworkHandler {
         if (!entConfig.isEapMethodServerCertUsed()) return;
         if (entConfig.hasCaCertificate()) return;
 
-        // For TOFU supported devices, return if TOFU is not enabled.
-        if (mIsTrustOnFirstUseSupported && !entConfig.isTrustOnFirstUseEnabled()) {
-            return;
-        }
-        // For TOFU non-supported devices, return if this is approved before.
-        if (!mIsTrustOnFirstUseSupported && entConfig.isUserApproveNoCaCert()) {
-            return;
+        clearConnection();
+
+        Log.d(TAG, "prepareConnection: isTofuSupported=" + mIsTrustOnFirstUseSupported
+                + ", isInsecureEapNetworkAllowed=" + mIsInsecureEnterpriseConfigurationAllowed
+                + ", isTofuEnabled=" + entConfig.isTrustOnFirstUseEnabled()
+                + ", isUserApprovedNoCaCert=" + entConfig.isUserApproveNoCaCert());
+        // If TOFU is not supported or insecure EAP network is allowed without TOFU enabled,
+        // return to skip the dialog if this network is approved before.
+        if (entConfig.isUserApproveNoCaCert()) {
+            if (!mIsTrustOnFirstUseSupported) return;
+            if (mIsInsecureEnterpriseConfigurationAllowed
+                    && !entConfig.isTrustOnFirstUseEnabled()) {
+                return;
+            }
         }
 
-        registerCertificateNotificationReceiver();
         mCurConfig = config;
+        registerCertificateNotificationReceiver();
         // Remove cached PMK in the framework and supplicant to avoid
         // skipping the EAP flow.
         clearNativeData();
@@ -166,24 +174,46 @@ public class InsecureEapNetworkHandler {
     }
 
     /** Clear data on disconnecting a connection. */
-    public void clearConnection() {
+    private void clearConnection() {
+        mServerCertChain = new ArrayList<>();
         unregisterCertificateNotificationReceiver();
         dismissDialogAndNotification();
         clearInternalData();
     }
 
     /**
-     * Store the received Root CA certifiate for later use.
+     * Store the received certifiate for later use.
      *
      * @param ssid the target network SSID.
+     * @param depth the depth of this cert. The Root CA should be 0 or
+     *        a positive number, and the server cert is 0.
      * @param cert the Root CA certificate from the server.
      * @return true if the cert is cached; otherwise, false.
      */
-    public boolean setPendingCaCertificate(@NonNull String ssid, @NonNull X509Certificate cert) {
+    public boolean setPendingCertificate(@NonNull String ssid, int depth,
+            @NonNull X509Certificate cert) {
+        String configProfileKey = mCurConfig != null ? mCurConfig.getProfileKey() : "null";
+        Log.d(TAG, "setPendingCertificate: " + "ssid=" + ssid + " depth=" + depth
+                + " current config=" + configProfileKey);
         if (TextUtils.isEmpty(ssid)) return false;
         if (null == mCurConfig) return false;
-        if (!ssid.equals(mCurConfig.SSID)) return false;
+        if (!TextUtils.equals(ssid, mCurConfig.SSID)) return false;
         if (null == cert) return false;
+        if (depth < 0) return false;
+
+        if (!mServerCertChain.contains(cert)) {
+            mServerCertChain.add(cert);
+        }
+
+        // 0 is the tail, i.e. the server cert.
+        if (depth == 0 && null == mPendingServerCert) {
+            mPendingServerCert = cert;
+            Log.d(TAG, "Pending server certificate: " + mPendingServerCert);
+        }
+        if (depth < mPendingCaCertDepth) {
+            Log.d(TAG, "Ignore intermediate cert." + cert);
+            return true;
+        }
 
         mPendingCaCertSubjectInfo = CertificateSubjectInfo.parse(
                 cert.getSubjectDN().getName());
@@ -197,21 +227,27 @@ public class InsecureEapNetworkHandler {
             Log.e(TAG, "CA cert has no valid issuer.");
             return false;
         }
+        mPendingCaCertDepth = depth;
         mPendingCaCert = cert;
-        Log.d(TAG, "Pending Root CA certificate: " + mPendingCaCert.toString());
+        Log.d(TAG, "Pending Root CA certificate: " + mPendingCaCert);
         return true;
     }
 
     /**
      * Ask for the user approval if necessary.
      *
-     * For T and an EAP network without a CA certificate.
-     * - if TOFU is not enabled or no pending CA cert, disconnect it.
-     * - if TOFU is enabled and CA cert is pending
+     * For TOFU is supported and an EAP network without a CA certificate.
+     * - if insecure EAP networks are not allowed
+     *    - if TOFU is not enabled, disconnect it.
+     *    - if no pending CA cert, disconnect it.
+     *    - if no server cert, disconnect it.
+     * - if insecure EAP networks are allowed and TOFU is not enabled
+     *    - follow no TOFU support flow.
+     * - if TOFU is enabled, CA cert is pending, and server cert is pending
      *     - gate the connecitvity event here
      *     - if this request is from a user, launch a dialog to get the user approval.
      *     - if this request is from auto-connect, launch a notification.
-     * For preT release, the confirmation flow is similar. Instead of installing CA
+     * If TOFU is not supported, the confirmation flow is similar. Instead of installing CA
      * cert from the server, just mark this network is approved by the user.
      *
      * @param isUserSelected indicates that this connection is triggered by a user.
@@ -224,16 +260,83 @@ public class InsecureEapNetworkHandler {
         if (!entConfig.isEapMethodServerCertUsed()) return false;
         if (entConfig.hasCaCertificate()) return false;
 
-        // If Trust On First Use is supported, Root CA cert is mandatory
-        // for an Enterprise network which needs Root CA cert.
-        if (!mIsTrustOnFirstUseSupported) {
-            if (mCurConfig.enterpriseConfig.isUserApproveNoCaCert()) {
-                return false;
-            }
-        } else if (null == mPendingCaCert) {
-            Log.d(TAG, "No valid CA cert for TLS-based connection.");
+        // If Trust On First Use is supported and insecure enterprise configuration
+        // is not allowed, TOFU must be used for an Enterprise network without certs.
+        if (mIsTrustOnFirstUseSupported && !mIsInsecureEnterpriseConfigurationAllowed
+                && !mCurConfig.enterpriseConfig.isTrustOnFirstUseEnabled()) {
+            Log.d(TAG, "Trust On First Use is not enabled.");
             handleError(mCurConfig.SSID);
             return true;
+        }
+
+        if (useTrustOnFirstUse()) {
+            if (null == mPendingCaCert) {
+                Log.d(TAG, "No valid CA cert for TLS-based connection.");
+                handleError(mCurConfig.SSID);
+                return true;
+            } else if (null == mPendingServerCert) {
+                Log.d(TAG, "No valid Server cert for TLS-based connection.");
+                handleError(mCurConfig.SSID);
+                return true;
+            } else if (!isServerCertChainValid()) {
+                Log.d(TAG, "Server cert chain is invalid.");
+                String title = mContext.getString(R.string.wifi_tofu_invalid_cert_chain_title,
+                        mCurConfig.SSID);
+                String message = mContext.getString(R.string.wifi_tofu_invalid_cert_chain_message);
+                String okButtonText = mContext.getString(
+                        R.string.wifi_tofu_invalid_cert_chain_ok_text);
+
+                handleError(mCurConfig.SSID);
+
+                if (TextUtils.isEmpty(title) || TextUtils.isEmpty(message)) return true;
+
+                if (isUserSelected) {
+                    mTofuAlertDialog = mWifiDialogManager.createSimpleDialog(
+                        title,
+                        message,
+                        null /* positiveButtonText */,
+                        null /* negativeButtonText */,
+                        okButtonText,
+                        new WifiDialogManager.SimpleDialogCallback() {
+                            @Override
+                            public void onPositiveButtonClicked() {
+                                // Not used.
+                            }
+
+                            @Override
+                            public void onNegativeButtonClicked() {
+                                // Not used.
+                            }
+
+                            @Override
+                            public void onNeutralButtonClicked() {
+                                // Not used.
+                            }
+
+                            @Override
+                            public void onCancelled() {
+                                // Not used.
+                            }
+                        },
+                        new WifiThreadRunner(mHandler));
+                    mTofuAlertDialog.launchDialog();
+                } else {
+                    Notification.Builder builder = mFacade.makeNotificationBuilder(mContext,
+                            WifiService.NOTIFICATION_NETWORK_ALERTS)
+                            .setSmallIcon(
+                                    Icon.createWithResource(mContext.getWifiOverlayApkPkgName(),
+                                    com.android.wifi.resources.R
+                                            .drawable.stat_notify_wifi_in_range))
+                            .setContentTitle(title)
+                            .setContentText(message)
+                            .setStyle(new Notification.BigTextStyle().bigText(message))
+                            .setColor(mContext.getResources().getColor(
+                                        android.R.color.system_notification_accent_color));
+                    mNotificationManager.notify(SystemMessage.NOTE_SERVER_CA_CERTIFICATE,
+                            builder.build());
+                }
+                return true;
+            }
         }
 
         Log.d(TAG, "startUserApprovalIfNecessaryForInsecureEapNetwork: mIsUserSelected="
@@ -247,14 +350,47 @@ public class InsecureEapNetworkHandler {
         return true;
     }
 
+    private boolean isServerCertChainValid() {
+        if (mServerCertChain.size() == 0) return false;
+
+        X509Certificate parentCert = null;
+        for (X509Certificate cert: mServerCertChain) {
+            String subject = cert.getSubjectDN().getName();
+            String issuer = cert.getIssuerDN().getName();
+            boolean isCa = cert.getBasicConstraints() > 0;
+            Log.d(TAG, "Subject: " + subject + ", Issuer: " + issuer + ", isCA: " + isCa);
+
+            if (parentCert == null) {
+                // The root cert, it should be a CA cert or a self-signed cert.
+                if (!isCa && !subject.equals(issuer)) {
+                    Log.e(TAG, "The root cert is not a CA cert or a self-signed cert.");
+                    return false;
+                }
+            } else {
+                // The issuer of intermediate cert of the leaf cert should be
+                // the same as the subject of its parent cert.
+                if (!parentCert.getSubjectDN().getName().equals(issuer)) {
+                    Log.e(TAG, "The issuer does not match the subject of its parent.");
+                    return false;
+                }
+            }
+            parentCert = cert;
+        }
+        return true;
+    }
+
+    private boolean useTrustOnFirstUse() {
+        return mIsTrustOnFirstUseSupported
+                && mCurConfig.enterpriseConfig.isTrustOnFirstUseEnabled();
+    }
+
     private void registerCertificateNotificationReceiver() {
         if (mIsCertNotificationReceiverRegistered) return;
 
         IntentFilter filter = new IntentFilter();
-        if (mIsTrustOnFirstUseSupported) {
+        if (useTrustOnFirstUse()) {
             filter.addAction(ACTION_CERT_NOTIF_TAP);
-        }
-        if (!mIsTrustOnFirstUseSupported) {
+        } else {
             filter.addAction(ACTION_CERT_NOTIF_ACCEPT);
             filter.addAction(ACTION_CERT_NOTIF_REJECT);
         }
@@ -273,21 +409,19 @@ public class InsecureEapNetworkHandler {
     void handleAccept(@NonNull String ssid) {
         if (!isConnectionValid(ssid)) return;
 
-        if (!mIsTrustOnFirstUseSupported) {
+        if (!useTrustOnFirstUse()) {
             mWifiConfigManager.setUserApproveNoCaCert(mCurConfig.networkId, true);
         } else {
-            if (null == mPendingCaCert) {
+            if (null == mPendingCaCert || null == mPendingServerCert) {
                 handleError(ssid);
                 return;
             }
-            if (!mWifiConfigManager.updateCaCertificate(mCurConfig.networkId, mPendingCaCert)) {
-                // Since Root CA certificate is installed, reset these flags.
-                mWifiConfigManager.setUserApproveNoCaCert(mCurConfig.networkId, false);
-                mWifiConfigManager.enableTrustOnFirstUse(mCurConfig.networkId, false);
-            } else {
+            if (!mWifiConfigManager.updateCaCertificate(
+                    mCurConfig.networkId, mPendingCaCert, mPendingServerCert)) {
                 // The user approved this network,
                 // keep the connection regardless of the result.
-                Log.e(TAG, "Cannot update CA cert to network " + mCurConfig.getProfileKey());
+                Log.e(TAG, "Cannot update CA cert to network " + mCurConfig.getProfileKey()
+                        + ", CA cert = " + mPendingCaCert);
             }
         }
         mWifiConfigManager.allowAutojoin(mCurConfig.networkId, true);
@@ -310,6 +444,9 @@ public class InsecureEapNetworkHandler {
     }
 
     private void handleError(@Nullable String ssid) {
+        if (mCurConfig != null) {
+            mWifiConfigManager.allowAutojoin(mCurConfig.networkId, false);
+        }
         dismissDialogAndNotification();
         clearInternalData();
         clearNativeData();
@@ -319,8 +456,8 @@ public class InsecureEapNetworkHandler {
 
     private void askForUserApprovalForCaCertificate() {
         if (mCurConfig == null || TextUtils.isEmpty(mCurConfig.SSID)) return;
-        if (mIsTrustOnFirstUseSupported) {
-            if (null == mPendingCaCert) {
+        if (useTrustOnFirstUse()) {
+            if (null == mPendingCaCert || null == mPendingServerCert) {
                 Log.e(TAG, "Cannot launch a dialog for TOFU without "
                         + "a valid pending CA certificate.");
                 return;
@@ -328,18 +465,21 @@ public class InsecureEapNetworkHandler {
         }
         dismissDialogAndNotification();
 
-        String title = mIsTrustOnFirstUseSupported
+        String title = useTrustOnFirstUse()
                 ? mContext.getString(R.string.wifi_ca_cert_dialog_title)
                 : mContext.getString(R.string.wifi_ca_cert_dialog_preT_title);
-        String continueBtnText = mIsTrustOnFirstUseSupported
+        String positiveButtonText = useTrustOnFirstUse()
                 ? mContext.getString(R.string.wifi_ca_cert_dialog_continue_text)
                 : mContext.getString(R.string.wifi_ca_cert_dialog_preT_continue_text);
-        String abortBtnText = mIsTrustOnFirstUseSupported
+        String negativeButtonText = useTrustOnFirstUse()
                 ? mContext.getString(R.string.wifi_ca_cert_dialog_abort_text)
                 : mContext.getString(R.string.wifi_ca_cert_dialog_preT_abort_text);
 
-        CharSequence content;
-        if (mIsTrustOnFirstUseSupported) {
+        String message = null;
+        String messageUrl = null;
+        int messageUrlStart = 0;
+        int messageUrlEnd = 0;
+        if (useTrustOnFirstUse()) {
             String signature = NativeUtil.hexStringFromByteArray(
                     mPendingCaCert.getSignature());
             StringBuilder contentBuilder = new StringBuilder()
@@ -364,63 +504,50 @@ public class InsecureEapNetworkHandler {
                     .append(mContext.getString(
                             R.string.wifi_ca_cert_dialog_message_signature_name_text,
                             signature.substring(0, 16)));
-            content = contentBuilder.toString();
+            message = contentBuilder.toString();
         } else {
             String hint = mContext.getString(
                     R.string.wifi_ca_cert_dialog_preT_message_hint, mCurConfig.SSID);
             String linkText = mContext.getString(
                     R.string.wifi_ca_cert_dialog_preT_message_link);
-            // System service content is not a valid activity context, it cannot
-            // launch another activity via Intent.
-            // Override URLSpan onClick to add FLAG_ACTIVITY_NEW_TASK flag.
-            SpannableString link = new SpannableString(linkText);
-            link.setSpan(new URLSpan(mCaCertHelpLink) {
-                @Override
-                public void onClick(@NonNull View widget) {
-                    // When a user clicks the link, the dialog is still on the top of all
-                    // activities, i.e. the user cannot read the help page normally.
-                    // Dismiss the dialog and launch a notifiation to let the user
-                    // make a decision later.
-                    if (null != mCurConfig) {
-                        notifyUserForCaCertificate();
-                    }
-
-                    // Open the help page regardless a notifiation could be launched.
-                    Context c = widget.getContext();
-                    Intent openLinkIntent = new Intent(Intent.ACTION_VIEW)
-                            .setData(Uri.parse(mCaCertHelpLink))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            .putExtra(Browser.EXTRA_APPLICATION_ID, c.getPackageName());
-                    c.startActivity(openLinkIntent);
-                }
-            }, 0, linkText.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            content = TextUtils.concat(hint, " ", link);
+            message = hint + " " + linkText;
+            messageUrl = mCaCertHelpLink;
+            messageUrlStart = hint.length() + 1;
+            messageUrlEnd = message.length();
         }
-
-        mTofuAlertDialog = mFacade.makeAlertDialogBuilder(mContext)
-                .setPositiveButton(continueBtnText, new OnClickListener() {
+        mTofuAlertDialog = mWifiDialogManager.createSimpleDialogWithUrl(
+                title,
+                message,
+                messageUrl,
+                messageUrlStart,
+                messageUrlEnd,
+                positiveButtonText,
+                negativeButtonText,
+                null /* neutralButtonText */,
+                new WifiDialogManager.SimpleDialogCallback() {
                     @Override
-                    public void onClick(DialogInterface dialog, int which) {
+                    public void onPositiveButtonClicked() {
                         handleAccept(mCurConfig.SSID);
                     }
-                })
-                .setNegativeButton(abortBtnText, new OnClickListener() {
+
                     @Override
-                    public void onClick(DialogInterface dialog, int which) {
+                    public void onNegativeButtonClicked() {
                         handleReject(mCurConfig.SSID);
                     }
-                })
-                .setTitle(title)
-                .setMessage(content)
-                .create();
 
-        mTofuAlertDialog.setCanceledOnTouchOutside(false);
-        mTofuAlertDialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
-        mTofuAlertDialog.getWindow().addSystemFlags(
-                WindowManager.LayoutParams.SYSTEM_FLAG_SHOW_FOR_ALL_USERS);
-        mTofuAlertDialog.show();
-        ((TextView) mTofuAlertDialog.findViewById(android.R.id.message))
-                .setMovementMethod(LinkMovementMethod.getInstance());
+                    @Override
+                    public void onNeutralButtonClicked() {
+                        // Not used.
+                        handleReject(mCurConfig.SSID);
+                    }
+
+                    @Override
+                    public void onCancelled() {
+                        handleReject(mCurConfig.SSID);
+                    }
+                },
+                new WifiThreadRunner(mHandler));
+        mTofuAlertDialog.launchDialog();
     }
 
     private PendingIntent genCaCertNotifIntent(
@@ -434,13 +561,14 @@ public class InsecureEapNetworkHandler {
 
     private void notifyUserForCaCertificate() {
         if (mCurConfig == null) return;
-        if (mIsTrustOnFirstUseSupported) {
+        if (useTrustOnFirstUse()) {
             if (null == mPendingCaCert) return;
+            if (null == mPendingServerCert) return;
         }
         dismissDialogAndNotification();
 
         PendingIntent tapPendingIntent;
-        if (mIsTrustOnFirstUseSupported) {
+        if (useTrustOnFirstUse()) {
             tapPendingIntent = genCaCertNotifIntent(ACTION_CERT_NOTIF_TAP, mCurConfig.SSID);
         } else {
             Intent openLinkIntent = new Intent(Intent.ACTION_VIEW)
@@ -450,10 +578,10 @@ public class InsecureEapNetworkHandler {
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         }
 
-        String title = mIsTrustOnFirstUseSupported
+        String title = useTrustOnFirstUse()
                 ? mContext.getString(R.string.wifi_ca_cert_notification_title)
                 : mContext.getString(R.string.wifi_ca_cert_notification_preT_title);
-        String content = mIsTrustOnFirstUseSupported
+        String content = useTrustOnFirstUse()
                 ? mContext.getString(R.string.wifi_ca_cert_notification_message, mCurConfig.SSID)
                 : mContext.getString(R.string.wifi_ca_cert_notification_preT_message,
                         mCurConfig.SSID);
@@ -470,7 +598,7 @@ public class InsecureEapNetworkHandler {
                             android.R.color.system_notification_accent_color));
         // On a device which does not support Trust On First Use,
         // a user can accept or reject this network via the notification.
-        if (!mIsTrustOnFirstUseSupported) {
+        if (!useTrustOnFirstUse()) {
             Notification.Action acceptAction = new Notification.Action.Builder(
                     null /* icon */,
                     mContext.getString(R.string.wifi_ca_cert_dialog_preT_continue_text),
@@ -487,13 +615,15 @@ public class InsecureEapNetworkHandler {
     private void dismissDialogAndNotification() {
         mNotificationManager.cancel(SystemMessage.NOTE_SERVER_CA_CERTIFICATE);
         if (mTofuAlertDialog != null) {
-            mTofuAlertDialog.dismiss();
+            mTofuAlertDialog.dismissDialog();
             mTofuAlertDialog = null;
         }
     }
 
     private void clearInternalData() {
+        mPendingCaCertDepth = -1;
         mPendingCaCert = null;
+        mPendingServerCert = null;
         mPendingCaCertSubjectInfo = null;
         mPendingCaCertIssuerInfo = null;
         mCurConfig = null;
@@ -526,7 +656,7 @@ public class InsecureEapNetworkHandler {
             return false;
         }
 
-        if (!ssid.equals(mCurConfig.SSID)) {
+        if (!TextUtils.equals(ssid, mCurConfig.SSID)) {
             Log.w(TAG, "Target SSID " + mCurConfig.SSID
                     + " is different from TOFU returned SSID" + ssid);
             return false;

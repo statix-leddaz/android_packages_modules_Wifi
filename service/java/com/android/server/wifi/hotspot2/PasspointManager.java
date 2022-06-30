@@ -383,8 +383,9 @@ public class PasspointManager {
         sPasspointManager = this;
         mMacAddressUtil = macAddressUtil;
         mClock = clock;
-        mWifiConfigManager.addOnNetworkUpdateListener(
-                new PasspointManager.OnNetworkUpdateListener());
+        mHandler.postAtFrontOfQueue(() ->
+                mWifiConfigManager.addOnNetworkUpdateListener(
+                        new PasspointManager.OnNetworkUpdateListener()));
         mWifiPermissionsUtil = wifiPermissionsUtil;
         mSettingsStore = wifiSettingsStore;
         mEnabled = mSettingsStore.isWifiPasspointEnabled();
@@ -433,7 +434,7 @@ public class PasspointManager {
             return;
         }
         NetworkUpdateResult result = mWifiConfigManager.addOrUpdateNetwork(
-                newConfig, uid, packageName);
+                newConfig, uid, packageName, false);
         if (!result.isSuccess()) {
             Log.e(TAG, "Failed to update config in WifiConfigManager");
         } else {
@@ -456,13 +457,16 @@ public class PasspointManager {
      * @param uid Uid of the app adding/Updating {@code config}
      * @param packageName Package name of the app adding/Updating {@code config}
      * @param isFromSuggestion Whether this {@code config} is from suggestion API
-     * @param isTrusted Whether this {@code config} an trusted network, default should be true.
+     * @param isTrusted Whether this {@code config} is a trusted network, default should be true.
      *                  Only able set to false when {@code isFromSuggestion} is true, otherwise
-     *                  adding {@code config} will be false.
-     * @return true if provider is added, false otherwise
+     *                  adding {@code config} will fail.
+     * @param isRestricted Whether this {@code config} is a restricted network, default should be
+     *                     false. Only able set to false when {@code isFromSuggestion} is true,
+     *                     otherwise adding {@code config} will fail
+     * @return true if provider is added successfully, false otherwise
      */
     public boolean addOrUpdateProvider(PasspointConfiguration config, int uid,
-            String packageName, boolean isFromSuggestion, boolean isTrusted) {
+            String packageName, boolean isFromSuggestion, boolean isTrusted, boolean isRestricted) {
         mWifiMetrics.incrementNumPasspointProviderInstallation();
         if (config == null) {
             Log.e(TAG, "Configuration not provided");
@@ -472,7 +476,7 @@ public class PasspointManager {
             Log.e(TAG, "Invalid configuration");
             return false;
         }
-        if (!(isFromSuggestion || isTrusted)) {
+        if (!isFromSuggestion && (!isTrusted || isRestricted)) {
             Log.e(TAG, "Set isTrusted to false on a non suggestion passpoint is not allowed");
             return false;
         }
@@ -487,6 +491,7 @@ public class PasspointManager {
                 mWifiCarrierInfoManager, mProviderIndex++, uid, packageName, isFromSuggestion,
                 mClock);
         newProvider.setTrusted(isTrusted);
+        newProvider.setRestricted(isRestricted);
 
         boolean metricsNoRootCa = false;
         boolean metricsSelfSignedRootCa = false;
@@ -571,7 +576,7 @@ public class PasspointManager {
         }
         mWifiMetrics.incrementNumPasspointProviderInstallSuccess();
         if (mPasspointNetworkNominateHelper != null) {
-            mPasspointNetworkNominateHelper.refreshPasspointNetworkCandidates(isFromSuggestion);
+            mPasspointNetworkNominateHelper.updateBestMatchScanDetailForProviders();
         }
         return true;
     }
@@ -825,9 +830,6 @@ public class PasspointManager {
      * Find all providers that can provide service through the given AP, which means the
      * providers contained credential to authenticate with the given AP.
      *
-     * If there is any home provider available, will return a list of matched home providers.
-     * Otherwise will return a list of matched roaming providers.
-     *
      * A empty list will be returned if no matching is found.
      *
      * @param scanResult The scan result associated with the AP
@@ -840,39 +842,15 @@ public class PasspointManager {
             return Collections.emptyList();
         }
         List<Pair<PasspointProvider, PasspointMatch>> allMatches = getAllMatchedProviders(
-                scanResult, anqpRequestAllowed);
+                scanResult, anqpRequestAllowed).stream()
+                .filter(a -> !isExpired(a.first.getConfig()))
+                .collect(Collectors.toList());
         if (allMatches.isEmpty()) {
-            return allMatches;
-        }
-        List<Pair<PasspointProvider, PasspointMatch>> homeProviders = new ArrayList<>();
-        List<Pair<PasspointProvider, PasspointMatch>> roamingProviders = new ArrayList<>();
-        for (Pair<PasspointProvider, PasspointMatch> match : allMatches) {
-            if (isExpired(match.first.getConfig())) {
-                continue;
-            }
-            if (match.second == PasspointMatch.HomeProvider) {
-                homeProviders.add(match);
-            } else {
-                roamingProviders.add(match);
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "No service provider found for " + scanResult.SSID);
             }
         }
-
-        if (!homeProviders.isEmpty()) {
-            Log.d(TAG, String.format("Matched %s to %s providers as %s", scanResult.SSID,
-                    homeProviders.size(), "Home Provider"));
-            return homeProviders;
-        }
-
-        if (!roamingProviders.isEmpty()) {
-            Log.d(TAG, String.format("Matched %s to %s providers as %s", scanResult.SSID,
-                    roamingProviders.size(), "Roaming Provider"));
-            return roamingProviders;
-        }
-
-        if (mVerboseLoggingEnabled) {
-            Log.d(TAG, "No service provider found for " + scanResult.SSID);
-        }
-        return new ArrayList<>();
+        return allMatches;
     }
 
     /**

@@ -20,7 +20,6 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.net.wifi.util.HexEncoding;
-import android.os.Build;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.TextUtils;
@@ -45,15 +44,10 @@ public final class WifiSsid implements Parcelable {
      * Creates a WifiSsid from the raw bytes. If the byte array is null, creates an empty WifiSsid
      * object which will return an empty byte array and empty text.
      * @param bytes the SSID
-     * @throws IllegalArgumentException if the raw byte array is longer than 32 bytes.
      */
     private WifiSsid(@Nullable byte[] bytes) {
         if (bytes == null) {
             bytes = new byte[0];
-        }
-        if (bytes.length > 32) {
-            throw new IllegalArgumentException(
-                    "Max SSID length is 32 bytes, but received " + bytes.length + " bytes!");
         }
         mBytes = bytes;
         // Duplicate the bytes to #octets for legacy apps.
@@ -63,7 +57,6 @@ public final class WifiSsid implements Parcelable {
     /**
      * Create a WifiSsid from the raw bytes. If the byte array is null, return an empty WifiSsid
      * object which will return an empty byte array and empty text.
-     * @throws IllegalArgumentException if the raw byte array is longer than 32 bytes.
      */
     @NonNull
     public static WifiSsid fromBytes(@Nullable byte[] bytes) {
@@ -82,7 +75,6 @@ public final class WifiSsid implements Parcelable {
     /**
      * Create a UTF-8 WifiSsid from unquoted plaintext. If the text is null, return an
      * empty WifiSsid object which will return an empty byte array and empty text.
-     * @throws IllegalArgumentException if the encoded UTF-8 byte array is longer than 32 bytes.
      * @hide
      */
     @NonNull
@@ -109,8 +101,7 @@ public final class WifiSsid implements Parcelable {
      * If the string is null, return an empty WifiSsid object which will return an empty byte array
      * and empty text.
      * @throws IllegalArgumentException if the string is unquoted but not hexadecimal,
-     *                                  if the hexadecimal string is odd-length,
-     *                                  or if the encoded byte array is longer than 32 bytes.
+     *                                  or if the hexadecimal string is odd-length.
      * @hide
      */
     @NonNull
@@ -211,24 +202,24 @@ public final class WifiSsid implements Parcelable {
      * Use {@link #getBytes()} instead.
      * @hide
      */
-    @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.S,
-            publicAlternatives = "{@link #getBytes()}")
+    // TODO(b/231433398): add maxTargetSdk = Build.VERSION_CODES.S
+    @UnsupportedAppUsage(publicAlternatives = "{@link #getBytes()}")
     public final ByteArrayOutputStream octets = new ByteArrayOutputStream(32);
 
     /**
      * Use {@link android.net.wifi.WifiManager#UNKNOWN_SSID} instead.
      * @hide
      */
-    @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.S,
-            publicAlternatives = "{@link android.net.wifi.WifiManager#UNKNOWN_SSID}")
+    // TODO(b/231433398): add maxTargetSdk = Build.VERSION_CODES.S
+    @UnsupportedAppUsage(publicAlternatives = "{@link android.net.wifi.WifiManager#UNKNOWN_SSID}")
     public static final String NONE = WifiManager.UNKNOWN_SSID;
 
     /**
      * Use {@link #fromBytes(byte[])} instead.
      * @hide
      */
-    @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.S,
-            publicAlternatives = "{@link #fromBytes(byte[])}")
+    // TODO(b/231433398): add maxTargetSdk = Build.VERSION_CODES.S
+    @UnsupportedAppUsage(publicAlternatives = "{@link #fromBytes(byte[])}")
     public static WifiSsid createFromAsciiEncoded(String asciiEncoded) {
         return fromUtf8Text(asciiEncoded);
     }
@@ -237,8 +228,8 @@ public final class WifiSsid implements Parcelable {
      * Use {@link #getBytes()} instead.
      * @hide
      */
-    @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.S,
-            publicAlternatives = "{@link #getBytes()}")
+    // TODO(b/231433398): add maxTargetSdk = Build.VERSION_CODES.S
+    @UnsupportedAppUsage(publicAlternatives = "{@link #getBytes()}")
     public byte[] getOctets() {
         return getBytes();
     }

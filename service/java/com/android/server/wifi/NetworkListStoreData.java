@@ -25,6 +25,7 @@ import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiConfiguration.NetworkSelectionStatus;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.os.Process;
+import android.text.TextUtils;
 import android.util.Log;
 import android.util.Pair;
 
@@ -291,13 +292,12 @@ public abstract class NetworkListStoreData implements WifiConfigStore.StoreData 
         if (configuration.preSharedKey != null && !configuration.needsPreSharedKey()) {
             Log.e(TAG, "preSharedKey set with an invalid KeyMgmt, resetting KeyMgmt to WPA_PSK");
             configuration.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
-            WifiConfigurationUtil.addUpgradableSecurityTypeIfNecessary(configuration);
             // Recreate configKey to pass the check below.
             configKeyParsed = configuration.getKey();
         }
 
         String configKeyCalculated = configuration.getKey();
-        if (!configKeyParsed.equals(configKeyCalculated)) {
+        if (!TextUtils.equals(configKeyParsed, configKeyCalculated)) {
             // configKey is not part of the SDK. So, we can't expect this to be the same
             // across OEM's. Just log a warning & continue.
             Log.w(TAG, "Configuration key does not match. Retrieved: " + configKeyParsed
@@ -311,7 +311,7 @@ public abstract class NetworkListStoreData implements WifiConfigStore.StoreData 
             configuration.creatorUid = Process.SYSTEM_UID;
             configuration.creatorName =
                     mContext.getPackageManager().getNameForUid(Process.SYSTEM_UID);
-        } else if (!creatorName.equals(configuration.creatorName)) {
+        } else if (!TextUtils.equals(creatorName, configuration.creatorName)) {
             Log.w(TAG, "Invalid creatorName for saved network " + configuration.getKey()
                     + ", creatorUid=" + configuration.creatorUid
                     + ", creatorName=" + configuration.creatorName);
@@ -323,6 +323,7 @@ public abstract class NetworkListStoreData implements WifiConfigStore.StoreData 
         if (enterpriseConfig != null) {
             configuration.enterpriseConfig = enterpriseConfig;
         }
+        WifiConfigurationUtil.addUpgradableSecurityTypeIfNecessary(configuration);
         return configuration;
     }
 }

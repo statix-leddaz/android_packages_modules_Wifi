@@ -16,11 +16,8 @@
 
 package com.android.server.wifi;
 
-import static android.net.wifi.WifiManager.WIFI_STATE_DISABLED;
-import static android.net.wifi.WifiManager.WIFI_STATE_DISABLING;
 import static android.net.wifi.WifiManager.WIFI_STATE_ENABLED;
 import static android.net.wifi.WifiManager.WIFI_STATE_ENABLING;
-import static android.net.wifi.WifiManager.WIFI_STATE_UNKNOWN;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -69,15 +66,14 @@ import com.android.server.wifi.WifiNative.RxFateReport;
 import com.android.server.wifi.WifiNative.TxFateReport;
 import com.android.server.wifi.util.ActionListenerWrapper;
 import com.android.server.wifi.util.StateMachineObituary;
-import com.android.server.wifi.util.WifiHandler;
 import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manage WiFi in Client Mode where we connect to configured networks and in Scan Only Mode where
@@ -149,15 +145,6 @@ public class ConcreteClientModeManager implements ClientModeManager {
 
     @Nullable
     private ScanOnlyModeImpl mScanOnlyModeImpl = null;
-
-    /**
-     * One of  {@link WifiManager#WIFI_STATE_DISABLED},
-     * {@link WifiManager#WIFI_STATE_DISABLING},
-     * {@link WifiManager#WIFI_STATE_ENABLED},
-     * {@link WifiManager#WIFI_STATE_ENABLING},
-     * {@link WifiManager#WIFI_STATE_UNKNOWN}
-     */
-    private final AtomicInteger mWifiState = new AtomicInteger(WIFI_STATE_DISABLED);
 
     private boolean mIsStopped = true;
 
@@ -261,7 +248,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
         mDeferStopHandler.start(getWifiOffDeferringTimeMs());
     }
 
-    private class DeferStopHandler extends WifiHandler {
+    private class DeferStopHandler extends Handler {
         private boolean mIsDeferring = false;
         private ImsMmTelManager mImsMmTelManager = null;
         private Looper mLooper = null;
@@ -269,7 +256,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
         private int mMaximumDeferringTimeMillis = 0;
         private long mDeferringStartTimeMillis = 0;
         private ConnectivityManager mConnectivityManager = null;
-        private boolean mIsImsNetworkLost = false;
+        private List<ImsNetworkCallback> mImsNetworks = new ArrayList<>();
         private boolean mIsImsNetworkUnregistered = false;
 
         private final RegistrationManager.RegistrationCallback mImsRegistrationCallback =
@@ -293,12 +280,23 @@ public class ConcreteClientModeManager implements ClientModeManager {
                 };
 
         private final class ImsNetworkCallback extends NetworkCallback {
+            private final int mNetworkType;
             private int mRegisteredImsNetworkCount = 0;
+
+            /**
+             * Constructor for ImsNetworkCallback.
+             *
+             * @param type One of android.net.NetworkCapabilities.NetCapability.
+             */
+            ImsNetworkCallback(int type) {
+                mNetworkType = type;
+            }
 
             @Override
             public void onAvailable(Network network) {
                 synchronized (this) {
-                    Log.d(getTag(), "IMS network available: " + network);
+                    Log.d(getTag(), "IMS network available: " + network
+                            + ", type: " + mNetworkType);
                     mRegisteredImsNetworkCount++;
                 }
             }
@@ -308,22 +306,25 @@ public class ConcreteClientModeManager implements ClientModeManager {
                 synchronized (this) {
                     Log.d(getTag(), "IMS network lost: " + network
                             + " ,isDeferring: " + mIsDeferring
-                            + " ,registered IMS network count: " + mRegisteredImsNetworkCount);
+                            + " ,registered IMS network count: " + mRegisteredImsNetworkCount
+                            + ", type: " + mNetworkType);
                     mRegisteredImsNetworkCount--;
                     if (mIsDeferring && mRegisteredImsNetworkCount <= 0) {
                         mRegisteredImsNetworkCount = 0;
-                        mIsImsNetworkLost = true;
                         checkAndContinueToStopWifi();
                     }
                 }
             }
+
+            public boolean isNetworkLost() {
+                return 0 == mRegisteredImsNetworkCount;
+            }
         }
 
-        private NetworkCallback mImsNetworkCallback = null;
-
         DeferStopHandler(Looper looper) {
-            super(TAG, looper);
+            super(looper);
             mLooper = looper;
+            mConnectivityManager = mContext.getSystemService(ConnectivityManager.class);
         }
 
         public void start(int delayMs) {
@@ -357,27 +358,33 @@ public class ConcreteClientModeManager implements ClientModeManager {
                 return;
             }
 
+            registerImsNetworkCallback(NetworkCapabilities.NET_CAPABILITY_IMS);
+            registerImsNetworkCallback(NetworkCapabilities.NET_CAPABILITY_EIMS);
+        }
+
+        private void registerImsNetworkCallback(int imsType) {
             NetworkRequest imsRequest = new NetworkRequest.Builder()
-                    .addCapability(NetworkCapabilities.NET_CAPABILITY_IMS)
+                    .addCapability(imsType)
                     .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
                     .build();
-
-            mConnectivityManager =
-                    (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
-
-            mImsNetworkCallback = new ImsNetworkCallback();
-            mConnectivityManager.registerNetworkCallback(imsRequest, mImsNetworkCallback,
+            ImsNetworkCallback imsCallback = new ImsNetworkCallback(imsType);
+            mConnectivityManager.registerNetworkCallback(imsRequest, imsCallback,
                     new Handler(mLooper));
+            mImsNetworks.add(imsCallback);
         }
 
         private void checkAndContinueToStopWifi() {
-            if (mIsImsNetworkLost && mIsImsNetworkUnregistered) {
-                // Add delay for targets where IMS PDN down at modem takes additional delay.
-                int delay = mContext.getResources()
-                        .getInteger(R.integer.config_wifiDelayDisconnectOnImsLostMs);
-                if (delay == 0 || !postDelayed(mRunnable, delay)) {
-                    continueToStopWifi();
-                }
+            if (!mIsImsNetworkUnregistered) return;
+
+            for (ImsNetworkCallback c: mImsNetworks) {
+                if (!c.isNetworkLost()) return;
+            }
+
+            // Add delay for targets where IMS PDN down at modem takes additional delay.
+            int delay = mContext.getResources()
+                    .getInteger(R.integer.config_wifiDelayDisconnectOnImsLostMs);
+            if (delay == 0 || !postDelayed(mRunnable, delay)) {
+                continueToStopWifi();
             }
         }
 
@@ -419,13 +426,14 @@ public class ConcreteClientModeManager implements ClientModeManager {
                 }
             }
 
-            if (mConnectivityManager != null && mImsNetworkCallback != null) {
-                mConnectivityManager.unregisterNetworkCallback(mImsNetworkCallback);
-                mImsNetworkCallback = null;
+            if (mConnectivityManager != null && mImsNetworks.size() > 0) {
+                for (ImsNetworkCallback c: mImsNetworks) {
+                    mConnectivityManager.unregisterNetworkCallback(c);
+                }
+                mImsNetworks.clear();
             }
 
             mIsDeferring = false;
-            mIsImsNetworkLost = false;
             mIsImsNetworkUnregistered = false;
         }
     }
@@ -434,8 +442,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
      * Get deferring time before turning off WiFi.
      */
     private int getWifiOffDeferringTimeMs() {
-        SubscriptionManager subscriptionManager = (SubscriptionManager) mContext.getSystemService(
-                Context.TELEPHONY_SUBSCRIPTION_SERVICE);
+        SubscriptionManager subscriptionManager =
+                mContext.getSystemService(SubscriptionManager.class);
         if (subscriptionManager == null) {
             Log.d(getTag(), "SubscriptionManager not found");
             return 0;
@@ -479,8 +487,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
             return 0;
         }
 
-        CarrierConfigManager configManager =
-                (CarrierConfigManager) mContext.getSystemService(Context.CARRIER_CONFIG_SERVICE);
+        CarrierConfigManager configManager = mContext.getSystemService(CarrierConfigManager.class);
         PersistableBundle config = configManager.getConfigForSubId(subId);
         return (config != null)
                 ? config.getInt(CarrierConfigManager.Ims.KEY_WIFI_OFF_DEFERRING_TIME_MILLIS_INT)
@@ -614,7 +621,6 @@ public class ConcreteClientModeManager implements ClientModeManager {
         pw.println("mIsDbs: " + mIsDbs);
         mStateMachine.dump(fd, pw, args);
         pw.println();
-        pw.println("Wi-Fi is " + syncGetWifiStateByName());
         if (mClientModeImpl == null) {
             pw.println("No active ClientModeImpl instance");
         } else {
@@ -642,14 +648,14 @@ public class ConcreteClientModeManager implements ClientModeManager {
      * @param currentState current wifi state
      */
     private void updateConnectModeState(ClientRole role, int newState, int currentState) {
-        setWifiStateForApiCalls(newState);
-
-        if (newState == WifiManager.WIFI_STATE_UNKNOWN) {
-            // do not need to broadcast failure to system
-            return;
-        }
         if (role != ROLE_CLIENT_PRIMARY || !mWifiStateChangeBroadcastEnabled) {
             // do not raise public broadcast unless this is the primary client mode manager
+            return;
+        }
+        // TODO(b/186881160): May need to restore per STA state for Battery state reported.
+        mWifiInjector.getActiveModeWarden().setWifiStateForApiCalls(newState);
+        if (newState == WifiManager.WIFI_STATE_UNKNOWN) {
+            // do not need to broadcast failure to system
             return;
         }
 
@@ -674,41 +680,6 @@ public class ConcreteClientModeManager implements ClientModeManager {
             broadcast.send();
         } else {
             mBroadcastQueue.queueOrSendBroadcast(this, broadcast);
-        }
-    }
-
-    private void setWifiStateForApiCalls(int newState) {
-        switch (newState) {
-            case WIFI_STATE_DISABLING:
-            case WIFI_STATE_DISABLED:
-            case WIFI_STATE_ENABLING:
-            case WIFI_STATE_ENABLED:
-            case WIFI_STATE_UNKNOWN:
-                if (mVerboseLoggingEnabled) {
-                    Log.d(getTag(), "setting wifi state to: " + newState);
-                }
-                mWifiState.set(newState);
-                break;
-            default:
-                Log.d(getTag(), "attempted to set an invalid state: " + newState);
-                break;
-        }
-    }
-
-    private String syncGetWifiStateByName() {
-        switch (mWifiState.get()) {
-            case WIFI_STATE_DISABLING:
-                return "disabling";
-            case WIFI_STATE_DISABLED:
-                return "disabled";
-            case WIFI_STATE_ENABLING:
-                return "enabling";
-            case WIFI_STATE_ENABLED:
-                return "enabled";
-            case WIFI_STATE_UNKNOWN:
-                return "unknown state";
-            default:
-                return "[invalid state]";
         }
     }
 
@@ -805,6 +776,48 @@ public class ConcreteClientModeManager implements ClientModeManager {
         }
 
         /**
+         * Return the additional string to be logged by LogRec.
+         *
+         * @param msg that was processed
+         * @return information to be logged as a String
+         */
+        @Override
+        protected String getLogRecString(Message msg) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(msg.arg1)
+                    .append(" ").append(msg.arg2);
+            if (msg.obj != null) {
+                sb.append(" ").append(msg.obj);
+            }
+            return sb.toString();
+        }
+
+        /**
+         * Convert the |what| field in logs from int to String.
+         */
+        @Override
+        protected String getWhatToString(int what) {
+            switch (what) {
+                case CMD_START:
+                    return "CMD_START";
+                case CMD_SWITCH_TO_SCAN_ONLY_MODE:
+                    return "CMD_SWITCH_TO_SCAN_ONLY_MODE";
+                case CMD_SWITCH_TO_CONNECT_MODE:
+                    return "CMD_SWITCH_TO_CONNECT_MODE";
+                case CMD_INTERFACE_STATUS_CHANGED:
+                    return "CMD_INTERFACE_STATUS_CHANGED";
+                case CMD_INTERFACE_DESTROYED:
+                    return "CMD_INTERFACE_DESTROYED";
+                case CMD_INTERFACE_DOWN:
+                    return "CMD_INTERFACE_DOWN";
+                case CMD_SWITCH_TO_SCAN_ONLY_MODE_CONTINUE:
+                    return "CMD_SWITCH_TO_SCAN_ONLY_MODE_CONTINUE";
+                default:
+                    return "what:" + what;
+            }
+        }
+
+        /**
          * Reset this ConcreteClientModeManager when its role changes, so that it can be reused for
          * another purpose.
          */
@@ -872,6 +885,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
                                 mWifiNativeInterfaceCallback, roleChangeInfo.requestorWs);
                         if (TextUtils.isEmpty(mClientInterfaceName)) {
                             Log.e(getTag(), "Failed to create ClientInterface. Sit in Idle");
+                            takeBugReportInterfaceFailureIfNeeded(
+                                    "Wi-Fi scan STA interface HAL failure");
                             mModeListener.onStartFailure(ConcreteClientModeManager.this);
                             break;
                         }
@@ -935,6 +950,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
                             updateConnectModeState(roleChangeInfo.role,
                                     WifiManager.WIFI_STATE_DISABLED,
                                     WifiManager.WIFI_STATE_UNKNOWN);
+                            takeBugReportInterfaceFailureIfNeeded(
+                                    "Wi-Fi STA interface HAL failure");
                             mModeListener.onStartFailure(ConcreteClientModeManager.this);
                             break;
                         }
@@ -1178,9 +1195,10 @@ public class ConcreteClientModeManager implements ClientModeManager {
         }
     }
 
-    @Override
-    public int syncGetWifiState() {
-        return mWifiState.get();
+    private void takeBugReportInterfaceFailureIfNeeded(String bugTitle) {
+        if (mWifiInjector.getDeviceConfigFacade().isInterfaceFailureBugreportEnabled()) {
+            mWifiInjector.getWifiDiagnostics().takeBugReport(bugTitle, bugTitle);
+        }
     }
 
     @NonNull
@@ -1200,14 +1218,14 @@ public class ConcreteClientModeManager implements ClientModeManager {
 
     @Override
     public void connectNetwork(NetworkUpdateResult result, ActionListenerWrapper wrapper,
-            int callingUid) {
-        getClientMode().connectNetwork(result, wrapper, callingUid);
+            int callingUid, @NonNull String packageName) {
+        getClientMode().connectNetwork(result, wrapper, callingUid, packageName);
     }
 
     @Override
     public void saveNetwork(NetworkUpdateResult result, ActionListenerWrapper wrapper,
-            int callingUid) {
-        getClientMode().saveNetwork(result, wrapper, callingUid);
+            int callingUid, @NonNull String packageName) {
+        getClientMode().saveNetwork(result, wrapper, callingUid, packageName);
     }
 
     @Override
@@ -1476,5 +1494,10 @@ public class ConcreteClientModeManager implements ClientModeManager {
                 + " iface=" + getInterfaceName()
                 + " role=" + getRole()
                 + "}";
+    }
+
+    @Override
+    public void updateCapabilities() {
+        getClientMode().updateCapabilities();
     }
 }

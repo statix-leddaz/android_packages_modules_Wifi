@@ -114,6 +114,17 @@ public class WifiSettingsConfigStore {
     public static final Key<String> WIFI_DEFAULT_COUNTRY_CODE =
             new Key<>("wifi_default_country_code", WifiCountryCode.getOemDefaultCountryCode());
 
+    /**
+     * Store the supported features retrieved from WiFi HAL and Supplicant HAL
+     */
+    public static final Key<Long> WIFI_NATIVE_SUPPORTED_FEATURES =
+            new Key<>("wifi_native_supported_features", 0L);
+
+    /**
+     * Store the static chip info retrieved from WiFi HAL
+     */
+    public static final Key<String> WIFI_STATIC_CHIP_INFO = new Key<>("wifi_static_chip_info", "");
+
     /******** Wifi shared pref keys ***************/
 
     private final Context mContext;

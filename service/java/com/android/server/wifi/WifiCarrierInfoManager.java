@@ -20,7 +20,6 @@ import static android.Manifest.permission.NETWORK_SETTINGS;
 
 import android.annotation.IntDef;
 import android.annotation.NonNull;
-import android.app.AlertDialog;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -29,7 +28,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.content.res.Resources;
 import android.database.ContentObserver;
 import android.graphics.drawable.Icon;
 import android.net.Uri;
@@ -57,7 +55,6 @@ import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
 import android.util.SparseBooleanArray;
-import android.view.WindowManager;
 
 import androidx.annotation.RequiresApi;
 
@@ -172,7 +169,6 @@ public class WifiCarrierInfoManager {
     private final WifiContext mContext;
     private final Handler mHandler;
     private final WifiInjector mWifiInjector;
-    private final Resources mResources;
     private final TelephonyManager mTelephonyManager;
     private final SubscriptionManager mSubscriptionManager;
     private final WifiNotificationManager mNotificationManager;
@@ -205,8 +201,8 @@ public class WifiCarrierInfoManager {
             new ArrayList<>();
     private final SparseArray<SimInfo> mSubIdToSimInfoSparseArray = new SparseArray<>();
     private final Map<ParcelUuid, List<Integer>> mSubscriptionGroupMap = new HashMap<>();
-    private List<WifiCarrierPrivilegeListener> mCarrierPrivilegeListeners;
-    private final SparseArray<List<String>> mCarrierPrivilegedPackagesBySimSlot =
+    private List<WifiCarrierPrivilegeCallback> mCarrierPrivilegeCallbacks;
+    private final SparseArray<Set<String>> mCarrierPrivilegedPackagesBySimSlot =
             new SparseArray<>();
 
     private List<SubscriptionInfo> mActiveSubInfos = null;
@@ -465,13 +461,13 @@ public class WifiCarrierInfoManager {
                 for (int simSlot = 0; simSlot < mTelephonyManager.getActiveModemCount();
                         simSlot++) {
                     if (!mCarrierPrivilegedPackagesBySimSlot.contains(simSlot)) {
-                        WifiCarrierPrivilegeListener listener =
-                                new WifiCarrierPrivilegeListener(simSlot);
-                        mTelephonyManager.addCarrierPrivilegesListener(simSlot,
-                                new HandlerExecutor(mHandler), listener);
+                        WifiCarrierPrivilegeCallback callback =
+                                new WifiCarrierPrivilegeCallback(simSlot);
+                        mTelephonyManager.registerCarrierPrivilegesCallback(simSlot,
+                                new HandlerExecutor(mHandler), callback);
                         mCarrierPrivilegedPackagesBySimSlot.append(simSlot,
-                                Collections.emptyList());
-                        mCarrierPrivilegeListeners.add(listener);
+                                Collections.emptySet());
+                        mCarrierPrivilegeCallbacks.add(callback);
                     }
                 }
             }
@@ -483,18 +479,18 @@ public class WifiCarrierInfoManager {
      */
     @VisibleForTesting
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    public final class WifiCarrierPrivilegeListener implements
-            TelephonyManager.CarrierPrivilegesListener {
+    public final class WifiCarrierPrivilegeCallback implements
+            TelephonyManager.CarrierPrivilegesCallback {
         private int mSimSlot = -1;
 
-        public WifiCarrierPrivilegeListener(int simSlot) {
+        public WifiCarrierPrivilegeCallback(int simSlot) {
             mSimSlot = simSlot;
         }
 
         @Override
         public void onCarrierPrivilegesChanged(
-                @androidx.annotation.NonNull List<String> privilegedPackageNames,
-                @androidx.annotation.NonNull int[] privilegedUids) {
+                @androidx.annotation.NonNull Set<String> privilegedPackageNames,
+                @androidx.annotation.NonNull Set<Integer> privilegedUids) {
             mCarrierPrivilegedPackagesBySimSlot.put(mSimSlot, privilegedPackageNames);
             resetCarrierPrivilegedApps();
         }
@@ -518,7 +514,6 @@ public class WifiCarrierInfoManager {
             @NonNull Clock clock) {
         mTelephonyManager = telephonyManager;
         mContext = context;
-        mResources = mContext.getResources();
         mWifiInjector = wifiInjector;
         mHandler = handler;
         mSubscriptionManager = subscriptionManager;
@@ -564,7 +559,7 @@ public class WifiCarrierInfoManager {
                     }
                 });
         if (SdkLevel.isAtLeastT()) {
-            mCarrierPrivilegeListeners = new ArrayList<>();
+            mCarrierPrivilegeCallbacks = new ArrayList<>();
         }
     }
 
@@ -642,7 +637,7 @@ public class WifiCarrierInfoManager {
             return false;
         }
         for (String curSsid : macRandDisabledSsids) {
-            if (sanitizedSsid.equals(curSsid)) {
+            if (TextUtils.equals(sanitizedSsid, curSsid)) {
                 return true;
             }
         }
@@ -1763,7 +1758,7 @@ public class WifiCarrierInfoManager {
         }
         Notification.Action userAllowAppNotificationAction =
                 new Notification.Action.Builder(null,
-                        mResources.getText(R.string
+                        mContext.getResources().getText(R.string
                                 .wifi_suggestion_action_allow_imsi_privacy_exemption_carrier),
                         getPrivateBroadcast(NOTIFICATION_USER_ALLOWED_CARRIER_INTENT_ACTION,
                                 Pair.create(EXTRA_CARRIER_NAME, carrierName),
@@ -1771,7 +1766,7 @@ public class WifiCarrierInfoManager {
                         .build();
         Notification.Action userDisallowAppNotificationAction =
                 new Notification.Action.Builder(null,
-                        mResources.getText(R.string
+                        mContext.getResources().getText(R.string
                                 .wifi_suggestion_action_disallow_imsi_privacy_exemption_carrier),
                         getPrivateBroadcast(NOTIFICATION_USER_DISALLOWED_CARRIER_INTENT_ACTION,
                                 Pair.create(EXTRA_CARRIER_NAME, carrierName),
@@ -1782,12 +1777,12 @@ public class WifiCarrierInfoManager {
                 mContext, WifiService.NOTIFICATION_NETWORK_STATUS)
                 .setSmallIcon(Icon.createWithResource(mContext.getWifiOverlayApkPkgName(),
                         com.android.wifi.resources.R.drawable.stat_notify_wifi_in_range))
-                .setTicker(mResources.getString(
+                .setTicker(mContext.getResources().getString(
                         R.string.wifi_suggestion_imsi_privacy_title, carrierName))
-                .setContentTitle(mResources.getString(
+                .setContentTitle(mContext.getResources().getString(
                         R.string.wifi_suggestion_imsi_privacy_title, carrierName))
                 .setStyle(new Notification.BigTextStyle()
-                        .bigText(mResources.getString(
+                        .bigText(mContext.getResources().getString(
                                 R.string.wifi_suggestion_imsi_privacy_content)))
                 .setContentIntent(getPrivateBroadcast(NOTIFICATION_USER_CLICKED_INTENT_ACTION,
                         Pair.create(EXTRA_CARRIER_NAME, carrierName),
@@ -1797,8 +1792,9 @@ public class WifiCarrierInfoManager {
                         Pair.create(EXTRA_CARRIER_ID, carrierId)))
                 .setShowWhen(false)
                 .setLocalOnly(true)
-                .setColor(mResources.getColor(android.R.color.system_notification_accent_color,
-                        mContext.getTheme()))
+                .setColor(mContext.getResources()
+                        .getColor(android.R.color.system_notification_accent_color,
+                                mContext.getTheme()))
                 .addAction(userDisallowAppNotificationAction)
                 .addAction(userAllowAppNotificationAction)
                 .setTimeoutAfter(NOTIFICATION_EXPIRY_MILLS)
@@ -1814,32 +1810,40 @@ public class WifiCarrierInfoManager {
     private void sendImsiPrivacyConfirmationDialog(@NonNull String carrierName, int carrierId) {
         mWifiMetrics.addUserApprovalCarrierUiReaction(ACTION_USER_ALLOWED_CARRIER,
                 mIsLastUserApprovalUiDialog);
-        AlertDialog dialog = mFrameworkFacade.makeAlertDialogBuilder(mContext)
-                .setTitle(mResources.getString(
-                        R.string.wifi_suggestion_imsi_privacy_exemption_confirmation_title))
-                .setMessage(mResources.getString(
+        mWifiInjector.getWifiDialogManager().createSimpleDialog(
+                mContext.getResources().getString(
+                        R.string.wifi_suggestion_imsi_privacy_exemption_confirmation_title),
+                mContext.getResources().getString(
                         R.string.wifi_suggestion_imsi_privacy_exemption_confirmation_content,
-                        carrierName))
-                .setPositiveButton(mResources.getText(
+                        carrierName),
+                mContext.getResources().getString(
                         R.string.wifi_suggestion_action_allow_imsi_privacy_exemption_confirmation),
-                        (d, which) -> mHandler.post(
-                                () -> handleUserAllowCarrierExemptionAction(
-                                        carrierName, carrierId)))
-                .setNegativeButton(mResources.getText(
-                        R.string.wifi_suggestion_action_disallow_imsi_privacy_exemption_confirmation),
-                        (d, which) -> mHandler.post(
-                                () -> handleUserDisallowCarrierExemptionAction(
-                                        carrierName, carrierId)))
-                .setOnDismissListener(
-                        (d) -> mHandler.post(this::handleUserDismissAction))
-                .setOnCancelListener(
-                        (d) -> mHandler.post(this::handleUserDismissAction))
-                .create();
-        dialog.setCanceledOnTouchOutside(false);
-        dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
-        dialog.getWindow().addSystemFlags(
-                WindowManager.LayoutParams.SYSTEM_FLAG_SHOW_FOR_ALL_USERS);
-        dialog.show();
+                mContext.getResources().getString(R.string
+                        .wifi_suggestion_action_disallow_imsi_privacy_exemption_confirmation),
+                null /* neutralButtonText */,
+                new WifiDialogManager.SimpleDialogCallback() {
+                    @Override
+                    public void onPositiveButtonClicked() {
+                        handleUserAllowCarrierExemptionAction(carrierName, carrierId);
+                    }
+
+                    @Override
+                    public void onNegativeButtonClicked() {
+                        handleUserDisallowCarrierExemptionAction(carrierName, carrierId);
+                    }
+
+                    @Override
+                    public void onNeutralButtonClicked() {
+                        // Not used.
+                        handleUserDismissAction();
+                    }
+
+                    @Override
+                    public void onCancelled() {
+                        handleUserDismissAction();
+                    }
+                },
+                new WifiThreadRunner(mHandler)).launchDialog();
         mIsLastUserApprovalUiDialog = true;
     }
 
@@ -1983,10 +1987,10 @@ public class WifiCarrierInfoManager {
             mUserDataEnabledListenerList.clear();
         }
         if (SdkLevel.isAtLeastT()) {
-            for (WifiCarrierPrivilegeListener listener : mCarrierPrivilegeListeners) {
-                mTelephonyManager.removeCarrierPrivilegesListener(listener);
+            for (WifiCarrierPrivilegeCallback callback : mCarrierPrivilegeCallbacks) {
+                mTelephonyManager.unregisterCarrierPrivilegesCallback(callback);
             }
-            mCarrierPrivilegeListeners.clear();
+            mCarrierPrivilegeCallbacks.clear();
         }
         resetNotification();
         saveToStore();

@@ -34,6 +34,7 @@ import android.util.Log;
 import android.util.SparseArray;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.server.wifi.util.StringUtil;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.wifi.resources.R;
 
@@ -48,6 +49,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -84,8 +86,10 @@ public class WifiBlocklistMonitor {
     public static final int REASON_FRAMEWORK_DISCONNECT_CONNECTED_SCORE = 11;
     // Non-local disconnection in the middle of connecting state
     public static final int REASON_NONLOCAL_DISCONNECT_CONNECTING = 12;
+    // Connection attempt aborted by the watchdog because the AP didn't respond.
+    public static final int REASON_FAILURE_NO_RESPONSE = 13;
     // Constant being used to keep track of how many failure reasons there are.
-    public static final int NUMBER_REASON_CODES = 13;
+    public static final int NUMBER_REASON_CODES = 14;
     public static final int INVALID_REASON = -1;
 
     @IntDef(prefix = { "REASON_" }, value = {
@@ -101,7 +105,8 @@ public class WifiBlocklistMonitor {
             REASON_FRAMEWORK_DISCONNECT_MBO_OCE,
             REASON_FRAMEWORK_DISCONNECT_FAST_RECONNECT,
             REASON_FRAMEWORK_DISCONNECT_CONNECTED_SCORE,
-            REASON_NONLOCAL_DISCONNECT_CONNECTING
+            REASON_NONLOCAL_DISCONNECT_CONNECTING,
+            REASON_FAILURE_NO_RESPONSE
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface FailureReason {}
@@ -178,6 +183,8 @@ public class WifiBlocklistMonitor {
         // to true once it is covered in SSID blocklist.
         result.put(REASON_NONLOCAL_DISCONNECT_CONNECTING, new BssidDisableReason(
                 "REASON_NONLOCAL_DISCONNECT_CONNECTING", true, false));
+        result.put(REASON_FAILURE_NO_RESPONSE, new BssidDisableReason(
+                "REASON_FAILURE_NO_RESPONSE", true, true));
         return result;
     }
 
@@ -405,6 +412,9 @@ public class WifiBlocklistMonitor {
         FAILURE_COUNT_DISABLE_THRESHOLD[REASON_NONLOCAL_DISCONNECT_CONNECTING] =
                 mContext.getResources().getInteger(R.integer
                         .config_wifiBssidBlocklistMonitorNonlocalDisconnectConnectingThreshold);
+        FAILURE_COUNT_DISABLE_THRESHOLD[REASON_FAILURE_NO_RESPONSE] =
+                mContext.getResources().getInteger(R.integer
+                        .config_wifiBssidBlocklistMonitorNoResponseThreshold);
         mFailureCountDisableThresholdArrayInitialized = true;
         return FAILURE_COUNT_DISABLE_THRESHOLD[reasonCode];
     }
@@ -502,6 +512,7 @@ public class WifiBlocklistMonitor {
         mWifiScoreCard.resetBssidBlocklistStreak(ssid, bssid, REASON_AUTHENTICATION_FAILURE);
         mWifiScoreCard.resetBssidBlocklistStreak(ssid, bssid,
                 REASON_NONLOCAL_DISCONNECT_CONNECTING);
+        mWifiScoreCard.resetBssidBlocklistStreak(ssid, bssid, REASON_FAILURE_NO_RESPONSE);
 
         long connectionTime = mClock.getWallClockMillis();
         long prevConnectionTime = mWifiScoreCard.setBssidConnectionTimestampMs(
@@ -524,6 +535,7 @@ public class WifiBlocklistMonitor {
         status.failureCount[REASON_ASSOCIATION_TIMEOUT] = 0;
         status.failureCount[REASON_AUTHENTICATION_FAILURE] = 0;
         status.failureCount[REASON_NONLOCAL_DISCONNECT_CONNECTING] = 0;
+        status.failureCount[REASON_FAILURE_NO_RESPONSE] = 0;
         if (connectionTime - prevConnectionTime > ABNORMAL_DISCONNECT_RESET_TIME_MS) {
             status.failureCount[REASON_ABNORMAL_DISCONNECT] = 0;
         }
@@ -836,10 +848,9 @@ public class WifiBlocklistMonitor {
 
         private StringBuilder createStringBuilderWithLogTime() {
             StringBuilder sb = new StringBuilder();
-            Calendar calendar = Calendar.getInstance();
-            calendar.setTimeInMillis(mClock.getWallClockMillis());
-            sb.append("logTimeMs=" + String.format("%tm-%td %tH:%tM:%tS.%tL", calendar, calendar,
-                    calendar, calendar, calendar, calendar));
+            Calendar c = Calendar.getInstance();
+            c.setTimeInMillis(mClock.getWallClockMillis());
+            sb.append("logTime=").append(StringUtil.calendarToString(c));
             return sb;
         }
 
@@ -921,15 +932,11 @@ public class WifiBlocklistMonitor {
             if (isInBlocklist) {
                 sb.append(", blockReason=" + getFailureReasonString(blockReason));
                 sb.append(", lastRssi=" + lastRssi);
-                Calendar calendar = Calendar.getInstance();
-                calendar.setTimeInMillis(blocklistStartTimeMs);
-                sb.append(", blocklistStartTimeMs="
-                        + String.format("%tm-%td %tH:%tM:%tS.%tL", calendar, calendar,
-                        calendar, calendar, calendar, calendar));
-                calendar.setTimeInMillis(blocklistEndTimeMs);
-                sb.append(", blocklistEndTimeMs="
-                        + String.format("%tm-%td %tH:%tM:%tS.%tL", calendar, calendar,
-                        calendar, calendar, calendar, calendar));
+                Calendar c = Calendar.getInstance();
+                c.setTimeInMillis(blocklistStartTimeMs);
+                sb.append(", blocklistStartTime=").append(StringUtil.calendarToString(c));
+                c.setTimeInMillis(blocklistEndTimeMs);
+                sb.append(", blocklistEndTime=").append(StringUtil.calendarToString(c));
             }
             return sb.toString();
         }
@@ -978,18 +985,66 @@ public class WifiBlocklistMonitor {
                         5 * 60 * 1000));
     }
 
-    /** Update DisableReasonInfo with carrier configurations defined in an overlay. **/
-    public void loadCarrierConfigsForDisableReasonInfos() {
-        int duration = mContext.getResources().getInteger(
-                R.integer.config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs);
+    /**
+     * Update DisableReasonInfo with carrier configurations defined in an overlay.
+     *
+     * TODO(236173881): mDisableReasonInfo storing the carrier specific EAP failure threshold and
+     * duration is always keyed by NetworkSelectionStatus.DISABLED_AUTHENTICATION_PRIVATE_EAP_ERROR.
+     * This is error prone now that different carrier networks could have different thresholds and
+     * durations. But with the current code only the last updated one will remain in
+     * mDisableReasonInfo. Need to clean this up to be more robust.
+     */
+    public void loadCarrierConfigsForDisableReasonInfos(
+            @NonNull CarrierSpecificEapFailureConfig config) {
+        if (config == null) {
+            Log.e(TAG, "Unexpected null CarrierSpecificEapFailureConfig");
+            return;
+        }
         DisableReasonInfo disableReasonInfo = new DisableReasonInfo(
                 "NETWORK_SELECTION_DISABLED_AUTHENTICATION_PRIVATE_EAP_ERROR",
-                mContext.getResources().getInteger(R.integer
-                        .config_wifiDisableReasonAuthenticationFailureCarrierSpecificThreshold),
-                duration);
+                config.threshold, config.durationMs);
         mDisableReasonInfo.put(
                 NetworkSelectionStatus.DISABLED_AUTHENTICATION_PRIVATE_EAP_ERROR,
                 disableReasonInfo);
+    }
+
+    /**
+     * Class to be used to represent blocklist behavior for a certain EAP error code.
+     */
+    public static class CarrierSpecificEapFailureConfig {
+        // number of failures to disable
+        public final int threshold;
+        // disable duration in ms. -1 means permanent disable.
+        public final int durationMs;
+        public CarrierSpecificEapFailureConfig(int threshold, int durationMs) {
+            this.threshold = threshold;
+            this.durationMs = durationMs;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(threshold, durationMs);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof CarrierSpecificEapFailureConfig)) {
+                return false;
+            }
+            CarrierSpecificEapFailureConfig lhs = (CarrierSpecificEapFailureConfig) obj;
+            return threshold == lhs.threshold && durationMs == lhs.durationMs;
+        }
+
+        @Override
+        public String toString() {
+            return new StringBuilder()
+                    .append("threshold=").append(threshold)
+                    .append(" durationMs=").append(durationMs)
+                    .toString();
+        }
     }
 
     /**
@@ -999,23 +1054,7 @@ public class WifiBlocklistMonitor {
     public boolean shouldEnableNetwork(WifiConfiguration config) {
         NetworkSelectionStatus networkStatus = config.getNetworkSelectionStatus();
         if (networkStatus.isNetworkTemporaryDisabled()) {
-            long timeDifferenceMs =
-                    mClock.getElapsedSinceBootMillis() - networkStatus.getDisableTime();
-            int disableReason = networkStatus.getNetworkSelectionDisableReason();
-            long disableTimeoutMs = (long) getNetworkSelectionDisableTimeoutMillis(disableReason);
-            int exponentialBackoffCount = mWifiScoreCard.lookupNetwork(config.SSID)
-                    .getRecentStats().getCount(WifiScoreCard.CNT_CONSECUTIVE_CONNECTION_FAILURE)
-                    - NUM_CONSECUTIVE_FAILURES_PER_NETWORK_EXP_BACKOFF;
-            for (int i = 0; i < exponentialBackoffCount; i++) {
-                disableTimeoutMs *= 2;
-                if (disableTimeoutMs > WIFI_CONFIG_MAX_DISABLE_DURATION_MILLIS) {
-                    disableTimeoutMs = WIFI_CONFIG_MAX_DISABLE_DURATION_MILLIS;
-                    break;
-                }
-            }
-            if (timeDifferenceMs >= disableTimeoutMs) {
-                return true;
-            }
+            return mClock.getElapsedSinceBootMillis() >= networkStatus.getDisableEndTime();
         }
         return false;
     }
@@ -1118,6 +1157,8 @@ public class WifiBlocklistMonitor {
                 NetworkSelectionStatus.NETWORK_SELECTION_ENABLED);
         status.setDisableTime(
                 NetworkSelectionStatus.INVALID_NETWORK_SELECTION_DISABLE_TIMESTAMP);
+        status.setDisableEndTime(
+                NetworkSelectionStatus.INVALID_NETWORK_SELECTION_DISABLE_TIMESTAMP);
         status.setNetworkSelectionDisableReason(NetworkSelectionStatus.DISABLED_NONE);
 
         // Clear out all the disable reason counters.
@@ -1137,9 +1178,25 @@ public class WifiBlocklistMonitor {
                 NetworkSelectionStatus.NETWORK_SELECTION_TEMPORARY_DISABLED);
         // Only need a valid time filled in for temporarily disabled networks.
         status.setDisableTime(mClock.getElapsedSinceBootMillis());
+        status.setDisableEndTime(calculateDisableEndTime(config, disableReason));
         status.setNetworkSelectionDisableReason(disableReason);
         handleWifiConfigurationDisabled(config.SSID);
         mWifiMetrics.incrementWificonfigurationBlocklistCount(disableReason);
+    }
+
+    private long calculateDisableEndTime(WifiConfiguration config, int disableReason) {
+        long disableDurationMs = (long) getNetworkSelectionDisableTimeoutMillis(disableReason);
+        int exponentialBackoffCount = mWifiScoreCard.lookupNetwork(config.SSID)
+                .getRecentStats().getCount(WifiScoreCard.CNT_CONSECUTIVE_CONNECTION_FAILURE)
+                - NUM_CONSECUTIVE_FAILURES_PER_NETWORK_EXP_BACKOFF;
+        for (int i = 0; i < exponentialBackoffCount; i++) {
+            disableDurationMs *= 2;
+            if (disableDurationMs > WIFI_CONFIG_MAX_DISABLE_DURATION_MILLIS) {
+                disableDurationMs = WIFI_CONFIG_MAX_DISABLE_DURATION_MILLIS;
+                break;
+            }
+        }
+        return mClock.getElapsedSinceBootMillis() + disableDurationMs;
     }
 
     /**

@@ -51,11 +51,19 @@ import android.hardware.wifi.supplicant.IfaceType;
 import android.hardware.wifi.supplicant.KeyMgmtMask;
 import android.hardware.wifi.supplicant.LegacyMode;
 import android.hardware.wifi.supplicant.MloLinksInfo;
+import android.hardware.wifi.supplicant.QosPolicyClassifierParams;
+import android.hardware.wifi.supplicant.QosPolicyClassifierParamsMask;
+import android.hardware.wifi.supplicant.QosPolicyData;
+import android.hardware.wifi.supplicant.QosPolicyRequestType;
+import android.hardware.wifi.supplicant.QosPolicyStatus;
+import android.hardware.wifi.supplicant.QosPolicyStatusCode;
 import android.hardware.wifi.supplicant.RxFilterType;
 import android.hardware.wifi.supplicant.WifiTechnology;
 import android.hardware.wifi.supplicant.WpaDriverCapabilitiesMask;
 import android.hardware.wifi.supplicant.WpsConfigMethods;
+import android.net.DscpPolicy;
 import android.net.MacAddress;
+import android.net.NetworkAgent;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiAnnotations;
@@ -102,6 +110,9 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
      */
     private static final Pattern WPS_DEVICE_TYPE_PATTERN =
             Pattern.compile("^(\\d{1,2})-([0-9a-fA-F]{8})-(\\d{1,2})$");
+
+    private static final int MIN_PORT_NUM = 0;
+    private static final int MAX_PORT_NUM = 65535;
 
     private final Object mLock = new Object();
     private boolean mVerboseLoggingEnabled = false;
@@ -407,8 +418,10 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
             return false;
         }
         Log.i(TAG, "Obtained ISupplicant binder.");
+        Log.i(TAG, "Local Version: " + ISupplicant.VERSION);
 
         try {
+            Log.i(TAG, "Remote Version: " + mISupplicant.getInterfaceVersion());
             IBinder serviceBinder = getServiceBinderMockable();
             if (serviceBinder == null) {
                 return false;
@@ -602,7 +615,8 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
 
             SecurityParams params = config.getNetworkSelectionStatus()
                     .getCandidateSecurityParams();
-            if (params != null && !params.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
+            if (params != null && !(params.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)
+                    || params.isSecurityType(WifiConfiguration.SECURITY_TYPE_DPP))) {
                 List<ArrayList<Byte>> pmkDataList = mPmkCacheManager.get(config.networkId);
                 if (pmkDataList != null) {
                     Log.i(TAG, "Set PMK cache for config id " + config.networkId);
@@ -2637,6 +2651,83 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         }
     }
 
+    protected byte dscpPolicyToAidlQosPolicyStatusCode(int status) {
+        switch (status) {
+            case NetworkAgent.DSCP_POLICY_STATUS_SUCCESS:
+            case NetworkAgent.DSCP_POLICY_STATUS_DELETED:
+                return QosPolicyStatusCode.QOS_POLICY_SUCCESS;
+            case NetworkAgent.DSCP_POLICY_STATUS_REQUEST_DECLINED:
+                return QosPolicyStatusCode.QOS_POLICY_REQUEST_DECLINED;
+            case NetworkAgent.DSCP_POLICY_STATUS_REQUESTED_CLASSIFIER_NOT_SUPPORTED:
+                return QosPolicyStatusCode.QOS_POLICY_CLASSIFIER_NOT_SUPPORTED;
+            case NetworkAgent.DSCP_POLICY_STATUS_INSUFFICIENT_PROCESSING_RESOURCES:
+                return QosPolicyStatusCode.QOS_POLICY_INSUFFICIENT_RESOURCES;
+            default:
+                Log.e(TAG, "Invalid DSCP policy failure code received: " + status);
+                return QosPolicyStatusCode.QOS_POLICY_REQUEST_DECLINED;
+        }
+    }
+
+    protected static int halToFrameworkQosPolicyRequestType(byte requestType) {
+        switch (requestType) {
+            case QosPolicyRequestType.QOS_POLICY_ADD:
+                return SupplicantStaIfaceHal.QOS_POLICY_REQUEST_ADD;
+            case QosPolicyRequestType.QOS_POLICY_REMOVE:
+                return SupplicantStaIfaceHal.QOS_POLICY_REQUEST_REMOVE;
+            default:
+                Log.e(TAG, "Invalid QosPolicyRequestType received: " + requestType);
+                return -1;
+        }
+    }
+
+    private static boolean qosClassifierParamHasValue(int classifierParamMask, int paramBit) {
+        return (classifierParamMask & paramBit) != 0;
+    }
+
+    /**
+     * Convert from a HAL QosPolicyData object to a framework QosPolicy object.
+     */
+    public static SupplicantStaIfaceHal.QosPolicyRequest halToFrameworkQosPolicy(
+            QosPolicyData halQosPolicy) {
+        QosPolicyClassifierParams classifierParams = halQosPolicy.classifierParams;
+        int classifierParamMask = classifierParams.classifierParamMask;
+
+        byte[] srcIp = null;
+        byte[] dstIp = null;
+        int srcPort = DscpPolicy.SOURCE_PORT_ANY;
+        int[] dstPortRange = new int[]{MIN_PORT_NUM, MAX_PORT_NUM};
+        int protocol = DscpPolicy.PROTOCOL_ANY;
+        boolean hasSrcIp = false;
+        boolean hasDstIp = false;
+
+        if (qosClassifierParamHasValue(classifierParamMask, QosPolicyClassifierParamsMask.SRC_IP)) {
+            hasSrcIp = true;
+            srcIp = classifierParams.srcIp;
+        }
+        if (qosClassifierParamHasValue(classifierParamMask, QosPolicyClassifierParamsMask.DST_IP)) {
+            hasDstIp = true;
+            dstIp = classifierParams.dstIp;
+        }
+        if (qosClassifierParamHasValue(classifierParamMask,
+                QosPolicyClassifierParamsMask.SRC_PORT)) {
+            srcPort = classifierParams.srcPort;
+        }
+        if (qosClassifierParamHasValue(classifierParamMask,
+                QosPolicyClassifierParamsMask.DST_PORT_RANGE)) {
+            dstPortRange[0] = classifierParams.dstPortRange.startPort;
+            dstPortRange[1] = classifierParams.dstPortRange.endPort;
+        }
+        if (qosClassifierParamHasValue(classifierParamMask,
+                QosPolicyClassifierParamsMask.PROTOCOL_NEXT_HEADER)) {
+            protocol = classifierParams.protocolNextHdr;
+        }
+
+        return new SupplicantStaIfaceHal.QosPolicyRequest(halQosPolicy.policyId,
+                halToFrameworkQosPolicyRequestType(halQosPolicy.requestType), halQosPolicy.dscp,
+                new SupplicantStaIfaceHal.QosPolicyClassifierParams(
+                        hasSrcIp, srcIp, hasDstIp, dstIp, srcPort, dstPortRange, protocol));
+    }
+
     /**
      * Returns connection capabilities of the current network
      *
@@ -2793,7 +2884,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
      */
     public boolean startDppConfiguratorInitiator(@NonNull String ifaceName, int peerBootstrapId,
             int ownBootstrapId, @NonNull String ssid, String password, String psk,
-            int netRole, int securityAkm)  {
+            int netRole, int securityAkm, byte[] privEcKey)  {
         synchronized (mLock) {
             final String methodStr = "startDppConfiguratorInitiator";
             ISupplicantStaIface iface = checkStaIfaceAndLogFailure(ifaceName, methodStr);
@@ -2801,11 +2892,13 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                 return false;
             }
             try {
-                iface.startDppConfiguratorInitiator(peerBootstrapId, ownBootstrapId, ssid,
-                        password != null ? password : "", psk != null ? psk : "",
+                byte[] key = iface.startDppConfiguratorInitiator(peerBootstrapId, ownBootstrapId,
+                        ssid, password != null ? password : "", psk != null ? psk : "",
                         frameworkToAidlDppNetRole(netRole), frameworkToAidlDppAkm(securityAkm),
-                        new byte[] {});
-                // TODO: update dppPrivateEcKey if it is returned
+                        privEcKey != null ? privEcKey : new byte[] {});
+                if (key != null && key.length > 0 && mDppCallback != null) {
+                    mDppCallback.onDppConfiguratorKeyUpdate(key);
+                }
                 return true;
             } catch (RemoteException e) {
                 handleRemoteException(e, methodStr);
@@ -2969,6 +3062,33 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     }
 
     /**
+     * Set whether the network-centric QoS policy feature is enabled or not for this interface.
+     *
+     * @param ifaceName name of the interface.
+     * @param isEnabled true if feature is enabled, false otherwise.
+     * @return true if operation is successful, false otherwise.
+     */
+    public boolean setNetworkCentricQosPolicyFeatureEnabled(@NonNull String ifaceName,
+            boolean isEnabled) {
+        synchronized (mLock) {
+            String methodStr = "setNetworkCentricQosPolicyFeatureEnabled";
+            ISupplicantStaIface iface = checkStaIfaceAndLogFailure(ifaceName, methodStr);
+            if (iface == null) {
+                return false;
+            }
+            try {
+                iface.setQosPolicyFeatureEnabled(isEnabled);
+                return true;
+            } catch (RemoteException e) {
+                handleRemoteException(e, methodStr);
+            } catch (ServiceSpecificException e) {
+                handleServiceSpecificException(e, methodStr);
+            }
+            return false;
+        }
+    }
+
+    /**
      * Check if we've roamed to a linked network and make the linked network the current network
      * if we have.
      *
@@ -3113,5 +3233,120 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         }
 
         return currentConfig.getNetworkSelectionStatus().getCandidateSecurityParams();
+    }
+
+    /**
+     * Sends a QoS policy response.
+     *
+     * @param ifaceName Name of the interface.
+     * @param qosPolicyRequestId Dialog token to identify the request.
+     * @param morePolicies Flag to indicate more QoS policies can be accommodated.
+     * @param qosPolicyStatusList List of framework QosPolicyStatus objects.
+     * @return true if response is sent successfully, false otherwise.
+     */
+    public boolean sendQosPolicyResponse(String ifaceName, int qosPolicyRequestId,
+            boolean morePolicies,
+            @NonNull List<SupplicantStaIfaceHal.QosPolicyStatus> qosPolicyStatusList) {
+        synchronized (mLock) {
+            final String methodStr = "sendQosPolicyResponse";
+            ISupplicantStaIface iface = checkStaIfaceAndLogFailure(ifaceName, methodStr);
+            if (iface == null) {
+                return false;
+            }
+
+            int index = 0;
+            QosPolicyStatus[] halPolicyStatusList = new QosPolicyStatus[qosPolicyStatusList.size()];
+            for (SupplicantStaIfaceHal.QosPolicyStatus frameworkPolicyStatus
+                    : qosPolicyStatusList) {
+                if (frameworkPolicyStatus == null) {
+                    return false;
+                }
+                QosPolicyStatus halPolicyStatus = new QosPolicyStatus();
+                halPolicyStatus.policyId = (byte) frameworkPolicyStatus.policyId;
+                halPolicyStatus.status = dscpPolicyToAidlQosPolicyStatusCode(
+                        frameworkPolicyStatus.dscpPolicyStatus);
+                halPolicyStatusList[index] = halPolicyStatus;
+                index++;
+            }
+
+            try {
+                iface.sendQosPolicyResponse(qosPolicyRequestId, morePolicies, halPolicyStatusList);
+                return true;
+            } catch (RemoteException e) {
+                handleRemoteException(e, methodStr);
+            } catch (ServiceSpecificException e) {
+                handleServiceSpecificException(e, methodStr);
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Indicates the removal of all active QoS policies configured by the AP.
+     *
+     * @param ifaceName Name of the interface.
+     */
+    public boolean removeAllQosPolicies(String ifaceName) {
+        final String methodStr = "removeAllQosPolicies";
+        ISupplicantStaIface iface = checkStaIfaceAndLogFailure(ifaceName, methodStr);
+        if (iface == null) {
+            return false;
+        }
+
+        try {
+            iface.removeAllQosPolicies();
+            return true;
+        } catch (RemoteException e) {
+            handleRemoteException(e, methodStr);
+        } catch (ServiceSpecificException e) {
+            handleServiceSpecificException(e, methodStr);
+        }
+        return false;
+    }
+
+    /**
+     * Generate DPP credential for network access
+     *
+     * @param ifaceName Name of the interface.
+     * @param ssid ssid of the network
+     * @param privEcKey Private EC Key for DPP Configurator
+     * Returns true when operation is successful. On error, false is returned.
+     */
+    public boolean generateSelfDppConfiguration(@NonNull String ifaceName, @NonNull String ssid,
+            byte[] privEcKey) {
+        synchronized (mLock) {
+            final String methodStr = "generateSelfDppConfiguration";
+            ISupplicantStaIface iface = checkStaIfaceAndLogFailure(ifaceName, methodStr);
+            if (iface == null) {
+                return false;
+            }
+            try {
+                iface.generateSelfDppConfiguration(
+                        NativeUtil.removeEnclosingQuotes(ssid), privEcKey);
+                return true;
+            } catch (RemoteException e) {
+                handleRemoteException(e, methodStr);
+            } catch (ServiceSpecificException e) {
+                handleServiceSpecificException(e, methodStr);
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Set the currently configured network's anonymous identity.
+     *
+     * @param ifaceName Name of the interface.
+     * @param anonymousIdentity the anonymouns identity.
+     * @return true if succeeds, false otherwise.
+     */
+    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity) {
+        synchronized (mLock) {
+            SupplicantStaNetworkHalAidlImpl networkHandle =
+                    checkStaNetworkAndLogFailure(ifaceName, "setEapAnonymousIdentity");
+            if (networkHandle == null) return false;
+            if (anonymousIdentity == null) return false;
+            return networkHandle.setEapAnonymousIdentity(anonymousIdentity.getBytes());
+        }
     }
 }

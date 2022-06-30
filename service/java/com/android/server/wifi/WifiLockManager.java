@@ -16,10 +16,7 @@
 
 package com.android.server.wifi;
 
-import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
-
 import android.annotation.NonNull;
-import android.annotation.Nullable;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -34,6 +31,7 @@ import android.os.PowerManager;
 import android.os.RemoteException;
 import android.os.WorkSource;
 import android.os.WorkSource.WorkChain;
+import android.text.TextUtils;
 import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
@@ -113,9 +111,9 @@ public class WifiLockManager {
                     @Override
                     public void onReceive(Context context, Intent intent) {
                         String action = intent.getAction();
-                        if (action.equals(Intent.ACTION_SCREEN_ON)) {
+                        if (TextUtils.equals(action, Intent.ACTION_SCREEN_ON)) {
                             handleScreenStateChanged(true);
-                        } else if (action.equals(Intent.ACTION_SCREEN_OFF)) {
+                        } else if (TextUtils.equals(action, Intent.ACTION_SCREEN_OFF)) {
                             handleScreenStateChanged(false);
                         }
                     }
@@ -124,9 +122,6 @@ public class WifiLockManager {
 
         // Register for UID fg/bg transitions
         registerUidImportanceTransitions();
-
-        mActiveModeWarden.registerPrimaryClientModeManagerChangedCallback(
-                new PrimaryClientModeManagerChangedCallback());
     }
 
     // Check for conditions to activate high-perf lock
@@ -383,16 +378,18 @@ public class WifiLockManager {
      */
     public void updateWifiClientConnected(
             ClientModeManager clientModeManager, boolean isConnected) {
-        // ignore if not primary
-        if (clientModeManager.getRole() != ROLE_CLIENT_PRIMARY) {
-            return;
+        boolean hasAtLeastOneConnection = isConnected
+                || mActiveModeWarden.getClientModeManagers().stream().anyMatch(
+                        cmm -> cmm.isConnected());
+        if (mVerboseLoggingEnabled) {
+            Log.d(TAG, "updateWifiClientConnected hasAtLeastOneConnection="
+                    + hasAtLeastOneConnection);
         }
-
-        if (mWifiConnected == isConnected) {
+        if (mWifiConnected == hasAtLeastOneConnection) {
             // No need to take action
             return;
         }
-        mWifiConnected = isConnected;
+        mWifiConnected = hasAtLeastOneConnection;
 
         // Adjust blaming for UIDs in foreground carrying low latency locks
         if (canActivateLowLatencyLock(IGNORE_WIFI_STATE_MASK)) {
@@ -695,27 +692,6 @@ public class WifiLockManager {
 
         // Now switch to the new opMode
         return setNewMode(primaryManager, newLockMode);
-    }
-
-    private class PrimaryClientModeManagerChangedCallback
-            implements ActiveModeWarden.PrimaryClientModeManagerChangedCallback {
-
-        @Override
-        public void onChange(
-                @Nullable ConcreteClientModeManager prevPrimaryClientModeManager,
-                @Nullable ConcreteClientModeManager newPrimaryClientModeManager) {
-            // reset wifi lock on previous primary
-            if (prevPrimaryClientModeManager != null) {
-                resetCurrentMode(prevPrimaryClientModeManager);
-            }
-            // set wifi lock on new primary
-            if (newPrimaryClientModeManager != null) {
-                mWifiConnected = newPrimaryClientModeManager.isConnected();
-                setNewMode(newPrimaryClientModeManager, getStrongestLockMode());
-            } else {
-                mWifiConnected = false;
-            }
-        }
     }
 
     /** Returns the cached low latency mode support value, or tries to fetch it if not yet known. */

@@ -93,9 +93,21 @@
     <!-- Parameters for controlling network selection by the framework -->
 
     <!-- The ratio of the next two parameters is the multiplier that converts the estimated
-         throughput in Mbps to score points. -->
+         throughput in Mbps to score points, when the throughput is less than 800Mbps. -->
     <integer translatable="false" name="config_wifiFrameworkThroughputBonusNumerator">120</integer>
     <integer translatable="false" name="config_wifiFrameworkThroughputBonusDenominator">433</integer>
+
+    <!-- The ratio of the next two parameters is the multiplier that converts the estimated
+         throughput in Mbps to score points for each point of throughput more than 800Mbps.
+         This default ratio is picked to help favor 6G HE160 over 5G HE80 which have throughput
+         difference up to 1200Mbps. 1200Mbps difference leads to 75 points difference, which is
+         roughly equivalent to 18dB RSSI.-->
+    <integer translatable="false" name="config_wifiFrameworkThroughputBonusNumeratorAfter800Mbps">1</integer>
+    <integer translatable="false" name="config_wifiFrameworkThroughputBonusDenominatorAfter800Mbps">16</integer>
+
+    <!-- Boolean indicating whether 6Ghz RSSI boost is given to compensate for power spectrum
+         limitations -->
+    <bool translatable="false" name="config_wifiEnable6GhzBeaconRssiBoost">true</bool>
 
     <!-- Maximum contribution (in score points) due to the estimated throughput. -->
     <integer translatable="false" name="config_wifiFrameworkThroughputBonusLimit">320</integer>
@@ -114,6 +126,13 @@
          the sum of rssi base score and throughput score-->
     <integer translatable="false" name="config_wifiFrameworkCurrentNetworkBonusPercent">20</integer>
     <integer translatable="false" name="config_wifiFrameworkSecureNetworkBonus">40</integer>
+    <!-- Integer specifying the bonus to give to a 6Ghz candidate during network selection scoring -->
+    <integer translatable="false" name="config_wifiBand6GhzBonus">0</integer>
+    <!-- Integer specifying the expected amount of score to reach the next tier during candidate
+         scoring. This value should be configured according to the value of parameters that
+         determine the scoring buckets such as config_wifiFrameworkSavedNetworkBonus and
+         config_wifiFrameworkUnmeteredNetworkBonus. -->
+    <integer translatable="false" name="config_wifiScoringBucketStepSize">500</integer>
 
     <!-- The duration in minutes to strongly favor the last-selected network over other options. -->
     <integer translatable="false" name="config_wifiFrameworkLastSelectionMinutes">480</integer>
@@ -150,6 +169,9 @@
          by shutting down one of the APs that has been inactive/unused.
          If both APs in Dual AP mode are idle, it shuts down the AP in higher band. -->
     <integer translatable="false" name="config_wifiFrameworkSoftApShutDownIdleInstanceInBridgedModeTimeoutMillisecond">300000</integer>
+
+    <!-- boolean indicating whether or not to disable shutdown idle instance timer in the bridged mode when charging -->
+    <bool translatable="false" name ="config_wifiFrameworkSoftApDisableBridgedModeShutdownIdleInstanceWhenCharging">false</bool>
 
     <!-- Integer indicating maximum hardware supported client number of soft ap -->
     <integer translatable="false" name="config_wifiHardwareSoftapMaxClientCount">16</integer>
@@ -297,6 +319,11 @@
     <!-- Wifi driver supports 60GHz band for softap when chip support 60GHz -->
     <bool translatable="false" name="config_wifiSoftap60ghzSupported">false</bool>
 
+    <!-- Indicates that the framework should auto append lower bands to band configuration for
+         avoiding coexistence handling. For example: 5g only band will change to 2.4g|5g and
+         6g band will change to 2.4|5g|6g band -->
+    <bool translatable="false" name="config_wifiSoftapAutoAppendLowerBandsToBandConfigurationEnabled">true</bool>
+
     <!-- Indicates that local-only hotspot should be brought up at 6GHz if possible.
          This option is for automotive builds only (the one that have
          PackageManager#FEATURE_AUTOMOTIVE) -->
@@ -332,6 +359,14 @@
 
     <!-- Indicates that dynamic country code update in AP mode is supported on this device -->
     <bool translatable="false" name="config_wifiSoftApDynamicCountryCodeUpdateSupported">false</bool>
+
+    <!-- list of SSIDs to force disable MAC randomization -->
+    <string-array translatable="false" name="config_wifiForceDisableMacRandomizationSsidList">
+        <!-- SSIDs are expected in quoted format:
+        <item>\"SSID_1\"</item>
+        <item>\"SSID_2\"</item>
+        -->
+    </string-array>
 
     <!-- list of SSIDs to enable non-persistent MAC randomization on -->
     <string-array translatable="false" name="config_wifi_non_persistent_randomization_ssid_allowlist">
@@ -528,6 +563,7 @@
     <integer translatable="false" name="config_wifiBssidBlocklistMonitorDhcpFailureThreshold"> 2 </integer>
     <integer translatable="false" name="config_wifiBssidBlocklistMonitorAbnormalDisconnectThreshold"> 3 </integer>
     <integer translatable="false" name="config_wifiBssidBlocklistMonitorNonlocalDisconnectConnectingThreshold"> 2 </integer>
+    <integer translatable="false" name="config_wifiBssidBlocklistMonitorNoResponseThreshold"> 1 </integer>
 
     <!-- Base duration to block a BSSID after consecutive failures happen. (default = 5 mins)
     The blocklist duration is increased exponentially for a BSSID that consecutively gets added to the blocklist.
@@ -674,15 +710,28 @@
     <!-- Enable the default coex channel avoidance algorithm and disable the functionality of
          WifiManager#setCoexUnsafeChannels. -->
     <bool translatable="false" name="config_wifiDefaultCoexAlgorithmEnabled">false</bool>
+    <!-- If the default coex channel avoidance algorithm is enabled, then avoid channels that
+         conflict with GPS L1. -->
+    <bool translatable="false" name="config_wifiCoexForGpsL1">false</bool>
+    <!-- The distance in KHz between Wi-Fi-based interference and GPS L1 that is considered unsafe. -->
+    <integer translatable="false" name="config_wifiCoexGpsL1ThresholdKhz">10000</integer>
     <!-- Filepath of the xml table of parameters used by Wifi coex channel avoidance. -->
     <string translatable="false" name="config_wifiCoexTableFilepath">/vendor/etc/wifi/coex_table.xml</string>
     <!-- A value to indicate how many failures are needed to temporarily or permanently
     (depends on config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs)
     disable a network from auto-connect based on Carrier requirement -->
     <integer translatable="false" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificThreshold">1</integer>
+    <!-- Carrier specific override for the disable threshold -->
+    <string-array translatable="false" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificThreshold_carrier_overrides">
+        <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g>2</item>
+    </string-array>
     <!-- A value to indicate the duration (in ms) to disable a network from auto-connect based on
     Carrier requirement. -1 represents disabling a network permanently -->
     <integer translatable="false" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs">-1</integer>
+    <!-- Carrier specific override for the disable duration -->
+    <string-array translatable="false" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs_carrier_overrides">
+        <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g>14400000</item>
+    </string-array>
     <!-- Flush ANQP cache on Wi-Fi toggle off event -->
     <bool translatable="false" name="config_wifiFlushAnqpCacheOnWifiToggleOffEvent">true</bool>
 
@@ -811,4 +860,46 @@
         <item>com.company2.example.test.name2</item>
         -->
     </string-array>
+
+    <!-- Indicates whether or not user approval is required for device-to-device interface priority
+         decisions (note: packages included in
+         `config_excludedFromUserApprovalForD2dInterfacePriority` are excluded). -->
+    <bool translatable="false" name="config_wifiUserApprovalRequiredForD2dInterfacePriority">false</bool>
+    <!-- list of package names that are excluded from the user approval flag
+         `config_wifiUserApprovalRequiredForD2dInterfacePriority`. I.e. any priority conflicts from
+          requests by these packages will be handled by the default resolution of the framework. -->
+    <string-array translatable="false" name="config_wifiExcludedFromUserApprovalForD2dInterfacePriority">
+        <!-- Below is a sample configuration for this list:
+        <item>com.company1.example.test.name1</item>
+        <item>com.company2.example.test.name2</item>
+        -->
+    </string-array>
+
+    <!-- boolean indicating whether the Easy Connect (DPP) AKM is supported -->
+    <bool translatable="false" name ="config_wifiDppAkmSupported">false</bool>
+    <!-- Indicates the number of octets to mask for each BSSID in the SecurityLog output.
+         The first N octets will each be replaced with 'xx' in the formatted BSSID string. -->
+    <integer translatable="false" name="config_wifiNumMaskedBssidOctetsInSecurityLog">4</integer>
+    <!-- Indicates whether or not the network-centric QoS policy feature is enabled. -->
+    <bool translatable="false" name="config_wifiNetworkCentricQosPolicyFeatureEnabled">false</bool>
+
+    <!-- The world mode country code value definition in the wifi driver -->
+    <string translatable="false" name="config_wifiDriverWorldModeCountryCode">00</string>
+
+    <!-- Indicates whether or not the AP WAN Link Status ANQP element is used to filter candidate
+         networks. Note that even if enabled (overlay = true) that invalid elements (all zeros
+         are still ignored).
+         If disabled (overlay = false) then the
+         `config_wifiPasspointUseApWanLinkStatusAnqpElementFqdnAllowList`
+         specifies a list of FQDNs for which the element will still be considered. -->
+    <bool translatable="false" name="config_wifiPasspointUseApWanLinkStatusAnqpElement">true</bool>
+    <!-- list of FQDNs for which to use the AP WAN Link Status ANQP element. Overrides any
+         configuration specified in `config_wifiPasspointUseApWanLinkStatusAnqpElement`. -->
+    <string-array translatable="false" name="config_wifiPasspointUseApWanLinkStatusAnqpElementFqdnAllowlist">
+        <!-- Below is a sample configuration for this list:
+        <item>XYZ</item>
+        <item>ABC</item>
+        -->
+    </string-array>
+
 </resources>

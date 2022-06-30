@@ -25,6 +25,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -33,6 +34,7 @@ import static org.mockito.Mockito.validateMockitoUsage;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import android.app.test.MockAnswerUtil;
 import android.content.Context;
 import android.net.wifi.WifiScanner.PnoSettings;
 import android.net.wifi.WifiScanner.PnoSettings.PnoNetwork;
@@ -44,6 +46,7 @@ import android.os.Handler;
 import android.os.Message;
 import android.os.Messenger;
 import android.os.Parcel;
+import android.os.RemoteException;
 import android.os.test.TestLooper;
 
 import androidx.test.filters.SmallTest;
@@ -61,6 +64,7 @@ import org.mockito.MockitoAnnotations;
 import org.mockito.Spy;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.Executor;
 
 /**
@@ -303,6 +307,64 @@ public class WifiScannerTest {
     }
 
     /**
+     * Test behavior of {@link WifiScanner#getSingleScanResults()}.
+     */
+    @Test
+    public void testGetSingleScanResults() {
+        ScanResult scanResult = new ScanResult();
+        scanResult.SSID = TEST_SSID_1;
+        ScanResult[] scanResults = {scanResult};
+
+        doAnswer(new MockAnswerUtil.AnswerWithArguments() {
+            public void answer(Message msg) {
+                Message responseMessage = Message.obtain();
+                responseMessage.what = msg.what == WifiScanner.CMD_GET_SINGLE_SCAN_RESULTS
+                        ? WifiScanner.CMD_OP_SUCCEEDED : WifiScanner.CMD_OP_FAILED;
+                responseMessage.arg2 = msg.arg2;
+                responseMessage.obj = new WifiScanner.ParcelableScanResults(scanResults);
+                try {
+                    msg.replyTo.send(responseMessage);
+                } catch (RemoteException e) {
+                    e.printStackTrace();
+                }
+            }
+        }).when(mHandler).handleMessage(any());
+
+        mLooper.startAutoDispatch();
+        List<ScanResult> results = mWifiScanner.getSingleScanResults();
+        mLooper.stopAutoDispatch();
+        assertEquals(1, results.size());
+        assertEquals(TEST_SSID_1, results.get(0).SSID);
+    }
+
+    /**
+     * Test behavior of {@link WifiScanner#getSingleScanResults()} with an incorrect response from
+     * the server.
+     */
+    @Test
+    public void testGetSingleScanResultsIncorrectResponse() {
+        doAnswer(new MockAnswerUtil.AnswerWithArguments() {
+            public void answer(Message msg) {
+                Message responseMessage = Message.obtain();
+                responseMessage.what = msg.what == WifiScanner.CMD_GET_SINGLE_SCAN_RESULTS
+                        ? WifiScanner.CMD_OP_SUCCEEDED : WifiScanner.CMD_OP_FAILED;
+                responseMessage.arg2 = msg.arg2;
+                responseMessage.obj = null;
+                try {
+                    msg.replyTo.send(responseMessage);
+                } catch (RemoteException e) {
+                    e.printStackTrace();
+                }
+            }
+        }).when(mHandler).handleMessage(any());
+
+        mLooper.startAutoDispatch();
+        List<ScanResult> results = mWifiScanner.getSingleScanResults();
+        mLooper.stopAutoDispatch();
+        assertEquals(0, results.size());
+    }
+
+    /**
      * Test behavior of {@link WifiScanner#stopScan(ScanListener)}
      * @throws Exception
      */
@@ -524,6 +586,13 @@ public class WifiScannerTest {
         verify(mHandler).handleMessage(messageArgumentCaptor.capture());
         Message sentMessage = messageArgumentCaptor.getValue();
         assertNotNull(sentMessage);
+        assertEquals(WifiScanner.CMD_REGISTER_SCAN_LISTENER, sentMessage.what);
+        assertTrue(sentMessage.obj instanceof Bundle);
+        Bundle messageBundle = (Bundle) sentMessage.obj;
+        assertEquals(mContext.getOpPackageName(),
+                messageBundle.getParcelable(WifiScanner.REQUEST_PACKAGE_NAME_KEY));
+        assertEquals(mContext.getAttributionTag(),
+                messageBundle.getParcelable(WifiScanner.REQUEST_FEATURE_ID_KEY));
 
         assertEquals(1, mBidirectionalAsyncChannelServer.getClientMessengers().size());
         Messenger scannerMessenger =
@@ -632,6 +701,13 @@ public class WifiScannerTest {
         verify(mHandler, times(2)).handleMessage(messageArgumentCaptor.capture());
         Message sentMessage = messageArgumentCaptor.getValue();
         assertNotNull(sentMessage);
+        assertEquals(WifiScanner.CMD_DEREGISTER_SCAN_LISTENER, sentMessage.what);
+        assertTrue(sentMessage.obj instanceof Bundle);
+        Bundle messageBundle = (Bundle) sentMessage.obj;
+        assertEquals(mContext.getOpPackageName(),
+                messageBundle.getParcelable(WifiScanner.REQUEST_PACKAGE_NAME_KEY));
+        assertEquals(mContext.getAttributionTag(),
+                messageBundle.getParcelable(WifiScanner.REQUEST_FEATURE_ID_KEY));
 
         Message responseMessage = Message.obtain();
         responseMessage.what = WifiScanner.CMD_SCAN_RESULT;
