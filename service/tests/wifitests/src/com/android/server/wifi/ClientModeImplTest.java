@@ -453,12 +453,8 @@ public class ClientModeImplTest extends WifiBaseTest {
     static final String   WIFI_IFACE_NAME = "mockWlan";
     static final String sFilsSsid = "FILS-AP";
     static final ApfCapabilities APF_CAP = new ApfCapabilities(1, 2, 3);
-    static final long TEST_TOTAL_TX_BYTES = 6666;
-    static final long TEST_TOTAL_RX_BYTES = 8888;
-    static final long TEST_MOBILE_TX_BYTES = 2345;
-    static final long TEST_MOBILE_RX_BYTES = 1234;
-    static final long TEST_TX_BYTES = TEST_TOTAL_TX_BYTES - TEST_MOBILE_TX_BYTES;
-    static final long TEST_RX_BYTES = TEST_TOTAL_RX_BYTES - TEST_MOBILE_RX_BYTES;
+    static final long TEST_TX_BYTES = 6666;
+    static final long TEST_RX_BYTES = 8888;
 
     ClientModeImpl mCmi;
     HandlerThread mWifiCoreThread;
@@ -635,10 +631,8 @@ public class ClientModeImplTest extends WifiBaseTest {
                 Settings.Global.WIFI_FREQUENCY_BAND,
                 WifiManager.WIFI_FREQUENCY_BAND_AUTO)).thenReturn(
                 WifiManager.WIFI_FREQUENCY_BAND_AUTO);
-        when(mFrameworkFacade.getTotalTxBytes()).thenReturn(TEST_TOTAL_TX_BYTES);
-        when(mFrameworkFacade.getMobileTxBytes()).thenReturn(TEST_MOBILE_TX_BYTES);
-        when(mFrameworkFacade.getTotalRxBytes()).thenReturn(TEST_TOTAL_RX_BYTES);
-        when(mFrameworkFacade.getMobileRxBytes()).thenReturn(TEST_MOBILE_RX_BYTES);
+        when(mFrameworkFacade.getTxBytes(eq(WIFI_IFACE_NAME))).thenReturn(TEST_TX_BYTES);
+        when(mFrameworkFacade.getRxBytes(eq(WIFI_IFACE_NAME))).thenReturn(TEST_RX_BYTES);
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
         doAnswer(inv -> {
             mIpClientCallback.onQuit();
@@ -3305,6 +3299,25 @@ public class ClientModeImplTest extends WifiBaseTest {
         rssiEventHandlerCaptor.getValue().onRssiThresholdBreached(RSSI_THRESHOLD_BREACH_MAX);
         mLooper.dispatchAll();
         assertEquals(RSSI_THRESHOLD_BREACH_MAX, wifiInfo.getRssi());
+    }
+
+    /**
+     * Verify that RSSI monitoring is not enabled on secondary STA.
+     */
+    @Test
+    public void testRssiMonitoringOnSecondaryIsNotEnabled() throws Exception {
+        when(mClientModeManager.getRole()).thenReturn(ROLE_CLIENT_SECONDARY_TRANSIENT);
+        connect();
+
+        verify(mWifiInjector).makeWifiNetworkAgent(any(), any(), any(), any(),
+                mWifiNetworkAgentCallbackCaptor.capture());
+
+        int[] thresholds = {RSSI_THRESHOLD_BREACH_MAX};
+        mWifiNetworkAgentCallbackCaptor.getValue().onSignalStrengthThresholdsUpdated(thresholds);
+        mLooper.dispatchAll();
+
+        verify(mWifiNative, never()).startRssiMonitoring(anyString(), anyByte(), anyByte(),
+                any());
     }
 
     /**
@@ -6772,6 +6785,8 @@ public class ClientModeImplTest extends WifiBaseTest {
     @Test
     public void testCarrierEapFailure() throws Exception {
         initializeAndAddNetworkAndVerifySuccess();
+        WifiBlocklistMonitor.CarrierSpecificEapFailureConfig eapFailureConfig =
+                new WifiBlocklistMonitor.CarrierSpecificEapFailureConfig(1, -1);
 
         startConnectSuccess();
 
@@ -6780,7 +6795,8 @@ public class ClientModeImplTest extends WifiBaseTest {
         config.getNetworkSelectionStatus().setHasEverConnected(true);
         config.enterpriseConfig.setEapMethod(WifiEnterpriseConfig.Eap.SIM);
         when(mWifiConfigManager.getConfiguredNetwork(anyInt())).thenReturn(config);
-        when(mEapFailureNotifier.onEapFailure(anyInt(), eq(config), anyBoolean())).thenReturn(true);
+        when(mEapFailureNotifier.onEapFailure(anyInt(), eq(config), anyBoolean())).thenReturn(
+                eapFailureConfig);
 
         mCmi.sendMessage(WifiMonitor.AUTHENTICATION_FAILURE_EVENT,
                 new AuthenticationFailureEventInfo(TEST_SSID, MacAddress.fromString(TEST_BSSID_STR),
@@ -6789,7 +6805,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mEapFailureNotifier).onEapFailure(DEFINED_ERROR_CODE, config, true);
-        verify(mWifiBlocklistMonitor).loadCarrierConfigsForDisableReasonInfos();
+        verify(mWifiBlocklistMonitor).loadCarrierConfigsForDisableReasonInfos(eapFailureConfig);
         verify(mWifiConfigManager).updateNetworkSelectionStatus(anyInt(),
                 eq(WifiConfiguration.NetworkSelectionStatus
                         .DISABLED_AUTHENTICATION_PRIVATE_EAP_ERROR));
