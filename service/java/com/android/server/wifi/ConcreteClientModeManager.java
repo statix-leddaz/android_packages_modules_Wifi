@@ -499,6 +499,13 @@ public class ConcreteClientModeManager implements ClientModeManager {
         return mRole;
     }
 
+    /**
+     * Get the role this ClientModeManager is expected to become.
+     */
+    @Nullable public ClientRole getTargetRole() {
+        return mTargetRoleChangeInfo == null ? null : mTargetRoleChangeInfo.role;
+    }
+
     @Override
     @Nullable public ClientRole getPreviousRole() {
         return mPreviousRole;
@@ -772,6 +779,48 @@ public class ConcreteClientModeManager implements ClientModeManager {
                 // StateMachine has quit and cleared all LogRecs.
                 // Get them from the obituary instead.
                 mObituary.dump(fd, pw, args);
+            }
+        }
+
+        /**
+         * Return the additional string to be logged by LogRec.
+         *
+         * @param msg that was processed
+         * @return information to be logged as a String
+         */
+        @Override
+        protected String getLogRecString(Message msg) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(msg.arg1)
+                    .append(" ").append(msg.arg2);
+            if (msg.obj != null) {
+                sb.append(" ").append(msg.obj);
+            }
+            return sb.toString();
+        }
+
+        /**
+         * Convert the |what| field in logs from int to String.
+         */
+        @Override
+        protected String getWhatToString(int what) {
+            switch (what) {
+                case CMD_START:
+                    return "CMD_START";
+                case CMD_SWITCH_TO_SCAN_ONLY_MODE:
+                    return "CMD_SWITCH_TO_SCAN_ONLY_MODE";
+                case CMD_SWITCH_TO_CONNECT_MODE:
+                    return "CMD_SWITCH_TO_CONNECT_MODE";
+                case CMD_INTERFACE_STATUS_CHANGED:
+                    return "CMD_INTERFACE_STATUS_CHANGED";
+                case CMD_INTERFACE_DESTROYED:
+                    return "CMD_INTERFACE_DESTROYED";
+                case CMD_INTERFACE_DOWN:
+                    return "CMD_INTERFACE_DOWN";
+                case CMD_SWITCH_TO_SCAN_ONLY_MODE_CONTINUE:
+                    return "CMD_SWITCH_TO_SCAN_ONLY_MODE_CONTINUE";
+                default:
+                    return "what:" + what;
             }
         }
 
