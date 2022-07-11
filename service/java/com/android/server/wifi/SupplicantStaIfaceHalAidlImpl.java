@@ -183,8 +183,6 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     /**
      * Enable/Disable verbose logging.
      *
-     * @param verboseEnabled Verbose flag set in overlay XML.
-     * @param halVerboseEnabled Verbose flag set by the user.
      */
     public void enableVerboseLogging(boolean verboseEnabled, boolean halVerboseEnabled) {
         synchronized (mLock) {
@@ -418,8 +416,10 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
             return false;
         }
         Log.i(TAG, "Obtained ISupplicant binder.");
+        Log.i(TAG, "Local Version: " + ISupplicant.VERSION);
 
         try {
+            Log.i(TAG, "Remote Version: " + mISupplicant.getInterfaceVersion());
             IBinder serviceBinder = getServiceBinderMockable();
             if (serviceBinder == null) {
                 return false;
