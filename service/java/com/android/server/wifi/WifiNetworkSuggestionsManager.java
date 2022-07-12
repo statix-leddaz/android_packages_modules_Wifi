@@ -186,8 +186,12 @@ public class WifiNetworkSuggestionsManager {
         }
 
         @Override
-        public void onSecurityParamsUpdate(WifiConfiguration configuration,
-                List<SecurityParams> securityParams) {
+        public void onSecurityParamsUpdate(@NonNull WifiConfiguration configuration,
+                @NonNull List<SecurityParams> securityParams) {
+            if (configuration == null || securityParams == null || securityParams.isEmpty()) {
+                Log.e(TAG, "onSecurityParamsUpdate: must have valid config and "
+                        + "securityParams");
+            }
             onSecurityParamsUpdateForSuggestion(configuration, securityParams);
         }
     }
@@ -1026,7 +1030,8 @@ public class WifiNetworkSuggestionsManager {
                 // Install Passpoint config, if failure, ignore that suggestion
                 if (!mWifiInjector.getPasspointManager().addOrUpdateProvider(
                         ewns.wns.passpointConfiguration, uid,
-                        packageName, true, !ewns.wns.isUntrusted())) {
+                        packageName, true, !ewns.wns.isUntrusted(),
+                        ewns.wns.isRestricted())) {
                     Log.e(TAG, "Passpoint profile install failure for FQDN: "
                             + ewns.wns.wifiConfiguration.FQDN);
                     continue;
@@ -2761,7 +2766,8 @@ public class WifiNetworkSuggestionsManager {
             List<SecurityParams> securityParams) {
         Set<ExtendedWifiNetworkSuggestion> matchingExtendedWifiNetworkSuggestions =
                         getNetworkSuggestionsForWifiConfiguration(config, config.BSSID);
-        if (matchingExtendedWifiNetworkSuggestions.isEmpty()) {
+        if (matchingExtendedWifiNetworkSuggestions == null
+                || matchingExtendedWifiNetworkSuggestions.isEmpty()) {
             if (mVerboseLoggingEnabled) {
                 Log.w(TAG, "onSecurityParamsUpdateForSuggestion: no network matches: " + config);
             }
