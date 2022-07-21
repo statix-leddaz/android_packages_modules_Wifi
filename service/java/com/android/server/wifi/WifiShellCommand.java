@@ -1067,6 +1067,11 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     printWifiNetworkSuggestions(pw, suggestions);
                     return 0;
                 }
+                case "allow-root-to-get-local-only-cmm": {
+                    boolean enabled = getNextArgRequiredTrueOrFalse("enabled", "disabled");
+                    mActiveModeWarden.allowRootToGetLocalOnlyCmm(enabled);
+                    return 0;
+                }
                 case "add-request": {
                     Pair<String, NetworkRequest> result = buildNetworkRequest(pw);
                     String ssid = result.first;
@@ -1294,6 +1299,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     String dialogOption = getNextOption();
                     boolean simpleTimeoutSpecified = false;
                     long simpleTimeoutMs = 0;
+                    boolean useLegacy = false;
                     while (dialogOption != null) {
                         switch (dialogOption) {
                             case "-t":
@@ -1319,6 +1325,9 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                             case "-c":
                                 simpleTimeoutMs = Integer.parseInt(getNextArgRequired());
                                 simpleTimeoutSpecified = true;
+                                break;
+                            case "-s":
+                                useLegacy = true;
                                 break;
                             default:
                                 pw.println("Ignoring unknown option " + dialogOption);
@@ -1349,18 +1358,32 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                                     simpleQueue.offer("Dialog was cancelled.");
                                 }
                             };
-                    WifiDialogManager.DialogHandle simpleDialogHandle =
-                            mWifiDialogManager.createSimpleDialogWithUrl(
-                                    title,
-                                    message,
-                                    messageUrl,
-                                    messageUrlStart,
-                                    messageUrlEnd,
-                                    positiveButtonText,
-                                    negativeButtonText,
-                                    neutralButtonText,
-                                    wifiEnableRequestCallback,
-                                    mWifiThreadRunner);
+                    WifiDialogManager.DialogHandle simpleDialogHandle;
+                    if (useLegacy) {
+                        simpleDialogHandle = mWifiDialogManager.createLegacySimpleDialogWithUrl(
+                                title,
+                                message,
+                                messageUrl,
+                                messageUrlStart,
+                                messageUrlEnd,
+                                positiveButtonText,
+                                negativeButtonText,
+                                neutralButtonText,
+                                wifiEnableRequestCallback,
+                                mWifiThreadRunner);
+                    } else {
+                        simpleDialogHandle = mWifiDialogManager.createSimpleDialogWithUrl(
+                                title,
+                                message,
+                                messageUrl,
+                                messageUrlStart,
+                                messageUrlEnd,
+                                positiveButtonText,
+                                negativeButtonText,
+                                neutralButtonText,
+                                wifiEnableRequestCallback,
+                                mWifiThreadRunner);
+                    }
                     if (simpleTimeoutSpecified) {
                         simpleDialogHandle.launchDialog(simpleTimeoutMs);
                         pw.println("Launched dialog with " + simpleTimeoutMs + " millisecond"
@@ -2392,6 +2415,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    -n - Negative Button Text");
         pw.println("    -x - Neutral Button Text");
         pw.println("    -c - Optional timeout in milliseconds");
+        pw.println("    -s - Use the legacy dialog implementation on the system process");
         pw.println("  launch-dialog-p2p-invitation-sent <device_name> <pin> [-i <display_id>]");
         pw.println("    Launches a P2P Invitation Sent dialog.");
         pw.println("    <device_name> - Name of the device the invitation was sent to");
@@ -2513,6 +2537,9 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    each on a separate line.");
         pw.println("  settings-reset");
         pw.println("    Initiates wifi settings reset");
+        pw.println("  allow-root-to-get-local-only-cmm enabled|disabled");
+        pw.println("    sets whether the shell running as root could use the local-only secondary "
+                + "STA");
         pw.println("  add-request [-g] [-i] [-n] [-s] <ssid> open|owe|wpa2|wpa3 [<passphrase>]"
                 + " [-b <bssid>] [-d <band=2|5|6|60>]");
         pw.println("    Add a network request with provided params");
