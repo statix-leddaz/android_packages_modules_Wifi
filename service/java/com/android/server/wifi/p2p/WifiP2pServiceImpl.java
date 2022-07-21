@@ -1535,6 +1535,12 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 case WifiP2pManager.SET_DEVICE_NAME:
                 case WifiP2pManager.SET_VENDOR_ELEMENTS:
                     return false;
+                case WifiP2pManager.REQUEST_DEVICE_INFO:
+                    if (!mWifiGlobals.isP2pMacRandomizationSupported()
+                            && !TextUtils.isEmpty(mThisDevice.deviceAddress)) {
+                        return false;
+                    }
+                    break;
             }
             return true;
         }
@@ -2197,8 +2203,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
         class P2pDisabledState extends State {
             private void setupInterfaceFeatures(String interfaceName) {
-                if (mContext.getResources().getBoolean(
-                        R.bool.config_wifi_p2p_mac_randomization_supported)) {
+                if (mWifiGlobals.isP2pMacRandomizationSupported()) {
                     Log.i(TAG, "Supported feature: P2P MAC randomization");
                     mWifiNative.setMacRandomization(true);
                 } else {
@@ -2236,6 +2241,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 if (mVerboseLoggingEnabled) logd(getName() + message.toString());
                 switch (message.what) {
                     case ENABLE_P2P: {
+                        if (mActiveClients.isEmpty()) {
+                            Log.i(TAG, "No active client, ignore ENABLE_P2P.");
+                            break;
+                        }
                         int proceedWithOperation =
                                 mInterfaceConflictManager.manageInterfaceConflictForStateMachine(
                                         TAG, message, mP2pStateMachine, mWaitingState,
@@ -3127,6 +3136,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             @Override
             public void enter() {
                 if (mVerboseLoggingEnabled) logd(getName());
+                if (SdkLevel.isAtLeastT()) {
+                    mDetailedState = NetworkInfo.DetailedState.CONNECTING;
+                    sendP2pConnectionChangedBroadcast();
+                }
                 sendMessageDelayed(obtainMessage(GROUP_CREATING_TIMED_OUT,
                         ++sGroupCreatingTimeoutIndex, 0), GROUP_CREATING_WAIT_TIME_MS);
             }
@@ -3169,6 +3182,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         replyToMessage(message, WifiP2pManager.DISCOVER_PEERS_FAILED,
                                 WifiP2pManager.BUSY);
                         break;
+                    case WifiP2pManager.STOP_DISCOVERY:
+                        // Stop discovery will clear pending TX action and cause disconnection.
+                        replyToMessage(message, WifiP2pManager.STOP_DISCOVERY_FAILED,
+                                WifiP2pManager.BUSY);
+                        break;
                     case WifiP2pManager.CANCEL_CONNECT:
                         // Do a supplicant p2p_cancel which only cancels an ongoing
                         // group negotiation. This will fail for a pending provision
@@ -3181,10 +3199,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         // Notify the peer about the rejection.
                         if (mSavedPeerConfig != null) {
                             mWifiNative.p2pStopFind();
-                            mWifiNative.p2pReject(mSavedPeerConfig.deviceAddress);
-                            // p2pReject() only updates the peer state, but not sends this
-                            // to the peer, trigger provision discovery to notify the peer.
-                            mWifiNative.p2pProvisionDiscovery(mSavedPeerConfig);
+                            sendP2pRejection();
                         }
                         handleGroupCreationFailure();
                         transitionTo(mInactiveState);
@@ -3243,18 +3258,9 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             if (join) {
                                 mWifiNative.p2pCancelConnect();
                                 mWifiNative.p2pStopFind();
-                                mWifiNative.p2pReject(mSavedPeerConfig.deviceAddress);
-                                // p2pReject() only updates the peer state, but not sends this
-                                // to the peer, trigger provision discovery to notify the peer.
-                                mWifiNative.p2pProvisionDiscovery(mSavedPeerConfig);
                                 sendP2pConnectionChangedBroadcast();
-                            } else {
-                                mWifiNative.p2pReject(mSavedPeerConfig.deviceAddress);
-                                // p2pReject() only updates the peer state, but not sends this
-                                // to the peer, trigger negotiation request to notify the peer.
-                                p2pConnectWithPinDisplay(mSavedPeerConfig,
-                                        P2P_CONNECT_TRIGGER_GROUP_NEG_REQ);
                             }
+                            sendP2pRejection();
                             mSavedPeerConfig.invalidate();
                         } else {
                             mWifiNative.p2pCancelConnect();
@@ -6209,6 +6215,15 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
         private boolean isFeatureSupported(long feature) {
             return (getSupportedFeatures() & feature) == feature;
+        }
+
+        private void sendP2pRejection() {
+            if (TextUtils.isEmpty(mSavedPeerConfig.deviceAddress)) return;
+
+            mWifiNative.p2pReject(mSavedPeerConfig.deviceAddress);
+            // p2pReject() only updates the peer state, but not sends this
+            // to the peer, trigger provision discovery to notify the peer.
+            mWifiNative.p2pProvisionDiscovery(mSavedPeerConfig);
         }
     }
 
