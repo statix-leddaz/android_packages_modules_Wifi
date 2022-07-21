@@ -1017,6 +1017,32 @@ public class ClientModeImplTest extends WifiBaseTest {
     }
 
     /**
+     * Tests the manual connection request will use the last used security params when there
+     * is no scan result.
+     */
+    @Test
+    public void triggerConnectWithLastUsedSecurityParams() throws Exception {
+        String ssid = "TestOpenOweSsid";
+        WifiConfiguration config = spy(WifiConfigurationTestUtil.createOpenOweNetwork(
+                ScanResultUtil.createQuotedSsid(ssid)));
+        when(mScanRequestProxy.getScanResults()).thenReturn(new ArrayList<>());
+
+        config.networkId = FRAMEWORK_NETWORK_ID;
+        config.setRandomizedMacAddress(TEST_LOCAL_MAC_ADDRESS);
+        config.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_AUTO;
+        config.getNetworkSelectionStatus().setHasEverConnected(mTestNetworkParams.hasEverConnected);
+        config.getNetworkSelectionStatus().setLastUsedSecurityParams(
+                SecurityParams.createSecurityParamsBySecurityType(
+                        WifiConfiguration.SECURITY_TYPE_OWE));
+        assertEquals(null, config.getNetworkSelectionStatus().getCandidateSecurityParams());
+
+        setupAndStartConnectSequence(config);
+        validateSuccessfulConnectSequence(config);
+        assertEquals(WifiConfiguration.SECURITY_TYPE_OWE,
+                config.getNetworkSelectionStatus().getCandidateSecurityParams().getSecurityType());
+    }
+
+    /**
      * Tests the network connection initiation sequence with the default network request pending
      * from WifiNetworkFactory.
      * This simulates the connect sequence using the public
@@ -3548,8 +3574,6 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(mClientModeManager.isSecondaryInternet()).thenReturn(true);
         when(mClientModeManager.isSecondaryInternetDbsAp()).thenReturn(true);
         initializeAndAddNetworkAndVerifySuccess();
-        mTestConfig.dbsSecondaryInternet = true;
-        mConnectedNetwork.dbsSecondaryInternet = true;
         connect();
         verify(mWifiNative).setStaMacAddress(WIFI_IFACE_NAME, TEST_LOCAL_MAC_ADDRESS_SECONDARY_DBS);
         verify(mWifiMetrics).logStaEvent(
@@ -4242,6 +4266,46 @@ public class ClientModeImplTest extends WifiBaseTest {
         verify(mWifiMetrics).incrementNumOfCarrierWifiConnectionNonAuthFailure();
     }
 
+    private void testAssociationRejectionForRole(boolean isSecondary) throws Exception {
+        if (isSecondary) {
+            when(mClientModeManager.getRole()).thenReturn(ROLE_CLIENT_SECONDARY_LONG_LIVED);
+            when(mClientModeManager.isSecondaryInternet()).thenReturn(true);
+        }
+        when(mPerNetworkRecentStats.getCount(WifiScoreCard.CNT_CONSECUTIVE_CONNECTION_FAILURE))
+                .thenReturn(WifiBlocklistMonitor.NUM_CONSECUTIVE_FAILURES_PER_NETWORK_EXP_BACKOFF);
+        initializeAndAddNetworkAndVerifySuccess();
+        mCmi.sendMessage(ClientModeImpl.CMD_START_CONNECT, 0, 0, TEST_BSSID_STR);
+        mCmi.sendMessage(WifiMonitor.ASSOCIATION_REJECTION_EVENT,
+                new AssocRejectEventInfo(TEST_SSID, TEST_BSSID_STR,
+                        ISupplicantStaIfaceCallback.StatusCode.AP_UNABLE_TO_HANDLE_NEW_STA, false));
+        mLooper.dispatchAll();
+        verify(mWifiBlocklistMonitor).handleBssidConnectionFailure(eq(TEST_BSSID_STR),
+                eq(mTestConfig), eq(WifiBlocklistMonitor.REASON_AP_UNABLE_TO_HANDLE_NEW_STA),
+                anyInt());
+        if (isSecondary) {
+            verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(FRAMEWORK_NETWORK_ID,
+                    WifiConfiguration.NetworkSelectionStatus.DISABLED_ASSOCIATION_REJECTION);
+            verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(FRAMEWORK_NETWORK_ID,
+                    WifiConfiguration.NetworkSelectionStatus.DISABLED_CONSECUTIVE_FAILURES);
+        }
+        else {
+            verify(mWifiConfigManager).updateNetworkSelectionStatus(FRAMEWORK_NETWORK_ID,
+                    WifiConfiguration.NetworkSelectionStatus.DISABLED_ASSOCIATION_REJECTION);
+            verify(mWifiConfigManager).updateNetworkSelectionStatus(FRAMEWORK_NETWORK_ID,
+                    WifiConfiguration.NetworkSelectionStatus.DISABLED_CONSECUTIVE_FAILURES);
+        }
+    }
+
+    @Test
+    public void testAssociationRejectionPrimary() throws Exception {
+        testAssociationRejectionForRole(false);
+    }
+
+    @Test
+    public void testAssociationRejectionSecondary() throws Exception {
+        testAssociationRejectionForRole(true);
+    }
+
     /**
      * Verifies that WifiLastResortWatchdog is not notified of authentication failures of type
      * ERROR_AUTH_FAILURE_WRONG_PSWD.
@@ -4428,6 +4492,40 @@ public class ClientModeImplTest extends WifiBaseTest {
         final Layer2InformationParcelable info = captor.getValue();
         assertEquals(info.l2Key, "Wad");
         assertEquals(info.cluster, "Gab");
+    }
+
+    /**
+     * Verifies that Layer2 information is updated only when supplicant state change moves
+     * to COMPLETED and on Wi-Fi disconnection. ie when device connect, roam & disconnect.
+     */
+    @Test
+    public void testLayer2InformationUpdate() throws Exception {
+        when(mWifiScoreCard.getL2KeyAndGroupHint(any())).thenReturn(
+                Pair.create("Wad", "Gab"));
+        // Simulate connection
+        connect();
+
+        // Simulate Roaming
+        when(mWifiScoreCard.getL2KeyAndGroupHint(any())).thenReturn(
+                Pair.create("aaa", "bbb"));
+        mCmi.sendMessage(WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0,
+                new StateChangeResult(FRAMEWORK_NETWORK_ID, TEST_WIFI_SSID, TEST_BSSID_STR1,
+                        SupplicantState.ASSOCIATED));
+        mCmi.sendMessage(WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0,
+                new StateChangeResult(0, TEST_WIFI_SSID, TEST_BSSID_STR1,
+                        SupplicantState.COMPLETED));
+        mLooper.dispatchAll();
+
+
+        // Simulate disconnection
+        when(mWifiScoreCard.getL2KeyAndGroupHint(any())).thenReturn(new Pair<>(null, null));
+        mCmi.sendMessage(WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0,
+                new StateChangeResult(0, TEST_WIFI_SSID, TEST_BSSID_STR1,
+                        SupplicantState.DISCONNECTED));
+        mLooper.dispatchAll();
+
+        verify(mWifiScoreCard, times(3)).getL2KeyAndGroupHint(any());
+        verify(mIpClient, times(3)).updateLayer2Information(any());
     }
 
     /**
@@ -6919,25 +7017,178 @@ public class ClientModeImplTest extends WifiBaseTest {
                 eq(StaEvent.DISCONNECT_PASSPOINT_TAC));
     }
 
-    /**
-     * Verify that the Transition Disable event is routed correctly.
-     */
-    @Test
-    public void testTransitionDisableEvent() throws Exception {
+    private void verifyTransitionDisableEvent(String caps, int indication, boolean shouldUpdate)
+            throws Exception {
         final int networkId = FRAMEWORK_NETWORK_ID;
-        final int indication = WifiMonitor.TDI_USE_WPA3_PERSONAL
-                | WifiMonitor.TDI_USE_WPA3_ENTERPRISE;
+        ScanResult scanResult = new ScanResult(WifiSsid.fromUtf8Text(sFilsSsid),
+                sFilsSsid, TEST_BSSID_STR, 1245, 0, caps, -78, 2412, 1025, 22, 33, 20, 0, 0, true);
+        ScanResult.InformationElement ie = createIE(ScanResult.InformationElement.EID_SSID,
+                sFilsSsid.getBytes(StandardCharsets.UTF_8));
+        scanResult.informationElements = new ScanResult.InformationElement[]{ie};
+        when(mScanRequestProxy.getScanResults()).thenReturn(Arrays.asList(scanResult));
+        when(mScanRequestProxy.getScanResult(eq(TEST_BSSID_STR))).thenReturn(scanResult);
 
         initializeAndAddNetworkAndVerifySuccess();
 
         startConnectSuccess();
 
+        mCmi.sendMessage(WifiMonitor.NETWORK_CONNECTION_EVENT,
+                new NetworkConnectionEventInfo(0, TEST_WIFI_SSID, TEST_BSSID_STR, false));
+        mLooper.dispatchAll();
+
+        mCmi.sendMessage(WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0,
+                new StateChangeResult(0, TEST_WIFI_SSID, TEST_BSSID_STR,
+                        SupplicantState.COMPLETED));
+        mLooper.dispatchAll();
+
+        assertEquals("L3ProvisioningState", getCurrentState().getName());
+
         mCmi.sendMessage(WifiMonitor.TRANSITION_DISABLE_INDICATION,
                 networkId, indication);
         mLooper.dispatchAll();
 
-        verify(mWifiConfigManager).updateNetworkTransitionDisable(
-                eq(networkId), eq(indication));
+        if (shouldUpdate) {
+            verify(mWifiConfigManager).updateNetworkTransitionDisable(
+                    eq(networkId), eq(indication));
+        } else {
+            verify(mWifiConfigManager, never()).updateNetworkTransitionDisable(
+                    anyInt(), anyInt());
+        }
+    }
+
+    /**
+     * Verify that the Transition Disable event is routed correctly.
+     */
+    @Test
+    public void testUpdateSaeOnlyTransitionDisableIndicationFromPskSaeBss() throws Exception {
+        String caps = "[PSK][SAE]";
+        int indication = WifiMonitor.TDI_USE_WPA3_PERSONAL;
+        boolean shouldUpdate = true;
+        verifyTransitionDisableEvent(caps, indication, shouldUpdate);
+    }
+
+    /**
+     * Verify that the Transition Disable event is routed correctly.
+     */
+    @Test
+    public void testUpdateSaeOnlyTransitionDisableIndicationFromSaeBss() throws Exception {
+        String caps = "[SAE]";
+        int indication = WifiMonitor.TDI_USE_WPA3_PERSONAL;
+        boolean shouldUpdate = true;
+        verifyTransitionDisableEvent(caps, indication, shouldUpdate);
+    }
+
+    /**
+     * Verify that the Transition Disable event is routed correctly.
+     */
+    @Test
+    public void testDropSaeOnlyTransitionDisableIndicationFromPskBss() throws Exception {
+        String caps = "[PSK]";
+        int indication = WifiMonitor.TDI_USE_WPA3_PERSONAL;
+        boolean shouldUpdate = false;
+        verifyTransitionDisableEvent(caps, indication, shouldUpdate);
+    }
+
+    /**
+     * Verify that the Transition Disable event is routed correctly.
+     */
+    @Test
+    public void testUpdateSaePkTransitionDisableIndicationFromPskSaeBss() throws Exception {
+        String caps = "[PSK][SAE]";
+        int indication = WifiMonitor.TDI_USE_SAE_PK;
+        boolean shouldUpdate = true;
+        verifyTransitionDisableEvent(caps, indication, shouldUpdate);
+    }
+
+    /**
+     * Verify that the Transition Disable event is routed correctly.
+     */
+    @Test
+    public void testUpdateSaePkTransitionDisableIndicationFromSaeBss() throws Exception {
+        String caps = "[SAE]";
+        int indication = WifiMonitor.TDI_USE_SAE_PK;
+        boolean shouldUpdate = true;
+        verifyTransitionDisableEvent(caps, indication, shouldUpdate);
+    }
+
+    /**
+     * Verify that the Transition Disable event is routed correctly.
+     */
+    @Test
+    public void testDropSaePkTransitionDisableIndicationFromPskBss() throws Exception {
+        String caps = "[PSK]";
+        int indication = WifiMonitor.TDI_USE_SAE_PK;
+        boolean shouldUpdate = false;
+        verifyTransitionDisableEvent(caps, indication, shouldUpdate);
+    }
+
+    /**
+     * Verify that the Transition Disable event is routed correctly.
+     */
+    @Test
+    public void testUpdateOweOnlyTransitionDisableIndicationFromOpenOweBss() throws Exception {
+        String caps = "[OWE_TRANSITION]";
+        int indication = WifiMonitor.TDI_USE_ENHANCED_OPEN;
+        boolean shouldUpdate = true;
+        verifyTransitionDisableEvent(caps, indication, shouldUpdate);
+    }
+
+    /**
+     * Verify that the Transition Disable event is routed correctly.
+     */
+    @Test
+    public void testUpdateOweOnlyTransitionDisableIndicationFromOweBss() throws Exception {
+        String caps = "[OWE]";
+        int indication = WifiMonitor.TDI_USE_ENHANCED_OPEN;
+        boolean shouldUpdate = true;
+        verifyTransitionDisableEvent(caps, indication, shouldUpdate);
+    }
+
+    /**
+     * Verify that the Transition Disable event is routed correctly.
+     */
+    @Test
+    public void testDropOweOnlyTransitionDisableIndicationFromOpenBss() throws Exception {
+        String caps = "";
+        int indication = WifiMonitor.TDI_USE_ENHANCED_OPEN;
+        boolean shouldUpdate = false;
+        verifyTransitionDisableEvent(caps, indication, shouldUpdate);
+    }
+
+    /**
+     * Verify that the Transition Disable event is routed correctly.
+     */
+    @Test
+    public void testUpdateWpa3EnterpriseTransitionDisableIndicationFromTransitionBss()
+            throws Exception {
+        String caps = "[EAP/SHA1-EAP/SHA256][RSN][MFPC]";
+        int indication = WifiMonitor.TDI_USE_WPA3_ENTERPRISE;
+        boolean shouldUpdate = true;
+        verifyTransitionDisableEvent(caps, indication, shouldUpdate);
+    }
+
+    /**
+     * Verify that the Transition Disable event is routed correctly.
+     */
+    @Test
+    public void testUpdateWpa3EnterpriseTransitionDisableIndicationFromWpa3EnterpriseBss()
+            throws Exception {
+        String caps = "[EAP/SHA256][RSN][MFPC][MFPR]";
+        int indication = WifiMonitor.TDI_USE_WPA3_ENTERPRISE;
+        boolean shouldUpdate = true;
+        verifyTransitionDisableEvent(caps, indication, shouldUpdate);
+    }
+
+    /**
+     * Verify that the Transition Disable event is routed correctly.
+     */
+    @Test
+    public void testDropWpa3EnterpriseTransitionDisableIndicationFromWpa2EnterpriseBss()
+            throws Exception {
+        String caps = "[EAP/SHA1]";
+        int indication = WifiMonitor.TDI_USE_WPA3_ENTERPRISE;
+        boolean shouldUpdate = false;
+        verifyTransitionDisableEvent(caps, indication, shouldUpdate);
     }
 
     /**
@@ -8321,5 +8572,105 @@ public class ClientModeImplTest extends WifiBaseTest {
                 eq(WIFI_IFACE_NAME), eq(dialogToken), eq(true), any());
         verify(mWifiNative).sendQosPolicyResponse(
                 eq(WIFI_IFACE_NAME), eq(dialogToken + 1), eq(true), any());
+    }
+
+    private void verifyUpdatePskEnablement(
+            boolean isWpa2PersonalOnlyNetworkInRange,
+            boolean isWpa2Wpa3PersonalTransitionNetworkInRange,
+            boolean isWpa3PersonalOnlyNetworkInRange, boolean shouldBeUpdated)
+            throws Exception {
+
+        when(mScanRequestProxy.isWpa2PersonalOnlyNetworkInRange(any()))
+                .thenReturn(isWpa2PersonalOnlyNetworkInRange);
+        when(mScanRequestProxy.isWpa2Wpa3PersonalTransitionNetworkInRange(any()))
+                .thenReturn(isWpa2Wpa3PersonalTransitionNetworkInRange);
+        when(mScanRequestProxy.isWpa3PersonalOnlyNetworkInRange(any()))
+                .thenReturn(isWpa3PersonalOnlyNetworkInRange);
+        initializeAndAddNetworkAndVerifySuccess();
+
+        WifiConfiguration config = WifiConfigurationTestUtil.createPskSaeNetwork();
+        config.networkId = TEST_NETWORK_ID;
+        config.setSecurityParamsEnabled(WifiConfiguration.SECURITY_TYPE_PSK, false);
+        when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(config);
+
+        IActionListener connectActionListener = mock(IActionListener.class);
+        mCmi.connectNetwork(
+                new NetworkUpdateResult(TEST_NETWORK_ID),
+                new ActionListenerWrapper(connectActionListener),
+                Process.SYSTEM_UID, OP_PACKAGE_NAME);
+        mLooper.dispatchAll();
+        verify(connectActionListener).onSuccess();
+        if (shouldBeUpdated) {
+            verify(mWifiConfigManager).setSecurityParamsEnabled(
+                    eq(TEST_NETWORK_ID), eq(WifiConfiguration.SECURITY_TYPE_PSK),
+                    eq(true));
+        } else {
+            verify(mWifiConfigManager, never()).updateIsAddedByAutoUpgradeFlag(
+                    anyInt(), anyInt(), anyBoolean());
+        }
+    }
+
+    @Test
+    public void testPskIsReEnableWithOnlyPskNetwork() throws Exception {
+        boolean isWpa2PersonalOnlyNetworkInRange = true;
+        boolean isWpa2Wpa3PersonalTransitionNetworkInRange = false;
+        boolean isWpa3PersonalOnlyNetworkInRange = false;
+        boolean shouldBeUpdated = true;
+
+        verifyUpdatePskEnablement(isWpa2PersonalOnlyNetworkInRange,
+                isWpa2Wpa3PersonalTransitionNetworkInRange,
+                isWpa3PersonalOnlyNetworkInRange, shouldBeUpdated);
+    }
+
+    @Test
+    public void testPskIsNotReEnableWithPskSaeNetwork() throws Exception {
+        boolean isWpa2PersonalOnlyNetworkInRange = true;
+        boolean isWpa2Wpa3PersonalTransitionNetworkInRange = true;
+        boolean isWpa3PersonalOnlyNetworkInRange = false;
+        boolean shouldBeUpdated = false;
+
+        verifyUpdatePskEnablement(isWpa2PersonalOnlyNetworkInRange,
+                isWpa2Wpa3PersonalTransitionNetworkInRange,
+                isWpa3PersonalOnlyNetworkInRange, shouldBeUpdated);
+    }
+
+    @Test
+    public void testPskIsNotReEnableWithSaeNetwork() throws Exception {
+        boolean isWpa2PersonalOnlyNetworkInRange = true;
+        boolean isWpa2Wpa3PersonalTransitionNetworkInRange = false;
+        boolean isWpa3PersonalOnlyNetworkInRange = true;
+        boolean shouldBeUpdated = false;
+
+        verifyUpdatePskEnablement(isWpa2PersonalOnlyNetworkInRange,
+                isWpa2Wpa3PersonalTransitionNetworkInRange,
+                isWpa3PersonalOnlyNetworkInRange, shouldBeUpdated);
+    }
+
+    @Test
+    public void testPskIsNotReEnableWithoutPskNetwork() throws Exception {
+        boolean isWpa2PersonalOnlyNetworkInRange = false;
+        boolean isWpa2Wpa3PersonalTransitionNetworkInRange = true;
+        boolean isWpa3PersonalOnlyNetworkInRange = false;
+        boolean shouldBeUpdated = false;
+
+        verifyUpdatePskEnablement(isWpa2PersonalOnlyNetworkInRange,
+                isWpa2Wpa3PersonalTransitionNetworkInRange,
+                isWpa3PersonalOnlyNetworkInRange, shouldBeUpdated);
+    }
+
+    @Test
+    public void testPskIsNotReEnableForNonUserSelectedNetwork() throws Exception {
+        boolean isWpa2PersonalOnlyNetworkInRange = true;
+        boolean isWpa2Wpa3PersonalTransitionNetworkInRange = false;
+        boolean isWpa3PersonalOnlyNetworkInRange = false;
+        boolean shouldBeUpdated = false;
+
+        // Only a request from settings or setup wizard are considered a user selected network.
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.checkNetworkSetupWizardPermission(anyInt())).thenReturn(false);
+
+        verifyUpdatePskEnablement(isWpa2PersonalOnlyNetworkInRange,
+                isWpa2Wpa3PersonalTransitionNetworkInRange,
+                isWpa3PersonalOnlyNetworkInRange, shouldBeUpdated);
     }
 }
