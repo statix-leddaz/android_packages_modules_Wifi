@@ -741,6 +741,12 @@
      -->
     <bool translatable="false" name="config_wifiAllowMultipleNetworksOnSameAwareNdi">false</bool>
 
+    <!-- Enable Aware NDP interface selection on interface that already has a network to same peer
+    set up. Enable this will offload to FW to do the Aware NDP security upgrade. This may result in
+    incorrect behavior when the security upgrade feature is not fully supported.
+     -->
+    <bool translatable="false" name="config_wifiAwareNdpSecurityUpdateOnSameNdi">false</bool>
+
     <!-- A boolean indicate if device supports ser channel on the Aware data-path setup. If the
     value is false, channel setting on the data-path request will be ignored.
     -->
@@ -874,6 +880,9 @@
         <item>com.company2.example.test.name2</item>
         -->
     </string-array>
+    <!-- Indicates whether or not P2P interface removal can be approved automatically when P2P
+         is not connected. -->
+    <bool translatable="false" name="config_wifiUserApprovalNotRequireForDisconnectedP2p">false</bool>
 
     <!-- boolean indicating whether the Easy Connect (DPP) AKM is supported -->
     <bool translatable="false" name ="config_wifiDppAkmSupported">false</bool>
@@ -899,6 +908,14 @@
         <!-- Below is a sample configuration for this list:
         <item>XYZ</item>
         <item>ABC</item>
+        -->
+    </string-array>
+    <!-- list of package names for which WifiRttManager.startRanging() will not be throttled when
+    the app is in background. -->
+    <string-array translatable="false" name="config_wifiBackgroundRttThrottleExceptionList">
+        <!-- Below is a sample configuration for this list:
+        <item>com.company1.example.test.name1</item>
+        <item>com.company2.example.test.name2</item>
         -->
     </string-array>
 
