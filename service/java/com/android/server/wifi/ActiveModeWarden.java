@@ -122,6 +122,7 @@ public class ActiveModeWarden {
             new RemoteCallbackList<>();
 
     private boolean mIsShuttingdown = false;
+    private boolean mIsStartingClientModeManager = false;
     private boolean mVerboseLoggingEnabled = false;
     /** Cache to store the external scorer for primary and secondary (MBB) client mode manager. */
     @Nullable private Pair<IBinder, IWifiConnectedNetworkScorer> mClientModeManagerScorer;
@@ -960,6 +961,11 @@ public class ActiveModeWarden {
      */
     private boolean startScanOnlyClientModeManager(WorkSource requestorWs) {
         Log.d(TAG, "Starting primary ClientModeManager in scan only mode");
+        if (mIsStartingClientModeManager) {
+            Log.e(TAG, "ClientModeManager startup has not completed, ignore.");
+            return false;
+        }
+        mIsStartingClientModeManager = true;
         ConcreteClientModeManager manager = mWifiInjector.makeClientModeManager(
                 new ClientListener(), requestorWs, ROLE_CLIENT_SCAN_ONLY, mVerboseLoggingEnabled);
         mClientModeManagers.add(manager);
@@ -972,6 +978,11 @@ public class ActiveModeWarden {
      */
     private boolean startPrimaryClientModeManager(WorkSource requestorWs) {
         Log.d(TAG, "Starting primary ClientModeManager in connect mode");
+        if (mIsStartingClientModeManager) {
+            Log.e(TAG, "ClientModeManager startup has not completed, ignore.");
+            return false;
+        }
+        mIsStartingClientModeManager = true;
         ConcreteClientModeManager manager = mWifiInjector.makeClientModeManager(
                 new ClientListener(), requestorWs, ROLE_CLIENT_PRIMARY, mVerboseLoggingEnabled);
         mClientModeManagers.add(manager);
@@ -1307,6 +1318,7 @@ public class ActiveModeWarden {
             invokeOnAddedCallbacks(clientModeManager);
             // invoke "added" callbacks before primary changed
             onPrimaryChangedDueToStartedOrRoleChanged(clientModeManager);
+            mIsStartingClientModeManager = false;
         }
 
         @Override
@@ -1347,6 +1359,7 @@ public class ActiveModeWarden {
             // update listeners.
             onStoppedOrStartFailure(clientModeManager);
             mWifiController.sendMessage(WifiController.CMD_STA_START_FAILURE);
+            mIsStartingClientModeManager = false;
         }
     }
 
