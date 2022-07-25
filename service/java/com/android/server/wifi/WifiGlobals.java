@@ -32,7 +32,9 @@ import javax.annotation.concurrent.ThreadSafe;
 @ThreadSafe
 public class WifiGlobals {
 
-    /**
+ 
+     
+	/**
      * Maximum allowable interval in milliseconds between polling for RSSI and linkspeed
      * information. This is also used as the polling interval for WifiTrafficPoller, which updates
      * its data activity on every CMD_RSSI_POLL.
@@ -41,9 +43,9 @@ public class WifiGlobals {
 
     private final Context mContext;
 
-    private final AtomicInteger mPollRssiIntervalMillis = new AtomicInteger(-1);
-    private final AtomicBoolean mIpReachabilityDisconnectEnabled = new AtomicBoolean(true);
-    private final AtomicBoolean mIsBluetoothConnected = new AtomicBoolean(false);
+    //private final AtomicInteger mPollRssiIntervalMillis = new AtomicInteger(-1);
+    //private final AtomicBoolean mIpReachabilityDisconnectEnabled = new AtomicBoolean(true);
+    //private final AtomicBoolean mIsBluetoothConnected = new AtomicBoolean(false);
 
     // This is read from the overlay, cache it after boot up.
     private final boolean mIsWpa3SaeUpgradeEnabled;
