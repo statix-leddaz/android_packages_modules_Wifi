@@ -32,6 +32,7 @@ import android.net.Uri;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.os.Process;
 import android.os.Vibrator;
 import android.text.Editable;
@@ -50,6 +51,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.TextView;
 
@@ -64,6 +66,8 @@ import java.util.Set;
  * Main Activity of the WifiDialog application. All dialogs should be created and managed from here.
  */
 public class WifiDialogActivity extends Activity  {
+    private static int sNumActiveInstances = 0;
+
     private static final String TAG = "WifiDialog";
     private static final String KEY_DIALOG_INTENTS = "KEY_DIALOG_INTENTS";
 
@@ -193,6 +197,10 @@ public class WifiDialogActivity extends Activity  {
     @Override
     protected void onStart() {
         super.onStart();
+        sNumActiveInstances++;
+        if (mIsVerboseLoggingEnabled) {
+            Log.v(TAG, "onStart() incrementing sActiveInstances to " + sNumActiveInstances);
+        }
         registerReceiver(
                 mCloseSystemDialogsReceiver, new IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
         ArraySet<Integer> invalidDialogIds = new ArraySet<>();
@@ -236,14 +244,31 @@ public class WifiDialogActivity extends Activity  {
     @Override
     protected void onStop() {
         super.onStop();
-        unregisterReceiver(mCloseSystemDialogsReceiver);
-        // Dismiss and remove any active Dialogs to prevent window leaking.
-        for (int i = 0; i < mActiveDialogsPerId.size(); i++) {
-            Dialog dialog = mActiveDialogsPerId.valueAt(i);
-            dialog.setOnDismissListener(null);
-            dialog.dismiss();
+        sNumActiveInstances--;
+        if (mIsVerboseLoggingEnabled) {
+            Log.v(TAG, "onStop() decrementing sActiveInstances to " + sNumActiveInstances);
         }
-        mActiveDialogsPerId.clear();
+        unregisterReceiver(mCloseSystemDialogsReceiver);
+
+        if (isChangingConfigurations()) {
+            // If we're stopping due to a configuration change, dismiss all the dialogs without
+            // removing it from mLaunchIntentsPerId to prevent window leaking. The dialogs will be
+            // recreated from mLaunchIntentsPerId in onStart().
+            for (int i = 0; i < mActiveDialogsPerId.size(); i++) {
+                Dialog dialog = mActiveDialogsPerId.valueAt(i);
+                // Set the dismiss listener to null to prevent removing the Intent from
+                // mLaunchIntentsPerId.
+                dialog.setOnDismissListener(null);
+                dialog.dismiss();
+            }
+            mActiveDialogsPerId.clear();
+        } else if (getSystemService(PowerManager.class).isInteractive()) {
+            // If we're stopping because we're switching to a new Activity, remove and cancel all
+            // the dialogs.
+            while (mActiveDialogsPerId.size() > 0) {
+                removeIntentAndPossiblyFinish(mActiveDialogsPerId.keyAt(0));
+            }
+        }
     }
 
     @Override
@@ -257,7 +282,7 @@ public class WifiDialogActivity extends Activity  {
     }
 
     /**
-     * Remove the Intent and corresponding dialog of the given dialogId (dismissing it if it is
+     * Remove the Intent and corresponding dialog of the given dialogId (cancelling it if it is
      * showing) and finish the Activity if there are no dialogs left to show.
      */
     private void removeIntentAndPossiblyFinish(int dialogId) {
@@ -265,7 +290,7 @@ public class WifiDialogActivity extends Activity  {
         Dialog dialog = mActiveDialogsPerId.get(dialogId);
         mActiveDialogsPerId.remove(dialogId);
         if (dialog != null && dialog.isShowing()) {
-            dialog.dismiss();
+            dialog.cancel();
         }
         if (mIsVerboseLoggingEnabled) {
             Log.v(TAG, "Dialog id " + dialogId + " removed.");
@@ -282,7 +307,15 @@ public class WifiDialogActivity extends Activity  {
     protected void onDestroy() {
         super.onDestroy();
         if (isFinishing()) {
-            // Kill the process now instead of waiting indefinitely for ActivityManager to kill it.
+            if (sNumActiveInstances > 0) {
+                if (mIsVerboseLoggingEnabled) {
+                    Log.v(TAG, "Finished with sNumActiveInstances: " + sNumActiveInstances);
+                }
+                return;
+            }
+            if (mIsVerboseLoggingEnabled) {
+                Log.v(TAG, "Finished with no active instances left. Killing process.");
+            }
             Process.killProcess(android.os.Process.myPid());
         }
     }
@@ -567,7 +600,10 @@ public class WifiDialogActivity extends Activity  {
                 })
                 .create();
         if (pinEditText != null) {
+            dialog.getWindow().setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
             dialog.setOnShowListener(dialogShow -> {
+                pinEditText.requestFocus();
                 dialog.getButton(Dialog.BUTTON_POSITIVE).setEnabled(false);
             });
             pinEditText.addTextChangedListener(new TextWatcher() {
