@@ -37,6 +37,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.location.LocationManager;
 import android.net.wifi.ISubsystemRestartCallback;
 import android.net.wifi.IWifiConnectedNetworkScorer;
@@ -73,6 +74,7 @@ import com.android.server.wifi.ActiveModeManager.ClientConnectivityRole;
 import com.android.server.wifi.ActiveModeManager.ClientInternetConnectivityRole;
 import com.android.server.wifi.ActiveModeManager.ClientRole;
 import com.android.server.wifi.ActiveModeManager.SoftApRole;
+import com.android.server.wifi.util.ApConfigUtil;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.wifi.resources.R;
 
@@ -87,6 +89,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -131,8 +134,10 @@ public class ActiveModeWarden {
     private final RemoteCallbackList<ISubsystemRestartCallback> mRestartCallbacks =
             new RemoteCallbackList<>();
 
+    private boolean mIsMultiplePrimaryBugreportTaken = false;
     private boolean mIsShuttingdown = false;
     private boolean mVerboseLoggingEnabled = false;
+    private boolean mAllowRootToGetLocalOnlyCmm = true;
     /** Cache to store the external scorer for primary and secondary (MBB) client mode manager. */
     @Nullable private Pair<IBinder, IWifiConnectedNetworkScorer> mClientModeManagerScorer;
 
@@ -143,6 +148,7 @@ public class ActiveModeWarden {
     private WorkSource mLastPrimaryClientModeManagerRequestorWs = null;
     @Nullable
     private WorkSource mLastScanOnlyClientModeManagerRequestorWs = null;
+    private AtomicLong mSupportedFeatureSet = new AtomicLong(0);
 
     /**
      * One of  {@link WifiManager#WIFI_STATE_DISABLED},
@@ -413,9 +419,19 @@ public class ActiveModeWarden {
             Log.v(TAG, "Primary ClientModeManager changed from " + prevPrimaryClientModeManager
                     + " to " + newPrimaryClientModeManager);
         }
+
         for (PrimaryClientModeManagerChangedCallback callback : mPrimaryChangedCallbacks) {
             callback.onChange(prevPrimaryClientModeManager, newPrimaryClientModeManager);
         }
+    }
+
+    /**
+     * Used for testing with wifi shell command. If enabled the root will be able to request for a
+     * secondary local-only CMM when commands like add-request is used. If disabled, add-request
+     * will fallback to using the primary CMM.
+     */
+    public void allowRootToGetLocalOnlyCmm(boolean enabled) {
+        mAllowRootToGetLocalOnlyCmm = enabled;
     }
 
     /**
@@ -538,14 +554,6 @@ public class ActiveModeWarden {
     }
 
     /**
-     * @return Returns whether the device can support at least one concurrent client mode manager &
-     * softap manager.
-     */
-    public boolean isStaApConcurrencySupported() {
-        return mWifiNative.isStaApConcurrencySupported();
-    }
-
-    /**
      * @return Returns whether the device can support at least two concurrent client mode managers
      * and the local only use-case is enabled.
      */
@@ -629,7 +637,10 @@ public class ActiveModeWarden {
                 }
             }, new IntentFilter(TelephonyManager.ACTION_EMERGENCY_CALL_STATE_CHANGED));
         }
-
+        // Initialize the supported feature set.
+        setSupportedFeatureSet(mWifiNative.getSupportedFeatureSet(null),
+                mWifiNative.isStaApConcurrencySupported(),
+                mWifiNative.isStaStaConcurrencySupported());
         mWifiController.start();
     }
 
@@ -857,7 +868,9 @@ public class ActiveModeWarden {
      */
     private boolean hasPrimaryOrScanOnlyModeManager() {
         return getClientModeManagerInRole(ROLE_CLIENT_PRIMARY) != null
-                || getClientModeManagerInRole(ROLE_CLIENT_SCAN_ONLY) != null;
+                || getClientModeManagerInRole(ROLE_CLIENT_SCAN_ONLY) != null
+                || getClientModeManagerTransitioningIntoRole(ROLE_CLIENT_PRIMARY) != null
+                || getClientModeManagerTransitioningIntoRole(ROLE_CLIENT_SCAN_ONLY) != null;
     }
 
     /**
@@ -986,6 +999,14 @@ public class ActiveModeWarden {
         return null;
     }
 
+    @Nullable
+    private ConcreteClientModeManager getClientModeManagerTransitioningIntoRole(ClientRole role) {
+        for (ConcreteClientModeManager manager : mClientModeManagers) {
+            if (manager.getTargetRole() == role) return manager;
+        }
+        return null;
+    }
+
     /** Get all client mode managers in the specified roles. */
     @NonNull
     public List<ConcreteClientModeManager> getClientModeManagersInRoles(ClientRole... roles) {
@@ -1076,6 +1097,16 @@ public class ActiveModeWarden {
      * Method to enable a new primary client mode manager in scan only mode.
      */
     private boolean startScanOnlyClientModeManager(WorkSource requestorWs) {
+        if (hasPrimaryOrScanOnlyModeManager()) {
+            Log.e(TAG, "Unexpected state - scan only CMM should not be started when a primary "
+                    + "or scan only CMM is already present.");
+            if (!mIsMultiplePrimaryBugreportTaken) {
+                mIsMultiplePrimaryBugreportTaken = true;
+                mWifiDiagnostics.takeBugReport("Wi-Fi ActiveModeWarden bugreport",
+                        "Trying to start scan only mode manager when one already exists.");
+            }
+            return false;
+        }
         Log.d(TAG, "Starting primary ClientModeManager in scan only mode");
         ConcreteClientModeManager manager = mWifiInjector.makeClientModeManager(
                 new ClientListener(), requestorWs, ROLE_CLIENT_SCAN_ONLY, mVerboseLoggingEnabled);
@@ -1088,6 +1119,16 @@ public class ActiveModeWarden {
      * Method to enable a new primary client mode manager in connect mode.
      */
     private boolean startPrimaryClientModeManager(WorkSource requestorWs) {
+        if (hasPrimaryOrScanOnlyModeManager()) {
+            Log.e(TAG, "Unexpected state - primary CMM should not be started when a primary "
+                    + "or scan only CMM is already present.");
+            if (!mIsMultiplePrimaryBugreportTaken) {
+                mIsMultiplePrimaryBugreportTaken = true;
+                mWifiDiagnostics.takeBugReport("Wi-Fi ActiveModeWarden bugreport",
+                        "Trying to start primary mode manager when one already exists.");
+            }
+            return false;
+        }
         Log.d(TAG, "Starting primary ClientModeManager in connect mode");
         ConcreteClientModeManager manager = mWifiInjector.makeClientModeManager(
                 new ClientListener(), requestorWs, ROLE_CLIENT_PRIMARY, mVerboseLoggingEnabled);
@@ -1247,6 +1288,7 @@ public class ActiveModeWarden {
         pw.println("Current wifi mode: " + getCurrentMode());
         pw.println("Wi-Fi is " + getWifiStateName());
         pw.println("NumActiveModeManagers: " + getActiveModeManagerCount());
+        pw.println("mIsMultiplePrimaryBugreportTaken: " + mIsMultiplePrimaryBugreportTaken);
         mWifiController.dump(fd, pw, args);
         for (ActiveModeManager manager : getActiveModeManagers()) {
             manager.dump(fd, pw, args);
@@ -1268,7 +1310,7 @@ public class ActiveModeWarden {
                     + mContext.getResources().getBoolean(
                             R.bool.config_wifiMultiStaMultiInternetConcurrencyEnabled));
         }
-        pw.println("STA + AP Concurrency Supported: " + isStaApConcurrencySupported());
+        pw.println("STA + AP Concurrency Supported: " + mWifiNative.isStaApConcurrencySupported());
         mWifiInjector.getHalDeviceManager().dump(fd, pw, args);
     }
 
@@ -1427,6 +1469,13 @@ public class ActiveModeWarden {
                         mLastPrimaryClientModeManager, clientModeManager);
                 mLastPrimaryClientModeManager = clientModeManager;
             }
+            setSupportedFeatureSet(
+                    // If primary doesn't exist, DefaultClientModeManager getInterfaceName name
+                    // returns null.
+                    mWifiNative.getSupportedFeatureSet(
+                            getPrimaryClientModeManager().getInterfaceName()),
+                    mWifiNative.isStaApConcurrencySupported(),
+                    mWifiNative.isStaStaConcurrencySupported());
         }
 
         @Override
@@ -1454,6 +1503,9 @@ public class ActiveModeWarden {
                 invokeOnPrimaryClientModeManagerChangedCallbacks(
                         mLastPrimaryClientModeManager, null);
                 mLastPrimaryClientModeManager = null;
+                setSupportedFeatureSet(mWifiNative.getSupportedFeatureSet(null),
+                        mWifiNative.isStaApConcurrencySupported(),
+                        mWifiNative.isStaStaConcurrencySupported());
             }
             // invoke "removed" callbacks after primary changed
             invokeOnRemovedCallbacks(clientModeManager);
@@ -1594,6 +1646,25 @@ public class ActiveModeWarden {
             setLogRecSize(100);
             setLogOnlyTransitions(false);
 
+        }
+
+        /**
+         * Return the additional string to be logged by LogRec.
+         *
+         * @param msg that was processed
+         * @return information to be logged as a String
+         */
+        @Override
+        protected String getLogRecString(Message msg) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(msg.arg1)
+                    .append(" ").append(msg.arg2)
+                    .append(" num ClientModeManagers:").append(mClientModeManagers.size())
+                    .append(" num SoftApManagers:").append(mSoftApManagers.size());
+            if (msg.obj != null) {
+                sb.append(" ").append(msg.obj);
+            }
+            return sb.toString();
         }
 
         @Override
@@ -2059,6 +2130,9 @@ public class ActiveModeWarden {
                     WorkSource workSource = requestInfo.requestorWs;
                     for (int i = 0; i < workSource.size(); i++) {
                         int curUid = workSource.getUid(i);
+                        if (mAllowRootToGetLocalOnlyCmm && curUid == 0) { // 0 is root UID.
+                            continue;
+                        }
                         if (mWifiPermissionsUtil.checkEnterCarModePrioritized(curUid)) {
                             requestInfo.listener.onAnswer(primaryManager);
                             if (mVerboseLoggingEnabled) {
@@ -2315,5 +2389,87 @@ public class ActiveModeWarden {
         Log.v(TAG, connectedOrConnectingBssid + "   " + connectedOrConnectingSsid);
         return Objects.equals(ssid, connectedOrConnectingSsid)
                 && Objects.equals(bssid, connectedOrConnectingBssid);
+    }
+
+    /**
+     * Set the current supported Wifi feature set, called from primary client mode manager.
+     * @param supportedFeatureSet supported Wifi feature set
+     * @param isStaApConcurrencySupported true if Sta+Ap concurrency supported
+     * @param isStaStaConcurrencySupported true if Sta+Sta concurrency supported
+     */
+    private void setSupportedFeatureSet(long supportedFeatureSet,
+            boolean isStaApConcurrencySupported,
+            boolean isStaStaConcurrencySupported) {
+        long concurrencyFeatureSet = 0L;
+        if (isStaApConcurrencySupported) {
+            concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_AP_STA;
+        }
+        if (isStaStaConcurrencySupported) {
+            if (mContext.getResources().getBoolean(
+                    R.bool.config_wifiMultiStaLocalOnlyConcurrencyEnabled)) {
+                concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_ADDITIONAL_STA_LOCAL_ONLY;
+            }
+            if (mContext.getResources().getBoolean(
+                    R.bool.config_wifiMultiStaNetworkSwitchingMakeBeforeBreakEnabled)) {
+                concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_ADDITIONAL_STA_MBB;
+            }
+            if (mContext.getResources().getBoolean(
+                    R.bool.config_wifiMultiStaRestrictedConcurrencyEnabled)) {
+                concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_ADDITIONAL_STA_RESTRICTED;
+            }
+            if (mContext.getResources().getBoolean(
+                    R.bool.config_wifiMultiStaMultiInternetConcurrencyEnabled)) {
+                concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_ADDITIONAL_STA_MULTI_INTERNET;
+            }
+        }
+        long additionalFeatureSet = 0L;
+        long excludedFeatureSet = 0L;
+        // Mask the feature set against system properties.
+        if (!mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT)) {
+            // flags filled in by vendor HAL, remove if overlay disables it.
+            excludedFeatureSet |=
+                    (WifiManager.WIFI_FEATURE_D2D_RTT | WifiManager.WIFI_FEATURE_D2AP_RTT);
+        }
+
+        if (!mContext.getResources().getBoolean(
+                R.bool.config_wifi_p2p_mac_randomization_supported)) {
+            // flags filled in by vendor HAL, remove if overlay disables it.
+            excludedFeatureSet |= WifiManager.WIFI_FEATURE_P2P_RAND_MAC;
+        }
+
+        if (mContext.getResources().getBoolean(
+                R.bool.config_wifi_connected_mac_randomization_supported)) {
+            // no corresponding flags in vendor HAL, set if overlay enables it.
+            additionalFeatureSet |= WifiManager.WIFI_FEATURE_CONNECTED_RAND_MAC;
+        }
+        if (ApConfigUtil.isApMacRandomizationSupported(mContext)) {
+            // no corresponding flags in vendor HAL, set if overlay enables it.
+            additionalFeatureSet |= WifiManager.WIFI_FEATURE_AP_RAND_MAC;
+        }
+
+        if (ApConfigUtil.isBridgedModeSupported(mContext)) {
+            // The bridged mode requires the kernel network modules support.
+            // It doesn't relate the vendor HAL, set if overlay enables it.
+            additionalFeatureSet |= WifiManager.WIFI_FEATURE_BRIDGED_AP;
+        }
+        if (ApConfigUtil.isStaWithBridgedModeSupported(mContext)) {
+            // The bridged mode requires the kernel network modules support.
+            // It doesn't relate the vendor HAL, set if overlay enables it.
+            additionalFeatureSet |= WifiManager.WIFI_FEATURE_STA_BRIDGED_AP;
+        }
+        mSupportedFeatureSet.set(
+                (supportedFeatureSet | concurrencyFeatureSet | additionalFeatureSet)
+                        & ~excludedFeatureSet);
+        if (mVerboseLoggingEnabled) {
+            Log.d(TAG, "setSupportedFeatureSet 0x" + Long.toHexString(mSupportedFeatureSet.get()));
+        }
+    }
+
+    /**
+     * Get the current supported Wifi feature set.
+     * @return supported Wifi feature set
+     */
+    public long getSupportedFeatureSet() {
+        return mSupportedFeatureSet.get();
     }
 }

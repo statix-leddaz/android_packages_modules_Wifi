@@ -17,6 +17,7 @@
 package com.android.server.wifi;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
@@ -25,19 +26,23 @@ import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.validateMockitoUsage;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import android.app.AlarmManager;
 import android.app.Notification;
+import android.app.test.TestAlarmManager;
 import android.content.BroadcastReceiver;
 import android.content.Intent;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.os.Handler;
+import android.os.test.TestLooper;
 
 import androidx.test.filters.SmallTest;
 
@@ -52,6 +57,7 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.security.Principal;
 import java.security.cert.X509Certificate;
 
 /**
@@ -65,7 +71,7 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
     private static final int ACTION_TAP = 2;
     private static final String WIFI_IFACE_NAME = "wlan-test-9";
     private static final int FRAMEWORK_NETWORK_ID = 2;
-    private static final String TEST_SSID = "test_ssid";
+    private static final String TEST_SSID = "\"test_ssid\"";
 
     @Mock WifiContext mContext;
     @Mock WifiConfigManager mWifiConfigManager;
@@ -73,14 +79,17 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
     @Mock FrameworkFacade mFrameworkFacade;
     @Mock WifiNotificationManager mWifiNotificationManager;
     @Mock WifiDialogManager mWifiDialogManager;
-    @Mock Handler mHandler;
     @Mock InsecureEapNetworkHandler.InsecureEapNetworkHandlerCallbacks mCallbacks;
+    @Mock Clock mClock;
 
     @Mock(answer = Answers.RETURNS_DEEP_STUBS) private Notification.Builder mNotificationBuilder;
     @Mock private WifiDialogManager.DialogHandle mTofuAlertDialog;
 
     @Captor ArgumentCaptor<BroadcastReceiver> mBroadcastReceiverCaptor;
 
+    TestLooper mLooper;
+    Handler mHandler;
+    TestAlarmManager mTestAlarmManager;
     MockResources mResources;
     InsecureEapNetworkHandler mInsecureEapNetworkHandler;
 
@@ -96,12 +105,19 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
         when(mContext.getText(anyInt())).thenReturn("TestStr");
         when(mContext.getWifiOverlayApkPkgName()).thenReturn("test.com.android.wifi.resources");
         when(mContext.getResources()).thenReturn(mResources);
-        when(mWifiDialogManager.createSimpleDialogWithUrl(
+        when(mWifiDialogManager.createLegacySimpleDialogWithUrl(
                 any(), any(), any(), anyInt(), anyInt(), any(), any(), any(), any(), any()))
+                .thenReturn(mTofuAlertDialog);
+        when(mWifiDialogManager.createLegacySimpleDialog(
+                any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(mTofuAlertDialog);
 
         when(mFrameworkFacade.makeNotificationBuilder(any(), any()))
                 .thenReturn(mNotificationBuilder);
+
+        mLooper = new TestLooper();
+        mHandler = new Handler(mLooper.getLooper());
+        mTestAlarmManager = new TestAlarmManager();
     }
 
     @After
@@ -207,6 +223,7 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
         assertTrue(mInsecureEapNetworkHandler.startUserApprovalIfNecessary(isUserSelected));
         verify(mCallbacks).onError(eq(config.SSID));
+        verify(mWifiConfigManager).allowAutojoin(eq(config.networkId), eq(false));
     }
 
     /**
@@ -311,6 +328,27 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
                 isTrustOnFirstUseSupported, isUserSelected, needUserApproval);
     }
 
+    private X509Certificate generateMockCert(String subject, String issuer, boolean isCa) {
+        X509Certificate mockCert = mock(X509Certificate.class);
+        Principal mockSubjectDn = mock(Principal.class);
+        when(mockCert.getSubjectDN()).thenReturn(mockSubjectDn);
+        when(mockSubjectDn.getName()).thenReturn(
+                "C=TW,ST=Taiwan,L=Taipei,O=Google,CN=" + subject);
+
+        Principal mockIssuerDn = mock(Principal.class);
+        when(mockCert.getIssuerDN()).thenReturn(mockIssuerDn);
+        when(mockIssuerDn.getName()).thenReturn(
+                "C=TW,ST=Taiwan,L=Taipei,O=Google,CN=" + issuer);
+
+        when(mockCert.getSignature()).thenReturn(new byte[]{
+                (byte) 0xde, (byte) 0xad, (byte) 0xbe, (byte) 0xef,
+                (byte) 0x12, (byte) 0x34, (byte) 0x56, (byte) 0x78,
+                (byte) 0x90, (byte) 0xab, (byte) 0xcd, (byte) 0xef});
+
+        when(mockCert.getBasicConstraints()).thenReturn(isCa ? 99 : 0);
+        return mockCert;
+    }
+
     private WifiConfiguration prepareWifiConfiguration(boolean isAtLeastT) {
         WifiConfiguration config = spy(WifiConfigurationTestUtil.createEapNetwork(
                 WifiEnterpriseConfig.Eap.TLS, WifiEnterpriseConfig.Phase2.NONE));
@@ -338,7 +376,9 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
                 mWifiNative,
                 mFrameworkFacade,
                 mWifiNotificationManager,
-                mWifiDialogManager, isTrustOnFirstUseSupported,
+                mWifiDialogManager,
+                mClock, mTestAlarmManager.getAlarmManager(),
+                isTrustOnFirstUseSupported,
                 isInsecureEnterpriseConfigurationAllowed,
                 mCallbacks,
                 WIFI_IFACE_NAME,
@@ -379,34 +419,13 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
 
-        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 1, FakeKeys.CA_CERT0);
-        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, FakeKeys.CLIENT_CERT);
+        X509Certificate mockCaCert = generateMockCert("ca", "ca", true);
+        X509Certificate mockServerCert = generateMockCert("server", "ca", false);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 1, mockCaCert);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, mockServerCert);
 
         verifyTrustOnFirstUseFlow(config, ACTION_ACCEPT, isTrustOnFirstUseSupported,
-                isUserSelected, needUserApproval, FakeKeys.CA_CERT0, FakeKeys.CLIENT_CERT);
-    }
-
-    /**
-     * Verify Trust On First Use flow with a reversal cert chain
-     * - This network is selected by a user.
-     * - Accept the connection.
-     */
-    @Test
-    public void verifyTrustOnFirstUseAcceptWhenConnectByUserWithReversalOrderChain()
-            throws Exception {
-        assumeTrue(SdkLevel.isAtLeastT());
-        boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = true;
-        boolean needUserApproval = true;
-
-        WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
-        setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
-
-        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, FakeKeys.CLIENT_CERT);
-        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 1, FakeKeys.CA_CERT1);
-        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 2, FakeKeys.CA_CERT0);
-
-        verifyTrustOnFirstUseFlow(config, ACTION_ACCEPT, isTrustOnFirstUseSupported,
-                isUserSelected, needUserApproval, FakeKeys.CA_CERT0, FakeKeys.CLIENT_CERT);
+                isUserSelected, needUserApproval, mockCaCert, mockServerCert);
     }
 
     /**
@@ -424,10 +443,11 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
 
-        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, FakeKeys.CA_CERT0);
+        X509Certificate mockSelfSignedCert = generateMockCert("self", "self", false);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, mockSelfSignedCert);
 
         verifyTrustOnFirstUseFlow(config, ACTION_ACCEPT, isTrustOnFirstUseSupported,
-                isUserSelected, needUserApproval, FakeKeys.CA_CERT0, FakeKeys.CA_CERT0);
+                isUserSelected, needUserApproval, mockSelfSignedCert, mockSelfSignedCert);
     }
 
     /**
@@ -448,6 +468,7 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
         assertEquals(needUserApproval,
                 mInsecureEapNetworkHandler.startUserApprovalIfNecessary(isUserSelected));
         verify(mCallbacks).onError(eq(config.SSID));
+        verify(mWifiConfigManager).allowAutojoin(eq(config.networkId), eq(false));
     }
 
     /**
@@ -467,11 +488,15 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
         config.enterpriseConfig.enableTrustOnFirstUse(false);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
 
-        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, FakeKeys.CA_CERT0);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 1,
+                generateMockCert("ca", "ca", true));
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0,
+                generateMockCert("server", "ca", false));
 
         assertEquals(needUserApproval,
                 mInsecureEapNetworkHandler.startUserApprovalIfNecessary(isUserSelected));
         verify(mCallbacks).onError(eq(config.SSID));
+        verify(mWifiConfigManager).allowAutojoin(eq(config.networkId), eq(false));
     }
 
     /**
@@ -479,36 +504,167 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
      * - TOFU is supported.
      * - Insecure EAP network is allowed.
      * - TOFU is not enabled
+     * - No user approval is needed.
      */
     @Test
     public void verifyNoErrorWithTofuDisabledWhenInsecureEapNetworkIsAllowed()
             throws Exception {
         assumeTrue(SdkLevel.isAtLeastT());
         boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = true;
-        boolean needUserApproval = true, isInsecureEnterpriseConfigurationAllowed = true;
+        boolean needUserApproval = false, isInsecureEnterpriseConfigurationAllowed = true;
 
         WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
         config.enterpriseConfig.enableTrustOnFirstUse(false);
         setupTest(config, isAtLeastT, isTrustOnFirstUseSupported,
                 isInsecureEnterpriseConfigurationAllowed);
 
-        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, FakeKeys.CA_CERT0);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 1,
+                generateMockCert("ca", "ca", true));
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0,
+                generateMockCert("server", "ca", false));
 
         assertEquals(needUserApproval,
                 mInsecureEapNetworkHandler.startUserApprovalIfNecessary(isUserSelected));
         verify(mCallbacks, never()).onError(any());
     }
 
+    /**
+     * Verify that it reports errors if the cert chain is headless.
+     */
+    @Test
+    public void verifyOnErrorWithHeadlessCertChain() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = true;
+
+        WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
+        setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
+
+        // Missing root CA cert.
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0,
+                generateMockCert("server", "ca", false));
+
+        assertTrue(mInsecureEapNetworkHandler.startUserApprovalIfNecessary(isUserSelected));
+        verify(mCallbacks).onError(eq(config.SSID));
+        verify(mWifiConfigManager).allowAutojoin(eq(config.networkId), eq(false));
+    }
+
+    /**
+     * Verify that is reposrts errors if the server cert issuer does not match the parent subject.
+     */
+    @Test
+    public void verifyOnErrorWithIncompleteChain() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = true;
+        boolean needUserApproval = true;
+
+        WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
+        setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
+
+        X509Certificate mockCaCert = generateMockCert("ca", "ca", true);
+        // Missing intermediate cert.
+        X509Certificate mockServerCert = generateMockCert("server", "intermediate", false);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 1, mockCaCert);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, mockServerCert);
+
+        assertTrue(mInsecureEapNetworkHandler.startUserApprovalIfNecessary(isUserSelected));
+        verify(mCallbacks).onError(eq(config.SSID));
+        verify(mWifiConfigManager).allowAutojoin(eq(config.networkId), eq(false));
+    }
+
+    /**
+     * Verify that setting pending certificate won't crash with no current configuration.
+     */
+    @Test
+    public void verifySetPendingCertificateNoCrashWithNoConfig()
+            throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        mInsecureEapNetworkHandler = new InsecureEapNetworkHandler(
+                mContext,
+                mWifiConfigManager,
+                mWifiNative,
+                mFrameworkFacade,
+                mWifiNotificationManager,
+                mWifiDialogManager,
+                mClock, mTestAlarmManager.getAlarmManager(),
+                true /* isTrustOnFirstUseSupported */,
+                false /* isInsecureEnterpriseConfigurationAllowed */,
+                mCallbacks,
+                WIFI_IFACE_NAME,
+                mHandler);
+        X509Certificate mockSelfSignedCert = generateMockCert("self", "self", false);
+        mInsecureEapNetworkHandler.setPendingCertificate("NotExist", 0, mockSelfSignedCert);
+    }
+
+    @Test
+    public void verifyUserApprovalIsNotNeededWithDifferentTargetConfig() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = true;
+        boolean needUserApproval = true;
+
+        WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
+        setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
+
+        X509Certificate mockSelfSignedCert = generateMockCert("self", "self", false);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, mockSelfSignedCert);
+
+        // Pass another PSK config which is not the same as the current one.
+        WifiConfiguration pskConfig = WifiConfigurationTestUtil.createPskNetwork();
+        pskConfig.networkId = FRAMEWORK_NETWORK_ID + 2;
+        mInsecureEapNetworkHandler.prepareConnection(pskConfig);
+        assertFalse(mInsecureEapNetworkHandler.startUserApprovalIfNecessary(isUserSelected));
+        verify(mCallbacks, never()).onError(any());
+
+        // Pass another non-TOFU EAP config which is not the same as the current one.
+        WifiConfiguration anotherEapConfig = spy(WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE));
+        anotherEapConfig.networkId = FRAMEWORK_NETWORK_ID + 1;
+        mInsecureEapNetworkHandler.prepareConnection(anotherEapConfig);
+        assertFalse(mInsecureEapNetworkHandler.startUserApprovalIfNecessary(isUserSelected));
+        verify(mCallbacks, never()).onError(any());
+    }
+
+    @Test
+    public void verifyDisconnectNetworkAfterNotificationWaitingTime() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        boolean isAtLeastT = true, isTrustOnFirstUseSupported = true, isUserSelected = false;
+        boolean needUserApproval = true;
+
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(0L);
+
+        WifiConfiguration config = prepareWifiConfiguration(isAtLeastT);
+        setupTest(config, isAtLeastT, isTrustOnFirstUseSupported);
+
+        X509Certificate mockCaCert = generateMockCert("ca", "ca", true);
+        X509Certificate mockServerCert = generateMockCert("server", "ca", false);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 1, mockCaCert);
+        mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, mockServerCert);
+
+        assertEquals(needUserApproval,
+                mInsecureEapNetworkHandler.startUserApprovalIfNecessary(isUserSelected));
+
+        verify(mTestAlarmManager.getAlarmManager()).set(eq(AlarmManager.ELAPSED_REALTIME_WAKEUP),
+                eq(InsecureEapNetworkHandler.NOTIFICATION_WAITING_TIME_MS),
+                eq(InsecureEapNetworkHandler.NOTIFICATION_WAITING_TIMER_TAG),
+                any(), eq(mHandler));
+        mTestAlarmManager.dispatch(InsecureEapNetworkHandler.NOTIFICATION_WAITING_TIMER_TAG);
+        mLooper.dispatchAll();
+        verify(mWifiConfigManager).allowAutojoin(eq(config.networkId), eq(false));
+        verify(mWifiNative).disconnect(eq(WIFI_IFACE_NAME));
+    }
+
     private void verifyTrustOnFirstUseFlowWithDefaultCerts(WifiConfiguration config,
             int action, boolean isTrustOnFirstUseSupported, boolean isUserSelected,
             boolean needUserApproval) throws Exception {
+        X509Certificate mockCaCert = generateMockCert("ca", "ca", true);
+        X509Certificate mockServerCert = generateMockCert("server", "middle", false);
         if (isTrustOnFirstUseSupported) {
-            mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 2, FakeKeys.CA_CERT0);
-            mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 1, FakeKeys.CA_CERT1);
-            mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, FakeKeys.CLIENT_CERT);
+            mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 2, mockCaCert);
+            mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 1,
+                    generateMockCert("middle", "ca", false));
+            mInsecureEapNetworkHandler.setPendingCertificate(config.SSID, 0, mockServerCert);
         }
         verifyTrustOnFirstUseFlow(config, action, isTrustOnFirstUseSupported,
-                isUserSelected, needUserApproval, FakeKeys.CA_CERT0, FakeKeys.CLIENT_CERT);
+                isUserSelected, needUserApproval, mockCaCert, mockServerCert);
     }
 
     private void verifyTrustOnFirstUseFlow(WifiConfiguration config,
@@ -521,7 +677,7 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
         if (isUserSelected) {
             ArgumentCaptor<WifiDialogManager.SimpleDialogCallback> dialogCallbackCaptor =
                     ArgumentCaptor.forClass(WifiDialogManager.SimpleDialogCallback.class);
-            verify(mWifiDialogManager).createSimpleDialogWithUrl(
+            verify(mWifiDialogManager).createLegacySimpleDialogWithUrl(
                     any(), any(), any(), anyInt(), anyInt(), any(), any(), any(),
                     dialogCallbackCaptor.capture(), any());
             if (action == ACTION_ACCEPT) {
@@ -533,6 +689,7 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
             verify(mFrameworkFacade, never()).makeAlertDialogBuilder(any());
             verify(mFrameworkFacade).makeNotificationBuilder(
                     eq(mContext), eq(WifiService.NOTIFICATION_NETWORK_ALERTS));
+
             // Trust On First Use notification has no accept and reject action buttons.
             // It only supports TAP and launch the dialog.
             if (isTrustOnFirstUseSupported) {
@@ -542,7 +699,7 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
                 br.onReceive(mContext, intent);
                 ArgumentCaptor<WifiDialogManager.SimpleDialogCallback> dialogCallbackCaptor =
                         ArgumentCaptor.forClass(WifiDialogManager.SimpleDialogCallback.class);
-                verify(mWifiDialogManager).createSimpleDialogWithUrl(
+                verify(mWifiDialogManager).createLegacySimpleDialogWithUrl(
                         any(), any(), any(), anyInt(), anyInt(), any(), any(), any(),
                         dialogCallbackCaptor.capture(), any());
                 if (action == ACTION_ACCEPT) {
@@ -579,7 +736,7 @@ public class InsecureEapNetworkHandlerTest extends WifiBaseTest {
             verify(mWifiConfigManager).allowAutojoin(eq(config.networkId), eq(false));
             verify(mCallbacks).onReject(eq(config.SSID));
         } else if (action == ACTION_TAP) {
-            verify(mWifiDialogManager).createSimpleDialogWithUrl(
+            verify(mWifiDialogManager).createLegacySimpleDialogWithUrl(
                     any(), any(), any(), anyInt(), anyInt(), any(), any(), any(), any(), any());
             verify(mTofuAlertDialog).launchDialog();
         }

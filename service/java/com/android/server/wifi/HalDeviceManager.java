@@ -113,6 +113,7 @@ public class HalDeviceManager {
     private ServiceManagerDeathRecipient mServiceManagerDeathRecipient;
     private boolean mIsBridgedSoftApSupported;
     private boolean mIsStaWithBridgedSoftApConcurrencySupported;
+    private boolean mWifiUserApprovalRequiredForD2dInterfacePriority;
     private ArrayMap<IWifiIface, SoftApManager> mSoftApManagers = new ArrayMap<>();
 
     // cache the value for supporting vendor HAL or not
@@ -175,6 +176,8 @@ public class HalDeviceManager {
         mIsBridgedSoftApSupported = res.getBoolean(R.bool.config_wifiBridgedSoftApSupported);
         mIsStaWithBridgedSoftApConcurrencySupported =
                 res.getBoolean(R.bool.config_wifiStaWithBridgedSoftApConcurrencySupported);
+        mWifiUserApprovalRequiredForD2dInterfacePriority =
+                res.getBoolean(R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority);
         mClock = clock;
         mWifiInjector = wifiInjector;
         mEventHandler = handler;
@@ -268,8 +271,8 @@ public class HalDeviceManager {
      * Note: direct call to HIDL - failure is not-expected.
      */
     public void stop() {
-        stopWifi();
         synchronized (mLock) { // prevents race condition
+            stopWifi();
             mWifi = null;
         }
     }
@@ -789,6 +792,10 @@ public class HalDeviceManager {
 
         IfaceCreationData creationData;
         synchronized (mLock) {
+            if (mWifi == null) {
+                Log.e(TAG, "reportImpactToCreateIface: null IWifi -- ifaceType=" + createIfaceType);
+                return null;
+            }
             WifiChipInfo[] chipInfos = getAllChipInfo();
             if (chipInfos == null) {
                 Log.e(TAG, "createIface: no chip info found");
@@ -1143,6 +1150,10 @@ public class HalDeviceManager {
      */
     private boolean registerWifiHalEventCallback() {
         try {
+            if (mWifi == null) {
+                Log.e(TAG, "registerWifiHalEventCallback called but mWifi is null!?");
+                return false;
+            }
             WifiStatus status;
             android.hardware.wifi.V1_5.IWifi iWifiV15 = getWifiServiceForV1_5Mockable(mWifi);
             if (iWifiV15 != null) {
@@ -1881,22 +1892,19 @@ public class HalDeviceManager {
     private void stopWifi() {
         if (VDBG) Log.d(TAG, "stopWifi");
 
-        synchronized (mLock) {
-            try {
-                if (mWifi == null) {
-                    Log.w(TAG, "stopWifi called but mWifi is null!?");
-                } else {
-                    WifiStatus status = mWifi.stop();
-                    if (status.code != WifiStatusCode.SUCCESS) {
-                        Log.e(TAG, "Cannot stop IWifi: " + statusString(status));
-                    }
-
-                    // even on failure since WTF??
-                    teardownInternal();
+        try {
+            if (mWifi == null) {
+                Log.w(TAG, "stopWifi called but mWifi is null!?");
+            } else {
+                WifiStatus status = mWifi.stop();
+                if (status.code != WifiStatusCode.SUCCESS) {
+                    Log.e(TAG, "Cannot stop IWifi: " + statusString(status));
                 }
-            } catch (RemoteException e) {
-                Log.e(TAG, "stopWifi exception: " + e);
+                // even on failure since WTF??
+                teardownInternal();
             }
+        } catch (RemoteException e) {
+            Log.e(TAG, "stopWifi exception: " + e);
         }
     }
 
@@ -2468,18 +2476,27 @@ public class HalDeviceManager {
      * interface request from |existingRequestorWsPriority|.
      *
      * Rule:
+     *  - If |mWifiUserApprovalRequiredForD2dInterfacePriority| is true, AND
+     *    |newRequestorWsPriority| > PRIORITY_BG, AND |requestedCreateType| is
+     *    HDM_CREATE_IFACE_P2P or HDM_CREATE_IFACE_NAN, then YES
      *  - If |newRequestorWsPriority| > |existingRequestorWsPriority|, then YES.
      *  - If they are at the same priority level, then
      *      - If both are privileged and not for the same interface type, then YES.
      *      - Else, NO.
      */
-    private static boolean allowedToDelete(
+    private boolean allowedToDelete(
             @HdmIfaceTypeForCreation int requestedCreateType,
             @RequestorWsPriority int newRequestorWsPriority,
             @HdmIfaceTypeForCreation int existingCreateType,
             @RequestorWsPriority int existingRequestorWsPriority) {
         if (!SdkLevel.isAtLeastS()) {
             return allowedToDeleteForR(requestedCreateType, existingCreateType);
+        }
+        if (mWifiUserApprovalRequiredForD2dInterfacePriority
+                && newRequestorWsPriority > PRIORITY_BG
+                && (requestedCreateType == HDM_CREATE_IFACE_P2P
+                        || requestedCreateType == HDM_CREATE_IFACE_NAN)) {
+            return true;
         }
         // If the new request is higher priority than existing priority, then the new requestor
         // wins. This is because at all other priority levels (except privileged), existing caller

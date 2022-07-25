@@ -120,6 +120,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.MockitoSession;
 import org.mockito.quality.Strictness;
+import org.mockito.stubbing.Answer;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -214,6 +215,10 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         when(wifiInjector.getActiveModeWarden()).thenReturn(mActiveModeWarden);
         when(wifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
         lenient().when(WifiInjector.getInstance()).thenReturn(wifiInjector);
+        when(mSsidTranslator.getAllPossibleOriginalSsids(any())).thenAnswer(
+                (Answer<List<WifiSsid>>) invocation -> Arrays.asList(invocation.getArgument(0),
+                        WifiSsid.fromString(UNTRANSLATED_HEX_SSID))
+        );
     }
 
     private void setUpResources(MockResources resources) {
@@ -306,6 +311,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     @Mock private ConcreteClientModeManager mSecondaryClientModeManager;
     @Mock private WifiGlobals mWifiGlobals;
     @Mock private ExternalPnoScanRequestManager mExternalPnoScanRequestManager;
+    @Mock private SsidTranslator mSsidTranslator;
     @Mock WifiCandidates.Candidate mCandidate1;
     @Mock WifiCandidates.Candidate mCandidate2;
     private WifiConfiguration mCandidateWifiConfig1;
@@ -358,6 +364,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     private static final int HIGH_MVMT_RSSI_DELTA = 10;
     private static final String TEST_FQDN = "FQDN";
     private static final String TEST_SSID = "SSID";
+    private static final String UNTRANSLATED_HEX_SSID = "abcdef";
     private static final int TEMP_BSSID_BLOCK_DURATION_MS = 10 * 1000; // 10 seconds
     private static final int TEST_CONNECTED_NETWORK_ID = 55;
     private static final String TEST_CONNECTED_BSSID = "6c:f3:7f:ae:8c:f1";
@@ -551,6 +558,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
                         return candidate;
                     }
                 });
+        when(ns.isSufficiencyCheckEnabled()).thenReturn(true);
+        when(ns.isAssociatedNetworkSelectionEnabled()).thenReturn(true);
         return ns;
     }
 
@@ -584,7 +593,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
                 mWifiMetrics, mTestHandler, mClock,
                 mLocalLog, mWifiScoreCard, mWifiBlocklistMonitor, mWifiChannelUtilization,
                 mPasspointManager, mMultiInternetManager, mDeviceConfigFacade, mActiveModeWarden,
-                mFacade, mWifiGlobals, mExternalPnoScanRequestManager);
+                mFacade, mWifiGlobals, mExternalPnoScanRequestManager, mSsidTranslator);
         mLooper.dispatchAll();
         verify(mActiveModeWarden, atLeastOnce()).registerModeChangeCallback(
                 mModeChangeCallbackCaptor.capture());
@@ -2062,6 +2071,45 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
                 mCandidateWifiConfig1);
         mLooper.dispatchAll();
         // verify no there is no retry.
+        verify(mPrimaryClientModeManager).startConnectToNetwork(anyInt(), anyInt(), any());
+    }
+
+    @Test
+    public void testRetryConnectionIgnoreNetworkWithAutojoinDisabled() {
+        // Setup WifiNetworkSelector to return 2 valid candidates from scan results
+        MacAddress macAddress = MacAddress.fromString(CANDIDATE_BSSID_2);
+        WifiCandidates.Key key = new WifiCandidates.Key(mock(ScanResultMatchInfo.class),
+                macAddress, 0, WifiConfiguration.SECURITY_TYPE_OPEN);
+        WifiCandidates.Candidate otherCandidate = mock(WifiCandidates.Candidate.class);
+        when(otherCandidate.getKey()).thenReturn(key);
+        List<WifiCandidates.Candidate> candidateList = new ArrayList<>();
+        candidateList.add(mCandidate1);
+        candidateList.add(otherCandidate);
+        when(mWifiNS.getCandidatesFromScan(any(), any(), any(), anyBoolean(), anyBoolean(),
+                anyBoolean(), any(), anyBoolean())).thenReturn(candidateList);
+
+        // Set WiFi to disconnected state to trigger scan
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        mLooper.dispatchAll();
+        // Verify a connection starting
+        verify(mWifiNS).selectNetwork((List<WifiCandidates.Candidate>)
+                argThat(new WifiCandidatesListSizeMatcher(2)));
+        verify(mPrimaryClientModeManager).startConnectToNetwork(anyInt(), anyInt(), any());
+
+        // mock the WifiConfiguration to have allowAutoJoin = false
+        mCandidateWifiConfig1.allowAutojoin = false;
+
+        // Simulate the connection failing
+        WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork(CANDIDATE_SSID);
+        mWifiConnectivityManager.handleConnectionAttemptEnded(
+                mPrimaryClientModeManager,
+                WifiMetrics.ConnectionEvent.FAILURE_ASSOCIATION_REJECTION,
+                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, CANDIDATE_BSSID,
+                config);
+
+        // Verify another connection do not start.
         verify(mPrimaryClientModeManager).startConnectToNetwork(anyInt(), anyInt(), any());
     }
 
@@ -4624,15 +4672,17 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         List<WifiScanner.PnoSettings.PnoNetwork> pnoNetworks =
                 mWifiConnectivityManager.retrievePnoNetworkList();
-        // There should be 3 SSIDs in total: network1, network2, and Test_SSID_1.
+        // There should be 4 SSIDs in total: network1, an extra original (untranslated) SSID of
+        // network1, network2, and Test_SSID_1.
         // network1 should be included in PNO even if it's never connected because it's ephemeral.
         // network3 should not get included because it's saved and never connected before.
-        assertEquals(3, pnoNetworks.size());
+        assertEquals(4, pnoNetworks.size());
         // Verify the order. Test_SSID_1 and network2 should be in the front because they are
         // requested by an external app. Verify network2.SSID only appears once.
         assertEquals("\"Test_SSID_1\"", pnoNetworks.get(0).ssid);
         assertEquals(network2.SSID, pnoNetworks.get(1).ssid);
         assertEquals(network1.SSID, pnoNetworks.get(2).ssid);
+        assertEquals(UNTRANSLATED_HEX_SSID, pnoNetworks.get(3).ssid); // Possible untranslated SSID
     }
 
     @Test
@@ -4679,10 +4729,11 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         List<WifiScanner.PnoSettings.PnoNetwork> pnoNetworks =
                 mWifiConnectivityManager.retrievePnoNetworkList();
         verify(mWifiNetworkSuggestionsManager).getAllScanOptimizationSuggestionNetworks();
-        assertEquals(3, pnoNetworks.size());
+        assertEquals(4, pnoNetworks.size());
         assertEquals(network1.SSID, pnoNetworks.get(0).ssid);
-        assertEquals(network2.SSID, pnoNetworks.get(1).ssid);
-        assertEquals(network3.SSID, pnoNetworks.get(2).ssid);
+        assertEquals(UNTRANSLATED_HEX_SSID, pnoNetworks.get(1).ssid); // Possible untranslated SSID
+        assertEquals(network2.SSID, pnoNetworks.get(2).ssid);
+        assertEquals(network3.SSID, pnoNetworks.get(3).ssid);
 
         // Now permanently disable |network3|. This should remove network 3 from the list.
         network3.getNetworkSelectionStatus().setNetworkSelectionStatus(
@@ -4690,16 +4741,18 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         // Retrieve the Pno network list & verify.
         pnoNetworks = mWifiConnectivityManager.retrievePnoNetworkList();
-        assertEquals(2, pnoNetworks.size());
+        assertEquals(3, pnoNetworks.size());
         assertEquals(network1.SSID, pnoNetworks.get(0).ssid);
-        assertEquals(network2.SSID, pnoNetworks.get(1).ssid);
+        assertEquals(UNTRANSLATED_HEX_SSID, pnoNetworks.get(1).ssid); // Possible untranslated SSID
+        assertEquals(network2.SSID, pnoNetworks.get(2).ssid);
 
         // Now set network1 autojoin disabled. This should remove network 1 from the list.
         network1.allowAutojoin = false;
         // Retrieve the Pno network list & verify.
         pnoNetworks = mWifiConnectivityManager.retrievePnoNetworkList();
-        assertEquals(1, pnoNetworks.size());
+        assertEquals(2, pnoNetworks.size());
         assertEquals(network2.SSID, pnoNetworks.get(0).ssid);
+        assertEquals(UNTRANSLATED_HEX_SSID, pnoNetworks.get(1).ssid); // Possible untranslated SSID
 
         // Now set network2 to be temporarily disabled by the user. This should remove network 2
         // from the list.
@@ -4729,11 +4782,13 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         // Frequencies should be empty since no scan results have been received yet.
         List<WifiScanner.PnoSettings.PnoNetwork> pnoNetworks =
                 mWifiConnectivityManager.retrievePnoNetworkList();
-        assertEquals(2, pnoNetworks.size());
+        assertEquals(3, pnoNetworks.size());
         assertEquals(network1.SSID, pnoNetworks.get(0).ssid);
-        assertEquals(network2.SSID, pnoNetworks.get(1).ssid);
+        assertEquals(UNTRANSLATED_HEX_SSID, pnoNetworks.get(1).ssid); // Possible untranslated SSID
+        assertEquals(network2.SSID, pnoNetworks.get(2).ssid);
         assertEquals("frequencies should be empty", 0, pnoNetworks.get(0).frequencies.length);
         assertEquals("frequencies should be empty", 0, pnoNetworks.get(1).frequencies.length);
+        assertEquals("frequencies should be empty", 0, pnoNetworks.get(2).frequencies.length);
 
         //Set up wifiScoreCard to get frequency.
         List<Integer> channelList = Arrays
@@ -4746,24 +4801,27 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         //Set config_wifiPnoFrequencyCullingEnabled false, should ignore get frequency.
         mResources.setBoolean(R.bool.config_wifiPnoFrequencyCullingEnabled, false);
         pnoNetworks = mWifiConnectivityManager.retrievePnoNetworkList();
-        assertEquals(2, pnoNetworks.size());
+        assertEquals(3, pnoNetworks.size());
         assertEquals(network1.SSID, pnoNetworks.get(0).ssid);
-        assertEquals(network2.SSID, pnoNetworks.get(1).ssid);
+        assertEquals(UNTRANSLATED_HEX_SSID, pnoNetworks.get(1).ssid); // Possible untranslated SSID
+        assertEquals(network2.SSID, pnoNetworks.get(2).ssid);
         assertEquals("frequencies should be empty", 0, pnoNetworks.get(0).frequencies.length);
         assertEquals("frequencies should be empty", 0, pnoNetworks.get(1).frequencies.length);
+        assertEquals("frequencies should be empty", 0, pnoNetworks.get(2).frequencies.length);
 
         // Set config_wifiPnoFrequencyCullingEnabled false, should get the right frequency.
         mResources.setBoolean(R.bool.config_wifiPnoFrequencyCullingEnabled, true);
         pnoNetworks = mWifiConnectivityManager.retrievePnoNetworkList();
-        assertEquals(2, pnoNetworks.size());
+        assertEquals(3, pnoNetworks.size());
         assertEquals(network1.SSID, pnoNetworks.get(0).ssid);
-        assertEquals(network2.SSID, pnoNetworks.get(1).ssid);
+        assertEquals(UNTRANSLATED_HEX_SSID, pnoNetworks.get(1).ssid); // Possible untranslated SSID
+        assertEquals(network2.SSID, pnoNetworks.get(2).ssid);
         assertEquals(3, pnoNetworks.get(0).frequencies.length);
         Arrays.sort(pnoNetworks.get(0).frequencies);
         assertEquals(TEST_FREQUENCY_1, pnoNetworks.get(0).frequencies[0]);
         assertEquals(TEST_FREQUENCY_2, pnoNetworks.get(0).frequencies[1]);
         assertEquals(TEST_FREQUENCY_3, pnoNetworks.get(0).frequencies[2]);
-        assertEquals("frequencies should be empty", 0, pnoNetworks.get(1).frequencies.length);
+        assertEquals("frequencies should be empty", 0, pnoNetworks.get(2).frequencies.length);
     }
 
 
@@ -4798,10 +4856,11 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         // Verify correct order of networks. Note that network4 should not appear for PNO scan
         // since it had not been connected before.
-        assertEquals(3, pnoNetworks.size());
+        assertEquals(4, pnoNetworks.size());
         assertEquals(network3.SSID, pnoNetworks.get(0).ssid);
-        assertEquals(network2.SSID, pnoNetworks.get(1).ssid);
-        assertEquals(network1.SSID, pnoNetworks.get(2).ssid);
+        assertEquals(UNTRANSLATED_HEX_SSID, pnoNetworks.get(1).ssid); // Possible untranslated SSID
+        assertEquals(network2.SSID, pnoNetworks.get(2).ssid);
+        assertEquals(network1.SSID, pnoNetworks.get(3).ssid);
     }
 
     private List<List<Integer>> linkScoreCardFreqsToNetwork(WifiConfiguration... configs) {
@@ -5034,9 +5093,11 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     }
 
     private void setScreenState(boolean screenOn) {
+        InOrder inOrder = inOrder(mWifiNS);
         BroadcastReceiver broadcastReceiver = mBroadcastReceiverCaptor.getValue();
         assertNotNull(broadcastReceiver);
         Intent intent = new Intent(screenOn  ? ACTION_SCREEN_ON : ACTION_SCREEN_OFF);
         broadcastReceiver.onReceive(mContext, intent);
+        inOrder.verify(mWifiNS).setScreenState(screenOn);
     }
 }

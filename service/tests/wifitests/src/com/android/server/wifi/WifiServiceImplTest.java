@@ -159,6 +159,7 @@ import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.LocalOnlyHotspotCallback;
+import android.net.wifi.WifiNetworkSelectionConfig;
 import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
@@ -414,6 +415,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Mock DevicePolicyManager mDevicePolicyManager;
     @Mock HalDeviceManager mHalDeviceManager;
     @Mock WifiDialogManager mWifiDialogManager;
+    @Mock SsidTranslator mSsidTranslator;
 
     @Captor ArgumentCaptor<Intent> mIntentCaptor;
 
@@ -459,6 +461,9 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mWifiInjector.getBuildProperties()).thenReturn(mBuildProperties);
         when(mWifiInjector.getLinkProbeManager()).thenReturn(mLinkProbeManager);
         when(mWifiInjector.makeWifiShellCommand(any())).thenReturn(mWifiShellCommand);
+        // needed to mock this to call "handleBootCompleted"
+        when(mWifiInjector.getPasspointProvisionerHandlerThread())
+                .thenReturn(mock(HandlerThread.class));
         when(mHandlerThread.getThreadHandler()).thenReturn(new Handler(mLooper.getLooper()));
         when(mHandlerThread.getLooper()).thenReturn(mLooper.getLooper());
         when(mContext.getResources()).thenReturn(mResources);
@@ -565,6 +570,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mContext.getSystemService(DevicePolicyManager.class)).thenReturn(mDevicePolicyManager);
         when(mWifiInjector.getHalDeviceManager()).thenReturn(mHalDeviceManager);
         when(mWifiInjector.getWifiDialogManager()).thenReturn(mWifiDialogManager);
+        when(mWifiInjector.getSsidTranslator()).thenReturn(mSsidTranslator);
 
         doAnswer(new AnswerWithArguments() {
             public void answer(Runnable onStoppedListener) throws Throwable {
@@ -733,10 +739,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
 
     @Test
     public void testWifiShellCommandIgnoredBeforeBoot() {
-        // needed to mock this to call "handleBootCompleted"
-        when(mWifiInjector.getPasspointProvisionerHandlerThread())
-                .thenReturn(mock(HandlerThread.class));
-
         // verify shell command can't be called before boot complete
         ParcelFileDescriptor mockDescriptor = mock(ParcelFileDescriptor.class);
         assertEquals(-1, mWifiServiceImpl.handleShellCommand(mockDescriptor,
@@ -4422,7 +4424,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
 
         when(mPasspointManager.addOrUpdateProvider(
                 any(PasspointConfiguration.class), anyInt(), eq(TEST_PACKAGE_NAME), eq(false),
-                eq(true))).thenReturn(true);
+                eq(true), eq(false))).thenReturn(true);
         mLooper.startAutoDispatch();
         assertEquals(0,
                 mWifiServiceImpl.addOrUpdateNetwork(config, TEST_PACKAGE_NAME, mAttribution));
@@ -4430,12 +4432,12 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verifyCheckChangePermission(TEST_PACKAGE_NAME);
         verify(mPasspointManager).addOrUpdateProvider(
                 any(PasspointConfiguration.class), anyInt(), eq(TEST_PACKAGE_NAME), eq(false),
-                eq(true));
+                eq(true), eq(false));
         reset(mPasspointManager);
 
         when(mPasspointManager.addOrUpdateProvider(
                 any(PasspointConfiguration.class), anyInt(), eq(TEST_PACKAGE_NAME), anyBoolean(),
-                anyBoolean())).thenReturn(false);
+                anyBoolean(), eq(false))).thenReturn(false);
         mLooper.startAutoDispatch();
         assertEquals(-1,
                 mWifiServiceImpl.addOrUpdateNetwork(config, TEST_PACKAGE_NAME, mAttribution));
@@ -4443,7 +4445,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verifyCheckChangePermission(TEST_PACKAGE_NAME);
         verify(mPasspointManager).addOrUpdateProvider(
                 any(PasspointConfiguration.class), anyInt(), eq(TEST_PACKAGE_NAME), anyBoolean(),
-                anyBoolean());
+                anyBoolean(), eq(false));
     }
 
     /**
@@ -5463,8 +5465,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Test
     public void testHandleDelayedScanAfterIdleMode() throws Exception {
         when(mSettingsStore.isWifiToggleEnabled()).thenReturn(false);
-        when(mWifiInjector.getPasspointProvisionerHandlerThread())
-                .thenReturn(mock(HandlerThread.class));
         mLooper.startAutoDispatch();
         mWifiServiceImpl.checkAndStartWifi();
         mWifiServiceImpl.handleBootCompleted();
@@ -5708,8 +5708,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
 
     @Test
     public void testUserRemovedBroadcastHandling() {
-        when(mWifiInjector.getPasspointProvisionerHandlerThread())
-                .thenReturn(mock(HandlerThread.class));
         mLooper.startAutoDispatch();
         mWifiServiceImpl.checkAndStartWifi();
         mWifiServiceImpl.handleBootCompleted();
@@ -5732,8 +5730,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
 
     @Test
     public void testBluetoothBroadcastHandling() {
-        when(mWifiInjector.getPasspointProvisionerHandlerThread())
-                .thenReturn(mock(HandlerThread.class));
         mLooper.startAutoDispatch();
         mWifiServiceImpl.checkAndStartWifi();
         mWifiServiceImpl.handleBootCompleted();
@@ -5798,8 +5794,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
 
     @Test
     public void testUserRemovedBroadcastHandlingWithWrongIntentAction() {
-        when(mWifiInjector.getPasspointProvisionerHandlerThread())
-                .thenReturn(mock(HandlerThread.class));
         mLooper.startAutoDispatch();
         mWifiServiceImpl.checkAndStartWifi();
         mWifiServiceImpl.handleBootCompleted();
@@ -7303,7 +7297,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
@@ -7311,7 +7305,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         reset(mPasspointManager);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(false);
         mLooper.startAutoDispatch();
         assertFalse(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
@@ -7331,13 +7325,14 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertFalse(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager, never())
-                .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean());
+                .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean(),
+                        eq(false));
 
     }
 
@@ -7356,13 +7351,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean());
+                anyBoolean(), eq(false));
     }
 
     /**
@@ -7381,13 +7376,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean());
+                anyBoolean(), eq(false));
     }
 
     /**
@@ -7409,13 +7404,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean());
+                anyBoolean(), eq(false));
     }
 
     /**
@@ -7437,13 +7432,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean());
+                anyBoolean(), eq(false));
     }
 
     /**
@@ -7466,13 +7461,14 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertFalse(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager, never())
-                .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean());
+                .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean(),
+                        eq(false));
     }
 
     /**
@@ -7496,13 +7492,14 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertFalse(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager, never())
-                .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean());
+                .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean(),
+                        eq(false));
     }
 
     /**
@@ -7527,13 +7524,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setHomeSp(homeSp);
 
         when(mPasspointManager.addOrUpdateProvider(
-                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true))
+                config, Binder.getCallingUid(), TEST_PACKAGE_NAME, false, true, false))
                 .thenReturn(true);
         mLooper.startAutoDispatch();
         assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config, TEST_PACKAGE_NAME));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean());
+                anyBoolean(), eq(false));
     }
 
     /**
@@ -7575,6 +7572,32 @@ public class WifiServiceImplTest extends WifiBaseTest {
         boolean succeeded = mWifiServiceImpl.disableNetwork(0, TEST_PACKAGE_NAME);
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         assertFalse(succeeded);
+    }
+
+    @Test
+    public void testSetNetworkSelectionConfig() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+
+        WifiNetworkSelectionConfig nsConfig = new WifiNetworkSelectionConfig.Builder().build();
+        // no permission to call API
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(false);
+        assertThrows(SecurityException.class,
+                () -> mWifiServiceImpl.setNetworkSelectionConfig(nsConfig));
+
+        // Null arguments
+        assertThrows(IllegalArgumentException.class,
+                () -> mWifiServiceImpl.setNetworkSelectionConfig(null));
+
+        // has permission to call API
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+        mWifiServiceImpl.setNetworkSelectionConfig(nsConfig);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager).setNetworkSelectionConfig(nsConfig);
+        verify(mLastCallerInfoManager).put(
+                eq(WifiManager.API_SET_NETWORK_SELECTION_CONFIG),
+                anyInt(), anyInt(), anyInt(), any(), eq(true));
     }
 
     @Test(expected = SecurityException.class)
@@ -7823,8 +7846,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testHandleBootCompleted() throws Exception {
-        when(mWifiInjector.getPasspointProvisionerHandlerThread())
-                .thenReturn(mock(HandlerThread.class));
         mLooper.startAutoDispatch();
         mWifiServiceImpl.handleBootCompleted();
         mLooper.stopAutoDispatch();
@@ -8023,7 +8044,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void getWifiActivityEnergyInfoAsyncFeatureUnsupported() throws Exception {
-        when(mWifiNative.getSupportedFeatureSet(anyString())).thenReturn(0L);
+        when(mActiveModeWarden.getSupportedFeatureSet()).thenReturn(0L);
         mLooper.startAutoDispatch();
         mWifiServiceImpl.getWifiActivityEnergyInfoAsync(mOnWifiActivityEnergyInfoListener);
         mLooper.stopAutoDispatch();
@@ -8036,7 +8057,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void getWifiActivityEnergyInfoAsyncSuccess() throws Exception {
-        when(mWifiNative.getSupportedFeatureSet(anyString())).thenReturn(Long.MAX_VALUE);
+        when(mActiveModeWarden.getSupportedFeatureSet()).thenReturn(Long.MAX_VALUE);
         setupReportActivityInfo();
         mLooper.startAutoDispatch();
         mWifiServiceImpl.getWifiActivityEnergyInfoAsync(mOnWifiActivityEnergyInfoListener);
@@ -8280,135 +8301,20 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 WifiSsid.fromString(TEST_SSID_WITH_QUOTES), TEST_OUI);
     }
 
-    private long testGetSupportedFeaturesCaseForRtt(
-            long supportedFeaturesFromWifiNative, boolean rttDisabled) {
-        when(mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_RTT)).thenReturn(
-                !rttDisabled);
-        when(mWifiNative.getSupportedFeatureSet(anyString()))
-                .thenReturn(supportedFeaturesFromWifiNative);
-        mLooper.startAutoDispatch();
-        long supportedFeatures = mWifiServiceImpl.getSupportedFeatures();
-        mLooper.stopAutoDispatchAndIgnoreExceptions();
-        return supportedFeatures;
-    }
-
-    /** Verifies that syncGetSupportedFeatures() masks out capabilities based on system flags. */
-    @Test
-    public void syncGetSupportedFeaturesForRtt() {
-        final long featureAware = WifiManager.WIFI_FEATURE_AWARE;
-        final long featureInfra = WifiManager.WIFI_FEATURE_INFRA;
-        final long featureD2dRtt = WifiManager.WIFI_FEATURE_D2D_RTT;
-        final long featureD2apRtt = WifiManager.WIFI_FEATURE_D2AP_RTT;
-        final long featureLongBits = 0x1000000000L;
-
-        assertEquals(0, testGetSupportedFeaturesCaseForRtt(0, false));
-        assertEquals(0, testGetSupportedFeaturesCaseForRtt(0, true));
-        assertEquals(featureAware | featureInfra,
-                testGetSupportedFeaturesCaseForRtt(featureAware | featureInfra, false));
-        assertEquals(featureAware | featureInfra,
-                testGetSupportedFeaturesCaseForRtt(featureAware | featureInfra, true));
-        assertEquals(featureInfra | featureD2dRtt,
-                testGetSupportedFeaturesCaseForRtt(featureInfra | featureD2dRtt, false));
-        assertEquals(featureInfra,
-                testGetSupportedFeaturesCaseForRtt(featureInfra | featureD2dRtt, true));
-        assertEquals(featureInfra | featureD2apRtt,
-                testGetSupportedFeaturesCaseForRtt(featureInfra | featureD2apRtt, false));
-        assertEquals(featureInfra,
-                testGetSupportedFeaturesCaseForRtt(featureInfra | featureD2apRtt, true));
-        assertEquals(featureInfra | featureD2dRtt | featureD2apRtt,
-                testGetSupportedFeaturesCaseForRtt(
-                        featureInfra | featureD2dRtt | featureD2apRtt, false));
-        assertEquals(featureInfra,
-                testGetSupportedFeaturesCaseForRtt(
-                        featureInfra | featureD2dRtt | featureD2apRtt, true));
-
-        assertEquals(featureLongBits | featureInfra | featureD2dRtt | featureD2apRtt,
-                testGetSupportedFeaturesCaseForRtt(
-                        featureLongBits | featureInfra | featureD2dRtt | featureD2apRtt, false));
-        assertEquals(featureLongBits | featureInfra,
-                testGetSupportedFeaturesCaseForRtt(
-                        featureLongBits | featureInfra | featureD2dRtt | featureD2apRtt, true));
-    }
-
-    private long testGetSupportedFeaturesCaseForMacRandomization(
-            long supportedFeaturesFromWifiNative, boolean apMacRandomizationEnabled,
-            boolean staConnectedMacRandomizationEnabled, boolean p2pMacRandomizationEnabled) {
-        when(mResources.getBoolean(
-                R.bool.config_wifi_connected_mac_randomization_supported))
-                .thenReturn(staConnectedMacRandomizationEnabled);
-        when(mResources.getBoolean(
-                R.bool.config_wifi_ap_mac_randomization_supported))
-                .thenReturn(apMacRandomizationEnabled);
-        when(mResources.getBoolean(
-                R.bool.config_wifi_p2p_mac_randomization_supported))
-                .thenReturn(p2pMacRandomizationEnabled);
-        when(mWifiNative.getSupportedFeatureSet(anyString()))
-                .thenReturn(supportedFeaturesFromWifiNative);
-        mLooper.startAutoDispatch();
-        long supportedFeatures = mWifiServiceImpl.getSupportedFeatures();
-        mLooper.stopAutoDispatchAndIgnoreExceptions();
-        return supportedFeatures;
-    }
-
-    /** Verifies that syncGetSupportedFeatures() masks out capabilities based on system flags. */
-    @Test
-    public void syncGetSupportedFeaturesForMacRandomization() {
-        final long featureStaConnectedMacRandomization =
-                WifiManager.WIFI_FEATURE_CONNECTED_RAND_MAC;
-        final long featureApMacRandomization =
-                WifiManager.WIFI_FEATURE_AP_RAND_MAC;
-        final long featureP2pMacRandomization =
-                WifiManager.WIFI_FEATURE_CONNECTED_RAND_MAC;
-
-        assertEquals(featureStaConnectedMacRandomization | featureApMacRandomization
-                        | featureP2pMacRandomization,
-                testGetSupportedFeaturesCaseForMacRandomization(
-                        featureP2pMacRandomization, true, true, true));
-        // p2p supported by HAL, but disabled by overlay.
-        assertEquals(featureStaConnectedMacRandomization | featureApMacRandomization,
-                testGetSupportedFeaturesCaseForMacRandomization(
-                        featureP2pMacRandomization, true, true, false));
-        assertEquals(featureStaConnectedMacRandomization | featureApMacRandomization,
-                testGetSupportedFeaturesCaseForMacRandomization(0, true, true, false));
-    }
-
     @Test
     public void getSupportedFeaturesVerboseLoggingThrottled() {
         mWifiServiceImpl.enableVerboseLogging(
                 WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED); // this logs
         when(mClock.getElapsedSinceBootMillis()).thenReturn(1000L);
-        testGetSupportedFeaturesCaseForMacRandomization(0, true, true, false);
+        when(mActiveModeWarden.getSupportedFeatureSet()).thenReturn(0x110L);
+        mWifiServiceImpl.getSupportedFeatures();
         when(mClock.getElapsedSinceBootMillis()).thenReturn(1001L);
-        testGetSupportedFeaturesCaseForMacRandomization(0, true, true, false); // should not log
+        mWifiServiceImpl.getSupportedFeatures(); // should not log
         when(mClock.getElapsedSinceBootMillis()).thenReturn(5000L);
-        testGetSupportedFeaturesCaseForMacRandomization(0, true, true, false);
-        testGetSupportedFeaturesCaseForMacRandomization(0, true, false, false);
+        mWifiServiceImpl.getSupportedFeatures();
+        when(mActiveModeWarden.getSupportedFeatureSet()).thenReturn(0x100L);
+        mWifiServiceImpl.getSupportedFeatures();
         verify(mLog, times(4)).info(any());
-    }
-
-    /**
-     * Verifies that syncGetSupportedFeatures() adds capabilities based on interface
-     * combination.
-     */
-    @Test
-    public void syncGetSupportedFeaturesForStaApConcurrency() {
-        long supportedFeaturesFromWifiNative = WifiManager.WIFI_FEATURE_OWE;
-        when(mWifiNative.getSupportedFeatureSet(anyString()))
-                .thenReturn(supportedFeaturesFromWifiNative);
-
-        when(mActiveModeWarden.isStaApConcurrencySupported())
-                .thenReturn(false);
-        mLooper.startAutoDispatch();
-        assertEquals(supportedFeaturesFromWifiNative,
-                        mWifiServiceImpl.getSupportedFeatures());
-        mLooper.stopAutoDispatchAndIgnoreExceptions();
-
-        when(mActiveModeWarden.isStaApConcurrencySupported())
-                .thenReturn(true);
-        mLooper.startAutoDispatch();
-        assertEquals(supportedFeaturesFromWifiNative | WifiManager.WIFI_FEATURE_AP_STA,
-                mWifiServiceImpl.getSupportedFeatures());
-        mLooper.stopAutoDispatchAndIgnoreExceptions();
     }
 
     /**
@@ -8510,53 +8416,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mWifiPermissionsUtil.checkCallersCoarseLocationPermission(
                 any(), any(), anyInt(), any())).thenReturn(true);
         mWifiServiceImpl.getCountryCode(TEST_PACKAGE_NAME, TEST_FEATURE_ID);
-    }
-
-    /**
-     * Verifies that syncGetSupportedFeatures() adds capabilities based on interface
-     * combination.
-     */
-    @Test
-    public void syncGetSupportedFeaturesForStaStaConcurrency() {
-        assumeTrue(SdkLevel.isAtLeastS());
-
-        long supportedFeaturesFromWifiNative = WifiManager.WIFI_FEATURE_OWE;
-        when(mWifiNative.getSupportedFeatureSet(anyString()))
-                .thenReturn(supportedFeaturesFromWifiNative);
-
-        mLooper.startAutoDispatch();
-        assertEquals(supportedFeaturesFromWifiNative,
-                mWifiServiceImpl.getSupportedFeatures());
-        mLooper.stopAutoDispatchAndIgnoreExceptions();
-
-        when(mActiveModeWarden.isStaStaConcurrencySupportedForLocalOnlyConnections())
-                .thenReturn(true);
-        mLooper.startAutoDispatch();
-        assertEquals(supportedFeaturesFromWifiNative
-                        | WifiManager.WIFI_FEATURE_ADDITIONAL_STA_LOCAL_ONLY,
-                mWifiServiceImpl.getSupportedFeatures());
-        mLooper.stopAutoDispatchAndIgnoreExceptions();
-
-        when(mActiveModeWarden.isStaStaConcurrencySupportedForMbb()).thenReturn(true);
-        mLooper.startAutoDispatch();
-        assertEquals(supportedFeaturesFromWifiNative
-                        | WifiManager.WIFI_FEATURE_ADDITIONAL_STA_LOCAL_ONLY
-                        | WifiManager.WIFI_FEATURE_ADDITIONAL_STA_MBB,
-                mWifiServiceImpl.getSupportedFeatures());
-        mLooper.stopAutoDispatchAndIgnoreExceptions();
-
-        when(mActiveModeWarden.isStaStaConcurrencySupportedForRestrictedConnections())
-                .thenReturn(true);
-        when(mActiveModeWarden.isStaStaConcurrencySupportedForMultiInternet())
-                .thenReturn(true);
-        mLooper.startAutoDispatch();
-        assertEquals(supportedFeaturesFromWifiNative
-                        | WifiManager.WIFI_FEATURE_ADDITIONAL_STA_LOCAL_ONLY
-                        | WifiManager.WIFI_FEATURE_ADDITIONAL_STA_MBB
-                        | WifiManager.WIFI_FEATURE_ADDITIONAL_STA_RESTRICTED
-                        | WifiManager.WIFI_FEATURE_ADDITIONAL_STA_MULTI_INTERNET,
-                mWifiServiceImpl.getSupportedFeatures());
-        mLooper.stopAutoDispatchAndIgnoreExceptions();
     }
 
     @Test
@@ -9219,7 +9078,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
 
     private List<WifiConfiguration> setupMultiTypeConfigs(
             long featureFlags, boolean saeAutoUpgradeEnabled, boolean oweAutoUpgradeEnabled) {
-        when(mWifiNative.getSupportedFeatureSet(anyString())).thenReturn(featureFlags);
+        when(mActiveModeWarden.getSupportedFeatureSet()).thenReturn(featureFlags);
         when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(saeAutoUpgradeEnabled);
         when(mWifiGlobals.isOweUpgradeEnabled()).thenReturn(oweAutoUpgradeEnabled);
 
@@ -9581,7 +9440,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Test
     public void testSetExternalPnoScanRequest_Success() throws Exception {
         assumeTrue(SdkLevel.isAtLeastT());
-        when(mWifiNative.getSupportedFeatureSet(anyString()))
+        when(mActiveModeWarden.getSupportedFeatureSet())
                 .thenReturn(WifiManager.WIFI_FEATURE_PNO);
         when(mWifiPermissionsUtil.checkRequestCompanionProfileAutomotiveProjectionPermission(
                 anyInt())).thenReturn(true);
@@ -9602,7 +9461,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Test
     public void testSetExternalPnoScanRequest_PnoNotSupported() throws Exception {
         assumeTrue(SdkLevel.isAtLeastT());
-        when(mWifiNative.getSupportedFeatureSet(anyString())).thenReturn(0L);
+        when(mActiveModeWarden.getSupportedFeatureSet()).thenReturn(0L);
         when(mWifiPermissionsUtil.checkRequestCompanionProfileAutomotiveProjectionPermission(
                 anyInt())).thenReturn(true);
         when(mWifiPermissionsUtil.checkCallersLocationPermission(
@@ -10470,9 +10329,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
 
     @Test
     public void testTetheredSoftApTrackerWhenCountryCodeChanged() throws Exception {
-        // needed to mock this to call "handleBootCompleted"
-        when(mWifiInjector.getPasspointProvisionerHandlerThread())
-                .thenReturn(mock(HandlerThread.class));
         mWifiServiceImpl.handleBootCompleted();
         mLooper.dispatchAll();
 
@@ -10571,7 +10427,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 TEST_PACKAGE_NAME));
         mLooper.dispatchAll();
         verify(mPasspointManager, never()).addOrUpdateProvider(any(), anyInt(), anyString(),
-                anyBoolean(), anyBoolean());
+                anyBoolean(), anyBoolean(), eq(false));
 
         WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork(TEST_SSID);
         assertEquals(-1, mWifiServiceImpl.addOrUpdateNetwork(config, TEST_PACKAGE_NAME,

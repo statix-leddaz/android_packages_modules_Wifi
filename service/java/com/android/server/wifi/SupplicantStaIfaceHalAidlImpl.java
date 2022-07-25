@@ -140,6 +140,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     private final Clock mClock;
     private final WifiMetrics mWifiMetrics;
     private final WifiGlobals mWifiGlobals;
+    private final SsidTranslator mSsidTranslator;
 
     private class SupplicantDeathRecipient implements DeathRecipient {
         @Override
@@ -169,13 +170,15 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     }
 
     public SupplicantStaIfaceHalAidlImpl(Context context, WifiMonitor monitor, Handler handler,
-            Clock clock, WifiMetrics wifiMetrics, WifiGlobals wifiGlobals) {
+            Clock clock, WifiMetrics wifiMetrics, WifiGlobals wifiGlobals,
+            @NonNull SsidTranslator ssidTranslator) {
         mContext = context;
         mWifiMonitor = monitor;
         mEventHandler = handler;
         mClock = clock;
         mWifiMetrics = wifiMetrics;
         mWifiGlobals = wifiGlobals;
+        mSsidTranslator = ssidTranslator;
         mSupplicantDeathRecipient = new SupplicantDeathRecipient();
         mPmkCacheManager = new PmkCacheManager(mClock, mEventHandler);
     }
@@ -183,8 +186,6 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     /**
      * Enable/Disable verbose logging.
      *
-     * @param verboseEnabled Verbose flag set in overlay XML.
-     * @param halVerboseEnabled Verbose flag set by the user.
      */
     public void enableVerboseLogging(boolean verboseEnabled, boolean halVerboseEnabled) {
         synchronized (mLock) {
@@ -251,7 +252,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
 
             ISupplicantStaIfaceCallback callback = new SupplicantStaIfaceCallbackAidlImpl(
                     SupplicantStaIfaceHalAidlImpl.this, ifaceName,
-                    new Object(), mContext, mWifiMonitor);
+                    new Object(), mContext, mWifiMonitor, mSsidTranslator);
             if (registerCallback(iface, callback)) {
                 mISupplicantStaIfaces.put(ifaceName, iface);
                 // Keep callback in a store to avoid recycling by garbage collector
@@ -418,8 +419,10 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
             return false;
         }
         Log.i(TAG, "Obtained ISupplicant binder.");
+        Log.i(TAG, "Local Version: " + ISupplicant.VERSION);
 
         try {
+            Log.i(TAG, "Remote Version: " + mISupplicant.getInterfaceVersion());
             IBinder serviceBinder = getServiceBinderMockable();
             if (serviceBinder == null) {
                 return false;
@@ -982,7 +985,8 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         synchronized (mLock) {
             SupplicantStaNetworkHalAidlImpl networkWrapper =
                     new SupplicantStaNetworkHalAidlImpl(network, ifaceName, mContext,
-                            mWifiMonitor, mWifiGlobals, getAdvancedCapabilities(ifaceName));
+                            mWifiMonitor, mWifiGlobals, mSsidTranslator,
+                            getAdvancedCapabilities(ifaceName));
             if (networkWrapper != null) {
                 networkWrapper.enableVerboseLogging(
                         mVerboseLoggingEnabled, mVerboseHalLoggingEnabled);
