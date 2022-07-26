@@ -78,7 +78,7 @@
   </string-array>
     <string name="wifi_eap_error_message_code_32761" msgid="3962610712123291591">"<xliff:g id="SSID">%1$s</xliff:g> : EAP ਪ੍ਰਮਾਣੀਕਰਨ ਗੜਬੜ 32761"</string>
   <string-array name="wifi_eap_error_message_code_32761_carrier_overrides">
-    <item msgid="5173744897521799785">"<xliff:g id="CARRIER_ID_PREFIX">:::1839:::</xliff:g><xliff:g id="SSID">%1$s</xliff:g> : ਤੁਸੀਂ Verizon Wi-Fi Access ਲਈ ਗਾਹਕੀ ਨਹੀਂ ਲਈ ਹੋਈ। ਕਿਰਪਾ ਕਰਕੇ ਸਾਨੂੰ 800-922-0204 \'ਤੇ ਕਾਲ ਕਰੋ। (ਗੜਬੜ = 32761)"</item>
+    <item msgid="5173744897521799785">"<xliff:g id="CARRIER_ID_PREFIX">:::1839:::</xliff:g><xliff:g id="SSID">%1$s</xliff:g> : ਤੁਸੀਂ Verizon Wi-Fi Access ਲਈ ਸਬਸਕ੍ਰਾਈਬ ਨਹੀਂ ਕੀਤਾ। ਕਿਰਪਾ ਕਰਕੇ ਸਾਨੂੰ 800-922-0204 \'ਤੇ ਕਾਲ ਕਰੋ। (ਗੜਬੜ = 32761)"</item>
   </string-array>
     <string name="wifi_eap_error_message_code_32762" msgid="2381670648753465737">"<xliff:g id="SSID">%1$s</xliff:g> : EAP ਪ੍ਰਮਾਣੀਕਰਨ ਗੜਬੜ 32762"</string>
   <string-array name="wifi_eap_error_message_code_32762_carrier_overrides">
@@ -137,6 +137,9 @@
     <string name="wifi_ca_cert_notification_title" msgid="537569884930429796">"ਨੈੱਟਵਰਕ ਦੀ ਪੁਸ਼ਟੀ ਕਰਨ ਦੀ ਲੋੜ ਹੈ"</string>
     <string name="wifi_ca_cert_notification_message" msgid="6413248690626616961">"ਕਨੈਕਟ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ <xliff:g id="SSID">%1$s</xliff:g> ਲਈ ਨੈੱਟਵਰਕ ਵੇਰਵਿਆਂ ਦੀ ਸਮੀਖਿਆ ਕਰੋ। ਜਾਰੀ ਰੱਖਣ ਲਈ ਟੈਪ ਕਰੋ।"</string>
     <string name="wifi_ca_cert_failed_to_install_ca_cert" msgid="4864192219789736195">"ਪ੍ਰਮਾਣ-ਪੱਤਰ ਨੂੰ ਸਥਾਪਤ ਕਰਨਾ ਅਸਫਲ ਰਿਹਾ।"</string>
+    <string name="wifi_tofu_invalid_cert_chain_title" msgid="332710627417595752">"<xliff:g id="VALUE">%1$s</xliff:g> ਨਾਲ ਕਨੈਕਟ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ"</string>
+    <string name="wifi_tofu_invalid_cert_chain_message" msgid="7047987920029432392">"ਸਰਵਰ ਪ੍ਰਮਾਣ-ਪੱਤਰ ਲੜੀ ਅਵੈਧ ਹੈ।"</string>
+    <string name="wifi_tofu_invalid_cert_chain_ok_text" msgid="9098567577510279854">"ਠੀਕ ਹੈ"</string>
     <string name="wifi_ca_cert_dialog_preT_title" msgid="6916320484037009061">"ਇਸ ਨੈੱਟਵਰਕ ਦੀ ਪੁਸ਼ਟੀ ਨਹੀਂ ਕੀਤੀ ਜਾ ਸਕਦੀ"</string>
     <string name="wifi_ca_cert_dialog_preT_continue_text" msgid="3181614240421159530">"ਫਿਰ ਵੀ ਕਨੈਕਟ ਕਰੋ"</string>
     <string name="wifi_ca_cert_dialog_preT_abort_text" msgid="1195575129023960325">"ਕਨੈਕਟ ਨਾ ਕਰੋ"</string>
