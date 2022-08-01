@@ -23,8 +23,14 @@ import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_P2P;
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_STA;
 
 import android.annotation.IntDef;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.res.Resources;
+import android.net.NetworkInfo;
 import android.net.wifi.WifiContext;
+import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Message;
 import android.os.WorkSource;
 import android.text.TextUtils;
@@ -63,6 +69,7 @@ public class InterfaceConflictManager {
     private final Resources mResources;
     private final boolean mUserApprovalNeeded;
     private final Set<String> mUserApprovalExemptedPackages;
+    private final boolean mUserApprovalNotRequireForDisconnectedP2p;
     private boolean mUserApprovalNeededOverride = false;
     private boolean mUserApprovalNeededOverrideValue = false;
 
@@ -70,6 +77,7 @@ public class InterfaceConflictManager {
     private boolean mUserApprovalPending = false;
     private String mUserApprovalPendingTag = null;
     private boolean mUserJustApproved = false;
+    private boolean mIsP2pConnected = false;
 
     private static final String MESSAGE_BUNDLE_KEY_PENDING_USER = "pending_user_decision";
 
@@ -90,6 +98,28 @@ public class InterfaceConflictManager {
         mUserApprovalExemptedPackages =
                 (packageList == null || packageList.length == 0) ? Collections.emptySet()
                         : new ArraySet<>(packageList);
+        mUserApprovalNotRequireForDisconnectedP2p = mResources.getBoolean(
+                R.bool.config_wifiUserApprovalNotRequireForDisconnectedP2p);
+
+        // Monitor P2P connection for auto-approval
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
+        mContext.registerReceiver(new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                if (action.equals(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)) {
+                    NetworkInfo mNetworkInfo = (NetworkInfo) intent.getParcelableExtra(
+                            WifiP2pManager.EXTRA_NETWORK_INFO);
+                    if (mNetworkInfo.getDetailedState() == NetworkInfo.DetailedState.CONNECTED) {
+                        mIsP2pConnected = true;
+                    } else {
+                        mIsP2pConnected = false;
+                    }
+                }
+
+            }
+        }, intentFilter);
     }
 
     /**
@@ -252,6 +282,13 @@ public class InterfaceConflictManager {
                 return ICM_EXECUTE_COMMAND;
             }
 
+            if (mUserApprovalNotRequireForDisconnectedP2p && !mIsP2pConnected
+                    && impact.size() == 1 && impact.get(0).first == HDM_CREATE_IFACE_P2P) {
+                Log.d(TAG, tag
+                        + ": existing inferface is p2p and it is not connected - proceeding");
+                return ICM_EXECUTE_COMMAND;
+            }
+
             displayUserApprovalDialog(createIfaceType, requestorWs, impact,
                     (result) -> {
                         if (mVerboseLoggingEnabled) {
@@ -297,8 +334,10 @@ public class InterfaceConflictManager {
         CharSequence requestorAppName = mFrameworkFacade.getAppName(mContext,
                 requestorWs.getPackageName(0), requestorWs.getUid(0));
         String requestedInterface = getInterfaceName(createIfaceType);
+        Set<String> impactedInterfacesSet = new HashSet<>();
         Set<String> impactedPackagesSet = new HashSet<>();
         for (Pair<Integer, WorkSource> detail : impact) {
+            impactedInterfacesSet.add(getInterfaceName(detail.first));
             for (int j = 0; j < detail.second.size(); ++j) {
                 impactedPackagesSet.add(
                         mFrameworkFacade.getAppName(mContext, detail.second.getPackageName(j),
@@ -306,14 +345,17 @@ public class InterfaceConflictManager {
             }
         }
         String impactedPackages = TextUtils.join(", ", impactedPackagesSet);
+        String impactedInterfaces = TextUtils.join(", ", impactedInterfacesSet);
 
-        mWifiDialogManager.createSimpleDialog(
-                mResources.getString(R.string.wifi_interface_priority_title, requestorAppName),
+        mWifiDialogManager.createLegacySimpleDialog(
+                mResources.getString(R.string.wifi_interface_priority_title,
+                        requestorAppName, requestedInterface),
                 impactedPackagesSet.size() == 1 ? mResources.getString(
                         R.string.wifi_interface_priority_message, requestorAppName,
-                        requestedInterface, impactedPackages)
+                        requestedInterface, impactedPackages, impactedInterfaces)
                         : mResources.getString(R.string.wifi_interface_priority_message_plural,
-                                requestorAppName, requestedInterface, impactedPackages),
+                                requestorAppName, requestedInterface, impactedPackages,
+                                impactedInterfaces),
                 mResources.getString(R.string.wifi_interface_priority_approve),
                 mResources.getString(R.string.wifi_interface_priority_reject),
                 null,
@@ -351,15 +393,16 @@ public class InterfaceConflictManager {
     private String getInterfaceName(@HalDeviceManager.HdmIfaceTypeForCreation int createIfaceType) {
         switch (createIfaceType) {
             case HDM_CREATE_IFACE_STA:
-                return "STA";
+                return mResources.getString(R.string.wifi_interface_priority_interface_name_sta);
             case HDM_CREATE_IFACE_AP:
-                return "AP";
+                return mResources.getString(R.string.wifi_interface_priority_interface_name_ap);
             case HDM_CREATE_IFACE_AP_BRIDGE:
-                return "AP";
+                return mResources.getString(
+                        R.string.wifi_interface_priority_interface_name_ap_bridge);
             case HDM_CREATE_IFACE_P2P:
-                return "Wi-Fi Direct";
+                return mResources.getString(R.string.wifi_interface_priority_interface_name_p2p);
             case HDM_CREATE_IFACE_NAN:
-                return "Wi-Fi Aware";
+                return mResources.getString(R.string.wifi_interface_priority_interface_name_nan);
         }
         return "Unknown";
     }
@@ -375,5 +418,7 @@ public class InterfaceConflictManager {
         pw.println("  mUserApprovalPending=" + mUserApprovalPending);
         pw.println("  mUserApprovalPendingTag=" + mUserApprovalPendingTag);
         pw.println("  mUserJustApproved=" + mUserJustApproved);
+        pw.println("  mUserApprovalNotRequireForDisconnectedP2p="
+                + mUserApprovalNotRequireForDisconnectedP2p);
     }
 }
