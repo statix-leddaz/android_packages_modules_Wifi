@@ -113,6 +113,7 @@ public class HalDeviceManager {
     private ServiceManagerDeathRecipient mServiceManagerDeathRecipient;
     private boolean mIsBridgedSoftApSupported;
     private boolean mIsStaWithBridgedSoftApConcurrencySupported;
+    private boolean mIsConcurrencyComboLoadedFromDriver;
     private ArrayMap<IWifiIface, SoftApManager> mSoftApManagers = new ArrayMap<>();
 
     // cache the value for supporting vendor HAL or not
@@ -1850,11 +1851,7 @@ public class HalDeviceManager {
                                          + triedCount + " times");
                             }
                             WifiChipInfo[] wifiChipInfos = getAllChipInfo();
-                            if (wifiChipInfos != null) {
-                                mCachedStaticChipInfos =
-                                        convertWifiChipInfoToStaticChipInfos(getAllChipInfo());
-                                saveStaticChipInfoToStore(mCachedStaticChipInfos);
-                            } else {
+                            if (wifiChipInfos == null) {
                                 Log.e(TAG, "Started wifi but could not get current chip info.");
                             }
                             return true;
@@ -2755,6 +2752,17 @@ public class HalDeviceManager {
                         Log.e(TAG, "executeChipReconfiguration: configureChip error: "
                                 + statusString(status));
                         return null;
+                    }
+                    if (!mIsConcurrencyComboLoadedFromDriver) {
+                        WifiChipInfo[] wifiChipInfos = getAllChipInfo();
+                        if (wifiChipInfos != null) {
+                            mCachedStaticChipInfos =
+                                    convertWifiChipInfoToStaticChipInfos(getAllChipInfo());
+                            saveStaticChipInfoToStore(mCachedStaticChipInfos);
+                            mIsConcurrencyComboLoadedFromDriver = true;
+                        } else {
+                            Log.e(TAG, "Configured chip but could not get current chip info.");
+                        }
                     }
                 } else {
                     // remove all interfaces on the delete list
