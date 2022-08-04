@@ -46,6 +46,8 @@ import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_NAN;
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_P2P;
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_STA;
 import static com.android.server.wifi.SelfRecovery.REASON_API_CALL;
+import static com.android.server.wifi.WifiSettingsConfigStore.SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI;
+import static com.android.server.wifi.WifiSettingsConfigStore.SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI_SET_BY_API;
 import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_VERBOSE_LOGGING_ENABLED;
 
 import android.Manifest;
@@ -788,8 +790,8 @@ public class WifiServiceImpl extends BaseWifiService {
             mTetheredSoftApTracker.handleBootCompleted();
             mLohsSoftApTracker.handleBootCompleted();
             mWifiInjector.getSarManager().handleBootCompleted();
+            mWifiInjector.getSsidTranslator().handleBootCompleted();
             updateVerboseLoggingEnabled();
-            mIsBootComplete = true;
         });
     }
 
@@ -1189,8 +1191,7 @@ public class WifiServiceImpl extends BaseWifiService {
 
         // Show a user-confirmation dialog for legacy third-party apps targeting less than Q.
         if (enable && isTargetSdkLessThanQ && isThirdParty
-                && mContext.getResources().getBoolean(
-                R.bool.config_showConfirmationDialogForThirdPartyAppsEnablingWifi)) {
+                && showDialogWhenThirdPartyAppsEnableWifi()) {
             mLog.info("setWifiEnabled must show user confirmation dialog for uid=%").c(callingUid)
                     .flush();
             mWifiThreadRunner.post(() -> {
@@ -1241,6 +1242,9 @@ public class WifiServiceImpl extends BaseWifiService {
                 mWifiMetrics.logUserActionEvent(UserActionEvent.EVENT_TOGGLE_WIFI_OFF,
                         wifiInfo == null ? -1 : wifiInfo.getNetworkId());
             }
+        }
+        if (!enable) {
+            mWifiInjector.getInterfaceConflictManager().reset();
         }
         mWifiMetrics.incrementNumWifiToggles(isPrivileged, enable);
         mActiveModeWarden.wifiToggled(new WorkSource(callingUid, packageName));
@@ -1366,10 +1370,18 @@ public class WifiServiceImpl extends BaseWifiService {
     @Override
     public int getWifiEnabledState() {
         enforceAccessPermission();
-        if (mVerboseLoggingEnabled) {
-            mLog.info("getWifiEnabledState uid=%").c(Binder.getCallingUid()).flush();
+        int state = mActiveModeWarden.getWifiState();
+        // If the wifi is enabling, call it on the wifi handler to get the state after wifi enabled.
+        // This is only needed for pre-T.
+        if (state == WifiManager.WIFI_STATE_ENABLING && !SdkLevel.isAtLeastT()) {
+            state = mWifiThreadRunner.call(() -> mActiveModeWarden.getWifiState(),
+                    WifiManager.WIFI_STATE_ENABLING);
         }
-        return mActiveModeWarden.getWifiState();
+        if (mVerboseLoggingEnabled) {
+            mLog.info("getWifiEnabledState uid=% state=%").c(Binder.getCallingUid()).c(
+                    state).flush();
+        }
+        return state;
     }
 
     /**
@@ -3003,7 +3015,7 @@ public class WifiServiceImpl extends BaseWifiService {
                 Collections.emptyList());
         if (isTargetSdkLessThanQOrPrivileged && !callerNetworksOnly) {
             return new ParceledListSlice<>(
-                    WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(configs));
+                    WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(configs, false));
         }
         // Should only get its own configs
         List<WifiConfiguration> creatorConfigs = new ArrayList<>();
@@ -3013,7 +3025,8 @@ public class WifiServiceImpl extends BaseWifiService {
             }
         }
         return new ParceledListSlice<>(
-                WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(creatorConfigs));
+                WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(
+                        creatorConfigs, true));
     }
 
     /**
@@ -3065,7 +3078,7 @@ public class WifiServiceImpl extends BaseWifiService {
                 () -> mWifiConfigManager.getConfiguredNetworksWithPasswords(),
                 Collections.emptyList());
         return new ParceledListSlice<>(
-                WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(configs));
+                WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(configs, false));
     }
 
     /**
@@ -3143,6 +3156,54 @@ public class WifiServiceImpl extends BaseWifiService {
                 WifiManager.API_SET_NETWORK_SELECTION_CONFIG,
                 Process.myTid(),
                 uid, Binder.getCallingPid(), "<unknown>", true);
+    }
+
+    /**
+     * See {@link WifiManager#setThirdPartyAppEnablingWifiConfirmationDialogEnabled(boolean)}
+     */
+    @Override
+    public void setThirdPartyAppEnablingWifiConfirmationDialogEnabled(boolean enable) {
+        int uid = Binder.getCallingUid();
+        if (!mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
+                && !mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid)) {
+            throw new SecurityException("Uid=" + uid + ", is not allowed to enable warning dialog "
+                    + "to display when third party apps start wifi");
+        }
+        mLog.info("uid=% enableWarningDialog=%").c(uid).c(enable).flush();
+        mWifiInjector.getSettingsConfigStore().put(
+                SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI, enable);
+        mWifiInjector.getSettingsConfigStore().put(
+                SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI_SET_BY_API, true);
+        mLastCallerInfoManager.put(
+                WifiManager.API_SET_THIRD_PARTY_APPS_ENABLING_WIFI_CONFIRMATION_DIALOG,
+                Process.myTid(),
+                uid, Binder.getCallingPid(), "<unknown>", enable);
+    }
+
+    private boolean showDialogWhenThirdPartyAppsEnableWifi() {
+        if (mWifiInjector.getSettingsConfigStore().get(
+                SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI_SET_BY_API)) {
+            // API was called to override the overlay value.
+            return mWifiInjector.getSettingsConfigStore().get(
+                    SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI);
+        } else {
+            return mContext.getResources().getBoolean(
+                    R.bool.config_showConfirmationDialogForThirdPartyAppsEnablingWifi);
+        }
+    }
+
+    /**
+     * See {@link WifiManager#isThirdPartyAppEnablingWifiConfirmationDialogEnabled()}
+     */
+    @Override
+    public boolean isThirdPartyAppEnablingWifiConfirmationDialogEnabled() {
+        int uid = Binder.getCallingUid();
+        if (!mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
+                && !mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid)) {
+            throw new SecurityException("Uid=" + uid + ", is not allowed to check if warning "
+                    + "dialog is enabled when third party apps start wifi");
+        }
+        return showDialogWhenThirdPartyAppsEnableWifi();
     }
 
     /**
@@ -4799,6 +4860,7 @@ public class WifiServiceImpl extends BaseWifiService {
                         mContext, Settings.Global.STAY_ON_WHILE_PLUGGED_IN, 0));
                 pw.println("mInIdleMode " + mInIdleMode);
                 pw.println("mScanPending " + mScanPending);
+                pw.println("SupportedFeatures:" + Long.toHexString(getSupportedFeaturesInternal()));
                 pw.println("SettingsStore:");
                 mSettingsStore.dump(fd, pw, args);
                 mActiveModeWarden.dump(fd, pw, args);
@@ -4834,6 +4896,7 @@ public class WifiServiceImpl extends BaseWifiService {
                 mWifiInjector.getOemWifiNetworkFactory().dump(fd, pw, args);
                 mWifiInjector.getRestrictedWifiNetworkFactory().dump(fd, pw, args);
                 mWifiInjector.getMultiInternetWifiNetworkFactory().dump(fd, pw, args);
+                mWifiInjector.getSsidTranslator().dump(pw);
                 pw.println("Wlan Wake Reasons:" + mWifiNative.getWlanWakeReasonCount());
                 pw.println();
                 mWifiConfigManager.dump(fd, pw, args);
@@ -5335,67 +5398,7 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     private long getSupportedFeaturesInternal() {
-        long supportedFeatureSet = mWifiThreadRunner.call(
-                () -> mWifiNative.getSupportedFeatureSet(
-                        mActiveModeWarden.getPrimaryClientModeManager().getInterfaceName()),
-                0L);
-        // Mask the feature set against system properties.
-        boolean rttSupported = mContext.getPackageManager().hasSystemFeature(
-                PackageManager.FEATURE_WIFI_RTT);
-        if (!rttSupported) {
-            // flags filled in by vendor HAL, remove if overlay disables it.
-            supportedFeatureSet &=
-                    ~(WifiManager.WIFI_FEATURE_D2D_RTT | WifiManager.WIFI_FEATURE_D2AP_RTT);
-        }
-        if (!mContext.getResources().getBoolean(
-                R.bool.config_wifi_p2p_mac_randomization_supported)) {
-            // flags filled in by vendor HAL, remove if overlay disables it.
-            supportedFeatureSet &= ~WifiManager.WIFI_FEATURE_P2P_RAND_MAC;
-        }
-        if (mContext.getResources().getBoolean(
-                R.bool.config_wifi_connected_mac_randomization_supported)) {
-            // no corresponding flags in vendor HAL, set if overlay enables it.
-            supportedFeatureSet |= WifiManager.WIFI_FEATURE_CONNECTED_RAND_MAC;
-        }
-        if (ApConfigUtil.isApMacRandomizationSupported(mContext)) {
-            // no corresponding flags in vendor HAL, set if overlay enables it.
-            supportedFeatureSet |= WifiManager.WIFI_FEATURE_AP_RAND_MAC;
-        }
-        if (SdkLevel.isAtLeastS()) {
-            if (ApConfigUtil.isBridgedModeSupported(mContext)) {
-                // The bridged mode requires the kernel network modules support.
-                // It doesn't relate the vendor HAL, set if overlay enables it.
-                supportedFeatureSet |= WifiManager.WIFI_FEATURE_BRIDGED_AP;
-            }
-            if (ApConfigUtil.isStaWithBridgedModeSupported(mContext)) {
-                // The bridged mode requires the kernel network modules support.
-                // It doesn't relate the vendor HAL, set if overlay enables it.
-                supportedFeatureSet |= WifiManager.WIFI_FEATURE_STA_BRIDGED_AP;
-            }
-        }
-
-        supportedFeatureSet |= mWifiThreadRunner.call(
-                () -> {
-                    long concurrencyFeatureSet = 0L;
-                    if (mActiveModeWarden.isStaApConcurrencySupported()) {
-                        concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_AP_STA;
-                    }
-                    if (mActiveModeWarden.isStaStaConcurrencySupportedForLocalOnlyConnections()) {
-                        concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_ADDITIONAL_STA_LOCAL_ONLY;
-                    }
-                    if (mActiveModeWarden.isStaStaConcurrencySupportedForMbb()) {
-                        concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_ADDITIONAL_STA_MBB;
-                    }
-                    if (mActiveModeWarden.isStaStaConcurrencySupportedForRestrictedConnections()) {
-                        concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_ADDITIONAL_STA_RESTRICTED;
-                    }
-                    if (mActiveModeWarden.isStaStaConcurrencySupportedForMultiInternet()) {
-                        concurrencyFeatureSet |= WifiManager
-                                .WIFI_FEATURE_ADDITIONAL_STA_MULTI_INTERNET;
-                    }
-                    return concurrencyFeatureSet;
-                }, 0L);
-        return supportedFeatureSet;
+        return mActiveModeWarden.getSupportedFeatureSet();
     }
 
     /**
