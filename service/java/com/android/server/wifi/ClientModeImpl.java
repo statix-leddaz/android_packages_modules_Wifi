@@ -537,6 +537,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     /* used to indicated RSSI threshold breach in hw */
     static final int CMD_RSSI_THRESHOLD_BREACHED                        = BASE + 164;
 
+    /* Used to time out the creation of an IpClient instance. */
+    static final int CMD_IPCLIENT_STARTUP_TIMEOUT                       = BASE + 165;
+
     /**
      * Used to handle messages bounced between ClientModeImpl and IpClient.
      */
@@ -575,7 +578,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     /* Start connection to FILS AP*/
     static final int CMD_START_FILS_CONNECTION                          = BASE + 262;
 
-    static final int CMD_CONNECTABLE_STATE_SETUP                        = BASE + 300;
+    static final int CMD_IPCLIENT_CREATED                               = BASE + 300;
 
     @VisibleForTesting
     static final int CMD_ACCEPT_EAP_SERVER_CERTIFICATE                  = BASE + 301;
@@ -610,6 +613,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private State mL2ConnectingState = new L2ConnectingState();
     /* Connected at 802.11 (L2) level */
     private State mL2ConnectedState = new L2ConnectedState();
+    /* Waiting for IpClient recreation completes */
+    private State mWaitBeforeL3ProvisioningState = new WaitBeforeL3ProvisioningState();
     /* fetching IP after connection to access point (assoc+auth complete) */
     private State mL3ProvisioningState = new L3ProvisioningState();
     /* Connected with IP addr */
@@ -866,6 +871,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             addState(mConnectingOrConnectedState, mConnectableState); {
                 addState(mL2ConnectingState, mConnectingOrConnectedState);
                 addState(mL2ConnectedState, mConnectingOrConnectedState); {
+                    addState(mWaitBeforeL3ProvisioningState, mL2ConnectedState);
                     addState(mL3ProvisioningState, mL2ConnectedState);
                     addState(mL3ConnectedState, mL2ConnectedState);
                     addState(mRoamingState, mL2ConnectedState);
@@ -996,29 +1002,33 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         @Override
         public void onIpClientCreated(IIpClient ipClient) {
+            if (mIpClientCallbacks != this) return;
             // IpClient may take a very long time (many minutes) to start at boot time. But after
             // that IpClient should start pretty quickly (a few seconds).
             // Blocking wait for 5 seconds first (for when the wait is short)
             // If IpClient is still not ready after blocking wait, async wait (for when wait is
             // long). Will drop all connection requests until IpClient is ready. Other requests
             // will still be processed.
-            sendMessageAtFrontOfQueue(CMD_CONNECTABLE_STATE_SETUP,
+            sendMessageAtFrontOfQueue(CMD_IPCLIENT_CREATED,
                     new IpClientManager(ipClient, getName()));
             mWaitForCreationCv.open();
         }
 
         @Override
         public void onPreDhcpAction() {
+            if (mIpClientCallbacks != this) return;
             sendMessage(CMD_PRE_DHCP_ACTION);
         }
 
         @Override
         public void onPostDhcpAction() {
+            if (mIpClientCallbacks != this) return;
             sendMessage(CMD_POST_DHCP_ACTION);
         }
 
         @Override
         public void onNewDhcpResults(DhcpResultsParcelable dhcpResults) {
+            if (mIpClientCallbacks != this) return;
             if (dhcpResults != null) {
                 sendMessage(CMD_IPV4_PROVISIONING_SUCCESS, dhcpResults);
             } else {
@@ -1028,6 +1038,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         @Override
         public void onProvisioningSuccess(LinkProperties newLp) {
+            if (mIpClientCallbacks != this) return;
             addPasspointInfoToLinkProperties(newLp);
             mWifiMetrics.logStaEvent(mInterfaceName, StaEvent.TYPE_CMD_IP_CONFIGURATION_SUCCESSFUL);
             sendMessage(CMD_UPDATE_LINKPROPERTIES, newLp);
@@ -1036,54 +1047,64 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         @Override
         public void onProvisioningFailure(LinkProperties newLp) {
+            if (mIpClientCallbacks != this) return;
             mWifiMetrics.logStaEvent(mInterfaceName, StaEvent.TYPE_CMD_IP_CONFIGURATION_LOST);
             sendMessage(CMD_IP_CONFIGURATION_LOST);
         }
 
         @Override
         public void onLinkPropertiesChange(LinkProperties newLp) {
+            if (mIpClientCallbacks != this) return;
             addPasspointInfoToLinkProperties(newLp);
             sendMessage(CMD_UPDATE_LINKPROPERTIES, newLp);
         }
 
         @Override
         public void onReachabilityLost(String logMsg) {
+            if (mIpClientCallbacks != this) return;
             mWifiMetrics.logStaEvent(mInterfaceName, StaEvent.TYPE_CMD_IP_REACHABILITY_LOST);
             sendMessage(CMD_IP_REACHABILITY_LOST, logMsg);
         }
 
         @Override
         public void onReachabilityFailure(ReachabilityLossInfoParcelable lossInfo) {
+            if (mIpClientCallbacks != this) return;
             sendMessage(CMD_IP_REACHABILITY_FAILURE, lossInfo);
         }
 
         @Override
         public void installPacketFilter(byte[] filter) {
+            if (mIpClientCallbacks != this) return;
             sendMessage(CMD_INSTALL_PACKET_FILTER, filter);
         }
 
         @Override
         public void startReadPacketFilter() {
+            if (mIpClientCallbacks != this) return;
             sendMessage(CMD_READ_PACKET_FILTER);
         }
 
         @Override
         public void setFallbackMulticastFilter(boolean enabled) {
+            if (mIpClientCallbacks != this) return;
             sendMessage(CMD_SET_FALLBACK_PACKET_FILTERING, enabled);
         }
 
         @Override
         public void setNeighborDiscoveryOffload(boolean enabled) {
+            if (mIpClientCallbacks != this) return;
             sendMessage(CMD_CONFIG_ND_OFFLOAD, (enabled ? 1 : 0));
         }
 
         @Override
         public void onPreconnectionStart(List<Layer2PacketParcelable> packets) {
+            if (mIpClientCallbacks != this) return;
             sendMessage(CMD_START_FILS_CONNECTION, 0, 0, packets);
         }
 
         @Override
         public void onQuit() {
+            if (mIpClientCallbacks != this) return;
             mWaitForStopCv.open();
         }
 
@@ -1544,7 +1565,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     public boolean isConnecting() {
         IState state = getCurrentState();
         return state == mL2ConnectingState || state == mL2ConnectedState
-                || state == mL3ProvisioningState;
+                || state == mWaitBeforeL3ProvisioningState || state == mL3ProvisioningState;
     }
 
     @Override
@@ -2203,6 +2224,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 return "CMD_IP_REACHABILITY_LOST";
             case CMD_IP_REACHABILITY_FAILURE:
                 return "CMD_IP_REACHABILITY_FAILURE";
+            case CMD_IPCLIENT_STARTUP_TIMEOUT:
+                return "CMD_IPCLIENT_STARTUP_TIMEOUT";
             case CMD_IPV4_PROVISIONING_FAILURE:
                 return "CMD_IPV4_PROVISIONING_FAILURE";
             case CMD_IPV4_PROVISIONING_SUCCESS:
@@ -3422,7 +3445,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 mQosPolicyRequestHandler.setNetworkAgent(mNetworkAgent);
             }
 
-            transitionTo(mL3ProvisioningState);
+            transitionTo(mWaitBeforeL3ProvisioningState);
         } else {
             logd("Invalid failure reason from onIpReachabilityFailure");
         }
@@ -3677,13 +3700,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiDiagnostics.stopLogging(mInterfaceName);
 
         mMboOceController.disable();
-        if (mIpClient != null && mIpClient.shutdown()) {
-            // Block to make sure IpClient has really shut down, lest cleanup
-            // race with, say, bringup code over in tethering.
-            mIpClientCallbacks.awaitShutdown();
-            mIpClientCallbacks = null;
-            mIpClient = null;
-        }
+        maybeShutdownIpclient();
         deregisterForWifiMonitorEvents(); // uses mInterfaceName, must call before nulling out
         // TODO: b/79504296 This broadcast has been deprecated and should be removed
         sendSupplicantConnectionChangedBroadcast(false);
@@ -3831,6 +3848,23 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
     }
 
+    private void makeIpClient() {
+        mIpClientCallbacks = new IpClientCallbacksImpl();
+        mFacade.makeIpClient(mContext, mInterfaceName, mIpClientCallbacks);
+        mIpClientCallbacks.awaitCreation();
+    }
+
+    private void maybeShutdownIpclient() {
+        if (mIpClient == null || mIpClient.shutdown()) {
+            return;
+        }
+        // Block to make sure IpClient has really shut down, lest cleanup
+        // race with, say, bringup code over in tethering.
+        mIpClientCallbacks.awaitShutdown();
+        mIpClientCallbacks = null;
+        mIpClient = null;
+    }
+
     /********************************************************
      * HSM states
      *******************************************************/
@@ -3856,10 +3890,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             setSuspendOptimizationsNative(SUSPEND_DUE_TO_HIGH_PERF, true);
 
             mWifiStateTracker.updateState(mInterfaceName, WifiStateTracker.INVALID);
-            mIpClientCallbacks = new IpClientCallbacksImpl();
-            Log.d(getTag(), "Start makeIpClient ifaceName = " + mInterfaceName);
-            mFacade.makeIpClient(mContext, mInterfaceName, mIpClientCallbacks);
-            mIpClientCallbacks.awaitCreation();
+            makeIpClient();
         }
 
         private void continueEnterSetup(IpClientManager ipClientManager) {
@@ -3912,7 +3943,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         @Override
         public boolean processMessage(Message message) {
             switch (message.what) {
-                case CMD_CONNECTABLE_STATE_SETUP:
+                case CMD_IPCLIENT_CREATED:
                     if (mIpClient != null) {
                         loge("Setup connectable state again when IpClient is ready?");
                     } else {
@@ -5853,6 +5884,64 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         return triggerType;
     }
 
+    // Before transition to L3ProvisioningState, always shut down the current IpClient
+    // instance and recreate a new IpClient and IpClientCallbacks instance, defer received
+    // messages in this state except CMD_IPCLIENT_CREATED, recreation of a new IpClient
+    // guarantees the out-of-date callbacks will be ignored, otherwise, it's not easy to
+    // differentiate callbacks which comes from new IpClient or legacy IpClient. So far
+    // only transit to this state iff IP reachability gets lost post roam.
+    class WaitBeforeL3ProvisioningState extends State {
+        @Override
+        public void enter() {
+            // Recreate a new IpClient instance.
+            maybeShutdownIpclient();
+            makeIpClient();
+
+            // Given that {@link IpClientCallbacks#awaitCreation} is invoked when making a
+            // IpClient instance, which waits for {@link IPCLIENT_STARTUP_TIMEOUT_MS}.
+            // If await IpClient recreation times out, then send timeout message to proceed
+            // to Disconnected state, otherwise, we will never exit this state.
+            sendMessage(CMD_IPCLIENT_STARTUP_TIMEOUT);
+        }
+
+        @Override
+        public void exit() {
+            removeMessages(CMD_IPCLIENT_STARTUP_TIMEOUT);
+        }
+
+        @Override
+        public boolean processMessage(Message message) {
+            switch(message.what) {
+                case CMD_IPCLIENT_CREATED: {
+                    mIpClient = (IpClientManager) message.obj;
+                    transitionTo(mL3ProvisioningState);
+                    break;
+                }
+
+                case CMD_IPCLIENT_STARTUP_TIMEOUT: {
+                    Log.e(getTag(), "Fail to create an IpClient instance within "
+                            + IPCLIENT_STARTUP_TIMEOUT_MS + "ms");
+                    handleNetworkDisconnect(false,
+                            WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__TIMEOUT);
+                    transitionTo(mDisconnectedState);
+                    break;
+                }
+
+                default:
+                    // Do not process any other messages except CMD_IPCLIENT_CREATED and
+                    // CMD_IPCLIENT_STARTUP_TIMEOUT. This means that this state can be very
+                    // simple because it does not need to worry about messasge ordering.
+                    // Re-creating IpClient should only take a few milliseconds, but in the
+                    // worst case, this will result in the state machine not processing any
+                    // messages for IPCLIENT_STARTUP_TIMEOUT_MS.
+                    deferMessage(message);
+            }
+
+            logStateAndMessage(message, this);
+            return HANDLED;
+        }
+    }
+
     class L3ProvisioningState extends State {
         @Override
         public void enter() {
@@ -5915,7 +6004,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // Get Link layer stats so as we get fresh tx packet counters
             getWifiLinkLayerStats();
         }
-
     }
 
     /**
