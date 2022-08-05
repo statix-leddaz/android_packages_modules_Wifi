@@ -2127,10 +2127,16 @@ public class WifiConfiguration implements Parcelable {
          */
         public static final int DISABLED_CONSECUTIVE_FAILURES = 12;
         /**
+         * This code is used to disable a network when a security params is disabled
+         * by the transition disable indication.
+         * @hide
+         */
+        public static final int DISABLED_TRANSITION_DISABLE_INDICATION = 13;
+        /**
          * All other disable reasons should be strictly less than this value.
          * @hide
          */
-        public static final int NETWORK_SELECTION_DISABLED_MAX = 13;
+        public static final int NETWORK_SELECTION_DISABLED_MAX = 14;
 
         /**
          * Get an integer that is equal to the maximum integer value of all the
@@ -2297,6 +2303,12 @@ public class WifiConfiguration implements Parcelable {
                     new DisableReasonInfo("NETWORK_SELECTION_DISABLED_CONSECUTIVE_FAILURES",
                             1,
                             5 * 60 * 1000));
+
+            reasons.append(DISABLED_TRANSITION_DISABLE_INDICATION,
+                    new DisableReasonInfo(
+                            "NETWORK_SELECTION_DISABLED_TRANSITION_DISABLE_INDICATION",
+                            1,
+                            DisableReasonInfo.PERMANENT_DISABLE_TIMEOUT));
 
             return reasons;
         }
@@ -3585,7 +3597,7 @@ public class WifiConfiguration implements Parcelable {
             if (TextUtils.isEmpty(keyMgmt)) {
                 throw new IllegalStateException("Not an EAP network");
             }
-            String keyId = trimStringForKeyId(SSID) + "_" + keyMgmt + "_"
+            String keyId = WifiSsid.fromString(SSID).toString() + "_" + keyMgmt + "_"
                     + trimStringForKeyId(enterpriseConfig.getKeyId(current != null
                     ? current.enterpriseConfig : null));
 
@@ -3706,7 +3718,7 @@ public class WifiConfiguration implements Parcelable {
             return mPasspointUniqueId;
         }
 
-        String key = SSID + getDefaultSecurityType();
+        String key = getSsidAndSecurityTypeString();
         if (!shared) {
             key += "-" + UserHandle.getUserHandleForUid(creatorUid).getIdentifier();
         }
@@ -3718,7 +3730,7 @@ public class WifiConfiguration implements Parcelable {
      *  return the SSID + security type in String format.
      */
     public String getSsidAndSecurityTypeString() {
-        return SSID + getDefaultSecurityType();
+        return WifiSsid.fromString(SSID) + getDefaultSecurityType();
     }
 
     /**
@@ -4239,7 +4251,7 @@ public class WifiConfiguration implements Parcelable {
             return mPasspointUniqueId;
         }
 
-        String key = SSID + getDefaultSecurityType();
+        String key = getSsidAndSecurityTypeString();
         if (!shared) {
             key += "-" + UserHandle.getUserHandleForUid(creatorUid).getIdentifier();
         }
@@ -4336,7 +4348,7 @@ public class WifiConfiguration implements Parcelable {
             // subscriptionId (the default one) first.
             return subscriptionId + "-" + mPasspointUniqueId;
         } else {
-            String key = SSID + getSecurityTypeName(securityType);
+            String key = WifiSsid.fromString(SSID) + getSecurityTypeName(securityType);
             if (!shared) {
                 key += "-" + UserHandle.getUserHandleForUid(creatorUid).getIdentifier();
             }
