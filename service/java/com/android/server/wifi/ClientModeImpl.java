@@ -1256,6 +1256,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         mWifiScoreReport.enableVerboseLogging(mVerboseLoggingEnabled);
         mSupplicantStateTracker.enableVerboseLogging(mVerboseLoggingEnabled);
+        mWifiNative.enableVerboseLogging(mVerboseLoggingEnabled, mVerboseLoggingEnabled);
         mQosPolicyRequestHandler.enableVerboseLogging(mVerboseLoggingEnabled);
     }
 
