@@ -52,6 +52,7 @@ public class SupplicantStaIfaceHal {
     private final Clock mClock;
     private final WifiMetrics mWifiMetrics;
     private final WifiGlobals mWifiGlobals;
+    private final @NonNull SsidTranslator mSsidTranslator;
 
     // HAL interface object - might be implemented by HIDL or AIDL
     private ISupplicantStaIfaceHal mStaIfaceHal;
@@ -706,8 +707,7 @@ public class SupplicantStaIfaceHal {
         public boolean isValid = true;
 
         public QosPolicyClassifierParams(boolean halHasSrcIp, byte[] halSrcIp, boolean halHasDstIp,
-                byte[] halDstIp, int halSrcPort, @NonNull int[] halDstPortRange,
-                int halProtocol) {
+                byte[] halDstIp, int halSrcPort, int[] halDstPortRange, int halProtocol) {
             srcPort = halSrcPort;
             protocol = halProtocol;
 
@@ -729,10 +729,12 @@ public class SupplicantStaIfaceHal {
                 }
             }
 
-            if (halDstPortRange[0] > halDstPortRange[1]) {
-                isValid = false;
-            } else {
-                dstPortRange = new Range(halDstPortRange[0], halDstPortRange[1]);
+            if (halDstPortRange != null) {
+                if (halDstPortRange[0] > halDstPortRange[1]) {
+                    isValid = false;
+                } else {
+                    dstPortRange = new Range(halDstPortRange[0], halDstPortRange[1]);
+                }
             }
         }
 
@@ -757,7 +759,8 @@ public class SupplicantStaIfaceHal {
     public SupplicantStaIfaceHal(Context context, WifiMonitor monitor,
             FrameworkFacade frameworkFacade, Handler handler,
             Clock clock, WifiMetrics wifiMetrics,
-            WifiGlobals wifiGlobals) {
+            WifiGlobals wifiGlobals,
+            @NonNull SsidTranslator ssidTranslator) {
         mContext = context;
         mWifiMonitor = monitor;
         mFrameworkFacade = frameworkFacade;
@@ -765,6 +768,7 @@ public class SupplicantStaIfaceHal {
         mClock = clock;
         mWifiMetrics = wifiMetrics;
         mWifiGlobals = wifiGlobals;
+        mSsidTranslator = ssidTranslator;
         mStaIfaceHal = createStaIfaceHalMockable();
         if (mStaIfaceHal == null) {
             Log.wtf(TAG, "Failed to get internal ISupplicantStaIfaceHal instance.");
@@ -813,12 +817,12 @@ public class SupplicantStaIfaceHal {
             if (SupplicantStaIfaceHalAidlImpl.serviceDeclared()) {
                 Log.i(TAG, "Initializing SupplicantStaIfaceHal using AIDL implementation.");
                 return new SupplicantStaIfaceHalAidlImpl(mContext, mWifiMonitor,
-                        mEventHandler, mClock, mWifiMetrics, mWifiGlobals);
+                        mEventHandler, mClock, mWifiMetrics, mWifiGlobals, mSsidTranslator);
 
             } else if (SupplicantStaIfaceHalHidlImpl.serviceDeclared()) {
                 Log.i(TAG, "Initializing SupplicantStaIfaceHal using HIDL implementation.");
                 return new SupplicantStaIfaceHalHidlImpl(mContext, mWifiMonitor, mFrameworkFacade,
-                        mEventHandler, mClock, mWifiMetrics, mWifiGlobals);
+                        mEventHandler, mClock, mWifiMetrics, mWifiGlobals, mSsidTranslator);
             }
             Log.e(TAG, "No HIDL or AIDL service available for SupplicantStaIfaceHal.");
             return null;
