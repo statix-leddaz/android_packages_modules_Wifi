@@ -122,6 +122,8 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         }};
     private static final int SUPPLICANT_NETWORK_ID = 2;
     private static final String SUPPLICANT_SSID = NETWORK_ID_TO_SSID.get(SUPPLICANT_NETWORK_ID);
+    private static final WifiSsid TRANSLATED_SUPPLICANT_SSID =
+            WifiSsid.fromString("\"translated ssid\"");
     private static final int ROAM_NETWORK_ID = 4;
     private static final String BSSID = "fa:45:23:23:12:12";
     private static final String WLAN0_IFACE_NAME = "wlan0";
@@ -136,10 +138,10 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
 
     private @Mock IServiceManager mServiceManagerMock;
     private @Mock ISupplicant mISupplicantMock;
-    private android.hardware.wifi.supplicant.V1_1.ISupplicant mISupplicantMockV11;
-    private android.hardware.wifi.supplicant.V1_2.ISupplicant mISupplicantMockV12;
-    private android.hardware.wifi.supplicant.V1_3.ISupplicant mISupplicantMockV13;
-    private android.hardware.wifi.supplicant.V1_3.ISupplicant mISupplicantMockV14;
+    private @Mock android.hardware.wifi.supplicant.V1_1.ISupplicant mISupplicantMockV11;
+    private @Mock android.hardware.wifi.supplicant.V1_2.ISupplicant mISupplicantMockV12;
+    private @Mock android.hardware.wifi.supplicant.V1_3.ISupplicant mISupplicantMockV13;
+    private @Mock android.hardware.wifi.supplicant.V1_3.ISupplicant mISupplicantMockV14;
     private @Mock ISupplicantIface mISupplicantIfaceMock;
     private @Mock ISupplicantStaIface mISupplicantStaIfaceMock;
     private @Mock android.hardware.wifi.supplicant.V1_1.ISupplicantStaIface
@@ -158,6 +160,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
     private @Mock Clock mClock;
     private @Mock WifiMetrics mWifiMetrics;
     private @Mock WifiGlobals mWifiGlobals;
+    private @Mock SsidTranslator mSsidTranslator;
     private @Mock PmkCacheManager mPmkCacheManager;
 
     SupplicantStatus mStatusSuccess;
@@ -197,7 +200,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
 
         SupplicantStaIfaceHalSpy() {
             super(mContext, mWifiMonitor, mFrameworkFacade,
-                    mHandler, mClock, mWifiMetrics, mWifiGlobals);
+                    mHandler, mClock, mWifiMetrics, mWifiGlobals, mSsidTranslator);
             mStaNetwork = mSupplicantStaNetworkMock;
         }
 
@@ -287,6 +290,8 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 any(IServiceNotification.Stub.class))).thenReturn(true);
         when(mISupplicantMock.linkToDeath(any(IHwBinder.DeathRecipient.class),
                 anyLong())).thenReturn(true);
+        when(mISupplicantMockV11.linkToDeath(any(IHwBinder.DeathRecipient.class),
+                anyLong())).thenReturn(true);
         doAnswer(new AnswerWithArguments() {
             public void answer(ISupplicantStaIface.getMacAddressCallback cb) {
                 cb.onValues(mStatusSuccess, CONNECTED_MAC_ADDRESS_BYTES);
@@ -296,6 +301,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 .getMacAddress(any(ISupplicantStaIface.getMacAddressCallback.class));
         when(mFrameworkFacade.startSupplicant()).thenReturn(true);
         mHandler = spy(new Handler(mLooper.getLooper()));
+        when(mSsidTranslator.getTranslatedSsid(any())).thenReturn(TRANSLATED_SUPPLICANT_SSID);
         mDut = new SupplicantStaIfaceHalSpy();
     }
 
@@ -517,7 +523,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         reset(mISupplicantStaIfaceMock);
         setupMocksForConnectSequence(true /*haveExistingNetwork*/);
         // Make this network different by changing SSID.
-        config.SSID = "AnDifferentSSID";
+        config.SSID = "\"ADifferentSSID\"";
         assertTrue(mDut.connectToNetwork(WLAN0_IFACE_NAME, config));
         verify(mISupplicantStaIfaceMock).removeNetwork(SUPPLICANT_NETWORK_ID);
         verify(mISupplicantStaIfaceMock)
@@ -1141,7 +1147,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         // Can't compare WifiSsid instances because they lack an equals.
         verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(WifiConfiguration.INVALID_NETWORK_ID),
-                any(WifiSsid.class), eq(BSSID), eq(SupplicantState.INACTIVE));
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(SupplicantState.INACTIVE));
     }
 
     /**
@@ -1161,7 +1167,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
 
         verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId),
-                any(WifiSsid.class), eq(BSSID), eq(SupplicantState.ASSOCIATED));
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(SupplicantState.ASSOCIATED));
     }
 
     /**
@@ -1180,14 +1186,12 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 NativeUtil.macAddressToByteArray(BSSID), SUPPLICANT_NETWORK_ID,
                 NativeUtil.decodeSsid(SUPPLICANT_SSID));
 
-        WifiSsid wifiSsid = WifiSsid.fromBytes(
-                NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(SUPPLICANT_SSID)));
-
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastNetworkConnectionEvent(
-                eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId), eq(false), eq(wifiSsid), eq(BSSID));
+                eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId), eq(false),
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID));
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId),
-                any(WifiSsid.class), eq(BSSID), eq(SupplicantState.COMPLETED));
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(SupplicantState.COMPLETED));
     }
 
     /**
@@ -1208,12 +1212,14 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         mISupplicantStaIfaceCallback.onDisconnected(
                 NativeUtil.macAddressToByteArray(BSSID), true, reasonCode);
         verify(mWifiMonitor).broadcastNetworkDisconnectionEvent(
-                eq(WLAN0_IFACE_NAME), eq(true), eq(reasonCode), eq(SUPPLICANT_SSID), eq(BSSID));
+                eq(WLAN0_IFACE_NAME), eq(true), eq(reasonCode),
+                eq(TRANSLATED_SUPPLICANT_SSID.toString()), eq(BSSID));
 
         mISupplicantStaIfaceCallback.onDisconnected(
                 NativeUtil.macAddressToByteArray(BSSID), false, reasonCode);
         verify(mWifiMonitor).broadcastNetworkDisconnectionEvent(
-                eq(WLAN0_IFACE_NAME), eq(false), eq(reasonCode), eq(SUPPLICANT_SSID), eq(BSSID));
+                eq(WLAN0_IFACE_NAME), eq(false), eq(reasonCode),
+                eq(TRANSLATED_SUPPLICANT_SSID.toString()), eq(BSSID));
     }
 
     /**
@@ -1252,7 +1258,35 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
 
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(
                 eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD), eq(-1),
-                eq(SUPPLICANT_SSID), eq(MacAddress.fromString(BSSID)));
+                eq(TRANSLATED_SUPPLICANT_SSID.toString()), eq(MacAddress.fromString(BSSID)));
+    }
+
+    /**
+     * Tests that connection failure due to wrong password in WAPI-PSK network is notified.
+     */
+    @Test
+    public void testWapiPskWrongPasswordNotification() throws Exception {
+        executeAndValidateInitializationSequence();
+        assertNotNull(mISupplicantStaIfaceCallback);
+        executeAndValidateConnectSequenceWithKeyMgmt(
+                0, false, WifiConfiguration.SECURITY_TYPE_WAPI_PSK, null);
+
+        mISupplicantStaIfaceCallback.onStateChanged(
+                ISupplicantStaIfaceCallback.State.ASSOCIATING,
+                NativeUtil.macAddressToByteArray(BSSID),
+                SUPPLICANT_NETWORK_ID,
+                NativeUtil.decodeSsid(SUPPLICANT_SSID));
+        mISupplicantStaIfaceCallback.onStateChanged(
+                ISupplicantStaIfaceCallback.State.FOURWAY_HANDSHAKE,
+                NativeUtil.macAddressToByteArray(BSSID),
+                SUPPLICANT_NETWORK_ID,
+                NativeUtil.decodeSsid(SUPPLICANT_SSID));
+        mISupplicantStaIfaceCallback.onDisconnected(
+                NativeUtil.macAddressToByteArray(BSSID), false, 3);
+
+        verify(mWifiMonitor).broadcastAuthenticationFailureEvent(
+                eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD), eq(-1),
+                eq(TRANSLATED_SUPPLICANT_SSID.toString()), eq(MacAddress.fromString(BSSID)));
     }
 
     /**
@@ -1297,7 +1331,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
 
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(
                 eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE), eq(-1),
-                eq(SUPPLICANT_SSID), eq(MacAddress.fromString(BSSID)));
+                eq(TRANSLATED_SUPPLICANT_SSID.toString()), eq(MacAddress.fromString(BSSID)));
     }
 
     /**
@@ -1324,14 +1358,14 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         mISupplicantStaIfaceCallback.onEapFailure();
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(
                 eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE), eq(-1),
-                eq(SUPPLICANT_SSID), eq(MacAddress.BROADCAST_ADDRESS));
+                eq(TRANSLATED_SUPPLICANT_SSID.toString()), eq(MacAddress.BROADCAST_ADDRESS));
 
         // Ensure that the disconnect is ignored.
         mISupplicantStaIfaceCallback.onDisconnected(
                 NativeUtil.macAddressToByteArray(BSSID), false, reasonCode);
         verify(mWifiMonitor, times(1)).broadcastAuthenticationFailureEvent(
                 eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE), eq(-1),
-                eq(SUPPLICANT_SSID), eq(MacAddress.BROADCAST_ADDRESS));
+                eq(TRANSLATED_SUPPLICANT_SSID.toString()), eq(MacAddress.BROADCAST_ADDRESS));
     }
 
     /**
@@ -1355,7 +1389,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 NativeUtil.macAddressToByteArray(BSSID), statusCode, false);
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(eq(WLAN0_IFACE_NAME),
                 eq(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD), eq(-1),
-                eq(SUPPLICANT_SSID), eq(MacAddress.fromString(BSSID)));
+                eq(TRANSLATED_SUPPLICANT_SSID.toString()), eq(MacAddress.fromString(BSSID)));
         ArgumentCaptor<AssocRejectEventInfo> assocRejectEventInfoCaptor =
                 ArgumentCaptor.forClass(AssocRejectEventInfo.class);
         verify(mWifiMonitor).broadcastAssociationRejectionEvent(
@@ -1363,7 +1397,47 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         AssocRejectEventInfo assocRejectEventInfo =
                 (AssocRejectEventInfo) assocRejectEventInfoCaptor.getValue();
         assertNotNull(assocRejectEventInfo);
-        assertEquals(SUPPLICANT_SSID, assocRejectEventInfo.ssid);
+        assertEquals(TRANSLATED_SUPPLICANT_SSID.toString(), assocRejectEventInfo.ssid);
+        assertEquals(BSSID, assocRejectEventInfo.bssid);
+        assertEquals(statusCode, assocRejectEventInfo.statusCode);
+        assertFalse(assocRejectEventInfo.timedOut);
+        assertNull(assocRejectEventInfo.oceRssiBasedAssocRejectInfo);
+        assertNull(assocRejectEventInfo.mboAssocDisallowedInfo);
+    }
+
+    /**
+     * Tests the handling of incorrect network passwords for WPA3-Personal networks using
+     * callback V1_4.
+     */
+    @Test
+    public void testWpa3AuthRejectionPassword_1_4() throws Exception {
+        setupMocksForHalV1_4();
+        executeAndValidateInitializationSequenceV1_4();
+        assertNotNull(mISupplicantStaIfaceCallbackV14);
+
+        executeAndValidateConnectSequenceWithKeyMgmt(SUPPLICANT_NETWORK_ID, false,
+                WifiConfiguration.SECURITY_TYPE_SAE, null);
+
+        int statusCode = ISupplicantStaIfaceCallback.StatusCode.UNSPECIFIED_FAILURE;
+        AssociationRejectionData rejectionData = new AssociationRejectionData();
+        rejectionData.ssid = NativeUtil.decodeSsid(SUPPLICANT_SSID);
+        rejectionData.bssid = NativeUtil.macAddressToByteArray(BSSID);
+        rejectionData.statusCode = statusCode;
+        rejectionData.timedOut = false;
+        rejectionData.isMboAssocDisallowedReasonCodePresent = false;
+        rejectionData.isOceRssiBasedAssocRejectAttrPresent = false;
+
+        mISupplicantStaIfaceCallbackV14.onAssociationRejected_1_4(rejectionData);
+        verify(mWifiMonitor).broadcastAuthenticationFailureEvent(eq(WLAN0_IFACE_NAME),
+                eq(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD), eq(-1),
+                eq(TRANSLATED_SUPPLICANT_SSID.toString()), eq(MacAddress.fromString(BSSID)));
+        ArgumentCaptor<AssocRejectEventInfo> assocRejectEventInfoCaptor =
+                ArgumentCaptor.forClass(AssocRejectEventInfo.class);
+        verify(mWifiMonitor).broadcastAssociationRejectionEvent(
+                eq(WLAN0_IFACE_NAME), assocRejectEventInfoCaptor.capture());
+        AssocRejectEventInfo assocRejectEventInfo = assocRejectEventInfoCaptor.getValue();
+        assertNotNull(assocRejectEventInfo);
+        assertEquals(TRANSLATED_SUPPLICANT_SSID.toString(), assocRejectEventInfo.ssid);
         assertEquals(BSSID, assocRejectEventInfo.bssid);
         assertEquals(statusCode, assocRejectEventInfo.statusCode);
         assertFalse(assocRejectEventInfo.timedOut);
@@ -1399,7 +1473,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         AssocRejectEventInfo assocRejectEventInfo =
                 (AssocRejectEventInfo) assocRejectEventInfoCaptor.getValue();
         assertNotNull(assocRejectEventInfo);
-        assertEquals(SUPPLICANT_SSID, assocRejectEventInfo.ssid);
+        assertEquals(TRANSLATED_SUPPLICANT_SSID.toString(), assocRejectEventInfo.ssid);
         assertEquals(BSSID, assocRejectEventInfo.bssid);
         assertEquals(statusCode, assocRejectEventInfo.statusCode);
         assertFalse(assocRejectEventInfo.timedOut);
@@ -1428,7 +1502,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 NativeUtil.macAddressToByteArray(BSSID), statusCode, false);
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(eq(WLAN0_IFACE_NAME),
                 eq(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD), eq(-1),
-                eq(SUPPLICANT_SSID), eq(MacAddress.fromString(BSSID)));
+                eq(TRANSLATED_SUPPLICANT_SSID.toString()), eq(MacAddress.fromString(BSSID)));
         ArgumentCaptor<AssocRejectEventInfo> assocRejectEventInfoCaptor =
                 ArgumentCaptor.forClass(AssocRejectEventInfo.class);
         verify(mWifiMonitor).broadcastAssociationRejectionEvent(
@@ -1436,7 +1510,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         AssocRejectEventInfo assocRejectEventInfo =
                 (AssocRejectEventInfo) assocRejectEventInfoCaptor.getValue();
         assertNotNull(assocRejectEventInfo);
-        assertEquals(SUPPLICANT_SSID, assocRejectEventInfo.ssid);
+        assertEquals(TRANSLATED_SUPPLICANT_SSID.toString(), assocRejectEventInfo.ssid);
         assertEquals(BSSID, assocRejectEventInfo.bssid);
         assertEquals(statusCode, assocRejectEventInfo.statusCode);
         assertFalse(assocRejectEventInfo.timedOut);
@@ -1529,7 +1603,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         AssocRejectEventInfo assocRejectEventInfo =
                 (AssocRejectEventInfo) assocRejectEventInfoCaptor.getValue();
         assertNotNull(assocRejectEventInfo);
-        assertEquals(SUPPLICANT_SSID, assocRejectEventInfo.ssid);
+        assertEquals(TRANSLATED_SUPPLICANT_SSID.toString(), assocRejectEventInfo.ssid);
         assertEquals(BSSID, assocRejectEventInfo.bssid);
         assertEquals(statusCode, assocRejectEventInfo.statusCode);
         assertFalse(assocRejectEventInfo.timedOut);
@@ -1554,7 +1628,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 NativeUtil.macAddressToByteArray(BSSID));
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(eq(WLAN0_IFACE_NAME),
                 eq(WifiManager.ERROR_AUTH_FAILURE_TIMEOUT), eq(-1),
-                eq(SUPPLICANT_SSID), eq(MacAddress.fromString(BSSID)));
+                eq(TRANSLATED_SUPPLICANT_SSID.toString()), eq(MacAddress.fromString(BSSID)));
     }
 
     /**
@@ -1602,7 +1676,8 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         mISupplicantStaIfaceCallbackV11.onEapFailure_1_1(eapFailureCode);
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(
                 eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE),
-                eq(eapFailureCode), eq(SUPPLICANT_SSID), eq(MacAddress.BROADCAST_ADDRESS));
+                eq(eapFailureCode), eq(TRANSLATED_SUPPLICANT_SSID.toString()),
+                eq(MacAddress.BROADCAST_ADDRESS));
     }
 
     /**
@@ -1622,7 +1697,8 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         mISupplicantStaIfaceCallbackV13.onEapFailure_1_3(eapFailureCode);
         verify(mWifiMonitor).broadcastAuthenticationFailureEvent(
                 eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE),
-                eq(eapFailureCode), eq(SUPPLICANT_SSID), eq(MacAddress.BROADCAST_ADDRESS));
+                eq(eapFailureCode), eq(TRANSLATED_SUPPLICANT_SSID.toString()),
+                eq(MacAddress.BROADCAST_ADDRESS));
     }
 
     /**
@@ -1916,7 +1992,6 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
     @Test
     public void testStartDaemonV1_0() throws Exception {
         executeAndValidateInitializationSequence();
-        assertTrue(mDut.startDaemon());
         verify(mFrameworkFacade).startSupplicant();
     }
 
@@ -1967,7 +2042,8 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 mHandler.post(() -> cb.serviceDied(cookie));
                 return true;
             }
-        }).when(mISupplicantMock).linkToDeath(any(IHwBinder.DeathRecipient.class), any(long.class));
+        }).when(mISupplicantMockV11).linkToDeath(any(IHwBinder.DeathRecipient.class),
+                any(long.class));
 
         mDut.terminate();
         mLooper.dispatchAll();
@@ -2625,6 +2701,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 mWifiMonitor);
         // Initialize SupplicantStaIfaceHal, should call serviceManager.registerForNotifications
         assertTrue(mDut.initialize());
+        assertTrue(mDut.startDaemon());
         // verify: service manager initialization sequence
         mInOrder.verify(mServiceManagerMock).linkToDeath(mServiceManagerDeathCaptor.capture(),
                 anyLong());
@@ -2632,7 +2709,6 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 eq(ISupplicant.kInterfaceName), eq(""), mServiceNotificationCaptor.capture());
         // act: cause the onRegistration(...) callback to execute
         mServiceNotificationCaptor.getValue().onRegistration(ISupplicant.kInterfaceName, "", true);
-
         assertTrue(mDut.isInitializationComplete());
         assertEquals(shouldSucceed, mDut.setupIface(WLAN0_IFACE_NAME));
         mInOrder.verify(mISupplicantMock).linkToDeath(mSupplicantDeathCaptor.capture(),
@@ -2688,6 +2764,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 mISupplicantStaIfaceMockV11, mWifiMonitor);
         // Initialize SupplicantStaIfaceHal, should call serviceManager.registerForNotifications
         assertTrue(mDut.initialize());
+        assertTrue(mDut.startDaemon());
         // verify: service manager initialization sequence
         mInOrder.verify(mServiceManagerMock).linkToDeath(mServiceManagerDeathCaptor.capture(),
                 anyLong());
@@ -2698,7 +2775,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
 
         assertTrue(mDut.isInitializationComplete());
         assertTrue(mDut.setupIface(WLAN0_IFACE_NAME) == shouldSucceed);
-        mInOrder.verify(mISupplicantMock).linkToDeath(mSupplicantDeathCaptor.capture(),
+        mInOrder.verify(mISupplicantMockV11).linkToDeath(mSupplicantDeathCaptor.capture(),
                 anyLong());
         // verify: addInterface is called
         mInOrder.verify(mISupplicantMockV11)
@@ -2760,6 +2837,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 mISupplicantStaIfaceMockV12, mWifiMonitor);
         // Initialize SupplicantStaIfaceHal, should call serviceManager.registerForNotifications
         assertTrue(mDut.initialize());
+        assertTrue(mDut.startDaemon());
         // verify: service manager initialization sequence
         mInOrder.verify(mServiceManagerMock).linkToDeath(mServiceManagerDeathCaptor.capture(),
                 anyLong());
@@ -2770,7 +2848,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
 
         assertTrue(mDut.isInitializationComplete());
         assertTrue(mDut.setupIface(WLAN0_IFACE_NAME));
-        mInOrder.verify(mISupplicantMock).linkToDeath(mSupplicantDeathCaptor.capture(),
+        mInOrder.verify(mISupplicantMockV11).linkToDeath(mSupplicantDeathCaptor.capture(),
                 anyLong());
         // verify: addInterface is called
         mInOrder.verify(mISupplicantMockV11)
@@ -2820,6 +2898,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 mISupplicantStaIfaceMockV13, mWifiMonitor);
         // Initialize SupplicantStaIfaceHal, should call serviceManager.registerForNotifications
         assertTrue(mDut.initialize());
+        assertTrue(mDut.startDaemon());
         // verify: service manager initialization sequence
         mInOrder.verify(mServiceManagerMock).linkToDeath(mServiceManagerDeathCaptor.capture(),
                 anyLong());
@@ -2830,7 +2909,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
 
         assertTrue(mDut.isInitializationComplete());
         assertTrue(mDut.setupIface(WLAN0_IFACE_NAME));
-        mInOrder.verify(mISupplicantMock).linkToDeath(mSupplicantDeathCaptor.capture(),
+        mInOrder.verify(mISupplicantMockV11).linkToDeath(mSupplicantDeathCaptor.capture(),
                 anyLong());
         // verify: addInterface is called
         mInOrder.verify(mISupplicantMockV11)
@@ -2874,6 +2953,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 mISupplicantStaIfaceMockV14, mWifiMonitor);
         // Initialize SupplicantStaIfaceHal, should call serviceManager.registerForNotifications
         assertTrue(mDut.initialize());
+        assertTrue(mDut.startDaemon());
         // verify: service manager initialization sequence
         mInOrder.verify(mServiceManagerMock).linkToDeath(mServiceManagerDeathCaptor.capture(),
                 anyLong());
@@ -2884,7 +2964,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
 
         assertTrue(mDut.isInitializationComplete());
         assertTrue(mDut.setupIface(WLAN0_IFACE_NAME));
-        mInOrder.verify(mISupplicantMock).linkToDeath(mSupplicantDeathCaptor.capture(),
+        mInOrder.verify(mISupplicantMockV11).linkToDeath(mSupplicantDeathCaptor.capture(),
                 anyLong());
         // verify: addInterface is called
         mInOrder.verify(mISupplicantMockV11)
@@ -3211,7 +3291,6 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         when(mServiceManagerMock.getTransport(eq(android.hardware.wifi.supplicant.V1_1.ISupplicant
                 .kInterfaceName), anyString()))
                 .thenReturn(IServiceManager.Transport.HWBINDER);
-        mISupplicantMockV11 = mock(android.hardware.wifi.supplicant.V1_1.ISupplicant.class);
     }
 
     private void setupMocksForHalV1_2() throws Exception {
@@ -3219,7 +3298,6 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         when(mServiceManagerMock.getTransport(eq(android.hardware.wifi.supplicant.V1_2.ISupplicant
                 .kInterfaceName), anyString()))
                 .thenReturn(IServiceManager.Transport.HWBINDER);
-        mISupplicantMockV12 = mock(android.hardware.wifi.supplicant.V1_2.ISupplicant.class);
     }
 
     private void setupMocksForHalV1_3() throws Exception {
@@ -3227,7 +3305,6 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         when(mServiceManagerMock.getTransport(eq(android.hardware.wifi.supplicant.V1_3.ISupplicant
                 .kInterfaceName), anyString()))
                 .thenReturn(IServiceManager.Transport.HWBINDER);
-        mISupplicantMockV13 = mock(android.hardware.wifi.supplicant.V1_3.ISupplicant.class);
     }
 
     private void setupMocksForHalV1_4() throws Exception {
@@ -3235,7 +3312,6 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         when(mServiceManagerMock.getTransport(eq(android.hardware.wifi.supplicant.V1_4.ISupplicant
                 .kInterfaceName), anyString()))
                 .thenReturn(IServiceManager.Transport.HWBINDER);
-        mISupplicantMockV14 = mock(android.hardware.wifi.supplicant.V1_4.ISupplicant.class);
     }
 
     private void setupMocksForPmkCache(boolean isHalSupported) throws Exception {
@@ -3513,11 +3589,9 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 NativeUtil.macAddressToByteArray(BSSID), SUPPLICANT_NETWORK_ID,
                 NativeUtil.decodeSsid(SUPPLICANT_SSID), false);
 
-        WifiSsid wifiSsid = WifiSsid.fromBytes(
-                NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(SUPPLICANT_SSID)));
-
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastNetworkConnectionEvent(
-                eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId), eq(false), eq(wifiSsid), eq(BSSID));
+                eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId), eq(false),
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID));
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId),
                 any(WifiSsid.class), eq(BSSID), eq(SupplicantState.COMPLETED));
@@ -3597,14 +3671,12 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 NativeUtil.macAddressToByteArray(BSSID), SUPPLICANT_NETWORK_ID,
                 NativeUtil.decodeSsid(SUPPLICANT_SSID), true);
 
-        WifiSsid wifiSsid = WifiSsid.fromBytes(
-                NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(SUPPLICANT_SSID)));
-
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastNetworkConnectionEvent(
-                eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId), eq(true), eq(wifiSsid), eq(BSSID));
+                eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId), eq(true),
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID));
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId),
-                any(WifiSsid.class), eq(BSSID), eq(SupplicantState.COMPLETED));
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(SupplicantState.COMPLETED));
     }
 
     @Test
@@ -3645,7 +3717,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         AssocRejectEventInfo assocRejectEventInfo =
                 (AssocRejectEventInfo) assocRejectEventInfoCaptor.getValue();
         assertNotNull(assocRejectEventInfo);
-        assertEquals(SUPPLICANT_SSID, assocRejectEventInfo.ssid);
+        assertEquals(TRANSLATED_SUPPLICANT_SSID.toString(), assocRejectEventInfo.ssid);
         assertEquals(BSSID, assocRejectEventInfo.bssid);
         assertEquals(SupplicantStaIfaceCallbackHidlImpl.halToFrameworkStatusCode(
                 assocRejectData.statusCode), assocRejectEventInfo.statusCode);
@@ -3669,7 +3741,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         mISupplicantStaIfaceCallbackV14.onNetworkNotFound(NativeUtil.decodeSsid(SUPPLICANT_SSID));
 
         verify(mWifiMonitor).broadcastNetworkNotFoundEvent(
-                eq(WLAN0_IFACE_NAME), eq(SUPPLICANT_SSID));
+                eq(WLAN0_IFACE_NAME), eq(TRANSLATED_SUPPLICANT_SSID.toString()));
 
     }
 
