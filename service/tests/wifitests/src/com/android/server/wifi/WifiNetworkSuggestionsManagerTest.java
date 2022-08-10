@@ -112,6 +112,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.MockitoSession;
 import org.mockito.quality.Strictness;
+import org.mockito.stubbing.Answer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -157,6 +158,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
     private static final int TEST_RSSI = -50;
     private static final ParcelUuid GROUP_UUID = ParcelUuid
             .fromString("0000110B-0000-1000-8000-00805F9B34FB");
+    private static final String UNTRANSLATED_HEX_SSID = "abcdef";
 
     private @Mock WifiContext mContext;
     private @Mock Resources mResources;
@@ -185,6 +187,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
     private @Mock ActiveModeWarden mActiveModeWarden;
     private @Mock ClientModeManager mPrimaryClientModeManager;
     private @Mock WifiGlobals mWifiGlobals;
+    private @Mock SsidTranslator mSsidTranslator;
     private @Mock Clock mClock;
     private MockitoSession mStaticMockSession = null;
     private TestLooper mLooper;
@@ -226,6 +229,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
         when(mWifiInjector.getWifiNotificationManager()).thenReturn(mWifiNotificationManager);
         when(mWifiInjector.getWifiDialogManager()).thenReturn(mWifiDialogManager);
+        when(mWifiInjector.getSsidTranslator()).thenReturn(mSsidTranslator);
         when(mNotificationBuilder.setSmallIcon(any())).thenReturn(mNotificationBuilder);
         when(mNotificationBuilder.setTicker(any())).thenReturn(mNotificationBuilder);
         when(mNotificationBuilder.setContentTitle(any())).thenReturn(mNotificationBuilder);
@@ -259,6 +263,10 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 WifiManager.WIFI_FEATURE_WPA3_SAE | WifiManager.WIFI_FEATURE_OWE);
         when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(true);
         when(mWifiGlobals.isOweUpgradeEnabled()).thenReturn(true);
+        when(mSsidTranslator.getAllPossibleOriginalSsids(any())).thenAnswer(
+                (Answer<List<WifiSsid>>) invocation -> Arrays.asList(invocation.getArgument(0),
+                        WifiSsid.fromString(UNTRANSLATED_HEX_SSID))
+        );
         when(mConnectionStatusListener.asBinder()).thenReturn(mBinder);
         when(mUserApprovalStatusListener.asBinder()).thenReturn(mBinder);
 
@@ -330,6 +338,8 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 createTestConfigWithUserCredential(TEST_FQDN, TEST_FRIENDLY_NAME);
         WifiConfiguration placeholderConfig = createPlaceholderConfigForPasspoint(TEST_FQDN,
                 passpointConfiguration.getUniqueId());
+        placeholderConfig.restricted = true;
+        placeholderConfig.trusted = false;
         WifiNetworkSuggestion networkSuggestion1 = createWifiNetworkSuggestion(
                 WifiConfigurationTestUtil.createOpenNetwork(), null, false, false, true, true,
                 DEFAULT_PRIORITY_GROUP);
@@ -346,7 +356,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 add(networkSuggestion2);
             }};
         when(mPasspointManager.addOrUpdateProvider(any(PasspointConfiguration.class),
-                anyInt(), anyString(), eq(true), eq(true))).thenReturn(true);
+                anyInt(), anyString(), eq(true), anyBoolean(), anyBoolean())).thenReturn(true);
         assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS,
                 mWifiNetworkSuggestionsManager.add(networkSuggestionList1, TEST_UID_1,
                         TEST_PACKAGE_1, TEST_FEATURE));
@@ -354,7 +364,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 mWifiNetworkSuggestionsManager.add(networkSuggestionList2, TEST_UID_2,
                         TEST_PACKAGE_2, TEST_FEATURE));
         verify(mPasspointManager).addOrUpdateProvider(
-                passpointConfiguration, TEST_UID_2, TEST_PACKAGE_2, true, true);
+                passpointConfiguration, TEST_UID_2, TEST_PACKAGE_2, true, false, true);
         verify(mWifiMetrics, times(2))
                 .incrementNetworkSuggestionApiUsageNumOfAppInType(
                         WifiNetworkSuggestionsManager.APP_TYPE_NON_PRIVILEGED);
@@ -402,7 +412,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 add(networkSuggestion2);
             }};
         when(mPasspointManager.addOrUpdateProvider(any(PasspointConfiguration.class),
-                anyInt(), anyString(), eq(true), eq(true))).thenReturn(true);
+                anyInt(), anyString(), eq(true), eq(true), eq(false))).thenReturn(true);
         assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS,
                 mWifiNetworkSuggestionsManager.add(networkSuggestionList1, TEST_UID_1,
                         TEST_PACKAGE_1, TEST_FEATURE));
@@ -650,7 +660,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 }};
 
         when(mPasspointManager.addOrUpdateProvider(any(PasspointConfiguration.class),
-                anyInt(), anyString(), eq(true), eq(true))).thenReturn(true);
+                anyInt(), anyString(), eq(true), eq(true), eq(false))).thenReturn(true);
         assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS,
                 mWifiNetworkSuggestionsManager.add(networkSuggestionList1, TEST_UID_1,
                         TEST_PACKAGE_1, TEST_FEATURE));
@@ -739,7 +749,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
 
         // Verify adding suggestion succeed.
         when(mPasspointManager.addOrUpdateProvider(any(),
-                anyInt(), anyString(), eq(true), anyBoolean())).thenReturn(true);
+                anyInt(), anyString(), eq(true), anyBoolean(), eq(false))).thenReturn(true);
         assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS,
                 mWifiNetworkSuggestionsManager.add(networkSuggestionList1, TEST_UID_1,
                         TEST_PACKAGE_1, TEST_FEATURE));
@@ -2942,10 +2952,10 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         mWifiNetworkSuggestionsManager.setHasUserApprovedForApp(true, TEST_UID_3, TEST_PACKAGE_3);
         List<WifiScanner.ScanSettings.HiddenNetwork> hiddenNetworks =
                 mWifiNetworkSuggestionsManager.retrieveHiddenNetworkList(true /* autoJoinOnly */);
-        assertEquals(2, hiddenNetworks.size());
+        assertEquals(3, hiddenNetworks.size());
         hiddenNetworks =
                 mWifiNetworkSuggestionsManager.retrieveHiddenNetworkList(false /* autoJoinOnly */);
-        assertEquals(3, hiddenNetworks.size());
+        assertEquals(4, hiddenNetworks.size());
         assertEquals(hiddenNetworkSuggestion1.wifiConfiguration.SSID, hiddenNetworks.get(0).ssid);
     }
 
@@ -3200,7 +3210,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                     add(networkSuggestion);
                 }};
         when(mPasspointManager.addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean())).thenReturn(true);
+                anyBoolean(), eq(false))).thenReturn(true);
         assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS,
                 mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
                         TEST_PACKAGE_1, TEST_FEATURE));
@@ -3371,7 +3381,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         List<WifiNetworkSuggestion> networkSuggestionList = new ArrayList<>();
         networkSuggestionList.add(networkSuggestion);
         when(mPasspointManager.addOrUpdateProvider(any(PasspointConfiguration.class),
-                anyInt(), anyString(), eq(true), eq(true))).thenReturn(true);
+                anyInt(), anyString(), eq(true), eq(true), eq(false))).thenReturn(true);
         assertEquals(mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
                 TEST_PACKAGE_1, TEST_FEATURE), WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS);
         mWifiNetworkSuggestionsManager.setHasUserApprovedForApp(true, TEST_UID_1, TEST_PACKAGE_1);
@@ -3397,7 +3407,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         networkSuggestionList.add(networkSuggestion);
         placeholderConfig.creatorUid = TEST_UID_1;
         when(mPasspointManager.addOrUpdateProvider(any(PasspointConfiguration.class),
-                anyInt(), anyString(), eq(true), eq(true))).thenReturn(true);
+                anyInt(), anyString(), eq(true), eq(true), eq(false))).thenReturn(true);
         assertEquals(mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
                 TEST_PACKAGE_1, TEST_FEATURE), WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS);
         Set<ExtendedWifiNetworkSuggestion> ewns =
@@ -3421,7 +3431,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         networkSuggestionList.add(networkSuggestion);
         placeholderConfig.creatorUid = TEST_UID_1;
         when(mPasspointManager.addOrUpdateProvider(any(PasspointConfiguration.class),
-                anyInt(), anyString(), eq(true), eq(true))).thenReturn(true);
+                anyInt(), anyString(), eq(true), eq(true), eq(false))).thenReturn(true);
         assertEquals(mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
                 TEST_PACKAGE_1, TEST_FEATURE), WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS);
 
@@ -3467,7 +3477,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         List<WifiNetworkSuggestion> networkSuggestionList = new ArrayList<>();
         networkSuggestionList.add(networkSuggestion);
         when(mPasspointManager.addOrUpdateProvider(any(PasspointConfiguration.class),
-                anyInt(), anyString(), eq(true), eq(true))).thenReturn(true);
+                anyInt(), anyString(), eq(true), eq(true), eq(false))).thenReturn(true);
         assertEquals(mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
                 TEST_PACKAGE_1, TEST_FEATURE), WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS);
 
@@ -3907,7 +3917,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                     add(networkSuggestion);
                 }};
         when(mPasspointManager.addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean())).thenReturn(true);
+                anyBoolean(), eq(false))).thenReturn(true);
         assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS,
                 mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
                         TEST_PACKAGE_1, TEST_FEATURE));
@@ -4086,7 +4096,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         when(mWifiCarrierInfoManager.hasUserApprovedImsiPrivacyExemptionForCarrier(TEST_CARRIER_ID))
                 .thenReturn(false);
         when(mPasspointManager.addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean())).thenReturn(true);
+                anyBoolean(), eq(false))).thenReturn(true);
 
         WifiConfiguration eapSimConfig = WifiConfigurationTestUtil.createEapNetwork(
                 WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE);
@@ -4149,7 +4159,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         when(mWifiCarrierInfoManager.hasUserApprovedImsiPrivacyExemptionForCarrier(TEST_CARRIER_ID))
                 .thenReturn(false);
         when(mPasspointManager.addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean())).thenReturn(true);
+                anyBoolean(), eq(false))).thenReturn(true);
 
         WifiConfiguration eapSimConfig = WifiConfigurationTestUtil.createEapNetwork(
                 WifiEnterpriseConfig.Eap.PEAP, WifiEnterpriseConfig.Phase2.AKA);
@@ -4964,7 +4974,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 passpointConfiguration, true, false, true, true, DEFAULT_PRIORITY_GROUP);
 
         when(mPasspointManager.addOrUpdateProvider(any(PasspointConfiguration.class),
-                anyInt(), anyString(), eq(true), eq(true))).thenReturn(true);
+                anyInt(), anyString(), eq(true), eq(true), eq(false))).thenReturn(true);
         assertEquals(mWifiNetworkSuggestionsManager.add(List.of(networkSuggestion), TEST_UID_1,
                 TEST_PACKAGE_1, TEST_FEATURE), WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS);
 
@@ -5084,7 +5094,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                     add(networkSuggestion);
                 }};
         when(mPasspointManager.addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
-                anyBoolean())).thenReturn(true);
+                anyBoolean(), eq(false))).thenReturn(true);
         assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS,
                 mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
                         TEST_PACKAGE_1, TEST_FEATURE));
@@ -5092,7 +5102,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         ArgumentCaptor<PasspointConfiguration> passpointConfigCaptor =
                 ArgumentCaptor.forClass(PasspointConfiguration.class);
         verify(mPasspointManager).addOrUpdateProvider(passpointConfigCaptor.capture(),
-                anyInt(), anyString(), anyBoolean(), anyBoolean());
+                anyInt(), anyString(), anyBoolean(), anyBoolean(), eq(false));
         assertTrue(passpointConfigCaptor.getValue().isMacRandomizationEnabled());
         assertFalse(passpointConfigCaptor.getValue().isNonPersistentMacRandomizationEnabled());
     }
@@ -5245,6 +5255,12 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 new ArrayList<WifiNetworkSuggestion>() {{
                     add(networkSuggestion);
                 }};
+
+        // Verify no crash with unmatched update
+        mNetworkListenerCaptor.getValue().onSecurityParamsUpdate(networkSuggestion
+                .wifiConfiguration, networkSuggestion.wifiConfiguration.getSecurityParamsList());
+        mNetworkListenerCaptor.getValue().onSecurityParamsUpdate(null, Collections.EMPTY_LIST);
+
         assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS,
                 mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
                         TEST_PACKAGE_1, TEST_FEATURE));
