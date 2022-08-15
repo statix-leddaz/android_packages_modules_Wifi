@@ -114,6 +114,7 @@ public class HalDeviceManager {
     private boolean mIsBridgedSoftApSupported;
     private boolean mIsStaWithBridgedSoftApConcurrencySupported;
     private boolean mWifiUserApprovalRequiredForD2dInterfacePriority;
+    private boolean mIsConcurrencyComboLoadedFromDriver;
     private ArrayMap<IWifiIface, SoftApManager> mSoftApManagers = new ArrayMap<>();
 
     // cache the value for supporting vendor HAL or not
@@ -1853,11 +1854,7 @@ public class HalDeviceManager {
                                          + triedCount + " times");
                             }
                             WifiChipInfo[] wifiChipInfos = getAllChipInfo();
-                            if (wifiChipInfos != null) {
-                                mCachedStaticChipInfos =
-                                        convertWifiChipInfoToStaticChipInfos(getAllChipInfo());
-                                saveStaticChipInfoToStore(mCachedStaticChipInfos);
-                            } else {
+                            if (wifiChipInfos == null) {
                                 Log.e(TAG, "Started wifi but could not get current chip info.");
                             }
                             return true;
@@ -2415,13 +2412,14 @@ public class HalDeviceManager {
         }
 
         for (int createType: CREATE_TYPES_BY_PRIORITY) {
-            if (val1NumIfacesToBeRemoved[createType] < val2NumIfacesToBeRemoved[createType]) {
+            if (val1NumIfacesToBeRemoved[createType] != val2NumIfacesToBeRemoved[createType]) {
                 if (VDBG) {
-                    Log.d(TAG, "decision based on createType=" + createType + ": "
-                            + val1NumIfacesToBeRemoved[createType]
-                            + " < " + val2NumIfacesToBeRemoved[createType]);
+                    Log.d(TAG, "decision based on num ifaces to be removed, createType="
+                            + createType + ", new proposal will remove "
+                            + val1NumIfacesToBeRemoved[createType] + " iface, and old proposal"
+                            + "will remove " + val2NumIfacesToBeRemoved[createType] + " iface");
                 }
-                return true;
+                return val1NumIfacesToBeRemoved[createType] < val2NumIfacesToBeRemoved[createType];
             }
         }
 
@@ -2767,6 +2765,17 @@ public class HalDeviceManager {
                         Log.e(TAG, "executeChipReconfiguration: configureChip error: "
                                 + statusString(status));
                         return null;
+                    }
+                    if (!mIsConcurrencyComboLoadedFromDriver) {
+                        WifiChipInfo[] wifiChipInfos = getAllChipInfo();
+                        if (wifiChipInfos != null) {
+                            mCachedStaticChipInfos =
+                                    convertWifiChipInfoToStaticChipInfos(getAllChipInfo());
+                            saveStaticChipInfoToStore(mCachedStaticChipInfos);
+                            mIsConcurrencyComboLoadedFromDriver = true;
+                        } else {
+                            Log.e(TAG, "Configured chip but could not get current chip info.");
+                        }
                     }
                 } else {
                     // remove all interfaces on the delete list

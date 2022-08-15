@@ -102,6 +102,8 @@ public class SoftApManager implements ActiveModeManager {
     @VisibleForTesting
     static final long SOFT_AP_PENDING_DISCONNECTION_CHECK_DELAY_MS = 1000;
 
+    private static final long SCHEDULE_IDLE_INSTANCE_SHUTDOWN_TIMEOUT_DELAY_MS = 10;
+
     private String mCountryCode;
 
     private final SoftApStateMachine mStateMachine;
@@ -541,7 +543,11 @@ public class SoftApManager implements ActiveModeManager {
      * downgrade is not possible.
      */
     public String getBridgedApDowngradeIfaceInstanceForRemoval() {
-        if (mCurrentSoftApInfoMap.size() <= 1) {
+        if (!isBridgedMode() || mCurrentSoftApInfoMap.size() == 0) {
+            return null;
+        }
+        List<String> instances = mWifiNative.getBridgedApInstances(mApInterfaceName);
+        if (instances == null || instances.size() == 1) {
             return null;
         }
         return getHighestFrequencyInstance(mCurrentSoftApInfoMap.keySet());
@@ -633,8 +639,12 @@ public class SoftApManager implements ActiveModeManager {
 
         intent.putExtra(WifiManager.EXTRA_WIFI_AP_INTERFACE_NAME, mApInterfaceName);
         intent.putExtra(WifiManager.EXTRA_WIFI_AP_MODE, mOriginalModeConfiguration.getTargetMode());
-        mContext.sendBroadcastAsUser(intent, UserHandle.ALL,
-                android.Manifest.permission.ACCESS_WIFI_STATE);
+        if (SdkLevel.isAtLeastSv2()) {
+            mContext.sendBroadcastAsUser(intent, UserHandle.ALL,
+                    android.Manifest.permission.ACCESS_WIFI_STATE);
+        } else {
+            mContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
+        }
     }
 
     private int setMacAddress() {
@@ -1105,6 +1115,21 @@ public class SoftApManager implements ActiveModeManager {
                 }
             };
 
+            private void rescheduleBothBridgedInstancesTimeoutMessage() {
+                Set<String> instances = mCurrentSoftApInfoMap.keySet();
+                String HighestFrequencyInstance = getHighestFrequencyInstance(instances);
+                // Schedule bridged mode timeout on all instances if needed
+                for (String instance : instances) {
+                    long timeout = getShutdownIdleInstanceInBridgedModeTimeoutMillis();
+                    if (!TextUtils.equals(instance, HighestFrequencyInstance)) {
+                        //  Make sure that we shutdown the higher frequency instance first by adding
+                        //  offset for lower frequency instance.
+                        timeout += SCHEDULE_IDLE_INSTANCE_SHUTDOWN_TIMEOUT_DELAY_MS;
+                    }
+                    rescheduleTimeoutMessageIfNeeded(instance, timeout);
+                }
+            }
+
             /**
              * Schedule timeout message depends on Soft Ap instance
              *
@@ -1118,29 +1143,15 @@ public class SoftApManager implements ActiveModeManager {
                 // restrictions or due to inactivity. i.e. mCurrentSoftApInfoMap.size() is 1)
                 if (isBridgedMode() &&  mCurrentSoftApInfoMap.size() == 2) {
                     if (TextUtils.equals(mApInterfaceName, changedInstance)) {
-                        Set<String> instances = mCurrentSoftApInfoMap.keySet();
-                        String lowerFrequencyInstance = null;
-                        String HighestFrequencyInstance = getHighestFrequencyInstance(instances);
-                        // Schedule bridged mode timeout on all instances
-                        for (String instance : instances) {
-                            //  Make sure that we schedule the higher frequency instance first since
-                            //  the current shutdown design is shutdown higher band instance first
-                            //  when both of intstances are idle.
-                            if (TextUtils.equals(instance, HighestFrequencyInstance)) {
-                                rescheduleTimeoutMessageIfNeeded(instance);
-                            } else {
-                                lowerFrequencyInstance = instance;
-                            }
-                        }
-                        // Make sure that we schedule the lower frequency instance later.
-                        rescheduleTimeoutMessageIfNeeded(lowerFrequencyInstance);
+                        rescheduleBothBridgedInstancesTimeoutMessage();
                     } else {
-                        rescheduleTimeoutMessageIfNeeded(changedInstance);
+                        rescheduleTimeoutMessageIfNeeded(changedInstance,
+                                getShutdownIdleInstanceInBridgedModeTimeoutMillis());
                     }
                 }
 
                 // Always evaluate timeout schedule on tetheringInterface
-                rescheduleTimeoutMessageIfNeeded(mApInterfaceName);
+                rescheduleTimeoutMessageIfNeeded(mApInterfaceName, getShutdownTimeoutMillis());
             }
 
             private void removeIfaceInstanceFromBridgedApIface(String instanceName) {
@@ -1165,7 +1176,7 @@ public class SoftApManager implements ActiveModeManager {
              * @param instance The key of the {@code mSoftApTimeoutMessageMap},
              *                 @see mSoftApTimeoutMessageMap for details.
              */
-            private void rescheduleTimeoutMessageIfNeeded(String instance) {
+            private void rescheduleTimeoutMessageIfNeeded(String instance, long timeoutValue) {
                 final boolean isTetheringInterface =
                         TextUtils.equals(mApInterfaceName, instance);
                 final boolean timeoutEnabled = isTetheringInterface ? mTimeoutEnabled
@@ -1173,9 +1184,6 @@ public class SoftApManager implements ActiveModeManager {
                 final int clientNumber = isTetheringInterface
                         ? getConnectedClientList().size()
                         : mConnectedClientWithApInfoMap.get(instance).size();
-                final long timeoutValue = isTetheringInterface
-                        ? getShutdownTimeoutMillis()
-                        : getShutdownIdleInstanceInBridgedModeTimeoutMillis();
                 Log.d(getTag(), "rescheduleTimeoutMessageIfNeeded " + instance + ", timeoutEnabled="
                         + timeoutEnabled + ", isCharging" + mIsCharging + ", clientNumber="
                         + clientNumber);
@@ -1627,13 +1635,27 @@ public class SoftApManager implements ActiveModeManager {
                         break;
                     case CMD_FAILURE:
                         String instance = (String) message.obj;
-                        if (instance != null && isBridgedMode()
-                                && mCurrentSoftApInfoMap.size() >= 1) {
-                            Log.i(getTag(), "receive instanceFailure on " + instance);
-                            removeIfaceInstanceFromBridgedApIface(instance);
-                            // there is a available instance, keep AP on.
-                            if (mCurrentSoftApInfoMap.size() == 1) {
-                                break;
+                        if (isBridgedMode()) {
+                            List<String> instances =
+                                    mWifiNative.getBridgedApInstances(mApInterfaceName);
+                            if (instance != null) {
+                                Log.i(getTag(), "receive instanceFailure on " + instance);
+                                removeIfaceInstanceFromBridgedApIface(instance);
+                                // there is an available instance, keep AP on.
+                                if (mCurrentSoftApInfoMap.size() == 1) {
+                                    break;
+                                }
+                            } else if (mCurrentSoftApInfoMap.size() == 1 && instances != null
+                                    && instances.size() == 1) {
+                                if (!mCurrentSoftApInfoMap.containsKey(instances.get(0))) {
+                                    // there is an available instance but the info doesn't be
+                                    // updated, keep AP on and remove unavailable instance info.
+                                    for (String unavailableInstance
+                                            : mCurrentSoftApInfoMap.keySet()) {
+                                        removeIfaceInstanceFromBridgedApIface(unavailableInstance);
+                                    }
+                                    break;
+                                }
                             }
                         }
                         Log.w(getTag(), "hostapd failure, stop and report failure");
@@ -1777,9 +1799,7 @@ public class SoftApManager implements ActiveModeManager {
                         if (mIsCharging != newIsCharging) {
                             mIsCharging = newIsCharging;
                             if (mCurrentSoftApInfoMap.size() == 2) {
-                                for (String apInstance : mCurrentSoftApInfoMap.keySet()) {
-                                    rescheduleTimeoutMessageIfNeeded(apInstance);
-                                }
+                                rescheduleBothBridgedInstancesTimeoutMessage();
                             }
                         }
                         break;

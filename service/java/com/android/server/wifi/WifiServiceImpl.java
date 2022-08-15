@@ -46,6 +46,8 @@ import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_NAN;
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_P2P;
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_STA;
 import static com.android.server.wifi.SelfRecovery.REASON_API_CALL;
+import static com.android.server.wifi.WifiSettingsConfigStore.SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI;
+import static com.android.server.wifi.WifiSettingsConfigStore.SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI_SET_BY_API;
 import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_VERBOSE_LOGGING_ENABLED;
 
 import android.Manifest;
@@ -788,8 +790,8 @@ public class WifiServiceImpl extends BaseWifiService {
             mTetheredSoftApTracker.handleBootCompleted();
             mLohsSoftApTracker.handleBootCompleted();
             mWifiInjector.getSarManager().handleBootCompleted();
+            mWifiInjector.getSsidTranslator().handleBootCompleted();
             updateVerboseLoggingEnabled();
-            mIsBootComplete = true;
         });
     }
 
@@ -1087,6 +1089,10 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiPermissionsUtil.enforceCoarseLocationPermission(pkgName, featureId, uid);
     }
 
+    private void enforceLocationPermissionInManifest(int uid, boolean isCoarseOnly) {
+        mWifiPermissionsUtil.enforceLocationPermissionInManifest(uid, isCoarseOnly);
+    }
+
     /**
      * Helper method to check if the app is allowed to access public API's deprecated in
      * {@link Build.VERSION_CODES#Q}.
@@ -1189,8 +1195,7 @@ public class WifiServiceImpl extends BaseWifiService {
 
         // Show a user-confirmation dialog for legacy third-party apps targeting less than Q.
         if (enable && isTargetSdkLessThanQ && isThirdParty
-                && mContext.getResources().getBoolean(
-                R.bool.config_showConfirmationDialogForThirdPartyAppsEnablingWifi)) {
+                && showDialogWhenThirdPartyAppsEnableWifi()) {
             mLog.info("setWifiEnabled must show user confirmation dialog for uid=%").c(callingUid)
                     .flush();
             mWifiThreadRunner.post(() -> {
@@ -1241,6 +1246,9 @@ public class WifiServiceImpl extends BaseWifiService {
                 mWifiMetrics.logUserActionEvent(UserActionEvent.EVENT_TOGGLE_WIFI_OFF,
                         wifiInfo == null ? -1 : wifiInfo.getNetworkId());
             }
+        }
+        if (!enable) {
+            mWifiInjector.getInterfaceConflictManager().reset();
         }
         mWifiMetrics.incrementNumWifiToggles(isPrivileged, enable);
         mActiveModeWarden.wifiToggled(new WorkSource(callingUid, packageName));
@@ -3011,7 +3019,7 @@ public class WifiServiceImpl extends BaseWifiService {
                 Collections.emptyList());
         if (isTargetSdkLessThanQOrPrivileged && !callerNetworksOnly) {
             return new ParceledListSlice<>(
-                    WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(configs));
+                    WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(configs, false));
         }
         // Should only get its own configs
         List<WifiConfiguration> creatorConfigs = new ArrayList<>();
@@ -3021,7 +3029,8 @@ public class WifiServiceImpl extends BaseWifiService {
             }
         }
         return new ParceledListSlice<>(
-                WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(creatorConfigs));
+                WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(
+                        creatorConfigs, true));
     }
 
     /**
@@ -3073,7 +3082,7 @@ public class WifiServiceImpl extends BaseWifiService {
                 () -> mWifiConfigManager.getConfiguredNetworksWithPasswords(),
                 Collections.emptyList());
         return new ParceledListSlice<>(
-                WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(configs));
+                WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(configs, false));
     }
 
     /**
@@ -3151,6 +3160,54 @@ public class WifiServiceImpl extends BaseWifiService {
                 WifiManager.API_SET_NETWORK_SELECTION_CONFIG,
                 Process.myTid(),
                 uid, Binder.getCallingPid(), "<unknown>", true);
+    }
+
+    /**
+     * See {@link WifiManager#setThirdPartyAppEnablingWifiConfirmationDialogEnabled(boolean)}
+     */
+    @Override
+    public void setThirdPartyAppEnablingWifiConfirmationDialogEnabled(boolean enable) {
+        int uid = Binder.getCallingUid();
+        if (!mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
+                && !mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid)) {
+            throw new SecurityException("Uid=" + uid + ", is not allowed to enable warning dialog "
+                    + "to display when third party apps start wifi");
+        }
+        mLog.info("uid=% enableWarningDialog=%").c(uid).c(enable).flush();
+        mWifiInjector.getSettingsConfigStore().put(
+                SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI, enable);
+        mWifiInjector.getSettingsConfigStore().put(
+                SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI_SET_BY_API, true);
+        mLastCallerInfoManager.put(
+                WifiManager.API_SET_THIRD_PARTY_APPS_ENABLING_WIFI_CONFIRMATION_DIALOG,
+                Process.myTid(),
+                uid, Binder.getCallingPid(), "<unknown>", enable);
+    }
+
+    private boolean showDialogWhenThirdPartyAppsEnableWifi() {
+        if (mWifiInjector.getSettingsConfigStore().get(
+                SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI_SET_BY_API)) {
+            // API was called to override the overlay value.
+            return mWifiInjector.getSettingsConfigStore().get(
+                    SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI);
+        } else {
+            return mContext.getResources().getBoolean(
+                    R.bool.config_showConfirmationDialogForThirdPartyAppsEnablingWifi);
+        }
+    }
+
+    /**
+     * See {@link WifiManager#isThirdPartyAppEnablingWifiConfirmationDialogEnabled()}
+     */
+    @Override
+    public boolean isThirdPartyAppEnablingWifiConfirmationDialogEnabled() {
+        int uid = Binder.getCallingUid();
+        if (!mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
+                && !mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid)) {
+            throw new SecurityException("Uid=" + uid + ", is not allowed to check if warning "
+                    + "dialog is enabled when third party apps start wifi");
+        }
+        return showDialogWhenThirdPartyAppsEnableWifi();
     }
 
     /**
@@ -4265,7 +4322,8 @@ public class WifiServiceImpl extends BaseWifiService {
         int uid = Binder.getCallingUid();
         int pid = Binder.getCallingPid();
         mWifiPermissionsUtil.checkPackage(uid, packageName);
-        enforceCoarseLocationPermission(packageName, featureId, uid);
+        // Allow to register if caller owns location permission in the manifest.
+        enforceLocationPermissionInManifest(uid, true /* isCoarseOnly */);
         if (mVerboseLoggingEnabled) {
             mLog.info("registerDriverCountryCodeChangedListener uid=%")
                     .c(Binder.getCallingUid()).flush();
@@ -4276,9 +4334,16 @@ public class WifiServiceImpl extends BaseWifiService {
             mCountryCodeTracker.registerDriverCountryCodeChangedListener(listener,
                     new WifiPermissionsUtil.CallerIdentity(uid, pid, packageName, featureId));
             // Update the client about the current driver country code immediately
-            // after registering.
+            // after registering if the client owns location permission and global location setting
+            // is on.
             try {
-                listener.onDriverCountryCodeChanged(mCountryCode.getCurrentDriverCountryCode());
+                if (mWifiPermissionsUtil.checkCallersCoarseLocationPermission(
+                        packageName, featureId, uid, null)) {
+                    listener.onDriverCountryCodeChanged(mCountryCode.getCurrentDriverCountryCode());
+                } else {
+                    Log.i(TAG, "drop to notify to listener (maybe location off?) for"
+                            + " DriverCountryCodeChangedListener, uid=" + uid);
+                }
             } catch (RemoteException e) {
                 Log.e(TAG, "registerDriverCountryCodeChangedListener: remote exception -- " + e);
             }
@@ -4843,6 +4908,7 @@ public class WifiServiceImpl extends BaseWifiService {
                 mWifiInjector.getOemWifiNetworkFactory().dump(fd, pw, args);
                 mWifiInjector.getRestrictedWifiNetworkFactory().dump(fd, pw, args);
                 mWifiInjector.getMultiInternetWifiNetworkFactory().dump(fd, pw, args);
+                mWifiInjector.getSsidTranslator().dump(pw);
                 pw.println("Wlan Wake Reasons:" + mWifiNative.getWlanWakeReasonCount());
                 pw.println();
                 mWifiConfigManager.dump(fd, pw, args);
@@ -6062,7 +6128,11 @@ public class WifiServiceImpl extends BaseWifiService {
         final int uid = Binder.getCallingUid();
         mWifiPermissionsUtil.checkPackage(uid, packageName);
         enforceAccessPermission();
-        enforceLocationPermission(packageName, featureId, uid);
+        if (SdkLevel.isAtLeastT()) {
+            enforceLocationPermissionInManifest(uid, false /* isCoarseOnly */);
+        } else {
+            enforceLocationPermission(packageName, featureId, uid);
+        }
         if (mVerboseLoggingEnabled) {
             mLog.info("registerSuggestionConnectionStatusListener uid=%").c(uid).flush();
         }

@@ -178,6 +178,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             DEVICE_NAME_LENGTH_MAX - DEVICE_NAME_POSTFIX_LENGTH_MIN;
     @VisibleForTesting
     static final int DEFAULT_GROUP_OWNER_INTENT = 6;
+    // The maximum length of a group name is the same as SSID, i.e. 32 bytes.
+    // Wi-Fi Direct group name starts with "DIRECT-xy-" where xy is two ASCII characters
+    // randomly selected, so there are 10 bytes occupied.
+    @VisibleForTesting
+    static final int GROUP_NAME_POSTFIX_LENGTH_MAX = 22;
 
     @VisibleForTesting
     // It requires to over "DISCOVER_TIMEOUT_S(120)" or "GROUP_CREATING_WAIT_TIME_MS(120)".
@@ -1494,6 +1499,12 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             mWifiMonitor.startMonitoring(mInterfaceName);
         }
 
+        private WorkSource createRequestorWs(int uid, String packageName) {
+            WorkSource requestorWs = new WorkSource(uid, packageName);
+            logd("Requestor WorkSource: " + requestorWs);
+            return requestorWs;
+        }
+
         private WorkSource createMergedRequestorWs() {
             WorkSource requestorWs = new WorkSource();
             for (WorkSource ws: mActiveClients.values()) {
@@ -2237,19 +2248,36 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             }
 
             @Override
+            public void enter() {
+                updateThisDevice(WifiP2pDevice.UNAVAILABLE);
+            }
+
+            @Override
             public boolean processMessage(Message message) {
                 if (mVerboseLoggingEnabled) logd(getName() + message.toString());
+                boolean wasInWaitingState = WaitingState.wasMessageInWaitingState(message);
                 switch (message.what) {
                     case ENABLE_P2P: {
                         if (mActiveClients.isEmpty()) {
                             Log.i(TAG, "No active client, ignore ENABLE_P2P.");
+                            // If this is a re-executed command triggered by user reply, then reset
+                            // InterfaceConflictManager so it isn't stuck waiting for the
+                            // re-executed command.
+                            if (wasInWaitingState) {
+                                mInterfaceConflictManager.reset();
+                            }
+                            break;
+                        }
+                        String packageName = getCallingPkgName(message.sendingUid, message.replyTo);
+                        if (TextUtils.isEmpty(packageName)) {
+                            Log.i(TAG, "No valid package name, ignore ENABLE_P2P");
                             break;
                         }
                         int proceedWithOperation =
                                 mInterfaceConflictManager.manageInterfaceConflictForStateMachine(
                                         TAG, message, mP2pStateMachine, mWaitingState,
                                         mP2pDisabledState, HalDeviceManager.HDM_CREATE_IFACE_P2P,
-                                        createMergedRequestorWs());
+                                        createRequestorWs(message.sendingUid, packageName));
                         if (proceedWithOperation == InterfaceConflictManager.ICM_ABORT_COMMAND) {
                             Log.e(TAG, "User refused to set up P2P");
                         } else if (proceedWithOperation
@@ -2292,19 +2320,36 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         // P2P interface will be created if all of the below are true:
                         // a) Wifi is enabled.
                         // b) There is at least 1 client app which invoked initialize().
+                        // c) There is no impact to create another P2P interface
+                        //    OR there is impact but user input isn't required
+                        //    OR there is impact and user input is required and the user approved
+                        //    the interface creation.
                         if (mVerboseLoggingEnabled) {
                             Log.d(TAG, "Wifi enabled=" + mIsWifiEnabled
                                     + ", P2P disallowed by admin=" + mIsP2pDisallowedByAdmin
-                                    + ", Number of clients=" + mDeathDataByBinder.size());
+                                    + ", Number of clients=" + mDeathDataByBinder.size()
+                                    + " wasInWaitingState: " + wasInWaitingState);
                         }
-                        if (!isWifiP2pAvailable()) return NOT_HANDLED;
-                        if (mDeathDataByBinder.isEmpty()) return NOT_HANDLED;
+                        if (!isWifiP2pAvailable() || mDeathDataByBinder.isEmpty()) {
+                            // If this is a re-executed command triggered by user reply, then reset
+                            // InterfaceConflictManager so it isn't stuck waiting for the
+                            // re-executed command.
+                            if (wasInWaitingState) {
+                                mInterfaceConflictManager.reset();
+                            }
+                            return NOT_HANDLED;
+                        }
 
+                        String packageName = getCallingPkgName(message.sendingUid, message.replyTo);
+                        if (TextUtils.isEmpty(packageName)) {
+                            Log.i(TAG, "No valid package name, do not set up the P2P interface");
+                            return NOT_HANDLED;
+                        }
                         int proceedWithOperation =
                                 mInterfaceConflictManager.manageInterfaceConflictForStateMachine(
                                         TAG, message, mP2pStateMachine, mWaitingState,
                                         mP2pDisabledState, HalDeviceManager.HDM_CREATE_IFACE_P2P,
-                                        createMergedRequestorWs());
+                                        createRequestorWs(message.sendingUid, packageName));
                         if (proceedWithOperation == InterfaceConflictManager.ICM_ABORT_COMMAND) {
                             Log.e(TAG, "User refused to set up P2P");
                             return NOT_HANDLED;
@@ -3136,6 +3181,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             @Override
             public void enter() {
                 if (mVerboseLoggingEnabled) logd(getName());
+                if (SdkLevel.isAtLeastT()) {
+                    mDetailedState = NetworkInfo.DetailedState.CONNECTING;
+                    sendP2pConnectionChangedBroadcast();
+                }
                 sendMessageDelayed(obtainMessage(GROUP_CREATING_TIMED_OUT,
                         ++sGroupCreatingTimeoutIndex, 0), GROUP_CREATING_WAIT_TIME_MS);
             }
@@ -3176,6 +3225,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     case WifiP2pManager.DISCOVER_PEERS:
                         // Discovery will break negotiation
                         replyToMessage(message, WifiP2pManager.DISCOVER_PEERS_FAILED,
+                                WifiP2pManager.BUSY);
+                        break;
+                    case WifiP2pManager.STOP_DISCOVERY:
+                        // Stop discovery will clear pending TX action and cause disconnection.
+                        replyToMessage(message, WifiP2pManager.STOP_DISCOVERY_FAILED,
                                 WifiP2pManager.BUSY);
                         break;
                     case WifiP2pManager.CANCEL_CONNECT:
@@ -5297,13 +5351,31 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             return mDefaultDeviceName;
         }
 
+        private String generateP2pSsidPostfix(String devName) {
+            if (TextUtils.isEmpty(devName)) return "-";
+            StringBuilder sb = new StringBuilder("-");
+            sb.append(devName.length() > GROUP_NAME_POSTFIX_LENGTH_MAX
+                    ? devName.substring(0, GROUP_NAME_POSTFIX_LENGTH_MAX) : devName);
+            return sb.toString();
+        }
+
         private boolean setAndPersistDeviceName(String devName) {
             if (TextUtils.isEmpty(devName)) return false;
+            if (devName.length() > DEVICE_NAME_LENGTH_MAX) return false;
 
             if (mInterfaceName != null) {
-                if (!mWifiNative.setDeviceName(devName)
-                        || !mWifiNative.setP2pSsidPostfix("-" + devName)) {
+                String postfix = generateP2pSsidPostfix(devName);
+                // Order important: postfix is used when a group is formed
+                // and the group name will be reported back. If setDeviceName()
+                // fails, it won't be a big deal.
+                if (!mWifiNative.setP2pSsidPostfix(postfix)) {
+                    loge("Failed to set SSID postfix " + postfix);
+                    return false;
+                }
+                if (!mWifiNative.setDeviceName(devName)) {
                     loge("Failed to set device name " + devName);
+                    // Try to restore the postfix.
+                    mWifiNative.setP2pSsidPostfix(generateP2pSsidPostfix(mThisDevice.deviceName));
                     return false;
                 }
             }
