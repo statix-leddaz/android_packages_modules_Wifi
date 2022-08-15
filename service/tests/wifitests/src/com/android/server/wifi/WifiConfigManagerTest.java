@@ -96,6 +96,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.MockitoSession;
 import org.mockito.quality.Strictness;
+import org.mockito.stubbing.Answer;
 import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.FileDescriptor;
@@ -123,6 +124,7 @@ import java.util.stream.Collectors;
 public class WifiConfigManagerTest extends WifiBaseTest {
 
     private static final String TEST_SSID = "\"test_ssid\"";
+    private static final String UNTRANSLATED_HEX_SSID = "abcdef";
     private static final String TEST_BSSID = "0a:08:5c:67:89:00";
     private static final long TEST_WALLCLOCK_CREATION_TIME_MILLIS = 9845637;
     private static final long TEST_WALLCLOCK_UPDATE_TIME_MILLIS = 75455637;
@@ -193,6 +195,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
     @Mock private ClientModeManager mPrimaryClientModeManager;
     @Mock private WifiGlobals mWifiGlobals;
     @Mock private BuildProperties mBuildProperties;
+    @Mock private SsidTranslator mSsidTranslator;
     private LruConnectionTracker mLruConnectionTracker;
 
     private MockResources mResources;
@@ -334,6 +337,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         when(WifiInjector.getInstance()).thenReturn(mWifiInjector);
         when(mWifiInjector.getActiveModeWarden()).thenReturn(mActiveModeWarden);
         when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
+        when(mWifiInjector.getSsidTranslator()).thenReturn(mSsidTranslator);
         when(mActiveModeWarden.getPrimaryClientModeManager()).thenReturn(mPrimaryClientModeManager);
         when(mPrimaryClientModeManager.getSupportedFeatures()).thenReturn(
                 WifiManager.WIFI_FEATURE_WPA3_SAE | WifiManager.WIFI_FEATURE_OWE);
@@ -342,6 +346,22 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         when(WifiConfigStore.createUserFiles(anyInt(), anyBoolean())).thenReturn(mock(List.class));
         when(mTelephonyManager.createForSubscriptionId(anyInt())).thenReturn(mDataTelephonyManager);
         when(mBuildProperties.isUserBuild()).thenReturn(false);
+        when(mSsidTranslator.getTranslatedSsid(any())).thenAnswer(
+                (Answer<WifiSsid>) invocation -> getTranslatedSsid(invocation.getArgument(0)));
+        when(mSsidTranslator.getAllPossibleOriginalSsids(any())).thenAnswer(
+                (Answer<List<WifiSsid>>) invocation -> Arrays.asList(invocation.getArgument(0),
+                        WifiSsid.fromString(UNTRANSLATED_HEX_SSID))
+        );
+    }
+
+    /** Mock translating an SSID */
+    private WifiSsid getTranslatedSsid(WifiSsid ssid) {
+        byte[] originalBytes = ssid.getBytes();
+        byte[] translatedBytes = new byte[originalBytes.length + 1];
+        for (int i = 0; i < originalBytes.length; i++) {
+            translatedBytes[i] = (byte) (originalBytes[i] + 1);
+        }
+        return WifiSsid.fromBytes(translatedBytes);
     }
 
     private void mockIsDeviceOwner(boolean result) {
@@ -2459,8 +2479,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
      * Verify that when non-persistent MAC randomization is enabled the MAC address changes after 24
      * hours of the first connection this MAC address is used.
      */
-    @Test
-    public void testNonPersistentMacRandomizationEvery24Hours() {
+    private void testNonPersistentMacRandomizationEvery24Hours(boolean isForSecondaryDbs) {
         setUpWifiConfigurationForNonPersistentRandomization();
         WifiConfiguration config = getFirstInternalWifiConfiguration();
 
@@ -2471,16 +2490,31 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                     + i * 60 * 60 * 1000);
             mWifiConfigManager.updateNetworkAfterDisconnect(config.networkId);
             assertEquals("Randomized MAC should be the same after " + i + " hours",
-                    firstMac, mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config));
+                    isForSecondaryDbs ? MacAddressUtil.nextMacAddress(firstMac) : firstMac,
+                    mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config,
+                            isForSecondaryDbs));
             config = getFirstInternalWifiConfiguration();
         }
 
         // verify that after 24 hours the randomized MAC address changes.
         long timeAfter24Hours = TEST_WALLCLOCK_CREATION_TIME_MILLIS + 24 * 60 * 60 * 1000;
         when(mClock.getWallClockMillis()).thenReturn(timeAfter24Hours);
-        assertNotEquals(firstMac, mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config));
+        assertNotEquals(firstMac,
+                mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config, isForSecondaryDbs));
         config = getFirstInternalWifiConfiguration();
         assertEquals(timeAfter24Hours, config.randomizedMacLastModifiedTimeMs);
+    }
+
+    /* For Non Dbs network configuration */
+    @Test
+    public void testNonPersistentMacRandomizationEvery24HoursNonDbs() {
+        testNonPersistentMacRandomizationEvery24Hours(false);
+    }
+
+    /* For Dbs network configuration */
+    @Test
+    public void testNonPersistentMacRandomizationEvery24HoursDbs() {
+        testNonPersistentMacRandomizationEvery24Hours(true);
     }
 
     /**
@@ -2490,26 +2524,28 @@ public class WifiConfigManagerTest extends WifiBaseTest {
      * Then verify that getRandomizedMacAndUpdateIfNeeded sets the randomized MAC back to the
      * persistent MAC.
      */
-    @Test
-    public void testRandomizedMacUpdateAndRestore() {
+    private void testRandomizedMacUpdateAndRestore(boolean isForSecondaryDbs) {
         setUpWifiConfigurationForNonPersistentRandomization();
         // get the non-persistent randomized MAC address.
         WifiConfiguration config = getFirstInternalWifiConfiguration();
         final MacAddress randMac = config.getRandomizedMacAddress();
         assertNotEquals(WifiInfo.DEFAULT_MAC_ADDRESS, randMac.toString());
         assertEquals(TEST_WALLCLOCK_CREATION_TIME_MILLIS
-                + WifiConfigManager.NON_PERSISTENT_MAC_WAIT_AFTER_DISCONNECT_MS,
+                        + WifiConfigManager.NON_PERSISTENT_MAC_WAIT_AFTER_DISCONNECT_MS,
                 config.randomizedMacExpirationTimeMs);
 
         // verify the new randomized mac should be different from the original mac.
         when(mClock.getWallClockMillis()).thenReturn(TEST_WALLCLOCK_CREATION_TIME_MILLIS
                 + WifiConfigManager.NON_PERSISTENT_MAC_WAIT_AFTER_DISCONNECT_MS + 1);
-        MacAddress randMac2 = mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config);
+        MacAddress randMac2 = mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config,
+                isForSecondaryDbs);
 
         // verify internal WifiConfiguration has MacAddress updated correctly by comparing the
         // MAC address from internal WifiConfiguration with the value returned by API.
         config = getFirstInternalWifiConfiguration();
-        assertEquals(randMac2, config.getRandomizedMacAddress());
+        assertEquals(randMac2,
+                isForSecondaryDbs ? MacAddressUtil.nextMacAddress(config.getRandomizedMacAddress())
+                        : config.getRandomizedMacAddress());
         assertNotEquals(randMac, randMac2);
 
         // Now disable non-persistent randomization and verify the randomized MAC is changed back to
@@ -2518,14 +2554,39 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         blocklist.add(config.SSID);
         when(mDeviceConfigFacade.getNonPersistentMacRandomizationSsidBlocklist())
                 .thenReturn(blocklist);
-        MacAddress persistentMac = mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config);
+        MacAddress persistentMac = mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config,
+                isForSecondaryDbs);
 
         // verify internal WifiConfiguration has MacAddress updated correctly by comparing the
         // MAC address from internal WifiConfiguration with the value returned by API.
         config = getFirstInternalWifiConfiguration();
-        assertEquals(persistentMac, config.getRandomizedMacAddress());
+        assertEquals(persistentMac,
+                isForSecondaryDbs ? MacAddressUtil.nextMacAddress(config.getRandomizedMacAddress())
+                        : config.getRandomizedMacAddress());
         assertNotEquals(persistentMac, randMac);
         assertNotEquals(persistentMac, randMac2);
+    }
+
+    /* For Non Dbs network configuration */
+    @Test
+    public void testRandomizedMacUpdateAndRestoreNonDbs() {
+        testRandomizedMacUpdateAndRestore(false);
+    }
+    /* For Dbs network configuration */
+    @Test
+    public void testRandomizedMacUpdateAndRestoreDbs() {
+        testRandomizedMacUpdateAndRestore(true);
+    }
+
+    @Test
+    public void testNonPersistentRandomizationDbsMacAddress() {
+        setUpWifiConfigurationForNonPersistentRandomization();
+        WifiConfiguration config = getFirstInternalWifiConfiguration();
+        config.dbsSecondaryInternet = true;
+        MacAddress randomMac = config.getRandomizedMacAddress();
+        MacAddress newMac = mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config,
+                true);
+        assertTrue(newMac.equals(MacAddressUtil.nextMacAddress(randomMac)));
     }
 
     /**
@@ -2613,7 +2674,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         // verify that the randomized MAC is unchanged.
         when(mClock.getWallClockMillis()).thenReturn(TEST_WALLCLOCK_CREATION_TIME_MILLIS
                 + WifiConfigManager.NON_PERSISTENT_MAC_WAIT_AFTER_DISCONNECT_MS);
-        MacAddress newMac = mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config);
+        MacAddress newMac = mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config, false);
         assertEquals(randMac, newMac);
     }
 
@@ -2631,7 +2692,8 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         // add to non-persistent randomization blocklist using overlay.
         mResources.setStringArray(R.array.config_wifi_non_persistent_randomization_ssid_blocklist,
                 new String[] {config.SSID});
-        MacAddress persistentMac = mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config);
+        MacAddress persistentMac = mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config,
+                false);
         // verify that now the persistent randomized MAC is used.
         assertNotEquals(randMac, persistentMac);
     }
@@ -4350,15 +4412,17 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         // Retrieve the hidden network list & verify the order of the networks returned.
         List<WifiScanner.ScanSettings.HiddenNetwork> hiddenNetworks =
                 mWifiConfigManager.retrieveHiddenNetworkList(false);
-        assertEquals(3, hiddenNetworks.size());
+        assertEquals(4, hiddenNetworks.size());
         assertEquals(network3.SSID, hiddenNetworks.get(0).ssid);
-        assertEquals(network2.SSID, hiddenNetworks.get(1).ssid);
-        assertEquals(network1.SSID, hiddenNetworks.get(2).ssid);
+        assertEquals(UNTRANSLATED_HEX_SSID, hiddenNetworks.get(1).ssid); // Possible original SSID
+        assertEquals(network2.SSID, hiddenNetworks.get(2).ssid);
+        assertEquals(network1.SSID, hiddenNetworks.get(3).ssid);
 
         hiddenNetworks = mWifiConfigManager.retrieveHiddenNetworkList(true);
-        assertEquals(2, hiddenNetworks.size());
+        assertEquals(3, hiddenNetworks.size());
         assertEquals(network2.SSID, hiddenNetworks.get(0).ssid);
-        assertEquals(network1.SSID, hiddenNetworks.get(1).ssid);
+        assertEquals(UNTRANSLATED_HEX_SSID, hiddenNetworks.get(1).ssid); // Possible original SSID
+        assertEquals(network1.SSID, hiddenNetworks.get(2).ssid);
     }
 
     /**
@@ -4866,7 +4930,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         List<SubscriptionInfo> subList = new ArrayList<>() {{
                 add(mock(SubscriptionInfo.class));
             }};
-        when(mSubscriptionManager.getActiveSubscriptionInfoList()).thenReturn(subList);
+        when(mSubscriptionManager.getCompleteActiveSubscriptionInfoList()).thenReturn(subList);
         when(mSubscriptionManager.getActiveSubscriptionIdList())
                 .thenReturn(new int[]{DATA_SUBID});
 
@@ -4923,7 +4987,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         List<SubscriptionInfo> subList = new ArrayList<>() {{
                 add(mock(SubscriptionInfo.class));
             }};
-        when(mSubscriptionManager.getActiveSubscriptionInfoList()).thenReturn(subList);
+        when(mSubscriptionManager.getCompleteActiveSubscriptionInfoList()).thenReturn(subList);
         when(mSubscriptionManager.getActiveSubscriptionIdList())
                 .thenReturn(new int[]{DATA_SUBID});
 
@@ -5023,8 +5087,8 @@ public class WifiConfigManagerTest extends WifiBaseTest {
     public void testLoadFromStoreIgnoresMalformedNetworks() {
         WifiConfiguration validNetwork = WifiConfigurationTestUtil.createPskNetwork();
         WifiConfiguration invalidNetwork = WifiConfigurationTestUtil.createPskNetwork();
-        // SSID larger than 32 chars.
-        invalidNetwork.SSID = "\"sdhdfsjdkdskkdfskldfslksflfdslsflfsalaladlalaala;lalalal\"";
+        // Hex SSID larger than 32 chars.
+        invalidNetwork.SSID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
         // Set up the store data.
         List<WifiConfiguration> sharedNetworks = Arrays.asList(validNetwork, invalidNetwork);
@@ -5580,12 +5644,19 @@ public class WifiConfigManagerTest extends WifiBaseTest {
      */
     private boolean isNetworkInConfigStoreData(
             WifiConfiguration configuration, List<WifiConfiguration> networkList) {
+        WifiConfiguration translatedConfig = new WifiConfiguration(configuration);
+        if (translatedConfig.SSID != null && translatedConfig.SSID.length() > 0
+                && translatedConfig.SSID.charAt(0) != '\"') {
+            // Translate the SSID only if it's specified in hexadecimal.
+            translatedConfig.SSID = getTranslatedSsid(WifiSsid.fromString(configuration.SSID))
+                    .toString();
+        }
         for (WifiConfiguration retrievedConfig : networkList) {
             for (SecurityParams p: retrievedConfig.getSecurityParamsList()) {
                 WifiConfiguration tmpConfig = new WifiConfiguration(retrievedConfig);
                 tmpConfig.setSecurityParams(p);
                 if (tmpConfig.getProfileKey().equals(
-                        configuration.getProfileKey())) {
+                        translatedConfig.getProfileKey())) {
                     return true;
                 }
             }
@@ -7133,6 +7204,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         List<WifiConfiguration> configsInDeletionOrder = new ArrayList<>();
         WifiConfiguration currentConfig = WifiConfigurationTestUtil.createPskNetwork();
         currentConfig.status = WifiConfiguration.Status.CURRENT;
+        currentConfig.isCurrentlyConnected = true;
         WifiConfiguration lessDeletionPriorityConfig = WifiConfigurationTestUtil.createPskNetwork();
         lessDeletionPriorityConfig.setDeletionPriority(1);
         WifiConfiguration newlyAddedConfig = WifiConfigurationTestUtil.createPskNetwork();
@@ -7570,5 +7642,64 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                 .getConfiguredNetwork(openNetId).creatorUid);
         assertEquals(TEST_UPDATE_NAME, mWifiConfigManager
                 .getConfiguredNetwork(openNetId).creatorName);
+    }
+
+    @Test
+    public void testAddNetworkWithHexadecimalSsid() {
+        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
+        openNetwork.SSID = UNTRANSLATED_HEX_SSID.toUpperCase();
+        WifiSsid translatedSsid = getTranslatedSsid(WifiSsid.fromString(openNetwork.SSID));
+        List<WifiConfiguration> networks = new ArrayList<>();
+        networks.add(openNetwork);
+
+        verifyAddNetworkToWifiConfigManager(openNetwork);
+
+        List<WifiConfiguration> retrievedNetworks =
+                mWifiConfigManager.getConfiguredNetworksWithPasswords();
+        // Verify the profile keys with translated SSIDs are the same
+        openNetwork.SSID = translatedSsid.toString();
+        WifiConfigurationTestUtil.assertConfigurationsEqualForConfigManagerAddOrUpdate(
+                networks, retrievedNetworks);
+        // Verify the retrieved SSID is all lowercase.
+        assertEquals(retrievedNetworks.get(0).SSID, retrievedNetworks.get(0).SSID.toLowerCase());
+        // Verify the retrieved SSID is translated.
+        assertEquals(retrievedNetworks.get(0).SSID, translatedSsid.toString());
+    }
+
+    @Test
+    public void testAddNetworkWithHexadecimalSsidWithLongTranslation() {
+        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
+        // Create a 32 byte SSID
+        openNetwork.SSID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        // Translation adds an extra byte over the 32 byte limit
+        WifiSsid translatedSsid = getTranslatedSsid(WifiSsid.fromString(openNetwork.SSID));
+        List<WifiConfiguration> networks = new ArrayList<>();
+        networks.add(openNetwork);
+
+        verifyAddNetworkToWifiConfigManager(openNetwork);
+
+        List<WifiConfiguration> retrievedNetworks =
+                mWifiConfigManager.getConfiguredNetworksWithPasswords();
+        // Verify the profile keys with translated SSIDs are the same
+        openNetwork.SSID = translatedSsid.toString();
+        WifiConfigurationTestUtil.assertConfigurationsEqualForConfigManagerAddOrUpdate(
+                networks, retrievedNetworks);
+        // Verify the retrieved SSID is all lowercase.
+        assertEquals(retrievedNetworks.get(0).SSID, retrievedNetworks.get(0).SSID.toLowerCase());
+        // Verify the retrieved SSID is translated.
+        assertEquals(retrievedNetworks.get(0).SSID, translatedSsid.toString());
+        // Verify the retrieved SSID byte length is greater than 32.
+        assertTrue(WifiSsid.fromString(retrievedNetworks.get(0).SSID).getBytes().length > 32);
+    }
+
+    @Test
+    public void testAddNetworkWithInvalidHexadecimalSsidFails() {
+        // Create a 2 and a half byte SSID
+        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
+        openNetwork.SSID = "abcde";
+
+        NetworkUpdateResult result = addNetworkToWifiConfigManager(openNetwork);
+
+        assertFalse(result.isSuccess());
     }
 }

@@ -721,9 +721,17 @@
     (depends on config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs)
     disable a network from auto-connect based on Carrier requirement -->
     <integer translatable="false" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificThreshold">1</integer>
+    <!-- Carrier specific override for the disable threshold -->
+    <string-array translatable="false" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificThreshold_carrier_overrides">
+        <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g>2</item>
+    </string-array>
     <!-- A value to indicate the duration (in ms) to disable a network from auto-connect based on
     Carrier requirement. -1 represents disabling a network permanently -->
     <integer translatable="false" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs">-1</integer>
+    <!-- Carrier specific override for the disable duration -->
+    <string-array translatable="false" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs_carrier_overrides">
+        <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g>14400000</item>
+    </string-array>
     <!-- Flush ANQP cache on Wi-Fi toggle off event -->
     <bool translatable="false" name="config_wifiFlushAnqpCacheOnWifiToggleOffEvent">true</bool>
 
@@ -732,6 +740,12 @@
      Enabling this configuration will restore legacy behavior but may result in incorrect behavior.
      -->
     <bool translatable="false" name="config_wifiAllowMultipleNetworksOnSameAwareNdi">false</bool>
+
+    <!-- Enable Aware NDP interface selection on interface that already has a network to same peer
+    set up. Enable this will offload to FW to do the Aware NDP security upgrade. This may result in
+    incorrect behavior when the security upgrade feature is not fully supported.
+     -->
+    <bool translatable="false" name="config_wifiAwareNdpSecurityUpdateOnSameNdi">false</bool>
 
     <!-- A boolean indicate if device supports ser channel on the Aware data-path setup. If the
     value is false, channel setting on the data-path request will be ignored.
@@ -866,6 +880,9 @@
         <item>com.company2.example.test.name2</item>
         -->
     </string-array>
+    <!-- Indicates whether or not P2P interface removal can be approved automatically when P2P
+         is not connected. -->
+    <bool translatable="false" name="config_wifiUserApprovalNotRequireForDisconnectedP2p">false</bool>
 
     <!-- boolean indicating whether the Easy Connect (DPP) AKM is supported -->
     <bool translatable="false" name ="config_wifiDppAkmSupported">false</bool>
@@ -893,5 +910,29 @@
         <item>ABC</item>
         -->
     </string-array>
+    <!-- list of package names for which WifiRttManager.startRanging() will not be throttled when
+    the app is in background. -->
+    <string-array translatable="false" name="config_wifiBackgroundRttThrottleExceptionList">
+        <!-- Below is a sample configuration for this list:
+        <item>com.company1.example.test.name1</item>
+        <item>com.company2.example.test.name2</item>
+        -->
+    </string-array>
 
+    <!-- Lists each alternate character set per locale language for SSID translation to UTF-8. This
+         will translate all SSIDs encoded with the specified character set from the native layer
+         into UTF-8 SSIDs. The translated SSIDs are then converted back to the original character
+         set when passed back to the native layer. This effectively switches all non-UTF-8 APs into
+         UTF-8 APs from the perspective of the framework and apps, and is intended to provide
+         backwards compatibility with apps that only work with UTF-8 SSIDs. Values must be in the
+         form of the locale language and canonical java.nio Charset name, separated by a comma. If
+         the locale language is "all", then the character set will apply to all locale languages
+         that do not specify their own character set. -->
+    <string-array translatable="false" name="config_wifiCharsetsForSsidTranslation">
+        <!-- Below is a sample configuration for this list:
+        <item>all,EUC-JP</item>
+        <item>zh,GBK</item>
+        <item>ko,EUC-KR</item>
+        -->
+    </string-array>
 </resources>

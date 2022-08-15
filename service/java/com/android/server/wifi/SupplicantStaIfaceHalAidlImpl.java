@@ -68,6 +68,7 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiAnnotations;
 import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiSsid;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.IBinder.DeathRecipient;
@@ -111,9 +112,6 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     private static final Pattern WPS_DEVICE_TYPE_PATTERN =
             Pattern.compile("^(\\d{1,2})-([0-9a-fA-F]{8})-(\\d{1,2})$");
 
-    private static final int MIN_PORT_NUM = 0;
-    private static final int MAX_PORT_NUM = 65535;
-
     private final Object mLock = new Object();
     private boolean mVerboseLoggingEnabled = false;
     private boolean mVerboseHalLoggingEnabled = false;
@@ -127,6 +125,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     private Map<String, SupplicantStaNetworkHalAidlImpl>
             mCurrentNetworkRemoteHandles = new HashMap<>();
     private Map<String, WifiConfiguration> mCurrentNetworkLocalConfigs = new HashMap<>();
+    private Map<String, WifiSsid> mCurrentNetworkFallbackSsids = new HashMap<>();
     private Map<String, List<Pair<SupplicantStaNetworkHalAidlImpl, WifiConfiguration>>>
             mLinkedNetworkLocalAndRemoteConfigs = new HashMap<>();
     @VisibleForTesting
@@ -140,6 +139,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     private final Clock mClock;
     private final WifiMetrics mWifiMetrics;
     private final WifiGlobals mWifiGlobals;
+    private final SsidTranslator mSsidTranslator;
 
     private class SupplicantDeathRecipient implements DeathRecipient {
         @Override
@@ -169,13 +169,15 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     }
 
     public SupplicantStaIfaceHalAidlImpl(Context context, WifiMonitor monitor, Handler handler,
-            Clock clock, WifiMetrics wifiMetrics, WifiGlobals wifiGlobals) {
+            Clock clock, WifiMetrics wifiMetrics, WifiGlobals wifiGlobals,
+            @NonNull SsidTranslator ssidTranslator) {
         mContext = context;
         mWifiMonitor = monitor;
         mEventHandler = handler;
         mClock = clock;
         mWifiMetrics = wifiMetrics;
         mWifiGlobals = wifiGlobals;
+        mSsidTranslator = ssidTranslator;
         mSupplicantDeathRecipient = new SupplicantDeathRecipient();
         mPmkCacheManager = new PmkCacheManager(mClock, mEventHandler);
     }
@@ -183,8 +185,6 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     /**
      * Enable/Disable verbose logging.
      *
-     * @param verboseEnabled Verbose flag set in overlay XML.
-     * @param halVerboseEnabled Verbose flag set by the user.
      */
     public void enableVerboseLogging(boolean verboseEnabled, boolean halVerboseEnabled) {
         synchronized (mLock) {
@@ -251,7 +251,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
 
             ISupplicantStaIfaceCallback callback = new SupplicantStaIfaceCallbackAidlImpl(
                     SupplicantStaIfaceHalAidlImpl.this, ifaceName,
-                    new Object(), mContext, mWifiMonitor);
+                    new Object(), mContext, mWifiMonitor, mSsidTranslator);
             if (registerCallback(iface, callback)) {
                 mISupplicantStaIfaces.put(ifaceName, iface);
                 // Keep callback in a store to avoid recycling by garbage collector
@@ -418,8 +418,10 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
             return false;
         }
         Log.i(TAG, "Obtained ISupplicant binder.");
+        Log.i(TAG, "Local Version: " + ISupplicant.VERSION);
 
         try {
+            Log.i(TAG, "Remote Version: " + mISupplicant.getInterfaceVersion());
             IBinder serviceBinder = getServiceBinderMockable();
             if (serviceBinder == null) {
                 return false;
@@ -564,10 +566,48 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
      * @return true if it succeeds, false otherwise
      */
     public boolean connectToNetwork(@NonNull String ifaceName, @NonNull WifiConfiguration config) {
+        return connectToNetwork(ifaceName, config, null);
+    }
+
+    /**
+     * Connects to the fallback SSID (if any) of the current network upon a network not found
+     * notification.
+     */
+    public boolean connectToFallbackSsid(@NonNull String ifaceName) {
         synchronized (mLock) {
-            Log.d(TAG, "connectToNetwork " + config.getProfileKey());
+            WifiSsid fallbackSsid = mCurrentNetworkFallbackSsids.remove(ifaceName);
+            if (fallbackSsid == null) {
+                return false;
+            }
+            Log.d(TAG, "connectToFallbackSsid " + fallbackSsid);
+            return connectToNetwork(
+                    ifaceName, getCurrentNetworkLocalConfig(ifaceName), fallbackSsid);
+        }
+    }
+
+    /**
+     * Add the provided network configuration to wpa_supplicant and initiate connection to it.
+     * This method does the following:
+     * 1. If |config| is different to the current supplicant network, removes all supplicant
+     * networks and saves |config|.
+     * 2. Selects an SSID from the 2 possible original SSIDs derived from config.SSID to pass to
+     *    wpa_supplicant, and stores the unused one as fallback if the first one is not found.
+     * 3. Select the new network in wpa_supplicant.
+     *
+     * @param ifaceName Name of the interface.
+     * @param config WifiConfiguration parameters for the provided network.
+     * @param actualSsid The actual, untranslated SSID to send to supplicant. If this is null, then
+     *                   we will connect to either of the 2 possible original SSIDs based on the
+     *                   config's network selection BSSID or network selection candidate. If that
+     *                   SSID is not found, then we will immediately connect to the other one.
+     * @return true if it succeeds, false otherwise
+     */
+    private boolean connectToNetwork(@NonNull String ifaceName, @NonNull WifiConfiguration config,
+            WifiSsid actualSsid) {
+        synchronized (mLock) {
+            Log.d(TAG, "connectToNetwork " + config.getProfileKey() + ", actualSsid=" + actualSsid);
             WifiConfiguration currentConfig = getCurrentNetworkLocalConfig(ifaceName);
-            if (WifiConfigurationUtil.isSameNetwork(config, currentConfig)) {
+            if (actualSsid == null && WifiConfigurationUtil.isSameNetwork(config, currentConfig)) {
                 String networkSelectionBSSID = config.getNetworkSelectionStatus()
                         .getNetworkSelectionBSSID();
                 String networkSelectionBSSIDCurrent = currentConfig.getNetworkSelectionStatus()
@@ -588,12 +628,38 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                 mCurrentNetworkRemoteHandles.remove(ifaceName);
                 mCurrentNetworkLocalConfigs.remove(ifaceName);
                 mLinkedNetworkLocalAndRemoteConfigs.remove(ifaceName);
+                mCurrentNetworkFallbackSsids.remove(ifaceName);
                 if (!removeAllNetworks(ifaceName)) {
                     Log.e(TAG, "Failed to remove existing networks");
                     return false;
                 }
+                WifiConfiguration supplicantConfig = new WifiConfiguration(config);
+                if (actualSsid != null) {
+                    supplicantConfig.SSID = actualSsid.toString();
+                } else {
+                    if (config.SSID != null) {
+                        // No actual SSID supplied, so select from the network selection BSSID
+                        // or the latest candidate BSSID.
+                        WifiSsid supplicantSsid = mSsidTranslator.getOriginalSsid(config);
+                        if (supplicantSsid != null) {
+                            supplicantConfig.SSID = supplicantSsid.toString();
+                            List<WifiSsid> allPossibleSsids = mSsidTranslator
+                                    .getAllPossibleOriginalSsids(WifiSsid.fromString(config.SSID));
+                            WifiSsid selectedSsid = mSsidTranslator.getOriginalSsid(config);
+                            allPossibleSsids.remove(selectedSsid);
+                            if (!allPossibleSsids.isEmpty()) {
+                                // Store the unused SSID to fallback on in
+                                // connectToFallbackSsid(String) if the chosen SSID isn't found.
+                                mCurrentNetworkFallbackSsids.put(
+                                        ifaceName, allPossibleSsids.get(0));
+                            }
+                            Log.d(TAG, "Selecting supplicant SSID " + supplicantSsid);
+                            supplicantConfig.SSID = supplicantSsid.toString();
+                        }
+                    }
+                }
                 Pair<SupplicantStaNetworkHalAidlImpl, WifiConfiguration> pair =
-                        addNetworkAndSaveConfig(ifaceName, config);
+                        addNetworkAndSaveConfig(ifaceName, supplicantConfig);
                 if (pair == null) {
                     Log.e(TAG, "Failed to add/save network configuration: " + config
                             .getProfileKey());
@@ -982,7 +1048,8 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         synchronized (mLock) {
             SupplicantStaNetworkHalAidlImpl networkWrapper =
                     new SupplicantStaNetworkHalAidlImpl(network, ifaceName, mContext,
-                            mWifiMonitor, mWifiGlobals, getAdvancedCapabilities(ifaceName));
+                            mWifiMonitor, mWifiGlobals,
+                            getAdvancedCapabilities(ifaceName));
             if (networkWrapper != null) {
                 networkWrapper.enableVerboseLogging(
                         mVerboseLoggingEnabled, mVerboseHalLoggingEnabled);
@@ -2693,7 +2760,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         byte[] srcIp = null;
         byte[] dstIp = null;
         int srcPort = DscpPolicy.SOURCE_PORT_ANY;
-        int[] dstPortRange = new int[]{MIN_PORT_NUM, MAX_PORT_NUM};
+        int[] dstPortRange = null;
         int protocol = DscpPolicy.PROTOCOL_ANY;
         boolean hasSrcIp = false;
         boolean hasDstIp = false;
@@ -2712,6 +2779,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         }
         if (qosClassifierParamHasValue(classifierParamMask,
                 QosPolicyClassifierParamsMask.DST_PORT_RANGE)) {
+            dstPortRange = new int[2];
             dstPortRange[0] = classifierParams.dstPortRange.startPort;
             dstPortRange[1] = classifierParams.dstPortRange.endPort;
         }

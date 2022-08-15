@@ -76,6 +76,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -460,12 +461,6 @@ public class WifiConfigManager {
      * @return
      */
     public boolean shouldUseNonPersistentRandomization(WifiConfiguration config) {
-        // If this is the secondary STA for multi internet for DBS AP, use non persistent mac
-        // randomization, as the primary and secondary STAs could connect to the same SSID.
-        if (isMacRandomizationSupported() && config.dbsSecondaryInternet) {
-            return true;
-        }
-
         if (!isMacRandomizationSupported()
                 || config.macRandomizationSetting == WifiConfiguration.RANDOMIZATION_NONE) {
             return false;
@@ -636,10 +631,17 @@ public class WifiConfigManager {
      * @param config
      * @return MacAddress
      */
-    public MacAddress getRandomizedMacAndUpdateIfNeeded(WifiConfiguration config) {
+    public MacAddress getRandomizedMacAndUpdateIfNeeded(WifiConfiguration config,
+            boolean isForSecondaryDbs) {
         MacAddress mac = shouldUseNonPersistentRandomization(config)
                 ? updateRandomizedMacIfNeeded(config)
                 : setRandomizedMacToPersistentMac(config);
+        // If this is the secondary STA for multi internet for DBS AP, use a different MAC than the
+        // persistent mac randomization, as the primary and secondary STAs could connect to the
+        // same SSID.
+        if (isForSecondaryDbs) {
+            mac = MacAddressUtil.nextMacAddress(mac);
+        }
         return mac;
     }
 
@@ -1106,7 +1108,13 @@ public class WifiConfigManager {
     private void mergeWithInternalWifiConfiguration(
             WifiConfiguration internalConfig, WifiConfiguration externalConfig) {
         if (externalConfig.SSID != null) {
-            internalConfig.SSID = externalConfig.SSID;
+            // Translate the SSID in case it is in hexadecimal for a translatable charset.
+            if (externalConfig.SSID.length() > 0 && externalConfig.SSID.charAt(0) != '\"') {
+                internalConfig.SSID = mWifiInjector.getSsidTranslator().getTranslatedSsid(
+                        WifiSsid.fromString(externalConfig.SSID)).toString();
+            } else {
+                internalConfig.SSID = externalConfig.SSID;
+            }
         }
         if (externalConfig.BSSID != null) {
             internalConfig.BSSID = externalConfig.BSSID.toLowerCase();
@@ -1661,8 +1669,7 @@ public class WifiConfigManager {
                 .stream()
                 .sorted(Comparator.comparing((WifiConfiguration config) -> config.carrierId
                         != TelephonyManager.UNKNOWN_CARRIER_ID)
-                        .thenComparing((WifiConfiguration config) -> config.status
-                                == WifiConfiguration.Status.CURRENT)
+                        .thenComparing((WifiConfiguration config) -> config.isCurrentlyConnected)
                         .thenComparing((WifiConfiguration config) -> config.getDeletionPriority())
                         .thenComparing((WifiConfiguration config) -> -config.numRebootsSinceLastUse)
                         .thenComparing((WifiConfiguration config) ->
@@ -2183,7 +2190,8 @@ public class WifiConfigManager {
      * 2. Increment |numAssociation| counter.
      * 3. Clear the disable reason counters in the associated |NetworkSelectionStatus|.
      * 4. Set the hasEverConnected| flag in the associated |NetworkSelectionStatus|.
-     * 5. Sets the status of network as |CURRENT|.
+     * 5. Set the status of network to |CURRENT|.
+     * 6. Set the |isCurrentlyConnected| flag to true.
      *
      * @param networkId network ID corresponding to the network.
      * @param shouldSetUserConnectChoice setup user connect choice on this network.
@@ -2213,6 +2221,7 @@ public class WifiConfigManager {
         config.getNetworkSelectionStatus().clearDisableReasonCounter();
         config.getNetworkSelectionStatus().setHasEverConnected(true);
         setNetworkStatus(config, WifiConfiguration.Status.CURRENT);
+        config.isCurrentlyConnected = true;
         saveToStore(false);
         return true;
     }
@@ -2232,8 +2241,9 @@ public class WifiConfigManager {
      * Updates a network configuration after disconnection from it.
      *
      * This method updates the following WifiConfiguration elements:
-     * 1. Set the |lastDisConnected| timestamp.
-     * 2. Sets the status of network back to |ENABLED|.
+     * 1. Set the |lastDisconnected| timestamp.
+     * 2. Set the status of network back to |ENABLED|.
+     * 3. Set the |isCurrentlyConnected| flag to false.
      *
      * @param networkId network ID corresponding to the network.
      * @return true if the network was found, false otherwise.
@@ -2254,6 +2264,7 @@ public class WifiConfigManager {
         if (config.status == WifiConfiguration.Status.CURRENT) {
             setNetworkStatus(config, WifiConfiguration.Status.ENABLED);
         }
+        config.isCurrentlyConnected = false;
         saveToStore(false);
         return true;
     }
@@ -2877,10 +2888,16 @@ public class WifiConfigManager {
         networks.removeIf(config -> !config.hiddenSSID);
         networks.sort(mScanListComparator);
         // The most frequently connected network has the highest priority now.
+        Set<WifiSsid> ssidSet = new LinkedHashSet<>();
         for (WifiConfiguration config : networks) {
-            if (!autoJoinOnly || config.allowAutojoin) {
-                hiddenList.add(new WifiScanner.ScanSettings.HiddenNetwork(config.SSID));
+            if (autoJoinOnly && !config.allowAutojoin) {
+                continue;
             }
+            ssidSet.addAll(mWifiInjector.getSsidTranslator()
+                    .getAllPossibleOriginalSsids(WifiSsid.fromString(config.SSID)));
+        }
+        for (WifiSsid ssid : ssidSet) {
+            hiddenList.add(new WifiScanner.ScanSettings.HiddenNetwork(ssid.toString()));
         }
         return hiddenList;
     }

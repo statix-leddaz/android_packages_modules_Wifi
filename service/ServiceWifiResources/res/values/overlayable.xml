@@ -17,7 +17,7 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <overlayable name="WifiCustomization">
         <!-- START VENDOR CUSTOMIZATION -->
-        <policy type="product|system|vendor">
+        <policy type="odm|product|system|vendor">
 
           <!-- Params from config.xml that can be overlayed -->
           <item type="bool" name="config_wifi24ghzSupport" />
@@ -204,7 +204,9 @@
           <item type="integer" name="config_wifiCoexGpsL1ThresholdKhz"/>
           <item type="string" name="config_wifiCoexTableFilepath"/>
           <item type="integer" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificThreshold" />
+          <item type="array" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificThreshold_carrier_overrides" />
           <item type="integer" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs" />
+          <item type="array" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs_carrier_overrides" />
           <item type="bool" name="config_wifiAllowMultipleNetworksOnSameAwareNdi"/>
           <item type="integer" name="config_wifiAwareInstantCommunicationModeDurationMillis" />
           <item type="bool" name="config_wifiSupportChannelOnDataPath"/>
@@ -239,10 +241,14 @@
           <item type="array" name="config_wifiInterfacePriorityTreatAsForegroundList"/>
           <item type="bool" name="config_wifiUserApprovalRequiredForD2dInterfacePriority" />
           <item type="array" name="config_wifiExcludedFromUserApprovalForD2dInterfacePriority" />
+          <item type="bool" name="config_wifiUserApprovalNotRequireForDisconnectedP2p" />
           <item type="bool" name="config_wifiNetworkCentricQosPolicyFeatureEnabled" />
           <item type="string" name="config_wifiDriverWorldModeCountryCode" />
           <item type="bool" name="config_wifiPasspointUseApWanLinkStatusAnqpElement" />
           <item type="array" name="config_wifiPasspointUseApWanLinkStatusAnqpElementFqdnAllowlist" />
+          <item type="bool" name="config_wifiAwareNdpSecurityUpdateOnSameNdi" />
+          <item type="array" name="config_wifiBackgroundRttThrottleExceptionList" />
+          <item type="array" name="config_wifiCharsetsForSsidTranslation" />
           <!-- Params from config.xml that can be overlayed -->
 
           <!-- Params from strings.xml that can be overlayed -->
@@ -297,6 +303,8 @@
           <item type="string" name="notification_channel_network_status" />
           <item type="string" name="notification_channel_network_alerts" />
           <item type="string" name="notification_channel_network_available" />
+          <item type="string" name="notification_channel_apm_alerts" />
+          <item type="string" name="wifi_eap_error_message_code_32756" />
           <item type="string" name="wifi_eap_error_message_code_32760" />
           <item type="string" name="wifi_eap_error_message_code_32761" />
           <item type="string" name="wifi_eap_error_message_code_32762" />
@@ -310,6 +318,18 @@
           <item type="string" name="wifi_eap_error_message_code_16384" />
           <item type="string" name="wifi_eap_error_message_code_16385" />
           <item type="string" name="wifi_eap_error_message_unknown_error_code" />
+          <item type="array" name="wifi_eap_error_message_code_32756_carrier_overrides" />
+          <item type="array" name="wifi_eap_error_message_code_32760_carrier_overrides" />
+          <item type="array" name="wifi_eap_error_message_code_32761_carrier_overrides" />
+          <item type="array" name="wifi_eap_error_message_code_32762_carrier_overrides" />
+          <item type="array" name="wifi_eap_error_message_code_32763_carrier_overrides" />
+          <item type="array" name="wifi_eap_error_message_code_32764_carrier_overrides" />
+          <item type="array" name="wifi_eap_error_message_code_32765_carrier_overrides" />
+          <item type="array" name="wifi_eap_error_message_code_32766_carrier_overrides" />
+          <item type="array" name="wifi_eap_error_message_code_32767_carrier_overrides" />
+          <item type="array" name="wifi_eap_error_message_code_16384_carrier_overrides" />
+          <item type="array" name="wifi_eap_error_message_code_16385_carrier_overrides" />
+          <item type="array" name="wifi_eap_error_message_unknown_error_code_carrier_overrides" />
           <item type="string" name="wifi_softap_auto_shutdown_timeout_expired_title" />
           <item type="string" name="wifi_softap_auto_shutdown_timeout_expired_summary" />
           <item type="string" name="wifi_sim_required_title" />
@@ -323,6 +343,42 @@
           <item type="string" name="wifi_interface_priority_message_plural" />
           <item type="string" name="wifi_interface_priority_approve" />
           <item type="string" name="wifi_interface_priority_reject" />
+          <item type="string" name="wifi_interface_priority_interface_name_sta" />
+          <item type="string" name="wifi_interface_priority_interface_name_ap" />
+          <item type="string" name="wifi_interface_priority_interface_name_ap_bridge" />
+          <item type="string" name="wifi_interface_priority_interface_name_p2p" />
+          <item type="string" name="wifi_interface_priority_interface_name_nan" />
+          <item type="string" name="wifi_ca_cert_dialog_title" />
+          <item type="string" name="wifi_ca_cert_dialog_continue_text" />
+          <item type="string" name="wifi_ca_cert_dialog_abort_text" />
+          <item type="string" name="wifi_ca_cert_dialog_message_hint" />
+          <item type="string" name="wifi_ca_cert_dialog_message_server_name_text" />
+          <item type="string" name="wifi_ca_cert_dialog_message_issuer_name_text" />
+          <item type="string" name="wifi_ca_cert_dialog_message_organization_text" />
+          <item type="string" name="wifi_ca_cert_dialog_message_contact_text" />
+          <item type="string" name="wifi_ca_cert_dialog_message_signature_name_text" />
+          <item type="string" name="wifi_ca_cert_notification_title" />
+          <item type="string" name="wifi_ca_cert_notification_message" />
+          <item type="string" name="wifi_ca_cert_failed_to_install_ca_cert" />
+          <item type="string" name="wifi_ca_cert_dialog_preT_title" />
+          <item type="string" name="wifi_ca_cert_dialog_preT_continue_text" />
+          <item type="string" name="wifi_ca_cert_dialog_preT_abort_text" />
+          <item type="string" name="wifi_ca_cert_dialog_preT_message_hint" />
+          <item type="string" name="wifi_ca_cert_dialog_preT_message_link" />
+          <item type="string" name="wifi_ca_cert_notification_preT_title" />
+          <item type="string" name="wifi_ca_cert_notification_preT_message" />
+          <item type="string" name="wifi_ca_cert_notification_preT_continue_text" />
+          <item type="string" name="wifi_ca_cert_notification_preT_abort_text" />
+          <item type="string" name="wifi_tofu_invalid_cert_chain_title" />
+          <item type="string" name="wifi_tofu_invalid_cert_chain_message" />
+          <item type="string" name="wifi_tofu_invalid_cert_chain_ok_text" />
+          <item type="string" name="wifi_network_disabled_by_admin_title" />
+          <item type="string" name="wifi_network_disabled_by_admin_message" />
+          <item type="string" name="wifi_network_disabled_by_admin_button" />
+          <item type="string" name="wifi_enabled_apm_first_time_title" />
+          <item type="string" name="wifi_enabled_apm_first_time_message" />
+          <item type="string" name="apm_enabled_first_time_title" />
+          <item type="string" name="apm_enabled_first_time_message" />
           <!-- Params from strings.xml that can be overlayed -->
 
           <!-- Params from styles.xml that can be overlayed -->

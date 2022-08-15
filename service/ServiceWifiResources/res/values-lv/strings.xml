@@ -27,6 +27,7 @@
     <string name="notification_channel_network_status" msgid="1631786866932924838">"Tīkla statuss"</string>
     <string name="notification_channel_network_alerts" msgid="1391603215241200880">"Tīkla brīdinājumi"</string>
     <string name="notification_channel_network_available" msgid="8454366142428864948">"Tīkls ir pieejams"</string>
+    <string name="notification_channel_apm_alerts" msgid="6775293475896473489">"APM brīdinājumi"</string>
     <string name="wifi_suggestion_title" msgid="2564179935989099139">"Vai atļaut ieteiktos Wi‑Fi tīklus?"</string>
     <string name="wifi_suggestion_content" msgid="6985149577828091835">"Lietotnes <xliff:g id="NAME">%s</xliff:g> ieteiktie tīkli. Ierīcē var tikt automātiski izveidots savienojums."</string>
     <string name="wifi_suggestion_action_allow_app" msgid="7757859972144671588">"Atļaut"</string>
@@ -52,8 +53,8 @@
     <string name="accept" msgid="8346431649376483879">"Piekrist"</string>
     <string name="decline" msgid="4172251727603762084">"Noraidīt"</string>
     <string name="ok" msgid="847575529546290102">"Labi"</string>
-    <string name="wifi_p2p_invitation_sent_title" msgid="6552639940428040869">"Ielūgums ir nosūtīts."</string>
-    <string name="wifi_p2p_invitation_to_connect_title" msgid="8917157937652519251">"Ielūgums izveidot savienojumu"</string>
+    <string name="wifi_p2p_invitation_sent_title" msgid="6552639940428040869">"Uzaicinājums ir nosūtīts."</string>
+    <string name="wifi_p2p_invitation_to_connect_title" msgid="8917157937652519251">"Uzaicinājums izveidot savienojumu"</string>
     <string name="wifi_p2p_from_message" msgid="5921308150192756898">"No:"</string>
     <string name="wifi_p2p_to_message" msgid="3809923305696994787">"Kam:"</string>
     <string name="wifi_p2p_enter_pin_message" msgid="5200220251738047620">"Ierakstiet pieprasīto PIN:"</string>
@@ -125,6 +126,11 @@
     <string name="wifi_interface_priority_message_plural" msgid="8178086373318831859">"Var rasties problēmas ar šīm lietotnēm: <xliff:g id="APPS">%3$s</xliff:g>."</string>
     <string name="wifi_interface_priority_approve" msgid="7877379614986261096">"Atļaut"</string>
     <string name="wifi_interface_priority_reject" msgid="1378461018835886777">"Neatļaut"</string>
+    <string name="wifi_interface_priority_interface_name_sta" msgid="5107477901500010776">"Stacijas režīms (STA)"</string>
+    <string name="wifi_interface_priority_interface_name_ap" msgid="161777054136866061">"Wi-Fi tīklājs"</string>
+    <string name="wifi_interface_priority_interface_name_ap_bridge" msgid="1270364818879977821">"Wi-Fi tīklājs"</string>
+    <string name="wifi_interface_priority_interface_name_p2p" msgid="1278122698099149708">"Wi-Fi Direct"</string>
+    <string name="wifi_interface_priority_interface_name_nan" msgid="8812888073122966870">"Wi‑Fi Aware"</string>
     <string name="wifi_ca_cert_dialog_title" msgid="3872340345882915806">"Vai šis tīkls ir uzticams?"</string>
     <string name="wifi_ca_cert_dialog_continue_text" msgid="1674156611893471003">"Jā, izveidot savienojumu"</string>
     <string name="wifi_ca_cert_dialog_abort_text" msgid="1303170595421648059">"Nē, neizveidot savienojumu"</string>
@@ -137,6 +143,9 @@
     <string name="wifi_ca_cert_notification_title" msgid="537569884930429796">"Nepieciešama tīkla verifikācija"</string>
     <string name="wifi_ca_cert_notification_message" msgid="6413248690626616961">"Pirms savienojuma izveides pārskatiet detalizēto informāciju par tīklu <xliff:g id="SSID">%1$s</xliff:g>. Pieskarieties, lai turpinātu."</string>
     <string name="wifi_ca_cert_failed_to_install_ca_cert" msgid="4864192219789736195">"Neizdevās instalēt sertifikātu."</string>
+    <string name="wifi_tofu_invalid_cert_chain_title" msgid="332710627417595752">"Nevar izveidot savienojumu ar tīklu <xliff:g id="VALUE">%1$s</xliff:g>"</string>
+    <string name="wifi_tofu_invalid_cert_chain_message" msgid="7047987920029432392">"Servera sertifikātu ķēde ir nederīga."</string>
+    <string name="wifi_tofu_invalid_cert_chain_ok_text" msgid="9098567577510279854">"Labi"</string>
     <string name="wifi_ca_cert_dialog_preT_title" msgid="6916320484037009061">"Nevar verificēt šo tīklu"</string>
     <string name="wifi_ca_cert_dialog_preT_continue_text" msgid="3181614240421159530">"Tomēr izveidot savienojumu"</string>
     <string name="wifi_ca_cert_dialog_preT_abort_text" msgid="1195575129023960325">"Neizveidot savienojumu"</string>
@@ -150,4 +159,14 @@
     <string name="wifi_enable_request_dialog_message" msgid="6395169178524938278">"Varat izslēgt Wi-Fi savienojumu ātrajos iestatījumos."</string>
     <string name="wifi_enable_request_dialog_positive_button" msgid="6050832555821470466">"Atļaut"</string>
     <string name="wifi_enable_request_dialog_negative_button" msgid="4754219902374918882">"Neatļaut"</string>
+    <!-- no translation found for wifi_network_disabled_by_admin_title (9057697656855227293) -->
+    <skip />
+    <!-- no translation found for wifi_network_disabled_by_admin_message (7830360441333155462) -->
+    <skip />
+    <!-- no translation found for wifi_network_disabled_by_admin_button (3350310756265122689) -->
+    <skip />
+    <string name="wifi_enabled_apm_first_time_title" msgid="8764862768737059575">"Jūs ieslēdzāt Wi‑Fi"</string>
+    <string name="wifi_enabled_apm_first_time_message" msgid="4481035490155027372">"Jūsu tālrunī joprojām būs ieslēgts Wi-Fi lidojuma režīmā, ja vien to neizslēgsiet šajā režīmā."</string>
+    <string name="apm_enabled_first_time_title" msgid="2534167413190488009">"Wi‑Fi joprojām ieslēgts"</string>
+    <string name="apm_enabled_first_time_message" msgid="3441803973110703716">"Jūsu tālrunī joprojām būs ieslēgts Wi-Fi lidojuma režīmā, ja vien to neizslēgsiet šajā režīmā."</string>
 </resources>
