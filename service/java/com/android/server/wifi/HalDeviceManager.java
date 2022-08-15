@@ -2182,8 +2182,9 @@ public class HalDeviceManager {
     private boolean canIfaceComboSupportRequestedIfaceCombo(
             int[] chipIfaceCombo, int[] requestedIfaceCombo) {
         if (VDBG) {
-            Log.d(TAG, "canIfaceComboSupportRequest: chipIfaceCombo=" + chipIfaceCombo
-                    + ", requestedIfaceCombo=" + requestedIfaceCombo);
+            Log.d(TAG, "canIfaceComboSupportRequest: chipIfaceCombo="
+                    + Arrays.toString(chipIfaceCombo) + ", requestedIfaceCombo="
+                    + Arrays.toString(requestedIfaceCombo));
         }
         for (int ifaceType : IFACE_TYPES_BY_PRIORITY) {
             if (chipIfaceCombo[ifaceType] < requestedIfaceCombo[ifaceType]) {
@@ -2198,8 +2199,8 @@ public class HalDeviceManager {
     private boolean isItPossibleToCreateIfaceCombo(WifiChipInfo[] chipInfos,
             long requiredChipCapabilities, int[] ifaceCombo) {
         if (VDBG) {
-            Log.d(TAG, "isItPossibleToCreateIfaceCombo: chipInfos=" + Arrays.deepToString(chipInfos)
-                    + ", ifaceType=" + ifaceCombo
+            Log.d(TAG, "isItPossibleToCreateIfaceCombo: chipInfos=" + Arrays.toString(chipInfos)
+                    + ", ifaceType=" + Arrays.toString(ifaceCombo)
                     + ", requiredChipCapabilities=" + requiredChipCapabilities);
         }
 

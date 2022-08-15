@@ -49,6 +49,7 @@ import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -1316,7 +1317,8 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
 
     private void copyArray(byte[] from, byte[] to) {
         if (from == null || to == null || from.length != to.length) {
-            Log.e(TAG, "copyArray error: from=" + from + ", to=" + to);
+            Log.e(TAG, "copyArray error: from=" + Arrays.toString(from) + ", to="
+                    + Arrays.toString(to));
             return;
         }
         for (int i = 0; i < from.length; ++i) {
