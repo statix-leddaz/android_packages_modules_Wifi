@@ -1006,7 +1006,7 @@ public class WifiConfiguration implements Parcelable {
      */
     public int networkId;
 
-    // Fixme We need remove this field to use only Quality network selection status only
+    // TODO (b/235236813): Remove this field and use quality network selection status instead.
     /**
      * The current status of this network configuration entry.
      * @see Status
@@ -2127,10 +2127,16 @@ public class WifiConfiguration implements Parcelable {
          */
         public static final int DISABLED_CONSECUTIVE_FAILURES = 12;
         /**
+         * This code is used to disable a network when a security params is disabled
+         * by the transition disable indication.
+         * @hide
+         */
+        public static final int DISABLED_TRANSITION_DISABLE_INDICATION = 13;
+        /**
          * All other disable reasons should be strictly less than this value.
          * @hide
          */
-        public static final int NETWORK_SELECTION_DISABLED_MAX = 13;
+        public static final int NETWORK_SELECTION_DISABLED_MAX = 14;
 
         /**
          * Get an integer that is equal to the maximum integer value of all the
@@ -2298,6 +2304,12 @@ public class WifiConfiguration implements Parcelable {
                             1,
                             5 * 60 * 1000));
 
+            reasons.append(DISABLED_TRANSITION_DISABLE_INDICATION,
+                    new DisableReasonInfo(
+                            "NETWORK_SELECTION_DISABLED_TRANSITION_DISABLE_INDICATION",
+                            1,
+                            DisableReasonInfo.PERMANENT_DISABLE_TIMEOUT));
+
             return reasons;
         }
 
@@ -2354,6 +2366,8 @@ public class WifiConfiguration implements Parcelable {
          * Last time we temporarily disabled the configuration
          */
         private long mTemporarilyDisabledTimestamp = INVALID_NETWORK_SELECTION_DISABLE_TIMESTAMP;
+
+        private long mTemporarilyDisabledEndTime = INVALID_NETWORK_SELECTION_DISABLE_TIMESTAMP;
 
         /**
          * counter for each Network selection disable reason
@@ -2733,8 +2747,7 @@ public class WifiConfiguration implements Parcelable {
         }
 
         /**
-         * @param timeStamp Set when current network is disabled in millisecond since January 1,
-         * 1970 00:00:00.0 UTC
+         * @param timeStamp Set when current network is disabled in millisecond since boot.
          * @hide
          */
         public void setDisableTime(long timeStamp) {
@@ -2742,11 +2755,28 @@ public class WifiConfiguration implements Parcelable {
         }
 
         /**
-         * Returns when the current network was disabled, in milliseconds since January 1,
-         * 1970 00:00:00.0 UTC.
+         * Returns when the current network was disabled, in milliseconds since boot.
          */
         public long getDisableTime() {
             return mTemporarilyDisabledTimestamp;
+        }
+
+        /**
+         * Set the expected time for this WifiConfiguration to get re-enabled.
+         * Timestamp is in milliseconds since boot.
+         * @hide
+         */
+        public void setDisableEndTime(long timestamp) {
+            mTemporarilyDisabledEndTime = timestamp;
+        }
+
+        /**
+         * Returns the expected time for this WifiConfiguration to get re-enabled.
+         * Timestamp is in milliseconds since boot.
+         * @hide
+         */
+        public long getDisableEndTime() {
+            return mTemporarilyDisabledEndTime;
         }
 
         /**
@@ -2848,6 +2878,7 @@ public class WifiConfiguration implements Parcelable {
                         source.mNetworkSeclectionDisableCounter[index];
             }
             mTemporarilyDisabledTimestamp = source.mTemporarilyDisabledTimestamp;
+            mTemporarilyDisabledEndTime = source.mTemporarilyDisabledEndTime;
             mNetworkSelectionBSSID = source.mNetworkSelectionBSSID;
             setSeenInLastQualifiedNetworkSelection(source.getSeenInLastQualifiedNetworkSelection());
             setCandidate(source.getCandidate());
@@ -2869,6 +2900,7 @@ public class WifiConfiguration implements Parcelable {
                 dest.writeInt(getDisableReasonCounter(index));
             }
             dest.writeLong(getDisableTime());
+            dest.writeLong(getDisableEndTime());
             dest.writeString(getNetworkSelectionBSSID());
             if (getConnectChoice() != null) {
                 dest.writeInt(CONNECT_CHOICE_EXISTS);
@@ -2892,6 +2924,7 @@ public class WifiConfiguration implements Parcelable {
                 setDisableReasonCounter(index, in.readInt());
             }
             setDisableTime(in.readLong());
+            setDisableEndTime(in.readLong());
             setNetworkSelectionBSSID(in.readString());
             if (in.readInt() == CONNECT_CHOICE_EXISTS) {
                 setConnectChoice(in.readString());
@@ -3264,6 +3297,7 @@ public class WifiConfiguration implements Parcelable {
                 .append(" CarrierId: ").append(this.carrierId)
                 .append(" SubscriptionId: ").append(this.subscriptionId)
                 .append(" SubscriptionGroup: ").append(this.mSubscriptionGroup)
+                .append(" Currently Connected: ").append(this.isCurrentlyConnected)
                 .append('\n');
 
 
@@ -3456,6 +3490,17 @@ public class WifiConfiguration implements Parcelable {
                 sbuf.append(" blackListed: ").append(Long.toString(diff / 1000)).append("sec ");
             }
         }
+        if (mNetworkSelectionStatus.getDisableEndTime()
+                != NetworkSelectionStatus.INVALID_NETWORK_SELECTION_DISABLE_TIMESTAMP) {
+            sbuf.append('\n');
+            long diff = mNetworkSelectionStatus.getDisableEndTime() - now_ms;
+            if (diff <= 0) {
+                sbuf.append(" blockListed remaining time <incorrect>");
+            } else {
+                sbuf.append(" blocklist end in: ").append(Long.toString(diff / 1000))
+                        .append("sec ");
+            }
+        }
         if (creatorUid != 0) sbuf.append(" cuid=" + creatorUid);
         if (creatorName != null) sbuf.append(" cname=" + creatorName);
         if (lastUpdateUid != 0) sbuf.append(" luid=" + lastUpdateUid);
@@ -3552,7 +3597,8 @@ public class WifiConfiguration implements Parcelable {
             if (TextUtils.isEmpty(keyMgmt)) {
                 throw new IllegalStateException("Not an EAP network");
             }
-            String keyId = trimStringForKeyId(SSID) + "_" + keyMgmt + "_"
+            String keyId = (!TextUtils.isEmpty(SSID) && SSID.charAt(0) != '\"'
+                    ? SSID.toLowerCase() : SSID) + "_" + keyMgmt + "_"
                     + trimStringForKeyId(enterpriseConfig.getKeyId(current != null
                     ? current.enterpriseConfig : null));
 
@@ -3673,7 +3719,7 @@ public class WifiConfiguration implements Parcelable {
             return mPasspointUniqueId;
         }
 
-        String key = SSID + getDefaultSecurityType();
+        String key = getSsidAndSecurityTypeString();
         if (!shared) {
             key += "-" + UserHandle.getUserHandleForUid(creatorUid).getIdentifier();
         }
@@ -3685,7 +3731,8 @@ public class WifiConfiguration implements Parcelable {
      *  return the SSID + security type in String format.
      */
     public String getSsidAndSecurityTypeString() {
-        return SSID + getDefaultSecurityType();
+        return (!TextUtils.isEmpty(SSID) && SSID.charAt(0) != '\"' ? SSID.toLowerCase() : SSID)
+                + getDefaultSecurityType();
     }
 
     /**
@@ -3779,7 +3826,6 @@ public class WifiConfiguration implements Parcelable {
      * @param httpProxy {@link ProxyInfo} representing the httpProxy to be used by this
      *                  WifiConfiguration. Setting this to {@code null} will explicitly set no
      *                  proxy, removing any proxy that was previously set.
-     * @exception IllegalArgumentException for invalid httpProxy
      */
     public void setHttpProxy(ProxyInfo httpProxy) {
         if (httpProxy == null) {
@@ -3804,7 +3850,7 @@ public class WifiConfiguration implements Parcelable {
                     Arrays.asList(exclusionList));
         }
         if (!httpProxyCopy.isValid()) {
-            throw new IllegalArgumentException("Invalid ProxyInfo: " + httpProxyCopy.toString());
+            Log.w(TAG, "ProxyInfo is not valid: " + httpProxyCopy);
         }
         mIpConfiguration.setProxySettings(proxySettingCopy);
         mIpConfiguration.setHttpProxy(httpProxyCopy);
@@ -3938,6 +3984,7 @@ public class WifiConfiguration implements Parcelable {
             mDppConnector = source.mDppConnector.clone();
             mDppCSignKey = source.mDppCSignKey.clone();
             mDppNetAccessKey = source.mDppNetAccessKey.clone();
+            isCurrentlyConnected = source.isCurrentlyConnected;
         }
     }
 
@@ -4031,6 +4078,7 @@ public class WifiConfiguration implements Parcelable {
         dest.writeByteArray(mDppConnector);
         dest.writeByteArray(mDppCSignKey);
         dest.writeByteArray(mDppNetAccessKey);
+        dest.writeBoolean(isCurrentlyConnected);
     }
 
     /** Implement the Parcelable interface {@hide} */
@@ -4126,6 +4174,7 @@ public class WifiConfiguration implements Parcelable {
                 config.mDppConnector = in.createByteArray();
                 config.mDppCSignKey = in.createByteArray();
                 config.mDppNetAccessKey = in.createByteArray();
+                config.isCurrentlyConnected = in.readBoolean();
                 return config;
             }
 
@@ -4165,6 +4214,17 @@ public class WifiConfiguration implements Parcelable {
     public boolean isMostRecentlyConnected = false;
 
     /**
+     * Whether the network is currently connected or not.
+     * Note: May be true even if {@link #status} is not CURRENT, since a config
+     *       can be connected, but disabled for network selection.
+     * TODO (b/235236813): This field may be redundant, since we have information
+     *       like {@link #status} and quality network selection status. May need
+     *       to clean up the fields used for network selection.
+     * @hide
+     */
+    public boolean isCurrentlyConnected = false;
+
+    /**
      * Whether the key mgmt indicates if the WifiConfiguration needs a preSharedKey or not.
      * @return true if preSharedKey is needed, false otherwise.
      * @hide
@@ -4192,7 +4252,7 @@ public class WifiConfiguration implements Parcelable {
             return mPasspointUniqueId;
         }
 
-        String key = SSID + getDefaultSecurityType();
+        String key = getSsidAndSecurityTypeString();
         if (!shared) {
             key += "-" + UserHandle.getUserHandleForUid(creatorUid).getIdentifier();
         }
@@ -4289,7 +4349,8 @@ public class WifiConfiguration implements Parcelable {
             // subscriptionId (the default one) first.
             return subscriptionId + "-" + mPasspointUniqueId;
         } else {
-            String key = SSID + getSecurityTypeName(securityType);
+            String key = (!TextUtils.isEmpty(SSID) && SSID.charAt(0) != '\"'
+                    ? SSID.toLowerCase() : SSID) + getSecurityTypeName(securityType);
             if (!shared) {
                 key += "-" + UserHandle.getUserHandleForUid(creatorUid).getIdentifier();
             }

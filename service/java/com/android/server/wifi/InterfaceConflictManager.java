@@ -23,8 +23,14 @@ import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_P2P;
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_STA;
 
 import android.annotation.IntDef;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.res.Resources;
+import android.net.NetworkInfo;
 import android.net.wifi.WifiContext;
+import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Message;
 import android.os.WorkSource;
 import android.text.TextUtils;
@@ -63,6 +69,7 @@ public class InterfaceConflictManager {
     private final Resources mResources;
     private final boolean mUserApprovalNeeded;
     private final Set<String> mUserApprovalExemptedPackages;
+    private final boolean mUserApprovalNotRequireForDisconnectedP2p;
     private boolean mUserApprovalNeededOverride = false;
     private boolean mUserApprovalNeededOverrideValue = false;
 
@@ -70,6 +77,11 @@ public class InterfaceConflictManager {
     private boolean mUserApprovalPending = false;
     private String mUserApprovalPendingTag = null;
     private boolean mUserJustApproved = false;
+    private boolean mIsP2pConnected = false;
+
+    private WaitingState mCurrentWaitingState;
+    private State mCurrentTargetState;
+    private WifiDialogManager.DialogHandle mCurrentDialogHandle;
 
     private static final String MESSAGE_BUNDLE_KEY_PENDING_USER = "pending_user_decision";
 
@@ -90,6 +102,28 @@ public class InterfaceConflictManager {
         mUserApprovalExemptedPackages =
                 (packageList == null || packageList.length == 0) ? Collections.emptySet()
                         : new ArraySet<>(packageList);
+        mUserApprovalNotRequireForDisconnectedP2p = mResources.getBoolean(
+                R.bool.config_wifiUserApprovalNotRequireForDisconnectedP2p);
+
+        // Monitor P2P connection for auto-approval
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
+        mContext.registerReceiver(new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                if (action.equals(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)) {
+                    NetworkInfo mNetworkInfo = (NetworkInfo) intent.getParcelableExtra(
+                            WifiP2pManager.EXTRA_NETWORK_INFO);
+                    if (mNetworkInfo.getDetailedState() == NetworkInfo.DetailedState.CONNECTED) {
+                        mIsP2pConnected = true;
+                    } else {
+                        mIsP2pConnected = false;
+                    }
+                }
+
+            }
+        }, intentFilter);
     }
 
     /**
@@ -220,13 +254,16 @@ public class InterfaceConflictManager {
             // is this a command which was waiting for a user decision?
             boolean isReexecutedCommand = msg.getData().getBoolean(
                     MESSAGE_BUNDLE_KEY_PENDING_USER, false);
-            if (isReexecutedCommand) {
+            // is this a command that was issued while we were already waiting for a user decision?
+            boolean wasInWaitingState = WaitingState.wasMessageInWaitingState(msg);
+            if (isReexecutedCommand || (wasInWaitingState && !mUserJustApproved)) {
                 mUserApprovalPending = false;
                 mUserApprovalPendingTag = null;
 
                 if (mVerboseLoggingEnabled) {
-                    Log.d(TAG, tag + ": Re-executing a command with user approval result - "
-                            + mUserJustApproved);
+                    Log.d(TAG, tag + ": Executing a command with user approval result: "
+                            + mUserJustApproved + ", isReexecutedCommand: " + isReexecutedCommand
+                            + ", wasInWaitingState: " + wasInWaitingState);
                 }
                 return mUserJustApproved ? ICM_EXECUTE_COMMAND : ICM_ABORT_COMMAND;
             }
@@ -252,15 +289,13 @@ public class InterfaceConflictManager {
                 return ICM_EXECUTE_COMMAND;
             }
 
-            displayUserApprovalDialog(createIfaceType, requestorWs, impact,
-                    (result) -> {
-                        if (mVerboseLoggingEnabled) {
-                            Log.d(TAG, tag + ": User response to creating " + getInterfaceName(
-                                    createIfaceType) + ": " + result);
-                        }
-                        mUserJustApproved = result;
-                        waitingState.sendTransitionStateCommand(targetState);
-                    });
+            if (mUserApprovalNotRequireForDisconnectedP2p && !mIsP2pConnected
+                    && impact.size() == 1 && impact.get(0).first == HDM_CREATE_IFACE_P2P) {
+                Log.d(TAG, tag
+                        + ": existing inferface is p2p and it is not connected - proceeding");
+                return ICM_EXECUTE_COMMAND;
+            }
+
             // defer message to have it executed again automatically when switching
             // states - want to do it now so that it will be at the top of the queue
             // when we switch back. Will need to skip it if the user rejected it!
@@ -270,6 +305,22 @@ public class InterfaceConflictManager {
 
             mUserApprovalPending = true;
             mUserApprovalPendingTag = tag;
+            mCurrentWaitingState = waitingState;
+            mCurrentTargetState = targetState;
+            mUserJustApproved = false;
+            mCurrentDialogHandle = createUserApprovalDialog(createIfaceType, requestorWs, impact,
+                    (result) -> {
+                        if (mVerboseLoggingEnabled) {
+                            Log.d(TAG, tag + ": User response to creating " + getInterfaceName(
+                                    createIfaceType) + ": " + result);
+                        }
+                        mUserJustApproved = result;
+                        mCurrentWaitingState = null;
+                        mCurrentTargetState = null;
+                        mCurrentDialogHandle = null;
+                        waitingState.sendTransitionStateCommand(targetState);
+                    });
+            mCurrentDialogHandle.launchDialog();
 
             return ICM_SKIP_COMMAND_WAIT_FOR_USER;
         }
@@ -284,7 +335,7 @@ public class InterfaceConflictManager {
      *               their corresponding impacted WorkSources).
      * @param handleResult A Consumer to execute with results.
      */
-    private void displayUserApprovalDialog(
+    private WifiDialogManager.DialogHandle createUserApprovalDialog(
             @HalDeviceManager.HdmIfaceTypeForCreation int createIfaceType,
             WorkSource requestorWs,
             List<Pair<Integer, WorkSource>> impact,
@@ -297,8 +348,10 @@ public class InterfaceConflictManager {
         CharSequence requestorAppName = mFrameworkFacade.getAppName(mContext,
                 requestorWs.getPackageName(0), requestorWs.getUid(0));
         String requestedInterface = getInterfaceName(createIfaceType);
+        Set<String> impactedInterfacesSet = new HashSet<>();
         Set<String> impactedPackagesSet = new HashSet<>();
         for (Pair<Integer, WorkSource> detail : impact) {
+            impactedInterfacesSet.add(getInterfaceName(detail.first));
             for (int j = 0; j < detail.second.size(); ++j) {
                 impactedPackagesSet.add(
                         mFrameworkFacade.getAppName(mContext, detail.second.getPackageName(j),
@@ -306,14 +359,17 @@ public class InterfaceConflictManager {
             }
         }
         String impactedPackages = TextUtils.join(", ", impactedPackagesSet);
+        String impactedInterfaces = TextUtils.join(", ", impactedInterfacesSet);
 
-        mWifiDialogManager.createSimpleDialog(
-                mResources.getString(R.string.wifi_interface_priority_title, requestorAppName),
+        return mWifiDialogManager.createLegacySimpleDialog(
+                mResources.getString(R.string.wifi_interface_priority_title,
+                        requestorAppName, requestedInterface, impactedPackages, impactedInterfaces),
                 impactedPackagesSet.size() == 1 ? mResources.getString(
                         R.string.wifi_interface_priority_message, requestorAppName,
-                        requestedInterface, impactedPackages)
+                        requestedInterface, impactedPackages, impactedInterfaces)
                         : mResources.getString(R.string.wifi_interface_priority_message_plural,
-                                requestorAppName, requestedInterface, impactedPackages),
+                                requestorAppName, requestedInterface, impactedPackages,
+                                impactedInterfaces),
                 mResources.getString(R.string.wifi_interface_priority_approve),
                 mResources.getString(R.string.wifi_interface_priority_reject),
                 null,
@@ -345,23 +401,44 @@ public class InterfaceConflictManager {
                     public void onCancelled() {
                         onNegativeButtonClicked();
                     }
-                }, mThreadRunner).launchDialog();
+                }, mThreadRunner);
     }
 
     private String getInterfaceName(@HalDeviceManager.HdmIfaceTypeForCreation int createIfaceType) {
         switch (createIfaceType) {
             case HDM_CREATE_IFACE_STA:
-                return "STA";
+                return mResources.getString(R.string.wifi_interface_priority_interface_name_sta);
             case HDM_CREATE_IFACE_AP:
-                return "AP";
+                return mResources.getString(R.string.wifi_interface_priority_interface_name_ap);
             case HDM_CREATE_IFACE_AP_BRIDGE:
-                return "AP";
+                return mResources.getString(
+                        R.string.wifi_interface_priority_interface_name_ap_bridge);
             case HDM_CREATE_IFACE_P2P:
-                return "Wi-Fi Direct";
+                return mResources.getString(R.string.wifi_interface_priority_interface_name_p2p);
             case HDM_CREATE_IFACE_NAN:
-                return "Wi-Fi Aware";
+                return mResources.getString(R.string.wifi_interface_priority_interface_name_nan);
         }
         return "Unknown";
+    }
+
+    /**
+     * Reset the current state of InterfaceConflictManager, dismiss any open dialogs, and transition
+     * any waiting StateMachines back to their target state.
+     */
+    public void reset() {
+        synchronized (mLock) {
+            if (mCurrentWaitingState != null && mCurrentTargetState != null) {
+                mCurrentWaitingState.sendTransitionStateCommand(mCurrentTargetState);
+            }
+            mCurrentWaitingState = null;
+            mCurrentTargetState = null;
+            if (mCurrentDialogHandle != null) {
+                mCurrentDialogHandle.dismissDialog();
+            }
+            mUserApprovalPending = false;
+            mUserApprovalPendingTag = null;
+            mUserJustApproved = false;
+        }
     }
 
     /**
@@ -375,5 +452,7 @@ public class InterfaceConflictManager {
         pw.println("  mUserApprovalPending=" + mUserApprovalPending);
         pw.println("  mUserApprovalPendingTag=" + mUserApprovalPendingTag);
         pw.println("  mUserJustApproved=" + mUserJustApproved);
+        pw.println("  mUserApprovalNotRequireForDisconnectedP2p="
+                + mUserApprovalNotRequireForDisconnectedP2p);
     }
 }

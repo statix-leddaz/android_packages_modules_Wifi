@@ -451,7 +451,7 @@ public class WifiCarrierInfoManager {
             SubscriptionManager.OnSubscriptionsChangedListener {
         @Override
         public void onSubscriptionsChanged() {
-            mActiveSubInfos = mSubscriptionManager.getActiveSubscriptionInfoList();
+            mActiveSubInfos = mSubscriptionManager.getCompleteActiveSubscriptionInfoList();
             mSubIdToSimInfoSparseArray.clear();
             mSubscriptionGroupMap.clear();
             if (mVerboseLogEnabled) {
@@ -637,7 +637,7 @@ public class WifiCarrierInfoManager {
             return false;
         }
         for (String curSsid : macRandDisabledSsids) {
-            if (sanitizedSsid.equals(curSsid)) {
+            if (TextUtils.equals(sanitizedSsid, curSsid)) {
                 return true;
             }
         }
