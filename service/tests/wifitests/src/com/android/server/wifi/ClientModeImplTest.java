@@ -965,7 +965,8 @@ public class ClientModeImplTest extends WifiBaseTest {
                         SupplicantState.COMPLETED));
         mLooper.dispatchAll();
 
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
+        //mCmi.sendMessage(ClientModeImpl.CMD_CONNECTABLE_STATE_SETUP);
         verify(mContext).sendStickyBroadcastAsUser(
                 argThat(new NetworkStateChangedIntentMatcher(CONNECTING)), any());
         verify(mContext).sendStickyBroadcastAsUser(
@@ -1071,7 +1072,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         mCmi.sendMessage(WifiMonitor.NETWORK_CONNECTION_EVENT,
                 new NetworkConnectionEventInfo(0, wifiSsid, TEST_BSSID_STR, false));
         mLooper.dispatchAll();
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
     }
 
     /**
@@ -1111,7 +1112,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         // then move to next state
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
     }
 
     /**
@@ -1127,7 +1128,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mSimRequiredNotifier, never()).showSimRequiredNotification(any(), any());
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
     }
 
     /**
@@ -1160,7 +1161,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mSimRequiredNotifier, never()).showSimRequiredNotification(any(), any());
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
     }
 
     /**
@@ -1823,7 +1824,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                         SupplicantState.COMPLETED));
         mLooper.dispatchAll();
 
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
 
         // Connect to a different network
         WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
@@ -1868,7 +1869,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                         SupplicantState.COMPLETED));
         mLooper.dispatchAll();
 
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
         reset(mWifiNative);
 
         // Simulate the target network removal & the disconnect trigger.
@@ -1949,7 +1950,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                         SupplicantState.COMPLETED));
         mLooper.dispatchAll();
 
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
         injectDhcpFailure();
         mLooper.dispatchAll();
 
@@ -2434,7 +2435,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                         SupplicantState.COMPLETED));
         mLooper.dispatchAll();
 
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
 
         // trigger removal callback to trigger disconnect.
         WifiConfiguration removedConfig = new WifiConfiguration();
@@ -4320,7 +4321,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                         SupplicantState.COMPLETED));
         mLooper.dispatchAll();
 
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
 
         DhcpResultsParcelable dhcpResults = new DhcpResultsParcelable();
         dhcpResults.baseConfiguration = new StaticIpConfiguration();
@@ -4822,7 +4823,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                         SupplicantState.COMPLETED));
         mLooper.dispatchAll();
 
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
 
         // Verifies that WifiLastResortWatchdog be notified.
         DisconnectEventInfo disconnectEventInfo =
@@ -5235,7 +5236,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 TEST_BSSID_STR, SupplicantState.COMPLETED));
         mLooper.dispatchAll();
 
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
 
         DhcpResultsParcelable dhcpResults = new DhcpResultsParcelable();
         dhcpResults.baseConfiguration = new StaticIpConfiguration();
@@ -5503,7 +5504,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                         SupplicantState.COMPLETED));
         mLooper.dispatchAll();
 
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
 
         // got 4WAY_HANDSHAKE_TIMEOUT during this connection attempt
         DisconnectEventInfo disconnectEventInfo =
@@ -5906,7 +5907,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         mCmi.sendMessage(WifiMonitor.NETWORK_CONNECTION_EVENT,
                 new NetworkConnectionEventInfo(0, wifiSsid, TEST_BSSID_STR, false));
         mLooper.dispatchAll();
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
     }
 
     /**
@@ -5916,7 +5917,7 @@ public class ClientModeImplTest extends WifiBaseTest {
     public void testVenueUrlRequestForPasspointNetworks() throws Exception {
         setupPasspointConnection();
         verify(mPasspointManager).requestVenueUrlAnqpElement(any(ScanResult.class));
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
     }
 
     /**
@@ -5926,7 +5927,7 @@ public class ClientModeImplTest extends WifiBaseTest {
     public void testVenueUrlNotRequestedForNonPasspointNetworks() throws Exception {
         setupEapSimConnection();
         verify(mPasspointManager, never()).requestVenueUrlAnqpElement(any(ScanResult.class));
-        assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals("WaitBeforeL3ProvisioningState", getCurrentState().getName());
     }
 
     @Test
