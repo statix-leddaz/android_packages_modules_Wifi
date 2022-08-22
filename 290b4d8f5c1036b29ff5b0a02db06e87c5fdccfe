@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "ca178e81_f820aeb6",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1406251
+      },
+      "writtenOn": "2022-08-22T08:49:16Z",
+      "side": 1,
+      "message": "removed the moduleutils folder from NetworkStack module in aosp/2185339 completedly, also cleanup the unused classes in the wifi jarjar rule.\n",
+      "revId": "290b4d8f5c1036b29ff5b0a02db06e87c5fdccfe",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
