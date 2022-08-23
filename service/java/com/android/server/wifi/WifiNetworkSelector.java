@@ -461,7 +461,9 @@ public class WifiNetworkSelector {
             // Check if the scan results contain the currently connected BSSID's
             if (currentBssids.contains(scanResult.BSSID)) {
                 scanResultPresentForCurrentBssids.add(scanResult.BSSID);
-                validScanDetails.add(scanDetail);
+                if (!bssidBlocklist.contains(scanResult.BSSID)) {
+                    validScanDetails.add(scanDetail);
+                }
                 continue;
             }
 
