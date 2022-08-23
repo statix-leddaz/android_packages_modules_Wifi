@@ -113,6 +113,8 @@ public class HalDeviceManager {
     private ServiceManagerDeathRecipient mServiceManagerDeathRecipient;
     private boolean mIsBridgedSoftApSupported;
     private boolean mIsStaWithBridgedSoftApConcurrencySupported;
+    private boolean mWifiUserApprovalRequiredForD2dInterfacePriority;
+    private boolean mIsConcurrencyComboLoadedFromDriver;
     private ArrayMap<IWifiIface, SoftApManager> mSoftApManagers = new ArrayMap<>();
 
     // cache the value for supporting vendor HAL or not
@@ -175,6 +177,8 @@ public class HalDeviceManager {
         mIsBridgedSoftApSupported = res.getBoolean(R.bool.config_wifiBridgedSoftApSupported);
         mIsStaWithBridgedSoftApConcurrencySupported =
                 res.getBoolean(R.bool.config_wifiStaWithBridgedSoftApConcurrencySupported);
+        mWifiUserApprovalRequiredForD2dInterfacePriority =
+                res.getBoolean(R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority);
         mClock = clock;
         mWifiInjector = wifiInjector;
         mEventHandler = handler;
@@ -1850,11 +1854,7 @@ public class HalDeviceManager {
                                          + triedCount + " times");
                             }
                             WifiChipInfo[] wifiChipInfos = getAllChipInfo();
-                            if (wifiChipInfos != null) {
-                                mCachedStaticChipInfos =
-                                        convertWifiChipInfoToStaticChipInfos(getAllChipInfo());
-                                saveStaticChipInfoToStore(mCachedStaticChipInfos);
-                            } else {
+                            if (wifiChipInfos == null) {
                                 Log.e(TAG, "Started wifi but could not get current chip info.");
                             }
                             return true;
@@ -2412,13 +2412,14 @@ public class HalDeviceManager {
         }
 
         for (int createType: CREATE_TYPES_BY_PRIORITY) {
-            if (val1NumIfacesToBeRemoved[createType] < val2NumIfacesToBeRemoved[createType]) {
+            if (val1NumIfacesToBeRemoved[createType] != val2NumIfacesToBeRemoved[createType]) {
                 if (VDBG) {
-                    Log.d(TAG, "decision based on createType=" + createType + ": "
-                            + val1NumIfacesToBeRemoved[createType]
-                            + " < " + val2NumIfacesToBeRemoved[createType]);
+                    Log.d(TAG, "decision based on num ifaces to be removed, createType="
+                            + createType + ", new proposal will remove "
+                            + val1NumIfacesToBeRemoved[createType] + " iface, and old proposal"
+                            + "will remove " + val2NumIfacesToBeRemoved[createType] + " iface");
                 }
-                return true;
+                return val1NumIfacesToBeRemoved[createType] < val2NumIfacesToBeRemoved[createType];
             }
         }
 
@@ -2473,18 +2474,29 @@ public class HalDeviceManager {
      * interface request from |existingRequestorWsPriority|.
      *
      * Rule:
+     *  - If |mWifiUserApprovalRequiredForD2dInterfacePriority| is true, AND
+     *    |newRequestorWsPriority| > PRIORITY_BG, AND |requestedCreateType| is
+     *    HDM_CREATE_IFACE_P2P or HDM_CREATE_IFACE_NAN, then YES
      *  - If |newRequestorWsPriority| > |existingRequestorWsPriority|, then YES.
      *  - If they are at the same priority level, then
      *      - If both are privileged and not for the same interface type, then YES.
      *      - Else, NO.
      */
-    private static boolean allowedToDelete(
+    private boolean allowedToDelete(
             @HdmIfaceTypeForCreation int requestedCreateType,
             @RequestorWsPriority int newRequestorWsPriority,
             @HdmIfaceTypeForCreation int existingCreateType,
             @RequestorWsPriority int existingRequestorWsPriority) {
         if (!SdkLevel.isAtLeastS()) {
             return allowedToDeleteForR(requestedCreateType, existingCreateType);
+        }
+        if (mWifiUserApprovalRequiredForD2dInterfacePriority
+                && newRequestorWsPriority > PRIORITY_BG
+                && (requestedCreateType == HDM_CREATE_IFACE_AP
+                || requestedCreateType == HDM_CREATE_IFACE_AP_BRIDGE
+                || requestedCreateType == HDM_CREATE_IFACE_P2P
+                || requestedCreateType == HDM_CREATE_IFACE_NAN)) {
+            return true;
         }
         // If the new request is higher priority than existing priority, then the new requestor
         // wins. This is because at all other priority levels (except privileged), existing caller
@@ -2755,6 +2767,17 @@ public class HalDeviceManager {
                         Log.e(TAG, "executeChipReconfiguration: configureChip error: "
                                 + statusString(status));
                         return null;
+                    }
+                    if (!mIsConcurrencyComboLoadedFromDriver) {
+                        WifiChipInfo[] wifiChipInfos = getAllChipInfo();
+                        if (wifiChipInfos != null) {
+                            mCachedStaticChipInfos =
+                                    convertWifiChipInfoToStaticChipInfos(getAllChipInfo());
+                            saveStaticChipInfoToStore(mCachedStaticChipInfos);
+                            mIsConcurrencyComboLoadedFromDriver = true;
+                        } else {
+                            Log.e(TAG, "Configured chip but could not get current chip info.");
+                        }
                     }
                 } else {
                     // remove all interfaces on the delete list

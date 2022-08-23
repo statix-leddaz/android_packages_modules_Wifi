@@ -112,6 +112,7 @@ import android.os.test.TestLooper;
 import android.system.OsConstants;
 import android.util.Pair;
 
+import androidx.annotation.NonNull;
 import androidx.test.filters.SmallTest;
 
 import com.android.modules.utils.build.SdkLevel;
@@ -209,6 +210,8 @@ public class WifiVendorHalTest extends WifiBaseTest {
     private WifiGlobals mWifiGlobals;
     @Mock
     private SoftApManager mSoftApManager;
+    @Mock
+    private SsidTranslator mSsidTranslator;
 
     /**
      * Spy used to return the V1_1 IWifiChip mock object to simulate the 1.1 HAL running on the
@@ -216,8 +219,9 @@ public class WifiVendorHalTest extends WifiBaseTest {
      */
     private class WifiVendorHalSpyV1_1 extends WifiVendorHal {
         WifiVendorHalSpyV1_1(Context context, HalDeviceManager halDeviceManager, Handler handler,
-                WifiGlobals wifiGlobals) {
-            super(context, halDeviceManager, handler, wifiGlobals);
+                WifiGlobals wifiGlobals,
+                @NonNull SsidTranslator ssidTranslator) {
+            super(context, halDeviceManager, handler, wifiGlobals, ssidTranslator);
         }
 
         @Override
@@ -266,7 +270,7 @@ public class WifiVendorHalTest extends WifiBaseTest {
     private class WifiVendorHalSpyV1_2 extends WifiVendorHalSpyV1_1 {
         WifiVendorHalSpyV1_2(Context context, HalDeviceManager halDeviceManager, Handler handler,
                 WifiGlobals wifiGlobals) {
-            super(context, halDeviceManager, handler, wifiGlobals);
+            super(context, halDeviceManager, handler, wifiGlobals, mSsidTranslator);
         }
 
         @Override
@@ -446,7 +450,8 @@ public class WifiVendorHalTest extends WifiBaseTest {
         when(mResources.getBoolean(R.bool.config_wifiLinkLayerAllRadiosStatsAggregationEnabled))
                 .thenReturn(false);
         // Create the vendor HAL object under test.
-        mWifiVendorHal = new WifiVendorHal(mContext, mHalDeviceManager, mHandler, mWifiGlobals);
+        mWifiVendorHal = new WifiVendorHal(mContext, mHalDeviceManager, mHandler, mWifiGlobals,
+                mSsidTranslator);
 
         // Initialize the vendor HAL to capture the registered callback.
         mWifiVendorHal.initialize(mVendorHalDeathHandler);
@@ -455,7 +460,26 @@ public class WifiVendorHalTest extends WifiBaseTest {
         verify(mHalDeviceManager).registerStatusListener(
                 hdmCallbackCaptor.capture(), any(Handler.class));
         mHalDeviceManagerStatusCallbacks = hdmCallbackCaptor.getValue();
+        when(mSsidTranslator.getTranslatedSsidAndRecordBssidCharset(any(), any()))
+                .thenAnswer((Answer<WifiSsid>) invocation ->
+                        getTranslatedSsid(invocation.getArgument(0)));
+        when(mSsidTranslator.getAllPossibleOriginalSsids(any()))
+                .thenAnswer((Answer<List<WifiSsid>>) invocation -> {
+                    WifiSsid ssid = invocation.getArgument(0);
+                    if (ssid.getBytes().length > 32) {
+                        return Collections.emptyList();
+                    }
+                    return Collections.singletonList(ssid);
+                });
+    }
 
+    /** Mock translating an SSID */
+    private WifiSsid getTranslatedSsid(WifiSsid ssid) {
+        byte[] ssidBytes = ssid.getBytes();
+        for (int i = 0; i < ssidBytes.length; i++) {
+            ssidBytes[i]++;
+        }
+        return WifiSsid.fromBytes(ssidBytes);
     }
 
     /**
@@ -886,7 +910,7 @@ public class WifiVendorHalTest extends WifiBaseTest {
         }).when(mIWifiChip).getCapabilities(any(IWifiChip.getCapabilitiesCallback.class));
 
         mWifiVendorHal = new WifiVendorHalSpyV1_1(mContext, mHalDeviceManager, mHandler,
-                mWifiGlobals);
+                mWifiGlobals, mSsidTranslator);
         testGetSupportedFeaturesCommon(staIfaceHidlCaps, chipHidlCaps, expectedFeatureSet);
     }
 
@@ -2459,8 +2483,12 @@ public class WifiVendorHalTest extends WifiBaseTest {
         // Add an SSID that is too long (> 32 bytes) due to the multi-byte utf-8 characters
         roamingConfig.allowlistSsids.add("\"123456789012345678901234567890\u0F00\u05D0\"");
         when(mIWifiStaIface.configureRoaming(any())).thenReturn(mWifiStatusSuccess);
-        assertFalse(mWifiVendorHal.configureRoaming(TEST_IFACE_NAME, roamingConfig));
-        verify(mIWifiStaIface, never()).configureRoaming(any());
+        assertTrue(mWifiVendorHal.configureRoaming(TEST_IFACE_NAME, roamingConfig));
+        ArgumentCaptor<StaRoamingConfig> staRoamingConfigCaptor = ArgumentCaptor.forClass(
+                StaRoamingConfig.class);
+        verify(mIWifiStaIface).configureRoaming(staRoamingConfigCaptor.capture());
+        verify(mSsidTranslator).getAllPossibleOriginalSsids(any());
+        assertTrue(staRoamingConfigCaptor.getValue().ssidWhitelist.isEmpty());
     }
 
     /**
@@ -2618,7 +2646,9 @@ public class WifiVendorHalTest extends WifiBaseTest {
         WifiNative.ScanEventHandler eventHandler = mock(WifiNative.ScanEventHandler.class);
         startBgScan(eventHandler);
 
-        Pair<StaScanResult, ScanResult> result = createHidlAndFrameworkBgScanResult();
+        WifiSsid ssid = WifiSsid.fromUtf8Text("This is an SSID");
+        MacAddress bssid = MacAddress.fromString("aa:bb:cc:dd:ee:ff");
+        Pair<StaScanResult, ScanResult> result = createHidlAndFrameworkBgScanResult(ssid, bssid);
         mIWifiStaIfaceEventCallback.onBackgroundFullScanResult(
                 mWifiVendorHal.mScan.cmdId, 5, result.first);
 
@@ -2881,7 +2911,7 @@ public class WifiVendorHalTest extends WifiBaseTest {
 
         // Now expose the 1.1 IWifiChip.
         mWifiVendorHal = new WifiVendorHalSpyV1_1(mContext, mHalDeviceManager, mHandler,
-                mWifiGlobals);
+                mWifiGlobals, mSsidTranslator);
         when(mIWifiChipV11.selectTxPowerScenario(anyInt())).thenReturn(mWifiStatusSuccess);
 
         assertTrue(mWifiVendorHal.startVendorHalSta());
@@ -2947,7 +2977,7 @@ public class WifiVendorHalTest extends WifiBaseTest {
 
         // Now expose the 1.1 IWifiChip.
         mWifiVendorHal = new WifiVendorHalSpyV1_1(mContext, mHalDeviceManager, mHandler,
-                mWifiGlobals);
+                mWifiGlobals, mSsidTranslator);
         when(mIWifiChipV11.resetTxPowerScenario()).thenReturn(mWifiStatusSuccess);
 
         assertTrue(mWifiVendorHal.startVendorHalSta());
@@ -2973,7 +3003,7 @@ public class WifiVendorHalTest extends WifiBaseTest {
 
         // Now expose the 1.1 IWifiChip.
         mWifiVendorHal = new WifiVendorHalSpyV1_1(mContext, mHalDeviceManager, mHandler,
-                mWifiGlobals);
+                mWifiGlobals, mSsidTranslator);
         when(mIWifiChipV11.resetTxPowerScenario()).thenReturn(mWifiStatusSuccess);
 
         assertTrue(mWifiVendorHal.startVendorHalSta());
@@ -3946,28 +3976,25 @@ public class WifiVendorHalTest extends WifiBaseTest {
 
     // Create a pair of HIDL scan result and its corresponding framework scan result for
     // comparison.
-    private Pair<StaScanResult, ScanResult> createHidlAndFrameworkBgScanResult() {
+    private Pair<StaScanResult, ScanResult> createHidlAndFrameworkBgScanResult(
+            @NonNull WifiSsid ssid, @NonNull MacAddress bssid) {
         StaScanResult staScanResult = new StaScanResult();
-        Random random = new Random();
-        byte[] ssid = new byte[8];
-        random.nextBytes(ssid);
-        staScanResult.ssid.addAll(NativeUtil.byteArrayToArrayList(ssid));
-        random.nextBytes(staScanResult.bssid);
+        staScanResult.ssid.addAll(NativeUtil.byteArrayToArrayList(ssid.getBytes()));
+        staScanResult.bssid = bssid.toByteArray();
         staScanResult.frequency = 2432;
         staScanResult.rssi = -45;
         staScanResult.timeStampInUs = 5;
         WifiInformationElement ie1 = new WifiInformationElement();
         byte[] ie1_data = new byte[56];
-        random.nextBytes(ie1_data);
+        new Random().nextBytes(ie1_data);
         ie1.id = 1;
         ie1.data.addAll(NativeUtil.byteArrayToArrayList(ie1_data));
         staScanResult.informationElements.add(ie1);
 
         // Now create the corresponding Scan result structure.
         ScanResult scanResult = new ScanResult();
-        scanResult.SSID = NativeUtil.encodeSsid(staScanResult.ssid);
-        scanResult.BSSID = NativeUtil.macAddressFromByteArray(staScanResult.bssid);
-        scanResult.wifiSsid = WifiSsid.fromBytes(ssid);
+        scanResult.setWifiSsid(getTranslatedSsid(ssid));
+        scanResult.BSSID = bssid.toString();
         scanResult.frequency = staScanResult.frequency;
         scanResult.level = staScanResult.rssi;
         scanResult.timestamp = staScanResult.timeStampInUs;
@@ -3982,7 +4009,13 @@ public class WifiVendorHalTest extends WifiBaseTest {
         ArrayList<StaScanData> staScanDatas = new ArrayList<>();
         StaScanData staScanData = new StaScanData();
 
-        Pair<StaScanResult, ScanResult> result = createHidlAndFrameworkBgScanResult();
+        byte[] ssidBytes = new byte[8];
+        byte[] bssidBytes = new byte[6];
+        Random random = new Random();
+        random.nextBytes(ssidBytes);
+        random.nextBytes(bssidBytes);
+        Pair<StaScanResult, ScanResult> result = createHidlAndFrameworkBgScanResult(
+                WifiSsid.fromBytes(ssidBytes), MacAddress.fromBytes(bssidBytes));
         staScanData.results.add(result.first);
         staScanData.bucketsScanned = 5;
         staScanData.flags = StaScanDataFlagMask.INTERRUPTED;

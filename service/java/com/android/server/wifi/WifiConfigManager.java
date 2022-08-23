@@ -76,6 +76,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -460,12 +461,6 @@ public class WifiConfigManager {
      * @return
      */
     public boolean shouldUseNonPersistentRandomization(WifiConfiguration config) {
-        // If this is the secondary STA for multi internet for DBS AP, use non persistent mac
-        // randomization, as the primary and secondary STAs could connect to the same SSID.
-        if (isMacRandomizationSupported() && config.dbsSecondaryInternet) {
-            return true;
-        }
-
         if (!isMacRandomizationSupported()
                 || config.macRandomizationSetting == WifiConfiguration.RANDOMIZATION_NONE) {
             return false;
@@ -636,10 +631,17 @@ public class WifiConfigManager {
      * @param config
      * @return MacAddress
      */
-    public MacAddress getRandomizedMacAndUpdateIfNeeded(WifiConfiguration config) {
+    public MacAddress getRandomizedMacAndUpdateIfNeeded(WifiConfiguration config,
+            boolean isForSecondaryDbs) {
         MacAddress mac = shouldUseNonPersistentRandomization(config)
                 ? updateRandomizedMacIfNeeded(config)
                 : setRandomizedMacToPersistentMac(config);
+        // If this is the secondary STA for multi internet for DBS AP, use a different MAC than the
+        // persistent mac randomization, as the primary and secondary STAs could connect to the
+        // same SSID.
+        if (isForSecondaryDbs) {
+            mac = MacAddressUtil.nextMacAddress(mac);
+        }
         return mac;
     }
 
@@ -1106,7 +1108,13 @@ public class WifiConfigManager {
     private void mergeWithInternalWifiConfiguration(
             WifiConfiguration internalConfig, WifiConfiguration externalConfig) {
         if (externalConfig.SSID != null) {
-            internalConfig.SSID = externalConfig.SSID;
+            // Translate the SSID in case it is in hexadecimal for a translatable charset.
+            if (externalConfig.SSID.length() > 0 && externalConfig.SSID.charAt(0) != '\"') {
+                internalConfig.SSID = mWifiInjector.getSsidTranslator().getTranslatedSsid(
+                        WifiSsid.fromString(externalConfig.SSID)).toString();
+            } else {
+                internalConfig.SSID = externalConfig.SSID;
+            }
         }
         if (externalConfig.BSSID != null) {
             internalConfig.BSSID = externalConfig.BSSID.toLowerCase();
@@ -1703,7 +1711,7 @@ public class WifiConfigManager {
         // will remove the enterprise keys when provider is uninstalled. Suggestion enterprise
         // networks will remove the enterprise keys when suggestion is removed.
         if (!config.fromWifiNetworkSuggestion && !config.isPasspoint() && config.isEnterprise()) {
-            mWifiKeyStore.removeKeys(config.enterpriseConfig);
+            mWifiKeyStore.removeKeys(config.enterpriseConfig, false);
         }
 
         // Do not remove the user choice when passpoint or suggestion networks are removed from
@@ -2880,10 +2888,16 @@ public class WifiConfigManager {
         networks.removeIf(config -> !config.hiddenSSID);
         networks.sort(mScanListComparator);
         // The most frequently connected network has the highest priority now.
+        Set<WifiSsid> ssidSet = new LinkedHashSet<>();
         for (WifiConfiguration config : networks) {
-            if (!autoJoinOnly || config.allowAutojoin) {
-                hiddenList.add(new WifiScanner.ScanSettings.HiddenNetwork(config.SSID));
+            if (autoJoinOnly && !config.allowAutojoin) {
+                continue;
             }
+            ssidSet.addAll(mWifiInjector.getSsidTranslator()
+                    .getAllPossibleOriginalSsids(WifiSsid.fromString(config.SSID)));
+        }
+        for (WifiSsid ssid : ssidSet) {
+            hiddenList.add(new WifiScanner.ScanSettings.HiddenNetwork(ssid.toString()));
         }
         return hiddenList;
     }

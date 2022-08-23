@@ -347,6 +347,8 @@ public class DeviceConfigFacadeTest extends WifiBaseTest {
         when(DeviceConfig.getBoolean(anyString(),
                 eq("interface_failure_bugreport_enabled"),
                 anyBoolean())).thenReturn(true);
+        when(DeviceConfig.getBoolean(anyString(), eq("apm_enhancement_enabled"),
+                anyBoolean())).thenReturn(true);
         mOnPropertiesChangedListenerCaptor.getValue().onPropertiesChanged(null);
 
         // Verifying fields are updated to the new values
