@@ -3110,13 +3110,13 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                 return false;
             }
             if (fromFramework ? currentConfig.networkId == newNetworkId
-                    : currentHandle.getNetworkId() == newNetworkId) {
+                    : currentHandle.getNetworkId() < 0) {
                 return false;
             }
             for (Pair<SupplicantStaNetworkHalAidlImpl, WifiConfiguration> pair
                     : linkedNetworkHandles) {
                 if (fromFramework ? pair.second.networkId == newNetworkId
-                        : pair.first.getNetworkId() == newNetworkId) {
+                        : pair.first.getNetworkId() >= 0) {
                     Log.i(TAG, "Roamed to linked network, make linked network as current network");
                     mCurrentNetworkRemoteHandles.put(ifaceName, pair.first);
                     mCurrentNetworkLocalConfigs.put(ifaceName, pair.second);
@@ -3158,8 +3158,8 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                 return false;
             }
 
-            if (!removeAllNetworksExcept(ifaceName, remoteNetworkId)) {
-                Log.e(TAG, "couldn't remove non-current supplicant networks");
+            if (currentHandle.getNetworkId() < 0) {
+                Log.e(TAG, "Current supplicant network id is invalid");
                 return false;
             }
 
