@@ -5122,12 +5122,16 @@ public class WifiServiceImpl extends BaseWifiService {
             return;
         }
         // Delete all Wifi SSIDs
-        List<WifiConfiguration> networks = mWifiThreadRunner.call(
-                () -> mWifiConfigManager.getSavedNetworks(Process.WIFI_UID),
-                Collections.emptyList());
-        for (WifiConfiguration network : networks) {
-            removeNetwork(network.networkId, packageName);
-        }
+        mWifiThreadRunner.run(() -> {
+            List<WifiConfiguration> networks = mWifiConfigManager
+                    .getSavedNetworks(Process.WIFI_UID);
+            for (WifiConfiguration network : networks) {
+                if (network.isEnterprise()) {
+                    mWifiInjector.getWifiKeyStore().removeKeys(network.enterpriseConfig, true);
+                }
+                removeNetwork(network.networkId, packageName);
+            }
+        });
         // Delete all Passpoint configurations
         List<PasspointConfiguration> configs = mWifiThreadRunner.call(
                 () -> mPasspointManager.getProviderConfigs(Process.WIFI_UID /* ignored */, true),
@@ -5136,6 +5140,8 @@ public class WifiServiceImpl extends BaseWifiService {
             removePasspointConfigurationInternal(null, config.getUniqueId());
         }
         mWifiThreadRunner.post(() -> {
+            // Reset SoftApConfiguration to default configuration
+            mWifiApConfigStore.setApConfiguration(null);
             mPasspointManager.clearAnqpRequestsAndFlushCache();
             mWifiConfigManager.clearUserTemporarilyDisabledList();
             mWifiConfigManager.removeAllEphemeralOrPasspointConfiguredNetworks();
