@@ -288,6 +288,10 @@ public class PasspointManager {
     }
 
     private void onUserConnectChoiceRemove(String choiceKey) {
+        if (mProviders.isEmpty()) {
+            Log.e(TAG, "Providers list is empty");
+            return;
+        }
         mProviders.values().stream()
                 .filter(provider -> TextUtils.equals(provider.getConnectChoice(), choiceKey))
                 .forEach(provider -> {
