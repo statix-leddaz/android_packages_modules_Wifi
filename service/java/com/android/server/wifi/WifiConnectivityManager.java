@@ -40,6 +40,7 @@ import android.net.wifi.WifiContext;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.DeviceMobilityState;
+import android.net.wifi.WifiNetworkSelectionConfig;
 import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiScanner.PnoSettings;
@@ -156,6 +157,7 @@ public class WifiConnectivityManager {
     private final AlarmManager mAlarmManager;
     private final Handler mEventHandler;
     private final ExternalPnoScanRequestManager mExternalPnoScanRequestManager;
+    private final @NonNull SsidTranslator mSsidTranslator;
     private final Clock mClock;
     private final ScoringParams mScoringParams;
     private final LocalLog mLocalLog;
@@ -185,6 +187,7 @@ public class WifiConnectivityManager {
     private int mWifiState = WIFI_STATE_UNKNOWN;
     private int mInitialScanState = INITIAL_SCAN_STATE_COMPLETE;
     private boolean mAutoJoinEnabledExternal = true; // enabled by default
+    private boolean mAutoJoinEnabledExternalSetByDeviceAdmin = false;
     private boolean mUntrustedConnectionAllowed = false;
     private Set<Integer> mRestrictedConnectionAllowedUids = new ArraySet<>();
     private boolean mOemPaidConnectionAllowed = false;
@@ -978,12 +981,12 @@ public class WifiConnectivityManager {
                     + " reason: " + reason + " description: " + description);
 
             // reschedule the scan
-            if (mSingleScanRestartCount++ < MAX_SCAN_RESTART_ALLOWED) {
+            if (mSingleScanRestartCount++ < MAX_SCAN_RESTART_ALLOWED && mScreenOn) {
                 scheduleDelayedSingleScan(mIsFullBandScan);
             } else {
-                mSingleScanRestartCount = 0;
                 localLog("Failed to successfully start single scan for "
-                        + MAX_SCAN_RESTART_ALLOWED + " times");
+                        + mSingleScanRestartCount + " times, mScreenOn=" + mScreenOn);
+                mSingleScanRestartCount = 0;
             }
         }
 
@@ -1225,7 +1228,8 @@ public class WifiConnectivityManager {
             ActiveModeWarden activeModeWarden,
             FrameworkFacade frameworkFacade,
             WifiGlobals wifiGlobals,
-            ExternalPnoScanRequestManager externalPnoScanRequestManager) {
+            ExternalPnoScanRequestManager externalPnoScanRequestManager,
+            @NonNull SsidTranslator ssidTranslator) {
         mContext = context;
         mScoringParams = scoringParams;
         mConfigManager = configManager;
@@ -1251,6 +1255,7 @@ public class WifiConnectivityManager {
         mAlarmManager = context.getSystemService(AlarmManager.class);
         mPowerManager = mContext.getSystemService(PowerManager.class);
         mExternalPnoScanRequestManager = externalPnoScanRequestManager;
+        mSsidTranslator = ssidTranslator;
 
         // Listen for screen state change events.
         // TODO: We should probably add a shared broadcast receiver in the wifi stack which
@@ -2054,9 +2059,9 @@ public class WifiConnectivityManager {
     private void startPeriodicScan(boolean scanImmediately) {
         mPnoScanListener.resetLowRssiNetworkRetryDelay();
 
-        // No connectivity scan if auto roaming is disabled.
-        if (mWifiState == WIFI_STATE_CONNECTED && !mContext.getResources().getBoolean(
-                R.bool.config_wifi_framework_enable_associated_network_selection)) {
+        // No connectivity scan if wifi-to-wifi switch is disabled.
+        if (mWifiState == WIFI_STATE_CONNECTED
+                && !mNetworkSelector.isAssociatedNetworkSelectionEnabled()) {
             return;
         }
 
@@ -2082,6 +2087,17 @@ public class WifiConnectivityManager {
             default:
                 return -1;
         }
+    }
+
+    /**
+     * Configures network selection parameters..
+     */
+    public void setNetworkSelectionConfig(@NonNull WifiNetworkSelectionConfig nsConfig) {
+        mNetworkSelector.setAssociatedNetworkSelectionOverride(
+                nsConfig.getAssociatedNetworkSelectionOverride());
+        mNetworkSelector.setSufficiencyCheckEnabled(
+                nsConfig.isSufficiencyCheckEnabledWhenScreenOff(),
+                nsConfig.isSufficiencyCheckEnabledWhenScreenOn());
     }
 
     /**
@@ -2264,20 +2280,24 @@ public class WifiConnectivityManager {
             pnoNetwork.frequencies = channelList.stream().mapToInt(Integer::intValue).toArray();
         }
         for (WifiConfiguration config : networks) {
-            if (pnoSet.contains(config.SSID)) {
-                continue;
+            for (WifiSsid originalSsid : mSsidTranslator.getAllPossibleOriginalSsids(
+                    WifiSsid.fromString(config.SSID))) {
+                if (pnoSet.contains(originalSsid.toString())) {
+                    continue;
+                }
+                WifiScanner.PnoSettings.PnoNetwork pnoNetwork =
+                        WifiConfigurationUtil.createPnoNetwork(config);
+                pnoNetwork.ssid = originalSsid.toString();
+                pnoList.add(pnoNetwork);
+                pnoSet.add(originalSsid.toString());
+                if (!pnoFrequencyCullingEnabled) {
+                    continue;
+                }
+                Set<Integer> channelList = new HashSet<>();
+                addChannelFromWifiScoreCard(channelList, config.SSID, 0,
+                        MAX_PNO_SCAN_FREQUENCY_AGE_MS);
+                pnoNetwork.frequencies = channelList.stream().mapToInt(Integer::intValue).toArray();
             }
-            WifiScanner.PnoSettings.PnoNetwork pnoNetwork =
-                    WifiConfigurationUtil.createPnoNetwork(config);
-            pnoList.add(pnoNetwork);
-            pnoSet.add(config.SSID);
-            if (!pnoFrequencyCullingEnabled) {
-                continue;
-            }
-            Set<Integer> channelList = new HashSet<>();
-            addChannelFromWifiScoreCard(channelList, config.SSID, 0,
-                    MAX_PNO_SCAN_FREQUENCY_AGE_MS);
-            pnoNetwork.frequencies = channelList.stream().mapToInt(Integer::intValue).toArray();
         }
         return pnoList;
     }
@@ -2387,8 +2407,13 @@ public class WifiConnectivityManager {
                 + " wifiEnabled=" + mWifiEnabled
                 + " mAutoJoinEnabled=" + mAutoJoinEnabled
                 + " mAutoJoinEnabledExternal=" + mAutoJoinEnabledExternal
+                + " mAutoJoinEnabledExternalSetByDeviceAdmin="
+                + mAutoJoinEnabledExternalSetByDeviceAdmin
                 + " mSpecificNetworkRequestInProgress=" + mSpecificNetworkRequestInProgress
-                + " mTrustedConnectionAllowed=" + mTrustedConnectionAllowed);
+                + " mTrustedConnectionAllowed=" + mTrustedConnectionAllowed
+                + " isSufficiencyCheckEnabled=" + mNetworkSelector.isSufficiencyCheckEnabled()
+                + " isAssociatedNetworkSelectionEnabled="
+                + mNetworkSelector.isAssociatedNetworkSelectionEnabled());
 
         if (!mWifiEnabled || !mAutoJoinEnabled) {
             return;
@@ -2429,6 +2454,7 @@ public class WifiConnectivityManager {
         localLog("handleScreenStateChanged: screenOn=" + screenOn);
 
         mScreenOn = screenOn;
+        mNetworkSelector.setScreenState(screenOn);
 
         if (mWifiState == WIFI_STATE_DISCONNECTED
                 && mContext.getResources().getBoolean(R.bool.config_wifiEnablePartialInitialScan)) {
@@ -2702,9 +2728,8 @@ public class WifiConnectivityManager {
                     new Throwable());
             return;
         }
-        WifiInfo wifiInfo = getPrimaryWifiInfo();
         if (failureCode == WifiMetrics.ConnectionEvent.FAILURE_NONE) {
-            String ssidUnquoted = WifiInfo.removeDoubleQuotes(wifiInfo.getSSID());
+            String ssidUnquoted = WifiInfo.removeDoubleQuotes(getPrimaryWifiInfo().getSSID());
             mOpenNetworkNotifier.handleWifiConnected(ssidUnquoted);
         } else {
             mOpenNetworkNotifier.handleConnectionFailure();
@@ -2746,7 +2771,8 @@ public class WifiConnectivityManager {
                         WifiConfiguration config =
                                 mConfigManager.getConfiguredNetwork(candidate.getNetworkConfigId());
                         return config != null
-                                && config.getNetworkSelectionStatus().isNetworkEnabled();
+                                && config.getNetworkSelectionStatus().isNetworkEnabled()
+                                && config.allowAutojoin;
                     })
                     .collect(Collectors.toList());
             if (prevNumCandidates == mLatestCandidates.size()) {
@@ -3012,9 +3038,14 @@ public class WifiConnectivityManager {
     /**
      * Turn on/off the auto join at runtime
      */
-    public void setAutoJoinEnabledExternal(boolean enable) {
+    public void setAutoJoinEnabledExternal(boolean enable, boolean isDeviceAdmin) {
         localLog("Set auto join " + (enable ? "enabled" : "disabled"));
-
+        if (!mAutoJoinEnabledExternal && mAutoJoinEnabledExternalSetByDeviceAdmin
+                && !isDeviceAdmin) {
+            localLog("Set auto join ignored since it was disabled by a device admin.");
+            return;
+        }
+        mAutoJoinEnabledExternalSetByDeviceAdmin = isDeviceAdmin;
         if (mAutoJoinEnabledExternal != enable) {
             mAutoJoinEnabledExternal = enable;
             checkAllStatesAndEnableAutoJoin();

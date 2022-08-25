@@ -449,7 +449,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
             return 0;
         }
 
-        List<SubscriptionInfo> subInfoList = subscriptionManager.getActiveSubscriptionInfoList();
+        List<SubscriptionInfo> subInfoList = subscriptionManager
+                .getCompleteActiveSubscriptionInfoList();
         if (subInfoList == null) {
             Log.d(getTag(), "Active SubscriptionInfo list not found");
             return 0;
@@ -497,6 +498,13 @@ public class ConcreteClientModeManager implements ClientModeManager {
     @Override
     @Nullable public ClientRole getRole() {
         return mRole;
+    }
+
+    /**
+     * Get the role this ClientModeManager is expected to become.
+     */
+    @Nullable public ClientRole getTargetRole() {
+        return mTargetRoleChangeInfo == null ? null : mTargetRoleChangeInfo.role;
     }
 
     @Override
@@ -776,6 +784,48 @@ public class ConcreteClientModeManager implements ClientModeManager {
         }
 
         /**
+         * Return the additional string to be logged by LogRec.
+         *
+         * @param msg that was processed
+         * @return information to be logged as a String
+         */
+        @Override
+        protected String getLogRecString(Message msg) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(msg.arg1)
+                    .append(" ").append(msg.arg2);
+            if (msg.obj != null) {
+                sb.append(" ").append(msg.obj);
+            }
+            return sb.toString();
+        }
+
+        /**
+         * Convert the |what| field in logs from int to String.
+         */
+        @Override
+        protected String getWhatToString(int what) {
+            switch (what) {
+                case CMD_START:
+                    return "CMD_START";
+                case CMD_SWITCH_TO_SCAN_ONLY_MODE:
+                    return "CMD_SWITCH_TO_SCAN_ONLY_MODE";
+                case CMD_SWITCH_TO_CONNECT_MODE:
+                    return "CMD_SWITCH_TO_CONNECT_MODE";
+                case CMD_INTERFACE_STATUS_CHANGED:
+                    return "CMD_INTERFACE_STATUS_CHANGED";
+                case CMD_INTERFACE_DESTROYED:
+                    return "CMD_INTERFACE_DESTROYED";
+                case CMD_INTERFACE_DOWN:
+                    return "CMD_INTERFACE_DOWN";
+                case CMD_SWITCH_TO_SCAN_ONLY_MODE_CONTINUE:
+                    return "CMD_SWITCH_TO_SCAN_ONLY_MODE_CONTINUE";
+                default:
+                    return "what:" + what;
+            }
+        }
+
+        /**
          * Reset this ConcreteClientModeManager when its role changes, so that it can be reused for
          * another purpose.
          */
@@ -844,7 +894,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
                         if (TextUtils.isEmpty(mClientInterfaceName)) {
                             Log.e(getTag(), "Failed to create ClientInterface. Sit in Idle");
                             takeBugReportInterfaceFailureIfNeeded(
-                                    "Wi-Fi scan STA interface HAL failure");
+                                    "Wi-Fi BugReport (scan STA interface failure): please report "
+                                            + "it through BetterBug app");
                             mModeListener.onStartFailure(ConcreteClientModeManager.this);
                             break;
                         }
@@ -909,7 +960,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
                                     WifiManager.WIFI_STATE_DISABLED,
                                     WifiManager.WIFI_STATE_UNKNOWN);
                             takeBugReportInterfaceFailureIfNeeded(
-                                    "Wi-Fi STA interface HAL failure");
+                                    "Wi-Fi BugReport (STA interface failure): please report it "
+                                            + "through BetterBug app");
                             mModeListener.onStartFailure(ConcreteClientModeManager.this);
                             break;
                         }

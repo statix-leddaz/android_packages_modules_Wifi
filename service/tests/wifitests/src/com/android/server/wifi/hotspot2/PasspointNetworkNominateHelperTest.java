@@ -257,6 +257,12 @@ public class PasspointNetworkNominateHelperTest {
                 eq(TEST_NETWORK_ID), any(ScanResult.class), anyInt(), any());
         verify(mWifiConfigManager).updateScanDetailForNetwork(
                 eq(TEST_NETWORK_ID), any(ScanDetail.class));
+
+        // When empty Scan result received later, should be not candidate return.
+        when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider);
+        candidates = mNominateHelper
+                .getPasspointNetworkCandidates(Collections.emptyList(), false);
+        assertTrue(candidates.isEmpty());
     }
 
     /**
@@ -405,7 +411,7 @@ public class PasspointNetworkNominateHelperTest {
         when(mPasspointManager.matchProvider(any(ScanResult.class))).thenReturn(homeProvider);
         when(testProvider.isSimCredential()).thenReturn(true);
         // SIM is present
-        when(mSubscriptionManager.getActiveSubscriptionInfoList())
+        when(mSubscriptionManager.getCompleteActiveSubscriptionInfoList())
                 .thenReturn(Arrays.asList(mock(SubscriptionInfo.class)));
         when(mWifiConfigManager.addOrUpdateNetwork(any(WifiConfiguration.class), anyInt(),
                 any(), eq(false))).thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));

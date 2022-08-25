@@ -158,6 +158,7 @@ public class HalDeviceManagerTest extends WifiBaseTest {
     private WifiStatus mStatusFail;
     private boolean mIsBridgedSoftApSupported = false;
     private boolean mIsStaWithBridgedSoftApConcurrencySupported = false;
+    private boolean mWifiUserApprovalRequiredForD2dInterfacePriority = false;
 
     private class HalDeviceManagerSpy extends HalDeviceManager {
         HalDeviceManagerSpy() {
@@ -253,6 +254,8 @@ public class HalDeviceManagerTest extends WifiBaseTest {
                 .thenReturn(mIsBridgedSoftApSupported);
         when(mResources.getBoolean(R.bool.config_wifiStaWithBridgedSoftApConcurrencySupported))
                 .thenReturn(mIsStaWithBridgedSoftApConcurrencySupported);
+        when(mResources.getBoolean(R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority))
+                .thenReturn(mWifiUserApprovalRequiredForD2dInterfacePriority);
 
         mDut = new HalDeviceManagerSpy();
     }
@@ -864,6 +867,91 @@ public class HalDeviceManagerTest extends WifiBaseTest {
         collector.checkThat("not allocated interface", apIface, IsNull.notNullValue());
     }
 
+    /**
+     * Validate a flow sequence for test chip 1 if the
+     * |config_wifiUserApprovalRequiredForD2dInterfacePriority| overlay value is true. If enabled,
+     * interface deletion requests should be approved as long as the new requestor's worksource
+     * priority is > PRIORITY_BG.
+     *
+     * Flow sequence:
+     * - create STA (privileged app)
+     * - create AP (foreground app)
+     * - tear down P2P
+     * - create STA (privileged app)
+     * - create AP (background app): should fail.
+     */
+    @Test
+    public void testInterfaceCreationFlowIfD2dInterfacePriorityOverlayEnabled() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        when(mResources.getBoolean(R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority))
+                .thenReturn(true);
+        mDut = new HalDeviceManagerSpy();
+        ChipMockBase chipMock = new TestChipV1();
+        chipMock.initialize();
+        mInOrder = inOrder(mServiceManagerMock, mWifiMock, mWifiMockV15, chipMock.chip,
+                mManagerStatusListenerMock);
+        executeAndValidateInitializationSequence();
+        executeAndValidateStartupSequence();
+
+        InterfaceDestroyedListener apDestroyedListener = mock(
+                InterfaceDestroyedListener.class);
+
+        // Create STA interface from privileged app: should succeed.
+        IWifiIface staIface = validateInterfaceSequence(chipMock,
+                true, // chipModeValid
+                TestChipV1.STA_CHIP_MODE_ID, // chipModeId (only used if chipModeValid is true)
+                HDM_CREATE_IFACE_STA,
+                "wlan0",
+                TestChipV1.STA_CHIP_MODE_ID,
+                null, // tearDownList
+                apDestroyedListener, // destroyedListener
+                TEST_WORKSOURCE_0 // requestorWs
+        );
+        collector.checkThat("STA created", staIface, IsNull.notNullValue());
+
+        // Create P2P interface from foreground app: should succeed.
+        when(mWorkSourceHelper1.hasAnyPrivilegedAppRequest()).thenReturn(false);
+        when(mWorkSourceHelper1.hasAnyForegroundAppRequest(true)).thenReturn(true);
+        List<Pair<Integer, WorkSource>> apDetails = mDut.reportImpactToCreateIface(
+                HDM_CREATE_IFACE_AP, false, TEST_WORKSOURCE_1);
+        assertNotNull("Should create this AP", apDetails);
+        IWifiIface apIface = validateInterfaceSequence(chipMock,
+                true, // chipModeValid
+                TestChipV1.AP_CHIP_MODE_ID, // chipModeId (only used if chipModeValid is true)
+                HDM_CREATE_IFACE_AP,
+                "wlan1",
+                TestChipV1.AP_CHIP_MODE_ID,
+                new IWifiIface[]{staIface}, // tearDownList
+                null, // destroyedListener
+                TEST_WORKSOURCE_1, // requestorWs
+                new InterfaceDestroyedListenerWithIfaceName(getName(staIface), apDestroyedListener)
+        );
+        collector.checkThat("AP created", apIface, IsNull.notNullValue());
+
+        // Tear down the AP interface.
+        mDut.removeIface(apIface);
+        mTestLooper.dispatchAll();
+
+        // Create a new STA interface from privileged app: should succeed.
+        staIface = validateInterfaceSequence(chipMock,
+                true, // chipModeValid
+                TestChipV1.STA_CHIP_MODE_ID, // chipModeId (only used if chipModeValid is true)
+                HDM_CREATE_IFACE_STA,
+                "wlan0",
+                TestChipV1.STA_CHIP_MODE_ID,
+                null, // tearDownList
+                apDestroyedListener, // destroyedListener
+                TEST_WORKSOURCE_0 // requestorWs
+        );
+        collector.checkThat("AP created", staIface, IsNull.notNullValue());
+
+        // Check if we can create a new AP interface from background app: should fail.
+        when(mWorkSourceHelper1.hasAnyForegroundAppRequest(true)).thenReturn(false);
+        apDetails = mDut.reportImpactToCreateIface(
+                HDM_CREATE_IFACE_AP, false, TEST_WORKSOURCE_1);
+        assertNull("Should not create this AP", apDetails);
+    }
+
 
     //////////////////////////////////////////////////////////////////////////////////////
     // Chip Specific Tests - but should work on all chips!
@@ -1463,8 +1551,19 @@ public class HalDeviceManagerTest extends WifiBaseTest {
         verify(mWifiMock, never()).getChipIds(any());
         when(mWifiMock.isStarted()).thenReturn(true);
         executeAndValidateStartupSequence();
-
         clearInvocations(mWifiMock);
+
+        // Create a STA to get the static chip info from driver and save it to store.
+        validateInterfaceSequence(chipMock,
+                false, // chipModeValid
+                -1000, // chipModeId (only used if chipModeValid is true)
+                HDM_CREATE_IFACE_STA, // ifaceTypeToCreate
+                "wlan0", // ifaceName
+                TestChipV1.STA_CHIP_MODE_ID, // finalChipMode
+                null, // tearDownList
+                mock(InterfaceDestroyedListener.class), // destroyedListener
+                TEST_WORKSOURCE_0 // requestorWs
+        );
 
         // Verify that the latest static chip info is saved to store.
         verify(mWifiSettingsConfigStore).put(eq(WifiSettingsConfigStore.WIFI_STATIC_CHIP_INFO),
@@ -5223,6 +5322,14 @@ public class HalDeviceManagerTest extends WifiBaseTest {
             cccl = new android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombinationLimit();
             cccl.maxIfaces = 1;
             cccl.types.add(IfaceConcurrencyType.AP_BRIDGED);
+            ccc.limits.add(cccl);
+            cm.availableCombinations.add(ccc);
+
+            // Add a combo which doesn't allow any AP.
+            ccc = new android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombination();
+            cccl = new android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombinationLimit();
+            cccl.maxIfaces = 2;
+            cccl.types.add(IfaceConcurrencyType.STA);
             ccc.limits.add(cccl);
             cm.availableCombinations.add(ccc);
 

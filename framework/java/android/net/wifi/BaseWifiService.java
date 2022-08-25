@@ -85,6 +85,21 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public void setNetworkSelectionConfig(WifiNetworkSelectionConfig nsConfig) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void setThirdPartyAppEnablingWifiConfirmationDialogEnabled(boolean enable) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean isThirdPartyAppEnablingWifiConfirmationDialogEnabled() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void setScreenOnScanSchedule(int[] scanScheduleSeconds, int[] scanType) {
         throw new UnsupportedOperationException();
     }
@@ -184,8 +199,13 @@ public class BaseWifiService extends IWifiManager.Stub {
         throw new UnsupportedOperationException();
     }
 
-    @Override
+    /** TO BE REMOVED */
     public void allowAutojoinGlobal(boolean choice) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void allowAutojoinGlobal(boolean choice, String packageName, Bundle extras) {
         throw new UnsupportedOperationException();
     }
 
