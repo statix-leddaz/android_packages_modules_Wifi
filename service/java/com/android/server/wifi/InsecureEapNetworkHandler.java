@@ -90,7 +90,9 @@ public class InsecureEapNetworkHandler {
                     // Disconnect this network to avoid staying at connecting state.
                     // Once the user accepts this via notification, this network could
                     // be auto-connected.
-                    mWifiConfigManager.allowAutojoin(mCurrentTofuConfig.networkId, false);
+                    mWifiConfigManager.updateNetworkSelectionStatus(mCurrentTofuConfig.networkId,
+                            WifiConfiguration.NetworkSelectionStatus
+                            .DISABLED_BY_WIFI_MANAGER);
 
                     // If the connecting network is changed, do not need to disconnect
                     // the network anymore.
@@ -204,6 +206,7 @@ public class InsecureEapNetworkHandler {
         }
 
         mCurrentTofuConfig = config;
+        mServerCertChain.clear();
         dismissDialogAndNotification();
         registerCertificateNotificationReceiver();
         // Remove cached PMK in the framework and supplicant to avoid
@@ -389,7 +392,7 @@ public class InsecureEapNetworkHandler {
         for (X509Certificate cert: mServerCertChain) {
             String subject = cert.getSubjectDN().getName();
             String issuer = cert.getIssuerDN().getName();
-            boolean isCa = cert.getBasicConstraints() > 0;
+            boolean isCa = cert.getBasicConstraints() >= 0;
             Log.d(TAG, "Subject: " + subject + ", Issuer: " + issuer + ", isCA: " + isCa);
 
             if (parentCert == null) {
@@ -456,7 +459,8 @@ public class InsecureEapNetworkHandler {
                         + ", CA cert = " + mPendingCaCert);
             }
         }
-        mWifiConfigManager.allowAutojoin(mCurrentTofuConfig.networkId, true);
+        mWifiConfigManager.updateNetworkSelectionStatus(mCurrentTofuConfig.networkId,
+                WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
         dismissDialogAndNotification();
         clearInternalData();
 
@@ -467,7 +471,8 @@ public class InsecureEapNetworkHandler {
     void handleReject(@NonNull String ssid) {
         if (!isConnectionValid(ssid)) return;
 
-        mWifiConfigManager.allowAutojoin(mCurrentTofuConfig.networkId, false);
+        mWifiConfigManager.updateNetworkSelectionStatus(mCurrentTofuConfig.networkId,
+                WifiConfiguration.NetworkSelectionStatus.DISABLED_BY_WIFI_MANAGER);
         dismissDialogAndNotification();
         clearInternalData();
         clearNativeData();
@@ -477,7 +482,9 @@ public class InsecureEapNetworkHandler {
 
     private void handleError(@Nullable String ssid) {
         if (mCurrentTofuConfig != null) {
-            mWifiConfigManager.allowAutojoin(mCurrentTofuConfig.networkId, false);
+            mWifiConfigManager.updateNetworkSelectionStatus(mCurrentTofuConfig.networkId,
+                    WifiConfiguration.NetworkSelectionStatus
+                    .DISABLED_BY_WIFI_MANAGER);
         }
         dismissDialogAndNotification();
         clearInternalData();
