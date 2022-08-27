@@ -419,6 +419,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Mock WifiDialogManager mWifiDialogManager;
     @Mock SsidTranslator mSsidTranslator;
     @Mock InterfaceConflictManager mInterfaceConflictManager;
+    @Mock WifiKeyStore mWifiKeyStore;
 
     @Captor ArgumentCaptor<Intent> mIntentCaptor;
 
@@ -575,6 +576,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mWifiInjector.getWifiDialogManager()).thenReturn(mWifiDialogManager);
         when(mWifiInjector.getSsidTranslator()).thenReturn(mSsidTranslator);
         when(mWifiInjector.getInterfaceConflictManager()).thenReturn(mInterfaceConflictManager);
+        when(mWifiInjector.getWifiKeyStore()).thenReturn(mWifiKeyStore);
 
         doAnswer(new AnswerWithArguments() {
             public void answer(Runnable onStoppedListener) throws Throwable {
@@ -771,7 +773,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
         assertTrue(mWifiServiceImpl.setWifiEnabled(TEST_PACKAGE_NAME, false));
         mLooper.dispatchAll();
-        verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(true);
+        verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(true, false);
         inorder.verify(mWifiMetrics).logUserActionEvent(UserActionEvent.EVENT_TOGGLE_WIFI_ON);
         inorder.verify(mWifiMetrics).incrementNumWifiToggles(eq(true), eq(true));
         inorder.verify(mWifiMetrics).logUserActionEvent(eq(UserActionEvent.EVENT_TOGGLE_WIFI_OFF),
@@ -6144,7 +6146,11 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_GRANTED);
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
         final String fqdn = "example.com";
-        WifiConfiguration network = WifiConfigurationTestUtil.createOpenNetwork();
+        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
+        openNetwork.networkId = TEST_NETWORK_ID;
+        WifiConfiguration eapNetwork = WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.TLS, WifiEnterpriseConfig.Phase2.NONE);
+        eapNetwork.networkId = TEST_NETWORK_ID + 1;
         PasspointConfiguration config = new PasspointConfiguration();
         HomeSp homeSp = new HomeSp();
         homeSp.setFqdn(fqdn);
@@ -6154,7 +6160,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         config.setCredential(credential);
 
         when(mWifiConfigManager.getSavedNetworks(anyInt()))
-                .thenReturn(Arrays.asList(network));
+                .thenReturn(Arrays.asList(openNetwork, eapNetwork));
         when(mPasspointManager.getProviderConfigs(anyInt(), anyBoolean()))
                 .thenReturn(Arrays.asList(config));
 
@@ -6165,8 +6171,12 @@ public class WifiServiceImplTest extends WifiBaseTest {
         // Let the final post inside the |factoryReset| method run to completion.
         mLooper.dispatchAll();
 
+        verify(mWifiApConfigStore).setApConfiguration(null);
         verify(mWifiConfigManager).removeNetwork(
-                network.networkId, Binder.getCallingUid(), TEST_PACKAGE_NAME);
+                openNetwork.networkId, Binder.getCallingUid(), TEST_PACKAGE_NAME);
+        verify(mWifiConfigManager).removeNetwork(
+                eapNetwork.networkId, Binder.getCallingUid(), TEST_PACKAGE_NAME);
+        verify(mWifiKeyStore).removeKeys(eapNetwork.enterpriseConfig, true);
         verify(mPasspointManager).removeProvider(anyInt(), anyBoolean(), eq(config.getUniqueId()),
                 isNull());
         verify(mPasspointManager).clearAnqpRequestsAndFlushCache();
@@ -7677,7 +7687,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 .thenReturn(false);
         when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(false);
         when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(false);
-        mWifiServiceImpl.allowAutojoinGlobal(true);
+        mWifiServiceImpl.allowAutojoinGlobal(true, TEST_PACKAGE_NAME, mExtras);
     }
 
     @Test
@@ -7686,33 +7696,61 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
         when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
                 .thenReturn(true);
-        when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(false);
-        when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(false);
-        mWifiServiceImpl.allowAutojoinGlobal(true);
+        when(mWifiPermissionsUtil.isAdmin(anyInt(), anyString())).thenReturn(false);
+        mWifiServiceImpl.allowAutojoinGlobal(true, TEST_PACKAGE_NAME, mExtras);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(true, false);
 
         // verify allowAutojoinGlobal with NETWORK_SETTINGS
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
         when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
                 .thenReturn(false);
-        when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(false);
-        when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(false);
-        mWifiServiceImpl.allowAutojoinGlobal(true);
+        when(mWifiPermissionsUtil.isAdmin(anyInt(), anyString())).thenReturn(false);
+        mWifiServiceImpl.allowAutojoinGlobal(true, TEST_PACKAGE_NAME, mExtras);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager, times(2)).setAutoJoinEnabledExternal(true, false);
 
-        // verify allowAutojoinGlobal with DO
+        // verify allowAutojoinGlobal with device admin
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
         when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
                 .thenReturn(false);
-        when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(true);
-        when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(false);
-        mWifiServiceImpl.allowAutojoinGlobal(true);
+        when(mWifiPermissionsUtil.isAdmin(anyInt(), anyString())).thenReturn(true);
+        mWifiServiceImpl.allowAutojoinGlobal(true, TEST_PACKAGE_NAME, mExtras);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(true, true);
+    }
 
-        // verify allowAutojoinGlobal with PO
+    @Test
+    public void testAutoJoinGlobalWithAttributionSourceChain() {
+        assumeTrue(SdkLevel.isAtLeastS());
+
+        // verify allowAutojoinGlobal with device admin in attribution source chain
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
         when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(true);
+        when(mWifiPermissionsUtil.isAdmin(anyInt(), anyString())).thenReturn(false);
+        // mock attribution chain
+        AttributionSource attributionSource = mock(AttributionSource.class);
+        mAttribution.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE, attributionSource);
+        when(attributionSource.getUid()).thenReturn(TEST_UID);
+        when(attributionSource.getPackageName()).thenReturn(TEST_PACKAGE_NAME);
+        AttributionSource originalCaller = mock(AttributionSource.class);
+        when(originalCaller.getUid()).thenReturn(OTHER_TEST_UID);
+        when(originalCaller.getPackageName()).thenReturn(TEST_PACKAGE_NAME_OTHER);
+        when(attributionSource.getNext()).thenReturn(originalCaller);
+        // mock the original caller to be device admin
+        when(mWifiPermissionsUtil.isAdmin(OTHER_TEST_UID, TEST_PACKAGE_NAME_OTHER))
+                .thenReturn(true);
+        mWifiServiceImpl.allowAutojoinGlobal(true, TEST_PACKAGE_NAME, mAttribution);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(true, true);
+
+        // mock the original caller to be not a device admin and then verify again.
+        when(mWifiPermissionsUtil.isAdmin(OTHER_TEST_UID, TEST_PACKAGE_NAME_OTHER))
                 .thenReturn(false);
-        when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(false);
-        when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(true);
-        mWifiServiceImpl.allowAutojoinGlobal(true);
+        mWifiServiceImpl.allowAutojoinGlobal(false, TEST_PACKAGE_NAME, mAttribution);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(false, false);
     }
 
     @Test
@@ -8007,12 +8045,30 @@ public class WifiServiceImplTest extends WifiBaseTest {
     }
 
     /**
-     * Test register callback without permission.
+     * Test register callback without ACCESS_WIFI_STATE permission.
      */
     @Test(expected = SecurityException.class)
-    public void testRegisterSuggestionNetworkCallbackWithMissingPermission() {
+    public void testRegisterSuggestionNetworkCallbackWithMissingAccessWifiPermission() {
         doThrow(new SecurityException()).when(mContext).enforceCallingOrSelfPermission(
                 eq(ACCESS_WIFI_STATE), eq("WifiService"));
+        mWifiServiceImpl.registerSuggestionConnectionStatusListener(
+                mSuggestionConnectionStatusListener, TEST_PACKAGE_NAME, TEST_FEATURE_ID);
+    }
+
+    /**
+     * Test register callback without ACCESS_FINE_LOCATION permission.
+     */
+    @Test(expected = SecurityException.class)
+    public void testRegisterSuggestionNetworkCallbackWithMissingFinePermission() {
+        doNothing().when(mContext).enforceCallingOrSelfPermission(
+                eq(ACCESS_WIFI_STATE), eq("WifiService"));
+        if (SdkLevel.isAtLeastT()) {
+            doThrow(new SecurityException()).when(mWifiPermissionsUtil)
+                    .enforceLocationPermissionInManifest(anyInt(), eq(false));
+        } else {
+            doThrow(new SecurityException()).when(mWifiPermissionsUtil)
+                    .enforceLocationPermission(anyString(), anyString(), anyInt());
+        }
         mWifiServiceImpl.registerSuggestionConnectionStatusListener(
                 mSuggestionConnectionStatusListener, TEST_PACKAGE_NAME, TEST_FEATURE_ID);
     }

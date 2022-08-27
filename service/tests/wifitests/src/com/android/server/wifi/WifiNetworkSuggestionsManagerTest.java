@@ -501,7 +501,8 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                         TEST_UID_1, TEST_PACKAGE_1,
                         WifiManager.ACTION_REMOVE_SUGGESTION_DISCONNECT));
         // Make sure remove the keyStore with the internal config
-        verify(mWifiKeyStore).removeKeys(networkSuggestion1.wifiConfiguration.enterpriseConfig);
+        verify(mWifiKeyStore).removeKeys(eq(networkSuggestion1.wifiConfiguration.enterpriseConfig),
+                eq(false));
         verify(mLruConnectionTracker).removeNetwork(any());
     }
 
@@ -2377,7 +2378,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 mWifiNetworkSuggestionsManager.remove(networkSuggestionList2, TEST_UID_1,
                         TEST_PACKAGE_1, WifiManager.ACTION_REMOVE_SUGGESTION_DISCONNECT));
         assertTrue(mWifiNetworkSuggestionsManager.getAllNetworkSuggestions().isEmpty());
-        mInorder.verify(mAppOpsManager).stopWatchingMode(mAppOpChangedListenerCaptor.getValue());
+        verify(mAppOpsManager, never()).stopWatchingMode(mAppOpChangedListenerCaptor.getValue());
 
         mInorder.verifyNoMoreInteractions();
     }
@@ -4881,8 +4882,14 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
             assertEquals(null, ewns.connectChoice);
             assertEquals(0, ewns.connectChoiceRssi);
         }
+
         // Add suggestion and change user approval have 2, set and remove user choice have 2.
         verify(mWifiConfigManager, times(4)).saveToStore(true);
+
+        reset(mWifiConfigManager);
+        listener.onConnectChoiceRemoved(USER_CONNECT_CHOICE);
+        listener.onConnectChoiceRemoved(null);
+        verify(mWifiConfigManager, never()).saveToStore(anyBoolean());
     }
 
     /**
