@@ -1255,6 +1255,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         mWifiScoreReport.enableVerboseLogging(mVerboseLoggingEnabled);
         mSupplicantStateTracker.enableVerboseLogging(mVerboseLoggingEnabled);
+        mWifiNative.enableVerboseLogging(mVerboseLoggingEnabled, mVerboseLoggingEnabled);
         mQosPolicyRequestHandler.enableVerboseLogging(mVerboseLoggingEnabled);
     }
 
@@ -3522,6 +3523,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 // the connected configuration to be null.
                 config = getConnectingWifiConfigurationInternal();
             }
+            if (config == null) {
+                // config could be null if it had been removed from WifiConfigManager. In this case
+                // we should simply disconnect.
+                handleIpReachabilityLost();
+                return;
+            }
             final NetworkAgentConfig naConfig = getNetworkAgentConfigInternal(config);
             final NetworkCapabilities nc = getCapabilities(
                     getConnectedWifiConfigurationInternal(), getConnectedBssidInternal());
@@ -4118,8 +4125,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     mLastScanRssi = mWifiConfigManager.findScanRssi(netId,
                             mWifiHealthMonitor.getScanRssiValidTimeMs());
                     mWifiScoreCard.noteConnectionAttempt(mWifiInfo, mLastScanRssi, config.SSID);
-                    mWifiBlocklistMonitor.setAllowlistSsids(config.SSID, Collections.emptyList());
-                    mWifiBlocklistMonitor.updateFirmwareRoamingConfiguration(Set.of(config.SSID));
+                    if (isPrimary()) {
+                        mWifiBlocklistMonitor.setAllowlistSsids(config.SSID,
+                                Collections.emptyList());
+                        mWifiBlocklistMonitor.updateFirmwareRoamingConfiguration(
+                                Set.of(config.SSID));
+                    }
 
                     updateWifiConfigOnStartConnection(config, bssid);
                     reportConnectionAttemptStart(config, mTargetBssid,
@@ -5779,7 +5790,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         }
                         sendMessageDelayed(obtainMessage(CMD_RSSI_POLL, mRssiPollToken, 0),
                                 mWifiGlobals.getPollRssiIntervalMillis());
-                        if (mVerboseLoggingEnabled) sendRssiChangeBroadcast(mWifiInfo.getRssi());
                         if (isPrimary()) {
                             mWifiTrafficPoller.notifyOnDataActivity(
                                     mWifiInfo.txSuccess, mWifiInfo.rxSuccess);
@@ -7493,6 +7503,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      * SSID allowlist with the linked networks.
      */
     private void updateLinkedNetworks(@NonNull WifiConfiguration config) {
+        if (!isPrimary()) {
+            return;
+        }
         if (!mContext.getResources().getBoolean(R.bool.config_wifiEnableLinkedNetworkRoaming)) {
             return;
         }
