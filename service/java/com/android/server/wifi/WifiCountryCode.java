@@ -24,7 +24,6 @@ import android.content.Context;
 import android.os.SystemProperties;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
-import android.util.ArrayMap;
 import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
@@ -35,6 +34,7 @@ import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -69,7 +69,7 @@ public class WifiCountryCode {
      * - When the ClientModeManager instance is destroyed, it is removed from this map.
      */
     private final Map<ActiveModeManager, Boolean> mAmmToReadyForChangeMap =
-            new ArrayMap<>();
+            new ConcurrentHashMap<>();
     private static final SimpleDateFormat FORMATTER = new SimpleDateFormat("MM-dd HH:mm:ss.SSS");
 
     private String mTelephonyCountryCode = null;
