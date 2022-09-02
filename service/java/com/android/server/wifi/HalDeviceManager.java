@@ -114,6 +114,7 @@ public class HalDeviceManager {
     private boolean mIsBridgedSoftApSupported;
     private boolean mIsStaWithBridgedSoftApConcurrencySupported;
     private boolean mWifiUserApprovalRequiredForD2dInterfacePriority;
+    private boolean mIsConcurrencyComboLoadedFromDriver;
     private ArrayMap<IWifiIface, SoftApManager> mSoftApManagers = new ArrayMap<>();
 
     // cache the value for supporting vendor HAL or not
@@ -1853,11 +1854,7 @@ public class HalDeviceManager {
                                          + triedCount + " times");
                             }
                             WifiChipInfo[] wifiChipInfos = getAllChipInfo();
-                            if (wifiChipInfos != null) {
-                                mCachedStaticChipInfos =
-                                        convertWifiChipInfoToStaticChipInfos(getAllChipInfo());
-                                saveStaticChipInfoToStore(mCachedStaticChipInfos);
-                            } else {
+                            if (wifiChipInfos == null) {
                                 Log.e(TAG, "Started wifi but could not get current chip info.");
                             }
                             return true;
@@ -2495,8 +2492,10 @@ public class HalDeviceManager {
         }
         if (mWifiUserApprovalRequiredForD2dInterfacePriority
                 && newRequestorWsPriority > PRIORITY_BG
-                && (requestedCreateType == HDM_CREATE_IFACE_P2P
-                        || requestedCreateType == HDM_CREATE_IFACE_NAN)) {
+                && (requestedCreateType == HDM_CREATE_IFACE_AP
+                || requestedCreateType == HDM_CREATE_IFACE_AP_BRIDGE
+                || requestedCreateType == HDM_CREATE_IFACE_P2P
+                || requestedCreateType == HDM_CREATE_IFACE_NAN)) {
             return true;
         }
         // If the new request is higher priority than existing priority, then the new requestor
@@ -2768,6 +2767,17 @@ public class HalDeviceManager {
                         Log.e(TAG, "executeChipReconfiguration: configureChip error: "
                                 + statusString(status));
                         return null;
+                    }
+                    if (!mIsConcurrencyComboLoadedFromDriver) {
+                        WifiChipInfo[] wifiChipInfos = getAllChipInfo();
+                        if (wifiChipInfos != null) {
+                            mCachedStaticChipInfos =
+                                    convertWifiChipInfoToStaticChipInfos(getAllChipInfo());
+                            saveStaticChipInfoToStore(mCachedStaticChipInfos);
+                            mIsConcurrencyComboLoadedFromDriver = true;
+                        } else {
+                            Log.e(TAG, "Configured chip but could not get current chip info.");
+                        }
                     }
                 } else {
                     // remove all interfaces on the delete list

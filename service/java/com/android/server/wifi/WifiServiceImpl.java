@@ -1238,7 +1238,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (mWifiPermissionsUtil.checkNetworkSettingsPermission(callingUid)) {
             if (enable) {
                 mWifiThreadRunner.post(
-                        () -> mWifiConnectivityManager.setAutoJoinEnabledExternal(true));
+                        () -> mWifiConnectivityManager.setAutoJoinEnabledExternal(true, false));
                 mWifiMetrics.logUserActionEvent(UserActionEvent.EVENT_TOGGLE_WIFI_ON);
             } else {
                 WifiInfo wifiInfo =
@@ -1565,7 +1565,8 @@ public class WifiServiceImpl extends BaseWifiService {
 
         if (!startSoftApInternal(new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, softApConfig,
-                mTetheredSoftApTracker.getSoftApCapability()), requestorWs)) {
+                mTetheredSoftApTracker.getSoftApCapability(),
+                mCountryCode.getCountryCode()), requestorWs)) {
             mTetheredSoftApTracker.setFailedWhileEnabling();
             return false;
         }
@@ -1610,7 +1611,8 @@ public class WifiServiceImpl extends BaseWifiService {
 
         if (!startSoftApInternal(new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, softApConfig,
-                mTetheredSoftApTracker.getSoftApCapability()), requestorWs)) {
+                mTetheredSoftApTracker.getSoftApCapability(),
+                mCountryCode.getCountryCode()), requestorWs)) {
             mTetheredSoftApTracker.setFailedWhileEnabling();
             return false;
         }
@@ -2201,7 +2203,7 @@ public class WifiServiceImpl extends BaseWifiService {
 
             mActiveConfig = new SoftApModeConfiguration(
                     WifiManager.IFACE_IP_MODE_LOCAL_ONLY,
-                    softApConfig, lohsCapability);
+                    softApConfig, lohsCapability, mCountryCode.getCountryCode());
             mIsExclusive = (request.getCustomConfig() != null);
             // Report the error if we got failure in startSoftApInternal
             if (!startSoftApInternal(mActiveConfig, request.getWorkSource())) {
@@ -3874,16 +3876,34 @@ public class WifiServiceImpl extends BaseWifiService {
      * @param choice the OEM's choice to allow auto-join
      */
     @Override
-    public void allowAutojoinGlobal(boolean choice) {
+    public void allowAutojoinGlobal(boolean choice, String packageName, Bundle extras) {
         int callingUid = Binder.getCallingUid();
+        boolean isDeviceAdmin = mWifiPermissionsUtil.isAdmin(callingUid, packageName);
         if (!mWifiPermissionsUtil.checkNetworkSettingsPermission(callingUid)
                 && !mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(callingUid)
-                && !isDeviceOrProfileOwner(callingUid, mContext.getOpPackageName())) {
+                && !isDeviceAdmin) {
             throw new SecurityException("Uid " + callingUid
                     + " is not allowed to set wifi global autojoin");
         }
         mLog.info("allowAutojoinGlobal=% uid=%").c(choice).c(callingUid).flush();
-        mWifiThreadRunner.post(() -> mWifiConnectivityManager.setAutoJoinEnabledExternal(choice));
+        if (!isDeviceAdmin && SdkLevel.isAtLeastS()) {
+            // direct caller is not device admin but there exists and attribution chain. Check
+            // if the original caller is device admin.
+            AttributionSource as = extras.getParcelable(
+                    WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE);
+            if (as != null) {
+                AttributionSource asLast = as;
+                while (asLast.getNext() != null) {
+                    asLast = asLast.getNext();
+                }
+                isDeviceAdmin = mWifiPermissionsUtil.isAdmin(asLast.getUid(),
+                        asLast.getPackageName()) || mWifiPermissionsUtil.isLegacyDeviceAdmin(
+                                asLast.getUid(), asLast.getPackageName());
+            }
+        }
+        boolean finalIsDeviceAdmin = isDeviceAdmin;
+        mWifiThreadRunner.post(() -> mWifiConnectivityManager.setAutoJoinEnabledExternal(choice,
+                finalIsDeviceAdmin));
         mLastCallerInfoManager.put(WifiManager.API_AUTOJOIN_GLOBAL, Process.myTid(),
                 callingUid, Binder.getCallingPid(), "<unknown>", choice);
     }
@@ -4047,7 +4067,9 @@ public class WifiServiceImpl extends BaseWifiService {
             WorkSource reqWs = cmm.getRequestorWs();
             // If there are more than 1 secondary CMM for same app, return any one (should not
             // happen currently since we don't support 3 STA's concurrently).
-            if (reqWs.equals(new WorkSource(callingUid, callingPackageName))) {
+            if (reqWs.equals(new WorkSource(callingUid, callingPackageName))
+                    || (TextUtils.equals(reqWs.getPackageName(0), callingPackageName)
+                    && reqWs.getUid(0) == callingUid)) {
                 mLog.info("getConnectionInfo providing secondary CMM info").flush();
                 return cmm;
             }
@@ -5122,12 +5144,16 @@ public class WifiServiceImpl extends BaseWifiService {
             return;
         }
         // Delete all Wifi SSIDs
-        List<WifiConfiguration> networks = mWifiThreadRunner.call(
-                () -> mWifiConfigManager.getSavedNetworks(Process.WIFI_UID),
-                Collections.emptyList());
-        for (WifiConfiguration network : networks) {
-            removeNetwork(network.networkId, packageName);
-        }
+        mWifiThreadRunner.run(() -> {
+            List<WifiConfiguration> networks = mWifiConfigManager
+                    .getSavedNetworks(Process.WIFI_UID);
+            for (WifiConfiguration network : networks) {
+                if (network.isEnterprise()) {
+                    mWifiInjector.getWifiKeyStore().removeKeys(network.enterpriseConfig, true);
+                }
+                removeNetwork(network.networkId, packageName);
+            }
+        });
         // Delete all Passpoint configurations
         List<PasspointConfiguration> configs = mWifiThreadRunner.call(
                 () -> mPasspointManager.getProviderConfigs(Process.WIFI_UID /* ignored */, true),
@@ -5136,6 +5162,8 @@ public class WifiServiceImpl extends BaseWifiService {
             removePasspointConfigurationInternal(null, config.getUniqueId());
         }
         mWifiThreadRunner.post(() -> {
+            // Reset SoftApConfiguration to default configuration
+            mWifiApConfigStore.setApConfiguration(null);
             mPasspointManager.clearAnqpRequestsAndFlushCache();
             mWifiConfigManager.clearUserTemporarilyDisabledList();
             mWifiConfigManager.removeAllEphemeralOrPasspointConfiguredNetworks();
