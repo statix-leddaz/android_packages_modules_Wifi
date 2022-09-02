@@ -47,6 +47,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.Mockito.any;
@@ -141,6 +142,7 @@ import android.os.Message;
 import android.os.Messenger;
 import android.os.PowerManager;
 import android.os.Process;
+import android.os.UserHandle;
 import android.os.test.TestLooper;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
@@ -576,6 +578,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 });
         when(mWifiNative.connectToNetwork(any(), any())).thenReturn(true);
         when(mWifiNative.getApfCapabilities(anyString())).thenReturn(APF_CAP);
+        when(mWifiNative.isQosPolicyFeatureEnabled()).thenReturn(true);
     }
 
     /** Reset verify() counters on WifiNative, and restore when() mocks on mWifiNative */
@@ -5108,6 +5111,28 @@ public class ClientModeImplTest extends WifiBaseTest {
     }
 
     /**
+     *  Verifies that no RSSI change broadcast should be sent
+     */
+    private void failOnRssiChangeBroadcast() throws Exception {
+        mCmi.enableVerboseLogging(true);
+        doAnswer(invocation -> {
+            final Intent intent = invocation.getArgument(0);
+            if (WifiManager.RSSI_CHANGED_ACTION.equals(intent.getAction())) {
+                fail("Should not send RSSI_CHANGED broadcast!");
+            }
+            return null;
+        }).when(mContext).sendBroadcastAsUser(any(), any());
+
+        doAnswer(invocation -> {
+            final Intent intent = invocation.getArgument(0);
+            if (WifiManager.RSSI_CHANGED_ACTION.equals(intent.getAction())) {
+                fail("Should not send RSSI_CHANGED broadcast!");
+            }
+            return null;
+        }).when(mContext).sendBroadcastAsUser(any(), any(), anyString());
+    }
+
+    /**
      * Verify that we check for data stall during rssi poll
      * and then check that wifi link layer usage data are being updated.
      */
@@ -5116,6 +5141,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         mCmi.enableRssiPolling(true);
         connect();
 
+        failOnRssiChangeBroadcast();
         WifiLinkLayerStats oldLLStats = new WifiLinkLayerStats();
         when(mWifiNative.getWifiLinkLayerStats(any())).thenReturn(oldLLStats);
         mCmi.sendMessage(ClientModeImpl.CMD_RSSI_POLL, 1);
@@ -5140,6 +5166,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         mCmi.enableRssiPolling(true);
         connect();
 
+        failOnRssiChangeBroadcast();
         WifiLinkLayerStats stats = new WifiLinkLayerStats();
         when(mWifiNative.getWifiLinkLayerStats(any())).thenReturn(stats);
         when(mWifiDataStall.checkDataStallAndThroughputSufficiency(any(),
@@ -6119,6 +6146,22 @@ public class ClientModeImplTest extends WifiBaseTest {
     }
 
     /**
+     * Verifies that while connecting to secondary STA, framework doesn't change the roaming
+     * configuration.
+     * @throws Exception
+     */
+    @Test
+    public void testConnectSecondaryStaNotChangeRoamingConfig() throws Exception {
+        initializeAndAddNetworkAndVerifySuccess();
+        when(mClientModeManager.getRole()).thenReturn(ROLE_CLIENT_SECONDARY_LONG_LIVED);
+        mCmi.sendMessage(ClientModeImpl.CMD_START_CONNECT, 0, 0, TEST_BSSID_STR);
+        mLooper.dispatchAll();
+
+        verify(mWifiNative).connectToNetwork(eq(WIFI_IFACE_NAME), eq(mTestConfig));
+        verify(mWifiBlocklistMonitor, never()).setAllowlistSsids(anyString(), any());
+    }
+
+    /**
      * Tests the wifi info is updated correctly for connecting network.
      */
     @Test
@@ -6517,6 +6560,24 @@ public class ClientModeImplTest extends WifiBaseTest {
         // Trigger ip reachability failure and ensure we trigger a disconnect.
         ReachabilityLossInfoParcelable lossInfo =
                 new ReachabilityLossInfoParcelable("", ReachabilityLossReason.ORGANIC);
+        mCmi.sendMessage(ClientModeImpl.CMD_IP_REACHABILITY_FAILURE, lossInfo);
+        mLooper.dispatchAll();
+        verify(mWifiNative).disconnect(WIFI_IFACE_NAME);
+    }
+
+    @Test
+    public void testIpReachabilityFailureRoamWithNullConfigDisconnect() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        connect();
+        expectRegisterNetworkAgent((agentConfig) -> { }, (cap) -> { });
+        reset(mWifiNetworkAgent);
+
+        // mock the current network as removed
+        when(mWifiConfigManager.getConfiguredNetwork(anyInt())).thenReturn(null);
+
+        // Trigger ip reachability failure and ensure we disconnect.
+        ReachabilityLossInfoParcelable lossInfo =
+                new ReachabilityLossInfoParcelable("", ReachabilityLossReason.ROAM);
         mCmi.sendMessage(ClientModeImpl.CMD_IP_REACHABILITY_FAILURE, lossInfo);
         mLooper.dispatchAll();
         verify(mWifiNative).disconnect(WIFI_IFACE_NAME);
@@ -7707,8 +7768,10 @@ public class ClientModeImplTest extends WifiBaseTest {
         triggerConnect();
     }
 
-    @Test
-    public void testNetworkRemovedUpdatesLinkedNetworks() throws Exception {
+    private void testNetworkRemovedUpdatesLinkedNetworks(boolean isSecondary) throws Exception {
+        if (isSecondary) {
+            when(mClientModeManager.getRole()).thenReturn(ROLE_CLIENT_SECONDARY_LONG_LIVED);
+        }
         mResources.setBoolean(R.bool.config_wifiEnableLinkedNetworkRoaming, true);
         WifiConfiguration connectedConfig = WifiConfigurationTestUtil.createPskNetwork("\"ssid1\"");
         connectedConfig.networkId = FRAMEWORK_NETWORK_ID;
@@ -7731,7 +7794,21 @@ public class ClientModeImplTest extends WifiBaseTest {
         mConfigUpdateListenerCaptor.getValue().onNetworkRemoved(removeConfig);
         mLooper.dispatchAll();
 
-        verify(mWifiConfigManager).updateLinkedNetworks(connectedConfig.networkId);
+        if (!isSecondary) {
+            verify(mWifiConfigManager).updateLinkedNetworks(connectedConfig.networkId);
+        } else {
+            verify(mWifiConfigManager, never()).updateLinkedNetworks(connectedConfig.networkId);
+        }
+    }
+
+    @Test
+    public void testNetworkRemovedUpdatesLinkedNetworksPrimary() throws Exception {
+        testNetworkRemovedUpdatesLinkedNetworks(false);
+    }
+
+    @Test
+    public void testNetworkRemovedUpdatesLinkedNetworksSecondary() throws Exception {
+        testNetworkRemovedUpdatesLinkedNetworks(true);
     }
 
     @Test
@@ -8546,6 +8623,21 @@ public class ClientModeImplTest extends WifiBaseTest {
     public void verifyQosPolicyResetEventWithNullNetworkAgent() throws Exception {
         assumeTrue(SdkLevel.isAtLeastT());
         assertNull(mCmi.mNetworkAgent);
+        mCmi.sendMessage(WifiMonitor.QOS_POLICY_RESET_EVENT, 0, 0, null);
+        mLooper.dispatchAll();
+        verify(mWifiNetworkAgent, never()).sendRemoveAllDscpPolicies();
+    }
+
+    /**
+     * Verify that QoS policy reset events are not handled if the QoS policy feature was
+     * not enabled in WifiNative.
+     */
+    @Test
+    public void verifyQosPolicyResetEventWhenQosFeatureNotEnabled() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        connect();
+        assertNotNull(mCmi.mNetworkAgent);
+        when(mWifiNative.isQosPolicyFeatureEnabled()).thenReturn(false);
         mCmi.sendMessage(WifiMonitor.QOS_POLICY_RESET_EVENT, 0, 0, null);
         mLooper.dispatchAll();
         verify(mWifiNetworkAgent, never()).sendRemoveAllDscpPolicies();
