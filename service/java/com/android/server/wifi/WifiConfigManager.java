@@ -162,7 +162,7 @@ public class WifiConfigManager {
          * Invoked when user connect choice is removed.
          * @param choiceKey The network profile key of the user connect choice that was removed.
          */
-        default void onConnectChoiceRemoved(String choiceKey){ }
+        default void onConnectChoiceRemoved(@NonNull String choiceKey){ }
 
         /**
          * Invoke when security params changed, especially when NetworkTransitionDisable event
@@ -1711,7 +1711,7 @@ public class WifiConfigManager {
         // will remove the enterprise keys when provider is uninstalled. Suggestion enterprise
         // networks will remove the enterprise keys when suggestion is removed.
         if (!config.fromWifiNetworkSuggestion && !config.isPasspoint() && config.isEnterprise()) {
-            mWifiKeyStore.removeKeys(config.enterpriseConfig);
+            mWifiKeyStore.removeKeys(config.enterpriseConfig, false);
         }
 
         // Do not remove the user choice when passpoint or suggestion networks are removed from
@@ -4024,22 +4024,6 @@ public class WifiConfigManager {
             return;
         }
         internalConfig.setSecurityParamsIsAddedByAutoUpgrade(securityType, isAddedByAutoUpgrade);
-        saveToStore(true);
-    }
-
-    /**
-     * This method updates whether or not a security is enabled.
-     *
-     * @param networkId networkId corresponding to the network to be updated.
-     * @param securityType the target security type
-     * @param enable indicates whether the type is enabled or not.
-     */
-    public void setSecurityParamsEnabled(int networkId, int securityType, boolean enable) {
-        WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
-        if (internalConfig == null) {
-            return;
-        }
-        internalConfig.setSecurityParamsEnabled(securityType, enable);
         saveToStore(true);
     }
 

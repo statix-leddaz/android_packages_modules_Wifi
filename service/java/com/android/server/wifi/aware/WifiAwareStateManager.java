@@ -1854,6 +1854,9 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     if (mAwareIsDisabling) {
                         deferMessage(msg);
                         waitForResponse = false;
+                        if (WaitingState.wasMessageInWaitingState(msg)) {
+                            mInterfaceConflictMgr.reset();
+                        }
                         break;
                     }
 
@@ -1907,11 +1910,9 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                 }
                 case COMMAND_TYPE_DISABLE: {
                     mAwareIsDisabling = false;
-                    // Trigger the response from the framework as Aware interface will be removed
+                    // Must trigger a state transition to execute the deferred connect command
                     if (!mWifiAwareNativeApi.disable(mCurrentTransactionId)) {
                         onDisableResponse(mCurrentTransactionId, WifiStatusCode.ERROR_UNKNOWN);
-                    } else {
-                        onDisableResponse(mCurrentTransactionId, WifiStatusCode.SUCCESS);
                     }
                     break;
                 }
@@ -2371,7 +2372,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                             "processTimeout: COMMAND_TYPE_RELEASE_AWARE - shouldn't be waiting!");
                     break;
                 case COMMAND_TYPE_DISABLE:
-                    mAwareMetrics.recordDisableAware();
+                    onDisableResponseLocal(mCurrentCommand, NanStatusType.INTERNAL_FAILURE);
                     break;
                 default:
                     Log.wtf(TAG, "processTimeout: this isn't a COMMAND -- msg=" + msg);
@@ -2599,6 +2600,9 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                 mPowerManager.isInteractive(), mPowerManager.isDeviceIdleMode(),
                 rangingRequired, enableInstantMode, instantModeChannel);
         if (!success) {
+            if (mCurrentAwareConfiguration == null) {
+                mWifiAwareNativeManager.releaseAware();
+            }
             try {
                 callback.onConnectFail(NanStatusType.INTERNAL_FAILURE);
                 mAwareMetrics.recordAttachStatus(NanStatusType.INTERNAL_FAILURE);
@@ -3042,7 +3046,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
 
     private void onDisableResponseLocal(Message command, int reason) {
         Log.d(TAG, "onDisableResponseLocal: command=" + command + ", reason=" + reason);
-
         /*
          * do nothing:
          * - success: was waiting so that don't enable while disabling
@@ -3052,7 +3055,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             Log.e(TAG, "onDisableResponseLocal: FAILED!? command=" + command + ", reason="
                     + reason);
         }
-
+        mWifiAwareNativeManager.releaseAware();
         mAwareMetrics.recordDisableAware();
     }
 

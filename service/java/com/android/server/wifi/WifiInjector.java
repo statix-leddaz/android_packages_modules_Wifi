@@ -388,7 +388,8 @@ public class WifiInjector {
                 mLruConnectionTracker, this);
         mSettingsConfigStore = new WifiSettingsConfigStore(context, wifiHandler,
                 mSettingsMigrationDataHolder, mWifiConfigManager, mWifiConfigStore);
-        mSettingsStore = new WifiSettingsStore(mContext, mSettingsConfigStore);
+        mSettingsStore = new WifiSettingsStore(mContext, mSettingsConfigStore, mWifiThreadRunner,
+                mFrameworkFacade, mWifiNotificationManager, mDeviceConfigFacade);
         mWifiMetrics.setWifiConfigManager(mWifiConfigManager);
         mWifiMetrics.setWifiSettingsStore(mSettingsStore);
 
@@ -755,9 +756,9 @@ public class WifiInjector {
             @NonNull WorkSource requestorWs,
             @NonNull ActiveModeManager.SoftApRole role,
             boolean verboseLoggingEnabled) {
-        return new SoftApManager(mContext, mWifiHandlerThread.getLooper(),
-                mFrameworkFacade, mWifiNative, mCoexManager, makeBatteryManager(),
-                mCountryCode.getCountryCode(), listener, callback, mWifiApConfigStore,
+        return new SoftApManager(mContext, mWifiHandlerThread.getLooper(), mFrameworkFacade,
+                mWifiNative, mCoexManager, makeBatteryManager(), mInterfaceConflictManager,
+                listener, callback, mWifiApConfigStore,
                 config, mWifiMetrics, mSarManager, mWifiDiagnostics,
                 new SoftApNotifier(mContext, mFrameworkFacade, mWifiNotificationManager),
                 mCmiMonitor, mActiveModeWarden, mClock.getElapsedSinceBootMillis(),
@@ -1162,5 +1163,10 @@ public class WifiInjector {
     @NonNull
     public LocalLog getWifiAwareLocalLog() {
         return mWifiAwareLocalLog;
+    }
+
+    @NonNull
+    public WifiKeyStore getWifiKeyStore() {
+        return mWifiKeyStore;
     }
 }

@@ -1297,6 +1297,9 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
             mTetherStateReceiver = mBcastRxCaptor.getAllValues().get(2);
         }
 
+        verify(mWifiPermissionsUtil, never()).isLocationModeEnabled();
+        verify(mContext, never()).sendBroadcastMultiplePermissions(any(Intent.class), any());
+        verify(mContext, never()).sendBroadcast(any(Intent.class), anyString(), any(Bundle.class));
         mWifiP2pServiceImpl.mNetdWrapper = mNetdWrapper;
         mP2pStateMachineMessenger = mWifiP2pServiceImpl.getP2pStateMachineMessenger();
     }
@@ -1325,6 +1328,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         mClient1 = new Binder();
         mClient2 = new Binder();
         when(mContext.createContextAsUser(any(), anyInt())).thenReturn(mContext);
+        mWifiP2pServiceImpl.handleBootCompleted();
     }
 
     @After
@@ -1426,6 +1430,35 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         checkIsP2pInitWhenClientConnected(false, mClient1,
                 new WorkSource(mClient1.getCallingUid(), TEST_PACKAGE_NAME));
         checkIsP2pTearDownWhenClientDisconnected(false, mClient1, null);
+    }
+
+    /**
+     * Verify device status is reset to UNAVAILABLE on P2P disabled.
+     */
+    @Test
+    public void testP2pDeviceUnavailableOnP2pDisabled() throws Exception {
+        setTargetSdkGreaterThanT();
+        forceP2pEnabled(mClient1);
+
+        simulateWifiStateChange(false);
+        mLooper.dispatchAll();
+        // Device status is AVAILABLE
+        sendChannelInfoUpdateMsg("testPkg1", "testFeature", mClient1, mClientMessenger);
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_DEVICE_INFO);
+        verify(mClientHandler).sendMessage(mMessageCaptor.capture());
+        assertEquals(WifiP2pManager.RESPONSE_DEVICE_INFO, mMessageCaptor.getValue().what);
+        assertEquals(WifiP2pDevice.AVAILABLE,
+                ((WifiP2pDevice) mMessageCaptor.getValue().obj).status);
+
+        // Force to back disable state
+        mockEnterDisabledState();
+
+        // Device status is UNAVAILABLE
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_DEVICE_INFO);
+        verify(mClientHandler, times(2)).sendMessage(mMessageCaptor.capture());
+        assertEquals(WifiP2pManager.RESPONSE_DEVICE_INFO, mMessageCaptor.getValue().what);
+        assertEquals(WifiP2pDevice.UNAVAILABLE,
+                ((WifiP2pDevice) mMessageCaptor.getValue().obj).status);
     }
 
     /**
@@ -4091,6 +4124,32 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     }
 
     /**
+     * Verify the caller sends WifiP2pManager.SET_DEVICE_NAME with a name
+     * whose length exceeds 22.
+     */
+    @Test
+    public void testSetDeviceNameFailureWithANameLongerThanMaxPostfixLength() throws Exception {
+        // Move to enabled state
+        forceP2pEnabled(mClient1);
+        mTestThisDevice.status = mTestThisDevice.AVAILABLE;
+
+        mTestThisDevice.deviceName = "12345678901234567890123";
+        when(mWifiNative.setDeviceName(anyString())).thenReturn(true);
+        when(mWifiNative.setP2pSsidPostfix(anyString())).thenReturn(true);
+        sendSetDeviceNameMsg(mClientMessenger, mTestThisDevice);
+        verify(mWifiNative).setDeviceName(eq(mTestThisDevice.deviceName));
+        verify(mWifiNative).setP2pSsidPostfix(
+                eq("-" + mTestThisDevice.deviceName.substring(
+                        0, WifiP2pServiceImpl.GROUP_NAME_POSTFIX_LENGTH_MAX)));
+        verify(mWifiSettingsConfigStore).put(
+                eq(WIFI_P2P_DEVICE_NAME), eq(mTestThisDevice.deviceName));
+        checkSendThisDeviceChangedBroadcast();
+        verify(mClientHandler).sendMessage(mMessageCaptor.capture());
+        Message message = mMessageCaptor.getValue();
+        assertEquals(WifiP2pManager.SET_DEVICE_NAME_SUCCEEDED, message.what);
+    }
+
+    /**
      * Verify the caller sends WifiP2pManager.SET_DEVICE_NAME with an empty name.
      */
     @Test
@@ -4123,6 +4182,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
 
         // clear the one called on entering P2pEnabledState.
         reset(mWifiNative);
+        when(mWifiNative.setP2pSsidPostfix(anyString())).thenReturn(true);
         when(mWifiNative.setDeviceName(anyString())).thenReturn(false);
         sendSetDeviceNameMsg(mClientMessenger, mTestThisDevice);
         verify(mWifiNative).setDeviceName(eq(mTestThisDevice.deviceName));
@@ -6509,6 +6569,55 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         runTestP2pWithUserApproval(false);
     }
 
+    /**
+     * Validate InterfaceConflictManager is reset if user approval occurs after wifi turned off.
+     */
+    @Test
+    public void testInterfaceConflictManagerResetIfWifiTurnedOff() throws Exception {
+        ArgumentCaptor<State> mTargetStateCaptor = ArgumentCaptor.forClass(State.class);
+        ArgumentCaptor<WaitingState> mWaitingStateCaptor = ArgumentCaptor.forClass(
+                WaitingState.class);
+        InOrder inOrder = inOrder(mInterfaceConflictManager);
+
+        simulateWifiStateChange(true);
+        simulateInitChannel(mClient1);
+
+        // simulate user approval needed
+        when(mInterfaceConflictManager.manageInterfaceConflictForStateMachine(any(), any(), any(),
+                any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_P2P), any())).thenAnswer(
+                        new MockAnswerUtil.AnswerWithArguments() {
+                            public int answer(String tag, Message msg, StateMachine stateMachine,
+                                    WaitingState waitingState, State targetState,
+                                    int createIfaceType,
+                                    WorkSource requestorWs) {
+                                stateMachine.deferMessage(msg);
+                                stateMachine.transitionTo(waitingState);
+                                return InterfaceConflictManager.ICM_SKIP_COMMAND_WAIT_FOR_USER;
+                            }
+                        });
+
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.DISCOVER_PEERS);
+        mLooper.dispatchAll();
+        inOrder.verify(mInterfaceConflictManager).manageInterfaceConflictForStateMachine(any(),
+                any(), any(), mWaitingStateCaptor.capture(), mTargetStateCaptor.capture(),
+                eq(HalDeviceManager.HDM_CREATE_IFACE_P2P), any());
+
+        // Turn off Wi-Fi
+        simulateWifiStateChange(false);
+
+        // simulate user approval triggered and granted
+        when(mInterfaceConflictManager.manageInterfaceConflictForStateMachine(any(), any(), any(),
+                any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_P2P), any())).thenReturn(
+                InterfaceConflictManager.ICM_EXECUTE_COMMAND);
+        mWaitingStateCaptor.getValue().sendTransitionStateCommand(mTargetStateCaptor.getValue());
+        mLooper.dispatchAll();
+
+        // Verify InterfaceConflictManager is reset
+        verify(mInterfaceConflictManager).reset();
+        verify(mWifiNative, never()).setupInterface(any(), any(),
+                eq(new WorkSource(mClient1.getCallingUid(), TEST_PACKAGE_NAME)));
+    }
+
     /*
      * Verify the connection event ends due to the provision discovery failure.
      */
@@ -6559,6 +6668,38 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mWifiNative).p2pReject(eq(mTestWifiP2pDevice.deviceAddress));
     }
 
+    @Test
+    public void testDismissDialogOnReceiveProvDiscFailureEvent() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        when(mWifiNative.p2pGroupAdd(anyBoolean())).thenReturn(true);
+        forceP2pEnabled(mClient1);
+
+        mockEnterUserAuthorizingNegotiationRequestState(WpsInfo.PBC);
+        WifiP2pProvDiscEvent pdEvent = new WifiP2pProvDiscEvent();
+        pdEvent.device = mTestWifiP2pDevice;
+        sendSimpleMsg(null,
+                WifiP2pMonitor.P2P_PROV_DISC_FAILURE_EVENT,
+                WifiP2pMonitor.PROV_DISC_STATUS_REJECTED,
+                pdEvent);
+        verify(mDialogHandle).dismissDialog();
+    }
+
+    @Test
+    public void testDismissDialogOnReceiveProvDiscFailureEventPreT() throws Exception {
+        assumeFalse(SdkLevel.isAtLeastT());
+        when(mWifiNative.p2pGroupAdd(anyBoolean())).thenReturn(true);
+        forceP2pEnabled(mClient1);
+
+        mockEnterUserAuthorizingNegotiationRequestState(WpsInfo.PBC);
+        WifiP2pProvDiscEvent pdEvent = new WifiP2pProvDiscEvent();
+        pdEvent.device = mTestWifiP2pDevice;
+        sendSimpleMsg(null,
+                WifiP2pMonitor.P2P_PROV_DISC_FAILURE_EVENT,
+                WifiP2pMonitor.PROV_DISC_STATUS_REJECTED,
+                pdEvent);
+        verify(mAlertDialog).dismiss();
+    }
+
     /**
      * Verify the tethering request is sent with TETHER_PRIVILEGED permission.
      */
@@ -6607,5 +6748,47 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mWifiNative, never()).setupInterface(any(), any(), any());
         verify(mNetdWrapper, never()).setInterfaceUp(anyString());
         verify(mWifiMonitor, never()).registerHandler(anyString(), anyInt(), any());
+    }
+
+    @Test
+    public void testPbcReconnectForUnknownGroupInvitation() throws Exception {
+        forceP2pEnabled(mClient1);
+        when(mWifiNative.getGroupCapability(any())).thenReturn(0);
+        when(mWifiNative.p2pReinvoke(anyInt(), any())).thenReturn(true);
+        when(mWifiNative.p2pGetSsid(any())).thenReturn(null);
+        when(mTestWifiP2pDevice.isGroupOwner()).thenReturn(false);
+        when(mTestWifiP2pDevice.isInvitationCapable()).thenReturn(true);
+
+        mockPeersList();
+        // Trigger reinvoke to enter Group Negotiation state
+        mTestWifiP2pPeerConfig.wps.setup = WpsInfo.PBC;
+        sendConnectMsg(mClientMessenger, mTestWifiP2pPeerConfig);
+        // Got the unknown group result from the peer.
+        sendInvitationResultMsg(WifiP2pServiceImpl.P2pStatus.UNKNOWN_P2P_GROUP);
+
+        // For PBC request, p2p should start from negotiation request directly.
+        verify(mWifiNative, never()).p2pProvisionDiscovery(any());
+        verify(mWifiNative).p2pConnect(eq(mTestWifiP2pPeerConfig), anyBoolean());
+    }
+
+    @Test
+    public void testPinReconnectForUnknownGroupInvitation() throws Exception {
+        forceP2pEnabled(mClient1);
+        when(mWifiNative.getGroupCapability(any())).thenReturn(0);
+        when(mWifiNative.p2pReinvoke(anyInt(), any())).thenReturn(true);
+        when(mWifiNative.p2pGetSsid(any())).thenReturn(null);
+        when(mTestWifiP2pDevice.isGroupOwner()).thenReturn(false);
+        when(mTestWifiP2pDevice.isInvitationCapable()).thenReturn(true);
+
+        mockPeersList();
+        // Trigger reinvoke to enter Group Negotiation state
+        mTestWifiP2pPeerConfig.wps.setup = WpsInfo.KEYPAD;
+        sendConnectMsg(mClientMessenger, mTestWifiP2pPeerConfig);
+        // Got the unknown group result from the peer.
+        sendInvitationResultMsg(WifiP2pServiceImpl.P2pStatus.UNKNOWN_P2P_GROUP);
+
+        // For Keypad/Display pin-based request, p2p should start the p2p connection
+        // from provision discovery to exchange pin codes.
+        verify(mWifiNative).p2pProvisionDiscovery(mTestWifiP2pPeerConfig);
     }
 }

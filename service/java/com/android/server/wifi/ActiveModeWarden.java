@@ -1930,9 +1930,12 @@ public class ActiveModeWarden {
                         break;
                     case CMD_AIRPLANE_TOGGLED:
                         if (mSettingsStore.isAirplaneModeOn()) {
-                            log("Airplane mode toggled, shutdown all modes");
-                            shutdownWifi();
-                            // onStopped will move the state machine to "DisabledState".
+                            log("Airplane mode toggled");
+                            if (!mSettingsStore.shouldWifiRemainEnabledWhenApmEnabled()) {
+                                log("Wifi disabled on APM, disable wifi");
+                                shutdownWifi();
+                                // onStopped will move the state machine to "DisabledState".
+                            }
                         } else {
                             log("Airplane mode disabled, determine next state");
                             if (shouldEnableSta()) {
@@ -2209,9 +2212,13 @@ public class ActiveModeWarden {
                         requestInfo.clientRole, requestInfo.didUserApprove)) {
                     // Can create an additional client mode manager.
                     Log.v(TAG, "Starting a new ClientModeManager");
-                    startAdditionalClientModeManager(
-                            requestInfo.clientRole,
-                            requestInfo.listener, requestInfo.requestorWs);
+                    WorkSource ifCreatorWs = new WorkSource(requestInfo.requestorWs);
+                    if (requestInfo.didUserApprove) {
+                        // If user select to connect from the UI, promote the priority
+                        ifCreatorWs.add(mFacade.getSettingsWorkSource(mContext));
+                    }
+                    startAdditionalClientModeManager(requestInfo.clientRole, requestInfo.listener,
+                            ifCreatorWs);
                     return;
                 }
 
