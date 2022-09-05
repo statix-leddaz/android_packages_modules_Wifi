@@ -3404,9 +3404,11 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
      *
      * @param ifaceName Name of the interface.
      * @param anonymousIdentity the anonymouns identity.
+     * @param updateToNativeService write the data to the native service.
      * @return true if succeeds, false otherwise.
      */
-    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity) {
+    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity,
+            boolean updateToNativeService) {
         synchronized (mLock) {
             SupplicantStaNetworkHalAidlImpl networkHandle =
                     checkStaNetworkAndLogFailure(ifaceName, "setEapAnonymousIdentity");
@@ -3416,9 +3418,11 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
             if (currentConfig == null) return false;
             if (!currentConfig.isEnterprise()) return false;
 
-            if (!networkHandle.setEapAnonymousIdentity(anonymousIdentity.getBytes())) {
-                Log.w(TAG, "Cannot set EAP anonymous identity.");
-                return false;
+            if (updateToNativeService) {
+                if (!networkHandle.setEapAnonymousIdentity(anonymousIdentity.getBytes())) {
+                    Log.w(TAG, "Cannot set EAP anonymous identity.");
+                    return false;
+                }
             }
 
             // Update cached config after setting native data successfully.
