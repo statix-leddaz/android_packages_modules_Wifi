@@ -162,8 +162,8 @@
     <string name="wifi_network_disabled_by_admin_title" msgid="9057697656855227293">"Қолжетімсіз желі"</string>
     <string name="wifi_network_disabled_by_admin_message" msgid="7830360441333155462">"<xliff:g id="SSID">%1$s</xliff:g> әкімші тарапынан өшірілді."</string>
     <string name="wifi_network_disabled_by_admin_button" msgid="3350310756265122689">"Жабу"</string>
-    <string name="wifi_enabled_apm_first_time_title" msgid="8764862768737059575">"Wi‑Fi желісін қостыңыз."</string>
-    <string name="wifi_enabled_apm_first_time_message" msgid="4481035490155027372">"Өзіңіз өшірмесеңіз, телефоныңыздағы Wi‑Fi желісі ұшақ режимінде тұра береді."</string>
+    <string name="wifi_enabled_apm_first_time_title" msgid="4814302384637588804">"Wi‑Fi ұшақ режимінде қосулы болады"</string>
+    <string name="wifi_enabled_apm_first_time_message" msgid="3804474326110512024">"Wi‑Fi қосулы болса, ол келесіде ұшақ режимінде өшпейді."</string>
     <string name="apm_enabled_first_time_title" msgid="2534167413190488009">"Wi‑Fi қосулы тұрады"</string>
-    <string name="apm_enabled_first_time_message" msgid="3441803973110703716">"Өзіңіз өшірмесеңіз, телефоныңыздағы Wi‑Fi желісі ұшақ режимінде тұра береді."</string>
+    <string name="apm_enabled_first_time_message" msgid="8381594447227021365">"Телефондағы Wi‑Fi ұшақ режимінде қосулы болады. Қосылмасын десеңіз, Wi‑Fi желісін өшіріңіз."</string>
 </resources>
