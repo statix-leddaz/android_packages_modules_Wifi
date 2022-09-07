@@ -783,6 +783,7 @@ public class WifiManager {
      * {@link #SAP_START_FAILURE_GENERAL},
      * {@link #SAP_START_FAILURE_NO_CHANNEL},
      * {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}
+     * {@link #SAP_START_FAILURE_USER_REJECTED}
      *
      * @hide
      */
@@ -889,13 +890,15 @@ public class WifiManager {
         SAP_START_FAILURE_GENERAL,
         SAP_START_FAILURE_NO_CHANNEL,
         SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION,
+        SAP_START_FAILURE_USER_REJECTED,
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface SapStartFailure {}
 
     /**
-     *  All other reasons for AP start failure besides {@link #SAP_START_FAILURE_NO_CHANNEL} and
-     *  {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}.
+     *  All other reasons for AP start failure besides {@link #SAP_START_FAILURE_NO_CHANNEL},
+     *  {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}, and
+     *  {@link #SAP_START_FAILURE_USER_REJECTED}.
      *
      *  @hide
      */
@@ -920,6 +923,13 @@ public class WifiManager {
     @SystemApi
     public static final int SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION = 2;
 
+    /**
+     *  If Wi-Fi AP start failed, this reason code means that the user was asked for confirmation to
+     *  create the AP and the user declined.
+     *
+     *  @hide
+     */
+    public static final int SAP_START_FAILURE_USER_REJECTED = 3;
 
     /** @hide */
     @IntDef(flag = false, prefix = { "SAP_CLIENT_BLOCKED_REASON_" }, value = {
@@ -5415,7 +5425,8 @@ public class WifiManager {
          * @param failureReason reason when in failed state. One of
          *                      {@link #SAP_START_FAILURE_GENERAL},
          *                      {@link #SAP_START_FAILURE_NO_CHANNEL},
-         *                      {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}
+         *                      {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION},
+         *                      {@link #SAP_START_FAILURE_USER_REJECTED}
          */
         default void onStateChanged(@WifiApState int state, @SapStartFailure int failureReason) {}
 
@@ -6364,9 +6375,18 @@ public class WifiManager {
     }
 
     /**
-     * Enable/disable auto-join globally.
-     * When auto-join is disabled globally via this API, the user toggling wifi will re-enable
-     * auto-join.
+     * Control whether the device will automatically search for and connect to Wi-Fi networks -
+     * auto-join Wi-Fi networks. Disabling this option will not impact manual connections - i.e.
+     * the user will still be able to manually select and connect to a Wi-Fi network. Disabling
+     * this option significantly impacts the device connectivity and is a restricted operation
+     * (see below for permissions). Note that disabling this operation will also disable
+     * connectivity initiated scanning operations.
+     * <p>
+     * Disabling the auto-join configuration is a temporary operation (with the exception of a
+     * DO/PO caller): it will be reset (to enabled) when the device reboots or the user toggles
+     * Wi-Fi off/on. When the caller is a DO/PO then toggling Wi-Fi will not reset the
+     * configuration. Additionally, if a DO/PO disables auto-join then it cannot be (re)enabled by
+     * a non-DO/PO caller.
      *
      * @param allowAutojoin true to allow auto-join, false to disallow auto-join
      *
@@ -6376,7 +6396,12 @@ public class WifiManager {
      */
     public void allowAutojoinGlobal(boolean allowAutojoin) {
         try {
-            mService.allowAutojoinGlobal(allowAutojoin);
+            Bundle extras = new Bundle();
+            if (SdkLevel.isAtLeastS()) {
+                extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                        mContext.getAttributionSource());
+            }
+            mService.allowAutojoinGlobal(allowAutojoin, mContext.getOpPackageName(), extras);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -8825,7 +8850,8 @@ public class WifiManager {
      * happen:
      * </p>
      * <ul>
-     * <li>Upon finding any of the requested SSIDs, the matching ScanResults will be returned
+     * <li>Upon finding any of the requested SSIDs through either a connectivity scan or PNO scan,
+     * the matching ScanResults will be returned
      * via {@link PnoScanResultsCallback#onScanResultsAvailable(List)}, and the registered PNO
      * scan request will get automatically removed.</li>
      * <li>The external PNO scan request is removed by a call to
