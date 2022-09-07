@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "de98a29c_77d28a67",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 5918,
+      "author": {
+        "id": 1000835
+      },
+      "writtenOn": "2022-09-07T07:34:09Z",
+      "side": 1,
+      "message": "\" + IPCLIENT_STARTUP_TIMEOUT_MS + \"ms\"",
+      "range": {
+        "startLine": 5918,
+        "startChar": 80,
+        "endLine": 5918,
+        "endChar": 83
+      },
+      "revId": "4d95b94b87603686b39449140fa66d67ac6538a7",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
