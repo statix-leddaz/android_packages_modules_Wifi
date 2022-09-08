@@ -19,8 +19,10 @@ package com.android.server.wifi.p2p;
 import android.annotation.NonNull;
 import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pWfdInfo;
+import android.net.wifi.p2p.nsd.WifiP2pServiceRequest;
 import android.util.Log;
-
+import android.os.Bundle;
+import android.os.Message;
 import com.android.server.wifi.util.NativeUtil;
 
 import java.util.ArrayList;
@@ -225,6 +227,20 @@ public class SupplicantP2pIfaceCallbackHidlV1_4Impl
         mCallbackV10.onProvisionDiscoveryCompleted(p2pDeviceAddress, isRequest,
                 status, configMethods, generatedPin);
     }
+
+   /**
+    * Used to indicate the reception of a P2P service discovery request.
+    *
+    * @param freq The freq of channel that received P2P service discovery request.
+    * @param srcAddress MAC address of the device that sent the service discovery.
+    * @param updateIndicator Service update indicator. Refer to section 3.1.3 of
+    *        Wifi P2P Technical specification v1.2.
+    * @param tlvs Refer to section 3.1.3.1 of Wifi P2P Technical specification v1.2.
+    */
+    public void onServiceDiscoveryRequest(int freq, byte[] srcAddress, byte dialogToken,
+            short updateIndicator, ArrayList<Byte> tlvs) {
+        mCallbackV10.onServiceDiscoveryRequest(freq, srcAddress, dialogToken, updateIndicator, tlvs);
+      }
 
     /**
      * Used to indicate the reception of a P2P service discovery response.

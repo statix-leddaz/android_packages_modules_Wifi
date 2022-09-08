@@ -27,8 +27,10 @@ import android.net.wifi.p2p.WifiP2pProvDiscEvent;
 import android.net.wifi.p2p.WifiP2pWfdInfo;
 import android.net.wifi.p2p.nsd.WifiP2pServiceResponse;
 import android.text.TextUtils;
+import android.net.wifi.p2p.nsd.WifiP2pServiceRequest;
 import android.util.Log;
-
+import android.os.Bundle;
+import android.os.Message;
 import com.android.server.wifi.p2p.WifiP2pServiceImpl.P2pStatus;
 import com.android.server.wifi.util.NativeUtil;
 
@@ -462,6 +464,35 @@ public class SupplicantP2pIfaceCallbackHidlImpl extends ISupplicantP2pIfaceCallb
         }
     }
 
+   /**
+    * Used to indicate the reception of a P2P service discovery request.
+    *
+    * @param freq The freq of channel that received P2P service discovery request.
+    * @param srcAddress MAC address of the device that sent the service discovery.
+    * @param updateIndicator Service update indicator. Refer to section 3.1.3 of
+    *        Wifi P2P Technical specification v1.2.
+    * @param tlvs Refer to section 3.1.3.1 of Wifi P2P Technical specification v1.2.
+    */
+    public void onServiceDiscoveryRequest(int freq, byte[] srcAddress, byte dialogToken,
+            short updateIndicator, ArrayList<Byte> tlvs) {
+
+        Log.d(TAG,"onServiceDiscoveryRequest");
+        WifiP2pServiceRequest request = null;
+        try {
+            String srcAddressStr = NativeUtil.macAddressFromByteArray(srcAddress);
+            Log.d(TAG,"onServiceDiscoveryRequest mac:" + srcAddress);
+            request = WifiP2pServiceRequest.newInstance(srcAddressStr,
+                NativeUtil.byteArrayFromArrayList(tlvs));
+            if (request != null) {
+                Log.d(TAG,"onServiceDiscoveryRequest type:" + request.getServiceType());
+                Log.d(TAG,"onServiceDiscoveryRequest data: " + Arrays.toString(request.getRawData()));
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Could not process service discovery request.", e);
+            return;
+        }
+        mMonitor.broadcastP2pServiceDiscoveryRequest(mInterface, request);
+      }
 
     /**
      * Used to indicate the reception of a P2P service discovery response.

@@ -1228,6 +1228,7 @@ package android.net.wifi.p2p {
     method @RequiresPermission(android.Manifest.permission.MANAGE_WIFI_NETWORK_SELECTION) public void setConnectionRequestResult(@NonNull android.net.wifi.p2p.WifiP2pManager.Channel, @NonNull android.net.MacAddress, int, @Nullable android.net.wifi.p2p.WifiP2pManager.ActionListener);
     method @RequiresPermission(android.Manifest.permission.MANAGE_WIFI_NETWORK_SELECTION) public void setConnectionRequestResult(@NonNull android.net.wifi.p2p.WifiP2pManager.Channel, @NonNull android.net.MacAddress, int, @Nullable String, @Nullable android.net.wifi.p2p.WifiP2pManager.ActionListener);
     method public void setDnsSdResponseListeners(android.net.wifi.p2p.WifiP2pManager.Channel, android.net.wifi.p2p.WifiP2pManager.DnsSdServiceResponseListener, android.net.wifi.p2p.WifiP2pManager.DnsSdTxtRecordListener);
+    method public void setServiceRequestListener(@NonNull android.net.wifi.p2p.WifiP2pManager.Channel, @NonNull android.net.wifi.p2p.WifiP2pManager.ServiceRequestListener);
     method public void setServiceResponseListener(android.net.wifi.p2p.WifiP2pManager.Channel, android.net.wifi.p2p.WifiP2pManager.ServiceResponseListener);
     method public void setUpnpServiceResponseListener(android.net.wifi.p2p.WifiP2pManager.Channel, android.net.wifi.p2p.WifiP2pManager.UpnpServiceResponseListener);
     method @RequiresPermission(allOf={android.Manifest.permission.NEARBY_WIFI_DEVICES, android.Manifest.permission.OVERRIDE_WIFI_CONFIG}) public void setVendorElements(@NonNull android.net.wifi.p2p.WifiP2pManager.Channel, @NonNull java.util.List<android.net.wifi.ScanResult.InformationElement>, @Nullable android.net.wifi.p2p.WifiP2pManager.ActionListener);
@@ -1326,6 +1327,10 @@ package android.net.wifi.p2p {
     method public void onPeersAvailable(android.net.wifi.p2p.WifiP2pDeviceList);
   }
 
+  public static interface WifiP2pManager.ServiceRequestListener {
+    method public void onServiceRequest(int, @NonNull byte[], @NonNull android.net.wifi.p2p.WifiP2pDevice);
+  }
+
   public static interface WifiP2pManager.ServiceResponseListener {
     method public void onServiceAvailable(int, byte[], android.net.wifi.p2p.WifiP2pDevice);
   }
@@ -1406,8 +1411,12 @@ package android.net.wifi.p2p.nsd {
 
   public class WifiP2pServiceRequest implements android.os.Parcelable {
     method public int describeContents();
+    method @NonNull public byte[] getRawData();
+    method public int getServiceType();
+    method @NonNull public android.net.wifi.p2p.WifiP2pDevice getSrcDevice();
     method public static android.net.wifi.p2p.nsd.WifiP2pServiceRequest newInstance(int, String);
     method public static android.net.wifi.p2p.nsd.WifiP2pServiceRequest newInstance(int);
+    method @NonNull public static android.net.wifi.p2p.nsd.WifiP2pServiceRequest newInstance(@NonNull String, @NonNull byte[]);
     method public void writeToParcel(android.os.Parcel, int);
   }
 

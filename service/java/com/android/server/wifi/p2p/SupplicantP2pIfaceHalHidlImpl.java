@@ -1663,6 +1663,7 @@ public class SupplicantP2pIfaceHalHidlImpl implements ISupplicantP2pIfaceHal {
                             }
                             result = new SupplicantResult(
                                     "addBonjourService(" + data[1] + ", " + data[2] + ")");
+                            Log.d(TAG, "addBonjourService");
                             result.setResult(
                                     mISupplicantP2pIface.addBonjourService(request, response));
                         }

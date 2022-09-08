@@ -1401,6 +1401,7 @@ public class SupplicantP2pIfaceHalAidlImpl implements ISupplicantP2pIfaceHal {
                                 Log.e(TAG, "Invalid bonjour service description.");
                                 return false;
                             }
+                            Log.d(TAG, "addBonjourService");
                             mISupplicantP2pIface.addBonjourService(request, response);
                         }
                     } else {

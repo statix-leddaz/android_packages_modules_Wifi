@@ -64,6 +64,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.nio.charset.StandardCharsets;
 
 /**
  * This class provides the API for managing Wi-Fi peer-to-peer connectivity. This lets an
@@ -626,6 +627,9 @@ public class WifiP2pManager {
     public static final int RESPONSE_SERVICE                        = BASE + 50;
 
     /** @hide */
+    public static final int REQUEST_SERVICE                         = BASE + 99;
+
+    /** @hide */
     public static final int SET_DEVICE_NAME                         = BASE + 51;
     /** @hide */
     public static final int SET_DEVICE_NAME_FAILED                  = BASE + 52;
@@ -879,6 +883,11 @@ public class WifiP2pManager {
          */
         public void onServiceAvailable(int protocolType,
                 byte[] responseData, WifiP2pDevice srcDevice);
+    }
+
+    public interface ServiceRequestListener {
+        public void onServiceRequest(int protocolType,
+                @NonNull byte[] mData, @NonNull WifiP2pDevice srcDevice);
     }
 
     /**
@@ -1168,6 +1177,7 @@ public class WifiP2pManager {
         private final static int INVALID_LISTENER_KEY = 0;
         private final WifiP2pManager mP2pManager;
         private ChannelListener mChannelListener;
+        private ServiceRequestListener mServReqListener;
         private ServiceResponseListener mServRspListener;
         private DnsSdServiceResponseListener mDnsSdServRspListener;
         private DnsSdTxtRecordListener mDnsSdTxtListener;
@@ -1339,6 +1349,20 @@ public class WifiP2pManager {
                         WifiP2pServiceResponse resp = (WifiP2pServiceResponse) message.obj;
                         handleServiceResponse(resp);
                         break;
+                    case REQUEST_SERVICE:
+                        Log.d(TAG, "reviced REQUEST_SERVICE msg");
+                        if (message.obj instanceof WifiP2pServiceRequest) {
+                            WifiP2pServiceRequest req = (WifiP2pServiceRequest) message.obj; 
+                            Log.d(TAG, "protocolType:" + req.getServiceType());
+                            if (req.getSrcDevice() != null)
+                                Log.d(TAG, "device mac:" + req.getSrcDevice().deviceAddress);
+                            if (req.getRawData() != null) {
+                                String s = new String(req.getRawData(), StandardCharsets.UTF_8);
+                                Log.d(TAG, "mData:" + s);
+                            }
+                            handleServiceReuest(req);
+                        }
+                        break;
                     case RESPONSE_PERSISTENT_GROUP_INFO:
                         WifiP2pGroupList groups = (WifiP2pGroupList) message.obj;
                         if (listener != null) {
@@ -1423,6 +1447,26 @@ public class WifiP2pManager {
                         Log.d(TAG, "Ignored " + message);
                         break;
                 }
+            }
+        }
+
+        private void handleServiceReuest(WifiP2pServiceRequest req) {
+            if (mServReqListener != null) {
+                Log.d(TAG, "callback REQUEST_SERVICE");
+                if (req == null) {
+                    Log.e(TAG, "callback REQUEST_SERVICE is null");
+                    return;
+                }
+                Log.d(TAG, "callback REQUEST_SERVICE");
+                Log.d(TAG, "protocolType:" + req.getServiceType());
+                if (req.getSrcDevice() != null)
+                    Log.d(TAG, "device mac:" + req.getSrcDevice().deviceAddress);
+                if (req.getRawData() != null) {
+                    String s = new String(req.getRawData(), StandardCharsets.UTF_8);
+                    Log.d(TAG, "mData:" + s);
+                }
+                mServReqListener.onServiceRequest(req.getServiceType(),
+                    req.getRawData(), req.getSrcDevice());
             }
         }
 
@@ -2094,6 +2138,19 @@ public class WifiP2pManager {
         checkChannel(channel);
         channel.mServRspListener = listener;
     }
+
+    /**
+     * Register a callback to be invoked on receiving service discovery request.
+     *
+     * @param c is the channel created at {@link #initialize}
+     * @param listener for callbacks on receiving service discovery request.
+     */
+    public void setServiceRequestListener(@NonNull Channel c,
+            @NonNull ServiceRequestListener listener) {
+        checkChannel(c);
+        c.mServReqListener = listener;
+    }
+
 
     /**
      * Register a callback to be invoked on receiving Bonjour service discovery

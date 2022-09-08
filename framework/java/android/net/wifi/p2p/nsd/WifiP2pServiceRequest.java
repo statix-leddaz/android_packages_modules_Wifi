@@ -18,11 +18,17 @@ package android.net.wifi.p2p.nsd;
 
 import android.compat.annotation.UnsupportedAppUsage;
 import android.net.wifi.p2p.WifiP2pManager;
+import android.net.wifi.p2p.WifiP2pDevice;
 import android.os.Build;
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.util.Log;
 
 import java.util.Locale;
+import java.io.IOException;
+import java.io.DataInputStream;
+import java.io.ByteArrayInputStream;
+
 
 /**
  * A class for creating a service discovery request for use with
@@ -59,6 +65,13 @@ public class WifiP2pServiceRequest implements Parcelable {
      */
     private int mTransId;
 
+
+    /**
+     * Source device.
+     */
+    private WifiP2pDevice mDevice;
+
+
     /**
      * The hex dump string of query data for the requested service information.
      *
@@ -66,6 +79,9 @@ public class WifiP2pServiceRequest implements Parcelable {
      * 0b5f6166706f766572746370c00c000c01
      */
     private String mQuery;
+
+
+    private byte[] mData;
 
     /**
      * This constructor is only used in newInstance().
@@ -96,21 +112,72 @@ public class WifiP2pServiceRequest implements Parcelable {
      * @param query The part of service specific query.
      */
     private WifiP2pServiceRequest(int serviceType, int length,
-            int transId, String query) {
+            int transId, byte[] data, WifiP2pDevice device) {
+        mProtocolType = serviceType;
+        mLength = length;
+        mTransId = transId;
+        mData = data;
+        mDevice = device;
+    }
+
+    /**
+     * This constructor is only used in Parcelable.
+     *
+     * @param serviceType service discovery type.
+     * @param length the length of service discovery packet.
+     * @param transId the transaction id
+     * @param query The part of service specific query.
+     */
+    private WifiP2pServiceRequest(int serviceType, int length,
+            int transId, String query, WifiP2pDevice device, byte[] data) {
         mProtocolType = serviceType;
         mLength = length;
         mTransId = transId;
         mQuery = query;
+        mDevice = device;
+        mData = data;
     }
 
     /**
-     * Return transaction id.
+     * Return the service type of service discovery response.
      *
-     * @return transaction id
+     * @return service discovery type.<br>
+     * e.g) {@link WifiP2pServiceInfo#SERVICE_TYPE_BONJOUR}
+     */
+    public int getServiceType() {
+        return mProtocolType;
+    }
+
+    /**
+     * Return the transaction id of service discovery response.
+     *
+     * @return transaction id.
      * @hide
      */
     public int getTransactionId() {
         return mTransId;
+    }
+
+    /**
+     * Return response data.
+     *
+     * <pre>Data format depends on service type
+     *
+     * @return a query or response data.
+     */
+    public @android.annotation.NonNull byte[] getRawData() {
+        return mData;
+    }
+
+    /**
+     * Returns the source device of service discovery response.
+     *
+     * <pre>This is valid only when service discovery response.
+     *
+     * @return the source device of service discovery response.
+     */
+    public @android.annotation.NonNull WifiP2pDevice getSrcDevice() {
+        return mDevice;
     }
 
     /**
@@ -214,6 +281,53 @@ public class WifiP2pServiceRequest implements Parcelable {
         return new WifiP2pServiceRequest(protocolType, null);
     }
 
+    /**
+     * Create a service discovery request from supplicant event.
+     *
+     * @param srcAddr source address of the service response
+     * @param tlvsBin byte array containing the binary tlvs data
+     * @return if parse failed, return null
+     * @return service discovery request.
+     */
+    public static @android.annotation.NonNull WifiP2pServiceRequest newInstance(@android.annotation.NonNull String srcAddr,@android.annotation.NonNull byte[] tlvsBin) {
+
+        WifiP2pDevice dev = new WifiP2pDevice();
+        dev.deviceAddress = srcAddr;
+        if (tlvsBin == null) {
+            return null;
+        }
+        DataInputStream dis = new DataInputStream(new ByteArrayInputStream(tlvsBin));
+        try {
+            /*
+             * Service discovery header is as follows.
+             * ______________________________________________________________
+             * |           Length(2byte)     | Type(1byte) | TransId(1byte)}|
+             * ______________________________________________________________
+             * |         vendor specific(variable)      |
+             */
+            // The length equals to 2 plus the number of octets in the vendor
+            // specific content field. And this is little endian.
+            int length = (dis.readUnsignedByte() +
+                    (dis.readUnsignedByte() << 8)) - 2;
+            int type = dis.readUnsignedByte();
+            int transId = dis.readUnsignedByte();
+
+            byte[] data = null;
+            if (length != 0) {
+                data = new byte[length];
+                dis.readFully(data);
+            }
+
+            WifiP2pServiceRequest resp = new WifiP2pServiceRequest(type, length, transId, data, dev);
+            return resp;
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+
     @Override
     public boolean equals(Object o) {
         if (o == this) {
@@ -262,6 +376,14 @@ public class WifiP2pServiceRequest implements Parcelable {
         dest.writeInt(mLength);
         dest.writeInt(mTransId);
         dest.writeString(mQuery);
+        dest.writeParcelable(mDevice, flags);
+        if (mData == null || mData.length == 0) {
+            dest.writeInt(0);
+        } else {
+            dest.writeInt(mData.length);
+            dest.writeByteArray(mData);
+        }
+        Log.d("WifiP2pServiceRequest", "writeToParcel");
     }
 
     /** Implement the Parcelable interface {@hide} */
@@ -273,7 +395,15 @@ public class WifiP2pServiceRequest implements Parcelable {
                 int length = in.readInt();
                 int transId = in.readInt();
                 String query = in.readString();
-                return new WifiP2pServiceRequest(servType, length, transId, query);
+                WifiP2pDevice dev = (WifiP2pDevice)in.readParcelable(null);
+                int len = in.readInt();
+                byte[] data = null;
+                if (len > 0) {
+                    data = new byte[len];
+                    in.readByteArray(data);
+                }
+                Log.d("WifiP2pServiceRequest", "createFromParcel");
+                return new WifiP2pServiceRequest(servType, length, transId, query, dev, data);
             }
 
             public WifiP2pServiceRequest[] newArray(int size) {

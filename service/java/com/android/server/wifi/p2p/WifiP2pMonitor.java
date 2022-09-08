@@ -23,6 +23,7 @@ import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pGroup;
 import android.net.wifi.p2p.WifiP2pProvDiscEvent;
 import android.net.wifi.p2p.nsd.WifiP2pServiceResponse;
+import android.net.wifi.p2p.nsd.WifiP2pServiceRequest;
 import android.os.Handler;
 import android.os.Message;
 import android.util.ArraySet;
@@ -39,6 +40,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Listens for events from the wpa_supplicant, and passes them on
@@ -79,6 +81,11 @@ public class WifiP2pMonitor {
     /* hostap events */
     public static final int AP_STA_DISCONNECTED_EVENT            = BASE + 41;
     public static final int AP_STA_CONNECTED_EVENT               = BASE + 42;
+
+
+    /*wirelessSpeaker event*/
+    public static final int P2P_SERV_DISC_REQU_EVENT             = BASE + 43;
+
 
     public static final int PROV_DISC_STATUS_SUCCESS             = 0;
     public static final int PROV_DISC_STATUS_TIMEOUT             = 1;
@@ -448,6 +455,25 @@ public class WifiP2pMonitor {
     public void broadcastP2pProvisionDiscoveryFailure(@NonNull String iface,
             @P2pProvDiscStatus int status, @NonNull WifiP2pProvDiscEvent event) {
         sendMessage(iface, P2P_PROV_DISC_FAILURE_EVENT, status, 0, event);
+    }
+
+    /**
+     * Broadcast service discovery request event to all handlers registered for this event.
+     *
+     * @param iface Name of iface on which this occurred.
+     * @param services List of discovered services.
+     */
+    public void broadcastP2pServiceDiscoveryRequest(
+            String iface, WifiP2pServiceRequest request) {
+        Log.d(TAG,"broadcastP2pServiceDiscoveryRequest");
+        Log.d(TAG, "protocolType:" + request.getServiceType());
+        if (request.getSrcDevice() != null)
+            Log.d(TAG, "device mac:" + request.getSrcDevice().deviceAddress);
+        if (request.getRawData() != null) {
+            String s = new String(request.getRawData(), StandardCharsets.UTF_8);
+            Log.d(TAG, "mData:" + s);
+        }
+        sendMessage(iface, P2P_SERV_DISC_REQU_EVENT, request);
     }
 
     /**

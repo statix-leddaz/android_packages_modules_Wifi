@@ -302,6 +302,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
     private static final int UPDATE_P2P_DISALLOWED_CHANNELS =   BASE + 36;
 
+    public static final int P2P_DISCOVERY_QUEST             =   BASE + 37;
+
     public static final int ENABLED                         = 1;
     public static final int DISABLED                        = 0;
 
@@ -1481,6 +1483,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             mWifiMonitor.registerHandler(mInterfaceName,
                     WifiP2pMonitor.P2P_PROV_DISC_SHOW_PIN_EVENT, getHandler());
             mWifiMonitor.registerHandler(mInterfaceName,
+                    WifiP2pMonitor.P2P_SERV_DISC_REQU_EVENT, getHandler());
+            mWifiMonitor.registerHandler(mInterfaceName,
                     WifiP2pMonitor.P2P_SERV_DISC_RESP_EVENT, getHandler());
             mWifiMonitor.registerHandler(mInterfaceName,
                     WifiP2pMonitor.SUP_CONNECTION_EVENT, getHandler());
@@ -1799,6 +1803,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     case WifiP2pMonitor.P2P_DEVICE_FOUND_EVENT:
                     case WifiP2pMonitor.P2P_DEVICE_LOST_EVENT:
                     case WifiP2pMonitor.P2P_FIND_STOPPED_EVENT:
+                    case WifiP2pMonitor.P2P_SERV_DISC_REQU_EVENT:
                     case WifiP2pMonitor.P2P_SERV_DISC_RESP_EVENT:
                     case PEER_CONNECTION_USER_ACCEPT:
                     case PEER_CONNECTION_USER_REJECT:
@@ -2590,6 +2595,15 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         if (isVerboseLoggingEnabled()) logd(getName() + " clear service request");
                         clearServiceRequests(message.replyTo);
                         replyToMessage(message, WifiP2pManager.CLEAR_SERVICE_REQUESTS_SUCCEEDED);
+                        break;
+                    case WifiP2pMonitor.P2P_SERV_DISC_REQU_EVENT:
+                        if (isVerboseLoggingEnabled()) logd(getName() + " receive service request");
+                        if (message.obj == null) {
+                            Log.e(TAG, "P2P_SERV_DISC_REQU_EVENT Illegal argument(s)");
+                            break;
+                        }
+                        WifiP2pServiceRequest request = (WifiP2pServiceRequest)message.obj;
+                        sendServiceRequest(request);
                         break;
                     case WifiP2pMonitor.P2P_SERV_DISC_RESP_EVENT:
                         if (isVerboseLoggingEnabled()) {
@@ -5756,6 +5770,43 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         }
 
         /**
+         * Send the service response to the WifiP2pManager.Channel.
+         * @param WifiP2pServiceResponse response to service discovery
+         */
+        private void sendServiceRequest(WifiP2pServiceRequest req) {
+            if (req == null) {
+                Log.e(TAG, "sendServiceRequest with null request");
+                return;
+            }
+            Log.d(TAG, "sendServiceRequest");
+            Log.d(TAG, "protocolType:" + req.getServiceType());
+            if (req.getSrcDevice() != null)
+                Log.d(TAG, "device mac:" + req.getSrcDevice().deviceAddress);
+            if (req.getRawData() != null) {
+                String s = new String(req.getRawData(), StandardCharsets.UTF_8);
+                Log.d(TAG, "mData:" + s);
+            }
+            //WifiP2pServiceRequest reqest = WifiP2pServiceRequest.obtain(req);
+            for (ClientInfo c : mClientInfoList.values()) {
+                Message msg = Message.obtain();
+                msg.what = WifiP2pManager.REQUEST_SERVICE;
+                msg.arg1 = 0;
+                msg.arg2 = 0;
+                msg.obj = req;
+                if (c.mMessenger == null) {
+                    continue;
+                }
+                try {
+                    c.mMessenger.send(msg);
+                } catch (RemoteException e) {
+                    if (mVerboseLoggingEnabled) logd("detect dead channel");
+                    clearClientInfo(c.mMessenger);
+                    return;
+                }
+            }
+        }
+
+        /**
          * We don't get notifications of clients that have gone away.
          * We detect this actively when services are added and throw
          * them away.
@@ -6225,6 +6276,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
         // A service discovery request list.
         private SparseArray<WifiP2pServiceRequest> mReqList;
+        private WifiP2pServiceRequest mTmpReq;
 
         // A local service information list.
         private List<WifiP2pServiceInfo> mServList;
