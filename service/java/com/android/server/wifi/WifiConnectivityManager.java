@@ -40,7 +40,6 @@ import android.net.wifi.WifiContext;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.DeviceMobilityState;
-import android.net.wifi.WifiNetworkSelectionConfig;
 import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiScanner.PnoSettings;
@@ -2055,9 +2054,9 @@ public class WifiConnectivityManager {
     private void startPeriodicScan(boolean scanImmediately) {
         mPnoScanListener.resetLowRssiNetworkRetryDelay();
 
-        // No connectivity scan if wifi-to-wifi switch is disabled.
-        if (mWifiState == WIFI_STATE_CONNECTED
-                && !mNetworkSelector.isAssociatedNetworkSelectionEnabled()) {
+        // No connectivity scan if auto roaming is disabled.
+        if (mWifiState == WIFI_STATE_CONNECTED && !mContext.getResources().getBoolean(
+                R.bool.config_wifi_framework_enable_associated_network_selection)) {
             return;
         }
 
@@ -2083,17 +2082,6 @@ public class WifiConnectivityManager {
             default:
                 return -1;
         }
-    }
-
-    /**
-     * Configures network selection parameters..
-     */
-    public void setNetworkSelectionConfig(@NonNull WifiNetworkSelectionConfig nsConfig) {
-        mNetworkSelector.setAssociatedNetworkSelectionOverride(
-                nsConfig.getAssociatedNetworkSelectionOverride());
-        mNetworkSelector.setSufficiencyCheckEnabled(
-                nsConfig.isSufficiencyCheckEnabledWhenScreenOff(),
-                nsConfig.isSufficiencyCheckEnabledWhenScreenOn());
     }
 
     /**
@@ -2400,10 +2388,7 @@ public class WifiConnectivityManager {
                 + " mAutoJoinEnabled=" + mAutoJoinEnabled
                 + " mAutoJoinEnabledExternal=" + mAutoJoinEnabledExternal
                 + " mSpecificNetworkRequestInProgress=" + mSpecificNetworkRequestInProgress
-                + " mTrustedConnectionAllowed=" + mTrustedConnectionAllowed
-                + " isSufficiencyCheckEnabled=" + mNetworkSelector.isSufficiencyCheckEnabled()
-                + " isAssociatedNetworkSelectionEnabled="
-                + mNetworkSelector.isAssociatedNetworkSelectionEnabled());
+                + " mTrustedConnectionAllowed=" + mTrustedConnectionAllowed);
 
         if (!mWifiEnabled || !mAutoJoinEnabled) {
             return;
@@ -2444,7 +2429,6 @@ public class WifiConnectivityManager {
         localLog("handleScreenStateChanged: screenOn=" + screenOn);
 
         mScreenOn = screenOn;
-        mNetworkSelector.setScreenState(screenOn);
 
         if (mWifiState == WIFI_STATE_DISCONNECTED
                 && mContext.getResources().getBoolean(R.bool.config_wifiEnablePartialInitialScan)) {
@@ -2718,8 +2702,9 @@ public class WifiConnectivityManager {
                     new Throwable());
             return;
         }
+        WifiInfo wifiInfo = getPrimaryWifiInfo();
         if (failureCode == WifiMetrics.ConnectionEvent.FAILURE_NONE) {
-            String ssidUnquoted = WifiInfo.removeDoubleQuotes(getPrimaryWifiInfo().getSSID());
+            String ssidUnquoted = WifiInfo.removeDoubleQuotes(wifiInfo.getSSID());
             mOpenNetworkNotifier.handleWifiConnected(ssidUnquoted);
         } else {
             mOpenNetworkNotifier.handleConnectionFailure();
@@ -2761,8 +2746,7 @@ public class WifiConnectivityManager {
                         WifiConfiguration config =
                                 mConfigManager.getConfiguredNetwork(candidate.getNetworkConfigId());
                         return config != null
-                                && config.getNetworkSelectionStatus().isNetworkEnabled()
-                                && config.allowAutojoin;
+                                && config.getNetworkSelectionStatus().isNetworkEnabled();
                     })
                     .collect(Collectors.toList());
             if (prevNumCandidates == mLatestCandidates.size()) {

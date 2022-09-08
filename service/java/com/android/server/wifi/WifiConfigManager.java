@@ -460,6 +460,12 @@ public class WifiConfigManager {
      * @return
      */
     public boolean shouldUseNonPersistentRandomization(WifiConfiguration config) {
+        // If this is the secondary STA for multi internet for DBS AP, use non persistent mac
+        // randomization, as the primary and secondary STAs could connect to the same SSID.
+        if (isMacRandomizationSupported() && config.dbsSecondaryInternet) {
+            return true;
+        }
+
         if (!isMacRandomizationSupported()
                 || config.macRandomizationSetting == WifiConfiguration.RANDOMIZATION_NONE) {
             return false;
@@ -630,17 +636,10 @@ public class WifiConfigManager {
      * @param config
      * @return MacAddress
      */
-    public MacAddress getRandomizedMacAndUpdateIfNeeded(WifiConfiguration config,
-            boolean isForSecondaryDbs) {
+    public MacAddress getRandomizedMacAndUpdateIfNeeded(WifiConfiguration config) {
         MacAddress mac = shouldUseNonPersistentRandomization(config)
                 ? updateRandomizedMacIfNeeded(config)
                 : setRandomizedMacToPersistentMac(config);
-        // If this is the secondary STA for multi internet for DBS AP, use a different MAC than the
-        // persistent mac randomization, as the primary and secondary STAs could connect to the
-        // same SSID.
-        if (isForSecondaryDbs) {
-            mac = MacAddressUtil.nextMacAddress(mac);
-        }
         return mac;
     }
 
@@ -4011,22 +4010,6 @@ public class WifiConfigManager {
             return;
         }
         internalConfig.setSecurityParamsIsAddedByAutoUpgrade(securityType, isAddedByAutoUpgrade);
-        saveToStore(true);
-    }
-
-    /**
-     * This method updates whether or not a security is enabled.
-     *
-     * @param networkId networkId corresponding to the network to be updated.
-     * @param securityType the target security type
-     * @param enable indicates whether the type is enabled or not.
-     */
-    public void setSecurityParamsEnabled(int networkId, int securityType, boolean enable) {
-        WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
-        if (internalConfig == null) {
-            return;
-        }
-        internalConfig.setSecurityParamsEnabled(securityType, enable);
         saveToStore(true);
     }
 

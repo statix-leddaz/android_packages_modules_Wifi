@@ -283,8 +283,7 @@ abstract class SupplicantStaIfaceCallbackHidlImpl extends ISupplicantStaIfaceCal
                     mStaIfaceHal.getCurrentNetworkLocalConfig(mIfaceName);
             if (curConfiguration != null) {
                 if (mStateBeforeDisconnect == State.FOURWAY_HANDSHAKE
-                        && (WifiConfigurationUtil.isConfigForPskNetwork(curConfiguration)
-                        || WifiConfigurationUtil.isConfigForWapiPskNetwork(curConfiguration))
+                        && WifiConfigurationUtil.isConfigForPskNetwork(curConfiguration)
                         && (!locallyGenerated || reasonCode != ReasonCode.IE_IN_4WAY_DIFFERS)) {
                     mWifiMonitor.broadcastAuthenticationFailureEvent(
                             mIfaceName, WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD, -1,
@@ -350,7 +349,7 @@ abstract class SupplicantStaIfaceCallbackHidlImpl extends ISupplicantStaIfaceCal
             }
             mWifiMonitor.broadcastAuthenticationFailureEvent(
                     mIfaceName, WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD, -1,
-                    assocRejectInfo.ssid, bssidAsMacAddress);
+                    mCurrentSsid, bssidAsMacAddress);
         }
         mWifiMonitor.broadcastAssociationRejectionEvent(mIfaceName, assocRejectInfo);
         mStateBeforeDisconnect = State.INACTIVE;

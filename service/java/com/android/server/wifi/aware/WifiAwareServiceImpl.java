@@ -50,16 +50,12 @@ import android.util.SparseArray;
 import android.util.SparseIntArray;
 
 import com.android.modules.utils.build.SdkLevel;
-import com.android.server.wifi.BuildProperties;
 import com.android.server.wifi.Clock;
-import com.android.server.wifi.FrameworkFacade;
 import com.android.server.wifi.InterfaceConflictManager;
-import com.android.server.wifi.SystemBuildProperties;
 import com.android.server.wifi.WifiSettingsConfigStore;
 import com.android.server.wifi.util.NetdWrapper;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.server.wifi.util.WifiPermissionsWrapper;
-import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -72,16 +68,12 @@ import java.io.PrintWriter;
  */
 public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
     private static final String TAG = "WifiAwareService";
-    private boolean mVerboseLoggingEnabled = false;
-    private boolean mVerboseHalLoggingEnabled = false;
+    private boolean mDbg = false;
 
     private Context mContext;
     private AppOpsManager mAppOps;
     private WifiPermissionsUtil mWifiPermissionsUtil;
     private WifiAwareStateManager mStateManager;
-    private WifiAwareNativeManager mWifiAwareNativeManager;
-    private WifiAwareNativeApi mWifiAwareNativeApi;
-    private WifiAwareNativeCallback mWifiAwareNativeCallback;
     private WifiAwareShellCommand mShellCommand;
     private Handler mHandler;
 
@@ -90,14 +82,10 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
             new SparseArray<>();
     private int mNextClientId = 1;
     private final SparseIntArray mUidByClientId = new SparseIntArray();
-    private final BuildProperties mBuildProperties;
-    private final FrameworkFacade mFrameworkFacade;
 
     public WifiAwareServiceImpl(Context context) {
         mContext = context;
         mAppOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
-        mBuildProperties = new SystemBuildProperties();
-        mFrameworkFacade = new FrameworkFacade();
     }
 
     /**
@@ -125,9 +113,6 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
         mStateManager = awareStateManager;
         mShellCommand = awareShellCommand;
         mHandler = new Handler(handlerThread.getLooper());
-        mWifiAwareNativeManager = wifiAwareNativeManager;
-        mWifiAwareNativeApi = wifiAwareNativeApi;
-        mWifiAwareNativeCallback = wifiAwareNativeCallback;
 
         mHandler.post(() -> {
             mStateManager.start(mContext, handlerThread.getLooper(), awareMetrics,
@@ -136,21 +121,27 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
 
             settingsConfigStore.registerChangeListener(
                     WIFI_VERBOSE_LOGGING_ENABLED,
-                    (key, newValue) -> enableVerboseLogging(newValue),
+                    (key, newValue) -> enableVerboseLogging(newValue, awareStateManager,
+                            wifiAwareNativeManager, wifiAwareNativeApi, wifiAwareNativeCallback),
                     mHandler);
-            enableVerboseLogging(settingsConfigStore.get(WIFI_VERBOSE_LOGGING_ENABLED));
+            enableVerboseLogging(settingsConfigStore.get(WIFI_VERBOSE_LOGGING_ENABLED),
+                    awareStateManager,
+                    wifiAwareNativeManager, wifiAwareNativeApi,
+                    wifiAwareNativeCallback);
         });
     }
 
-    private void enableVerboseLogging(boolean verboseEnabled) {
-        mVerboseHalLoggingEnabled = verboseEnabled;
-        updateVerboseLoggingEnabled();
-        mStateManager.enableVerboseLogging(mVerboseLoggingEnabled, mVerboseLoggingEnabled);
-        mWifiAwareNativeCallback.enableVerboseLogging(mVerboseLoggingEnabled,
-                mVerboseLoggingEnabled);
-        mWifiAwareNativeManager.enableVerboseLogging(mVerboseLoggingEnabled,
-                mVerboseLoggingEnabled);
-        mWifiAwareNativeApi.enableVerboseLogging(mVerboseLoggingEnabled, mVerboseLoggingEnabled);
+    private void enableVerboseLogging(boolean dbg, WifiAwareStateManager awareStateManager,
+            WifiAwareNativeManager wifiAwareNativeManager, WifiAwareNativeApi wifiAwareNativeApi,
+            WifiAwareNativeCallback wifiAwareNativeCallback) {
+        mDbg = dbg;
+        awareStateManager.enableVerboseLogging(dbg);
+        if (awareStateManager.mDataPathMgr != null) { // needed for unit tests
+            awareStateManager.mDataPathMgr.enableVerboseLogging(dbg);
+        }
+        wifiAwareNativeCallback.enableVerboseLogging(dbg);
+        wifiAwareNativeManager.enableVerboseLogging(dbg);
+        wifiAwareNativeApi.enableVerboseLogging(dbg);
     }
 
     /**
@@ -158,15 +149,8 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
      */
     public void startLate() {
         Log.i(TAG, "Late initialization of Wi-Fi Aware service");
-        updateVerboseLoggingEnabled();
-        mHandler.post(() -> mStateManager.startLate());
-    }
 
-    private void updateVerboseLoggingEnabled() {
-        final int verboseAlwaysOnLevel = mContext.getResources().getInteger(
-                R.integer.config_wifiVerboseLoggingAlwaysOnLevel);
-        mVerboseLoggingEnabled = mFrameworkFacade.isVerboseLoggingAlwaysOn(verboseAlwaysOnLevel,
-                mBuildProperties) || mVerboseHalLoggingEnabled;
+        mHandler.post(() -> mStateManager.startLate());
     }
 
     @Override
@@ -275,7 +259,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
             clientId = mNextClientId++;
         }
 
-        if (mVerboseLoggingEnabled) {
+        if (mDbg) {
             Log.v(TAG, "connect: uid=" + uid + ", clientId=" + clientId + ", configRequest"
                     + configRequest + ", notifyOnIdentityChanged=" + notifyOnIdentityChanged);
         }
@@ -283,7 +267,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
         IBinder.DeathRecipient dr = new IBinder.DeathRecipient() {
             @Override
             public void binderDied() {
-                if (mVerboseLoggingEnabled) Log.v(TAG, "binderDied: clientId=" + clientId);
+                if (mDbg) Log.v(TAG, "binderDied: clientId=" + clientId);
                 binder.unlinkToDeath(this, 0);
 
                 synchronized (mLock) {
@@ -323,9 +307,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
 
         int uid = getMockableCallingUid();
         enforceClientValidity(uid, clientId);
-        if (mVerboseLoggingEnabled) {
-            Log.v(TAG, "disconnect: uid=" + uid + ", clientId=" + clientId);
-        }
+        if (mDbg) Log.v(TAG, "disconnect: uid=" + uid + ", clientId=" + clientId);
 
         if (binder == null) {
             throw new IllegalArgumentException("Binder must not be null");
@@ -350,7 +332,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
 
         int uid = getMockableCallingUid();
         enforceClientValidity(uid, clientId);
-        if (mVerboseLoggingEnabled) {
+        if (mDbg) {
             Log.v(TAG, "terminateSession: sessionId=" + sessionId + ", uid=" + uid + ", clientId="
                     + clientId);
         }
@@ -382,7 +364,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
         );
 
         enforceClientValidity(uid, clientId);
-        if (mVerboseLoggingEnabled) {
+        if (mDbg) {
             Log.v(TAG, "publish: uid=" + uid + ", clientId=" + clientId + ", publishConfig="
                     + publishConfig + ", callback=" + callback);
         }
@@ -404,7 +386,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
 
         int uid = getMockableCallingUid();
         enforceClientValidity(uid, clientId);
-        if (mVerboseLoggingEnabled) {
+        if (mDbg) {
             Log.v(TAG, "updatePublish: uid=" + uid + ", clientId=" + clientId + ", sessionId="
                     + sessionId + ", config=" + publishConfig);
         }
@@ -436,7 +418,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
         );
 
         enforceClientValidity(uid, clientId);
-        if (mVerboseLoggingEnabled) {
+        if (mDbg) {
             Log.v(TAG, "subscribe: uid=" + uid + ", clientId=" + clientId + ", config="
                     + subscribeConfig + ", callback=" + callback);
         }
@@ -458,7 +440,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
 
         int uid = getMockableCallingUid();
         enforceClientValidity(uid, clientId);
-        if (mVerboseLoggingEnabled) {
+        if (mDbg) {
             Log.v(TAG, "updateSubscribe: uid=" + uid + ", clientId=" + clientId + ", sessionId="
                     + sessionId + ", config=" + subscribeConfig);
         }
@@ -488,7 +470,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
 
         int uid = getMockableCallingUid();
         enforceClientValidity(uid, clientId);
-        if (mVerboseLoggingEnabled) {
+        if (mDbg) {
             Log.v(TAG,
                     "sendMessage: sessionId=" + sessionId + ", uid=" + uid + ", clientId="
                             + clientId + ", peerId=" + peerId + ", messageId=" + messageId

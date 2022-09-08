@@ -289,8 +289,7 @@ class SupplicantStaIfaceCallbackAidlImpl extends ISupplicantStaIfaceCallback.Stu
                     mStaIfaceHal.getCurrentNetworkLocalConfig(mIfaceName);
             if (curConfiguration != null) {
                 if (mStateBeforeDisconnect == StaIfaceCallbackState.FOURWAY_HANDSHAKE
-                        && (WifiConfigurationUtil.isConfigForPskNetwork(curConfiguration)
-                        || WifiConfigurationUtil.isConfigForWapiPskNetwork(curConfiguration))
+                        && WifiConfigurationUtil.isConfigForPskNetwork(curConfiguration)
                         && (!locallyGenerated || reasonCode
                             != StaIfaceReasonCode.IE_IN_4WAY_DIFFERS)) {
                     mWifiMonitor.broadcastAuthenticationFailureEvent(
@@ -356,7 +355,7 @@ class SupplicantStaIfaceCallbackAidlImpl extends ISupplicantStaIfaceCallback.Stu
             }
             mWifiMonitor.broadcastAuthenticationFailureEvent(
                     mIfaceName, WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD, -1,
-                    assocRejectInfo.ssid, bssidAsMacAddress);
+                    mCurrentSsid, bssidAsMacAddress);
         }
         mWifiMonitor.broadcastAssociationRejectionEvent(mIfaceName, assocRejectInfo);
         mStateBeforeDisconnect = StaIfaceCallbackState.INACTIVE;

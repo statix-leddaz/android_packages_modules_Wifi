@@ -82,17 +82,4 @@ public class MacAddressUtilTest extends WifiBaseTest {
             fail("Exception not caught.");
         }
     }
-
-    /**
-     * Verifies getNextMacAddressForSecondary()
-     */
-    @Test
-    public void testGetNextMacAddressForSecondary() {
-        assertTrue(MacAddress.fromString("2a:53:43:c3:56:2b").equals(
-                MacAddressUtil.nextMacAddress(
-                        MacAddress.fromString("2a:53:43:c3:56:2a"))));
-        assertTrue(MacAddress.fromString("2a:53:43:c3:56:00").equals(
-                MacAddressUtil.nextMacAddress(
-                        MacAddress.fromString("2a:53:43:c3:56:ff"))));
-    }
 }

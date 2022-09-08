@@ -186,13 +186,8 @@ public class WifiNetworkSuggestionsManager {
         }
 
         @Override
-        public void onSecurityParamsUpdate(@NonNull WifiConfiguration configuration,
-                @NonNull List<SecurityParams> securityParams) {
-            if (configuration == null || securityParams == null || securityParams.isEmpty()) {
-                Log.e(TAG, "onSecurityParamsUpdate: must have valid config and "
-                        + "securityParams");
-                return;
-            }
+        public void onSecurityParamsUpdate(WifiConfiguration configuration,
+                List<SecurityParams> securityParams) {
             onSecurityParamsUpdateForSuggestion(configuration, securityParams);
         }
     }
@@ -2767,8 +2762,7 @@ public class WifiNetworkSuggestionsManager {
             List<SecurityParams> securityParams) {
         Set<ExtendedWifiNetworkSuggestion> matchingExtendedWifiNetworkSuggestions =
                         getNetworkSuggestionsForWifiConfiguration(config, config.BSSID);
-        if (matchingExtendedWifiNetworkSuggestions == null
-                || matchingExtendedWifiNetworkSuggestions.isEmpty()) {
+        if (matchingExtendedWifiNetworkSuggestions.isEmpty()) {
             if (mVerboseLoggingEnabled) {
                 Log.w(TAG, "onSecurityParamsUpdateForSuggestion: no network matches: " + config);
             }

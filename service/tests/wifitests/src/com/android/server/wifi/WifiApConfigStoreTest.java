@@ -130,7 +130,9 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
                              TEST_DEFAULT_HOTSPOT_SSID);
         mResources.setBoolean(R.bool.config_wifiSoftapPassphraseAsciiEncodableCheck, true);
         setupAllBandsSupported();
-
+        /* Default to device that does not require ap band conversion */
+        when(mActiveModeWarden.isStaApConcurrencySupported())
+                .thenReturn(false);
         when(mContext.getResources()).thenReturn(mResources);
         when(mContext.getPackageManager()).thenReturn(mPackageManager);
 
@@ -365,6 +367,9 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
      */
     @Test
     public void convertDevice5GhzToAny() throws Exception {
+        when(mActiveModeWarden.isStaApConcurrencySupported())
+                .thenReturn(true);
+
         /* Initialize WifiApConfigStore with default configuration. */
         WifiApConfigStore store = createWifiApConfigStore();
         verifyDefaultApConfig(store.getApConfiguration(), TEST_DEFAULT_AP_SSID);
@@ -401,6 +406,9 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
      */
     @Test
     public void deviceAnyNotConverted() throws Exception {
+        when(mActiveModeWarden.isStaApConcurrencySupported())
+                .thenReturn(true);
+
         /* Initialize WifiApConfigStore with default configuration. */
         WifiApConfigStore store = createWifiApConfigStore();
         verifyDefaultApConfig(store.getApConfiguration(), TEST_DEFAULT_AP_SSID);
@@ -427,6 +435,9 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
      */
     @Test
     public void deviceWithChannelNotConverted() throws Exception {
+        when(mActiveModeWarden.isStaApConcurrencySupported())
+                .thenReturn(true);
+
         /* Initialize WifiApConfigStore with default configuration. */
         WifiApConfigStore store = createWifiApConfigStore();
         verifyDefaultApConfig(store.getApConfiguration(), TEST_DEFAULT_AP_SSID);
@@ -454,6 +465,9 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
      */
     @Test
     public void device5GhzConvertedToAnyAtRetrieval() throws Exception {
+        when(mActiveModeWarden.isStaApConcurrencySupported())
+                .thenReturn(true);
+
         SoftApConfiguration persistedConfig = setupApConfig(
                 "ConfiguredAP",                  /* SSID */
                 "randomKey",                     /* preshared key */
@@ -485,6 +499,9 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
      */
     @Test
     public void deviceNotConvertedAtRetrieval() throws Exception {
+        when(mActiveModeWarden.isStaApConcurrencySupported())
+                .thenReturn(true);
+
         SoftApConfiguration persistedConfig = setupApConfig(
                 "ConfiguredAP",                 /* SSID */
                 "randomKey",                    /* preshared key */

@@ -711,12 +711,8 @@ public class SoftApManager implements ActiveModeManager {
      * @return integer result code
      */
     private int startSoftAp() {
-        if (SdkLevel.isAtLeastS()) {
-            Log.d(getTag(), "startSoftAp: channels " + mCurrentSoftApConfiguration.getChannels()
-                    + " iface " + mApInterfaceName + " country " + mCountryCode);
-        } else {
-            Log.d(getTag(), "startSoftAp: band " + mCurrentSoftApConfiguration.getBand());
-        }
+        Log.d(getTag(), "startSoftAp: band " + mCurrentSoftApConfiguration.getBand()
+                + " iface " + mApInterfaceName + " country " + mCountryCode);
 
         int result = setMacAddress();
         if (result != SUCCESS) {

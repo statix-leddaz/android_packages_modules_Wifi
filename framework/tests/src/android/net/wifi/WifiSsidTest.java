@@ -78,6 +78,13 @@ public class WifiSsidTest {
         assertThat(wifiSsidNull.getBytes()).isEmpty();
         assertThat(wifiSsidNull.getUtf8Text().toString()).isEmpty();
         assertThat(wifiSsidNull.toString()).isEmpty();
+
+        try {
+            WifiSsid.fromBytes(new byte[33]);
+            fail("Expected IllegalArgumentException for byte array length greater than 32.");
+        } catch (IllegalArgumentException e) {
+            // Success
+        }
     }
 
     /**
@@ -102,6 +109,13 @@ public class WifiSsidTest {
         assertThat(wifiSsidNull.getBytes()).isEmpty();
         assertThat(wifiSsidNull.getUtf8Text().toString()).isEmpty();
         assertThat(wifiSsidNull.toString()).isEmpty();
+
+        try {
+            WifiSsid.fromUtf8Text("This is an SSID that is much longer than 32 bytes");
+            fail("Expected IllegalArgumentException for byte array length greater than 32.");
+        } catch (IllegalArgumentException e) {
+            // Success
+        }
     }
 
     /**
@@ -138,6 +152,21 @@ public class WifiSsidTest {
         assertThat(wifiSsidNull.getBytes()).isEmpty();
         assertThat(wifiSsidNull.getUtf8Text().toString()).isEmpty();
         assertThat(wifiSsidNull.toString()).isEmpty();
+
+        try {
+            WifiSsid.fromString("\"This is an SSID that is much longer than 32 bytes\"");
+            fail("Expected IllegalArgumentException for byte array length greater than 32.");
+        } catch (IllegalArgumentException e) {
+            // Success
+        }
+
+        try {
+            WifiSsid.fromString(
+                    "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789AB");
+            fail("Expected IllegalArgumentException for byte array length greater than 32.");
+        } catch (IllegalArgumentException e) {
+            // Success
+        }
 
         try {
             WifiSsid.fromString("0123456");

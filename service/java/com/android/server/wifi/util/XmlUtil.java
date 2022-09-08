@@ -2205,9 +2205,7 @@ public class XmlUtil {
                     Log.e(TAG, "Failed to parse SSID");
                     return null;
                 }
-                if (ApConfigUtil.isNonPasswordAP(securityType)) {
-                    softApConfigBuilder.setPassphrase(null, securityType);
-                } else {
+                if (!ApConfigUtil.isNonPasswordAP(securityType)) {
                     softApConfigBuilder.setPassphrase(passphrase, securityType);
                 }
                 if (!autoShutdownEnabledTagPresent) {

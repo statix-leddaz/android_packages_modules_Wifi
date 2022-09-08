@@ -18,10 +18,7 @@ package com.android.server.wifi;
 
 import android.os.Build;
 
-/**
- * Implementation of BuildProperties.
- */
-public class SystemBuildProperties implements BuildProperties {
+class SystemBuildProperties implements BuildProperties {
     @Override
     public boolean isEngBuild() {
         return Build.TYPE.equals("eng");
