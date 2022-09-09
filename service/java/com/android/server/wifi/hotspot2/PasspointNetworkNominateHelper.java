@@ -114,8 +114,8 @@ public class PasspointNetworkNominateHelper {
             }
             filteredScanDetails.add(scanDetail);
         }
+        mCachedScanDetails.clear();
         if (!filteredScanDetails.isEmpty()) {
-            mCachedScanDetails.clear();
             mCachedScanDetails.addAll(filteredScanDetails);
         }
     }
