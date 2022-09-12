@@ -1158,7 +1158,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         assertEquals(suggestionNetwork.networkId, wifiConfigCaptor.getValue().networkId);
         assertTrue(mWifiConfigManager
                 .removeNetwork(suggestionNetwork.networkId, TEST_CREATOR_UID, TEST_CREATOR_NAME));
-        verify(mWifiKeyStore, never()).removeKeys(any());
+        verify(mWifiKeyStore, never()).removeKeys(any(), eq(false));
     }
 
     /**
@@ -1418,7 +1418,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                 passpointNetwork.networkId, Process.WIFI_UID, null));
 
         // Verify keys are not being removed.
-        verify(mWifiKeyStore, never()).removeKeys(any(WifiEnterpriseConfig.class));
+        verify(mWifiKeyStore, never()).removeKeys(any(WifiEnterpriseConfig.class), eq(false));
         verifyNetworkRemoveBroadcast();
         // Ensure that the write was not invoked for Passpoint network remove.
         mContextConfigStoreMockOrder.verify(mWifiConfigStore, never()).write(anyBoolean());
@@ -4930,7 +4930,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         List<SubscriptionInfo> subList = new ArrayList<>() {{
                 add(mock(SubscriptionInfo.class));
             }};
-        when(mSubscriptionManager.getActiveSubscriptionInfoList()).thenReturn(subList);
+        when(mSubscriptionManager.getCompleteActiveSubscriptionInfoList()).thenReturn(subList);
         when(mSubscriptionManager.getActiveSubscriptionIdList())
                 .thenReturn(new int[]{DATA_SUBID});
 
@@ -4987,7 +4987,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         List<SubscriptionInfo> subList = new ArrayList<>() {{
                 add(mock(SubscriptionInfo.class));
             }};
-        when(mSubscriptionManager.getActiveSubscriptionInfoList()).thenReturn(subList);
+        when(mSubscriptionManager.getCompleteActiveSubscriptionInfoList()).thenReturn(subList);
         when(mSubscriptionManager.getActiveSubscriptionIdList())
                 .thenReturn(new int[]{DATA_SUBID});
 
@@ -5990,7 +5990,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                 configuration.networkId, TEST_CREATOR_UID, TEST_CREATOR_NAME));
 
         // Verify keys are not being removed.
-        verify(mWifiKeyStore, never()).removeKeys(any(WifiEnterpriseConfig.class));
+        verify(mWifiKeyStore, never()).removeKeys(any(WifiEnterpriseConfig.class), eq(false));
         verifyNetworkRemoveBroadcast();
         // Ensure that the write was not invoked for Passpoint network remove.
         mContextConfigStoreMockOrder.verify(mWifiConfigStore, never()).write(anyBoolean());

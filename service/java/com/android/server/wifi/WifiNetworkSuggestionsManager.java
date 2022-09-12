@@ -183,7 +183,10 @@ public class WifiNetworkSuggestionsManager {
         }
 
         @Override
-        public void onConnectChoiceRemoved(String choiceKey) {
+        public void onConnectChoiceRemoved(@NonNull String choiceKey) {
+            if (choiceKey == null) {
+                return;
+            }
             onUserConnectChoiceRemoveForSuggestion(choiceKey);
         }
 
@@ -1292,8 +1295,6 @@ public class WifiNetworkSuggestionsManager {
             // we want to keep the notification state for all apps that have ever provided
             // suggestions.
             if (mVerboseLoggingEnabled) Log.v(TAG, "No active suggestions for " + packageName);
-            // Stop tracking app-op changes from the app if they don't have active suggestions.
-            stopTrackingAppOpsChange(packageName);
         }
         // Clear the cache.
         WifiConfiguration connected = mWifiInjector.getActiveModeWarden()
@@ -1334,7 +1335,7 @@ public class WifiNetworkSuggestionsManager {
             removeFromPassPointInfoMap(ewns);
         } else {
             if (ewns.wns.wifiConfiguration.isEnterprise()) {
-                mWifiKeyStore.removeKeys(ewns.wns.wifiConfiguration.enterpriseConfig);
+                mWifiKeyStore.removeKeys(ewns.wns.wifiConfiguration.enterpriseConfig, false);
             }
             removeFromScanResultMatchInfoMapAndRemoveRelatedScoreCard(ewns, true);
             mWifiConfigManager.removeConnectChoiceFromAllNetworks(ewns
@@ -1412,6 +1413,8 @@ public class WifiNetworkSuggestionsManager {
         PerAppInfo perAppInfo = mActiveNetworkSuggestionsPerApp.get(packageName);
         if (perAppInfo == null) return;
         removeInternal(List.of(), packageName, perAppInfo, ACTION_REMOVE_SUGGESTION_DISCONNECT);
+        // Stop tracking app-op changes when the App is removed from suggestion database
+        stopTrackingAppOpsChange(packageName);
         // Remove the package fully from the internal database.
         mActiveNetworkSuggestionsPerApp.remove(packageName);
         RemoteCallbackList<ISuggestionConnectionStatusListener> listenerTracker =
@@ -1455,6 +1458,8 @@ public class WifiNetworkSuggestionsManager {
             Map.Entry<String, PerAppInfo> entry = iter.next();
             removeInternal(List.of(), entry.getKey(), entry.getValue(),
                     ACTION_REMOVE_SUGGESTION_DISCONNECT);
+            // Stop tracking app-op changes when the App is removed from suggestion database
+            stopTrackingAppOpsChange(entry.getKey());
             iter.remove();
         }
         mSuggestionStatusListenerPerApp.clear();
@@ -2333,6 +2338,8 @@ public class WifiNetworkSuggestionsManager {
                 Log.i(TAG, "Carrier privilege revoked for " + appInfo.packageName);
                 removeInternal(List.of(), appInfo.packageName, appInfo,
                         ACTION_REMOVE_SUGGESTION_DISCONNECT);
+                // Stop tracking app-op changes when the App is removed from suggestion database
+                stopTrackingAppOpsChange(appInfo.packageName);
                 iter.remove();
                 continue;
             }
@@ -2390,6 +2397,8 @@ public class WifiNetworkSuggestionsManager {
             Log.i(TAG, "Carrier privilege revoked for " + appInfo.packageName);
             removeInternal(List.of(), appInfo.packageName, appInfo,
                     ACTION_REMOVE_SUGGESTION_DISCONNECT);
+            // Stop tracking app-op changes when the App is removed from suggestion database
+            stopTrackingAppOpsChange(appInfo.packageName);
             iter.remove();
         }
         saveToStore();
@@ -2695,13 +2704,15 @@ public class WifiNetworkSuggestionsManager {
     }
 
     private void onUserConnectChoiceRemoveForSuggestion(String choiceKey) {
-        mActiveNetworkSuggestionsPerApp.values().stream()
+        if (mActiveNetworkSuggestionsPerApp.values().stream()
                 .flatMap(e -> e.extNetworkSuggestions.values().stream())
                 .filter(ewns -> TextUtils.equals(ewns.connectChoice, choiceKey))
-                .forEach(ewns -> {
+                .peek(ewns -> {
                     ewns.connectChoice = null;
                     ewns.connectChoiceRssi = 0;
-                });
+                }).count() == 0) {
+            return;
+        }
         saveToStore();
     }
 

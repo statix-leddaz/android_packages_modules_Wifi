@@ -449,7 +449,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
             return 0;
         }
 
-        List<SubscriptionInfo> subInfoList = subscriptionManager.getActiveSubscriptionInfoList();
+        List<SubscriptionInfo> subInfoList = subscriptionManager
+                .getCompleteActiveSubscriptionInfoList();
         if (subInfoList == null) {
             Log.d(getTag(), "Active SubscriptionInfo list not found");
             return 0;
@@ -893,7 +894,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
                         if (TextUtils.isEmpty(mClientInterfaceName)) {
                             Log.e(getTag(), "Failed to create ClientInterface. Sit in Idle");
                             takeBugReportInterfaceFailureIfNeeded(
-                                    "Wi-Fi scan STA interface HAL failure");
+                                    "Wi-Fi BugReport (scan STA interface failure): please report "
+                                            + "it through BetterBug app");
                             mModeListener.onStartFailure(ConcreteClientModeManager.this);
                             break;
                         }
@@ -958,7 +960,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
                                     WifiManager.WIFI_STATE_DISABLED,
                                     WifiManager.WIFI_STATE_UNKNOWN);
                             takeBugReportInterfaceFailureIfNeeded(
-                                    "Wi-Fi STA interface HAL failure");
+                                    "Wi-Fi BugReport (STA interface failure): please report it "
+                                            + "through BetterBug app");
                             mModeListener.onStartFailure(ConcreteClientModeManager.this);
                             break;
                         }
