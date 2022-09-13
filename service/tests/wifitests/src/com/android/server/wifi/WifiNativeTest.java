@@ -1382,24 +1382,11 @@ public class WifiNativeTest extends WifiBaseTest {
      */
     @Test
     public void testSetEapAnonymousIdentitySuccess() throws Exception {
-        when(mStaIfaceHal.setEapAnonymousIdentity(any(), any(), anyBoolean())).thenReturn(true);
+        when(mStaIfaceHal.setEapAnonymousIdentity(any(), any())).thenReturn(true);
         final String anonymousIdentity = "abc@realm.com";
-        assertTrue(mWifiNative.setEapAnonymousIdentity(WIFI_IFACE_NAME, anonymousIdentity, true));
+        assertTrue(mWifiNative.setEapAnonymousIdentity(WIFI_IFACE_NAME, anonymousIdentity));
         verify(mStaIfaceHal).setEapAnonymousIdentity(eq(WIFI_IFACE_NAME),
-                eq(anonymousIdentity), eq(true));
-    }
-
-    /**
-     * Verifies setEapAnonymousIdentity() sunny case when native service is
-     * not updated.
-     */
-    @Test
-    public void testSetEapAnonymousIdentitySuccessWithNotUpdateToNativeService() throws Exception {
-        when(mStaIfaceHal.setEapAnonymousIdentity(any(), any(), anyBoolean())).thenReturn(true);
-        final String anonymousIdentity = "abc@realm.com";
-        assertTrue(mWifiNative.setEapAnonymousIdentity(WIFI_IFACE_NAME, anonymousIdentity, false));
-        verify(mStaIfaceHal).setEapAnonymousIdentity(eq(WIFI_IFACE_NAME),
-                eq(anonymousIdentity), eq(false));
+                eq(anonymousIdentity));
     }
 
     /**
@@ -1407,9 +1394,9 @@ public class WifiNativeTest extends WifiBaseTest {
      */
     @Test
     public void testSetEapAnonymousIdentityFailureWithNullString() throws Exception {
-        when(mStaIfaceHal.setEapAnonymousIdentity(any(), any(), anyBoolean())).thenReturn(true);
-        assertFalse(mWifiNative.setEapAnonymousIdentity(WIFI_IFACE_NAME, null, true));
-        verify(mStaIfaceHal, never()).setEapAnonymousIdentity(any(), any(), anyBoolean());
+        when(mStaIfaceHal.setEapAnonymousIdentity(any(), any())).thenReturn(true);
+        assertFalse(mWifiNative.setEapAnonymousIdentity(WIFI_IFACE_NAME, null));
+        verify(mStaIfaceHal, never()).setEapAnonymousIdentity(any(), any());
     }
 
     @Test

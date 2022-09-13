@@ -1208,30 +1208,16 @@ public class SupplicantStaIfaceHalTest {
         assertFalse(request.classifierParams.isValid);
     }
 
-    private void verifySetEapAnonymousIdentity(boolean updateToNativeService) {
-        final String anonymousIdentity = "abc@realm.net";
-        initializeWithAidlImpl(true);
-        when(mStaIfaceHalAidlMock.setEapAnonymousIdentity(anyString(), anyString(), anyBoolean()))
-                .thenReturn(true);
-        assertTrue(mDut.setEapAnonymousIdentity(IFACE_NAME, anonymousIdentity,
-                updateToNativeService));
-        verify(mStaIfaceHalAidlMock).setEapAnonymousIdentity(eq(IFACE_NAME), eq(anonymousIdentity),
-                eq(updateToNativeService));
-    }
-
     /**
      * Test that we can call setEapAnonymousIdentity
      */
     @Test
     public void testSetEapAnonymousIdentity() {
-        verifySetEapAnonymousIdentity(true);
-    }
-
-    /**
-     * Test that we can call setEapAnonymousIdentity
-     */
-    @Test
-    public void testSetEapAnonymousIdentityWithNotUpdateToNativeService() {
-        verifySetEapAnonymousIdentity(false);
+        final String anonymousIdentity = "abc@realm.net";
+        initializeWithAidlImpl(true);
+        when(mStaIfaceHalAidlMock.setEapAnonymousIdentity(anyString(), anyString()))
+                .thenReturn(true);
+        assertTrue(mDut.setEapAnonymousIdentity(IFACE_NAME, anonymousIdentity));
+        verify(mStaIfaceHalAidlMock).setEapAnonymousIdentity(eq(IFACE_NAME), eq(anonymousIdentity));
     }
 }

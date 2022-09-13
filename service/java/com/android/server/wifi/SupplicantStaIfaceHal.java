@@ -2213,17 +2213,14 @@ public class SupplicantStaIfaceHal {
      *
      * @param ifaceName Name of the interface.
      * @param anonymousIdentity the anonymouns identity.
-     * @param updateToNativeService write the data to the native service.
      * @return true if succeeds, false otherwise.
      */
-    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity,
-            boolean updateToNativeService) {
+    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity) {
         String methodStr = "setEapAnonymousIdentity";
         if (mStaIfaceHal == null) {
             return handleNullHal(methodStr);
         }
-        return mStaIfaceHal.setEapAnonymousIdentity(ifaceName, anonymousIdentity,
-                updateToNativeService);
+        return mStaIfaceHal.setEapAnonymousIdentity(ifaceName, anonymousIdentity);
     }
 
     private boolean handleNullHal(String methodStr) {

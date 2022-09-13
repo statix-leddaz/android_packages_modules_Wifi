@@ -4392,17 +4392,14 @@ public class WifiNative {
      *
      * @param ifaceName Name of the interface.
      * @param anonymousIdentity the anonymouns identity.
-     * @param updateToNativeService write the data to the native service.
      * @return true if succeeds, false otherwise.
      */
-    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity,
-            boolean updateToNativeService) {
+    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity) {
         if (null == anonymousIdentity) {
             Log.e(TAG, "Cannot set null anonymous identity.");
             return false;
         }
-        return mSupplicantStaIfaceHal.setEapAnonymousIdentity(ifaceName, anonymousIdentity,
-                updateToNativeService);
+        return mSupplicantStaIfaceHal.setEapAnonymousIdentity(ifaceName, anonymousIdentity);
     }
 
     /**
