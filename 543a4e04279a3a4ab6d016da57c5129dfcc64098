@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "bc8b1cec_2fb52b5f",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2022-09-13T02:03:41Z",
+      "side": 1,
+      "message": "Can we abandon this CL? I can see you close the bug now.\n",
+      "revId": "543a4e04279a3a4ab6d016da57c5129dfcc64098",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
