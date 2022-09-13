@@ -683,6 +683,7 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                     }
                     mISupplicant = getSupplicantMockable();
                 }
+                setLogLevel(mVerboseHalLoggingEnabled);
             } catch (RemoteException | NoSuchElementException e) {
                 Log.e(TAG, "Exception while trying to start supplicant: " + e);
                 supplicantServiceDiedHandler(mDeathRecipientCookie);
@@ -3985,19 +3986,34 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
      *
      * @param ifaceName Name of the interface.
      * @param anonymousIdentity the anonymouns identity.
+     * @param updateToNativeService write the data to the native service.
      * @return true if succeeds, false otherwise.
      */
-    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity) {
+    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity,
+            boolean updateToNativeService) {
         synchronized (mLock) {
             SupplicantStaNetworkHalHidlImpl networkHandle =
                     checkSupplicantStaNetworkAndLogFailure(ifaceName, "setEapAnonymousIdentity");
             if (networkHandle == null) return false;
+            if (anonymousIdentity == null) return false;
+            WifiConfiguration currentConfig = getCurrentNetworkLocalConfig(ifaceName);
+            if (currentConfig == null) return false;
+            if (!currentConfig.isEnterprise()) return false;
+
             try {
-                return networkHandle.setEapAnonymousIdentity(
-                        NativeUtil.stringToByteArrayList(anonymousIdentity));
+                if (updateToNativeService) {
+                    if (!networkHandle.setEapAnonymousIdentity(
+                            NativeUtil.stringToByteArrayList(anonymousIdentity))) {
+                        Log.w(TAG, "Cannot set EAP anonymous identity.");
+                        return false;
+                    }
+                }
             } catch (IllegalArgumentException ex) {
                 return false;
             }
+            // Update cached config after setting native data successfully.
+            currentConfig.enterpriseConfig.setAnonymousIdentity(anonymousIdentity);
+            return true;
         }
     }
 }

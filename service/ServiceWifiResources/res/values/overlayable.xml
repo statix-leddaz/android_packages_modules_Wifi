@@ -233,6 +233,7 @@
           <item type="bool" name="config_wifiSoftapOweSupported" />
           <item type="bool" name="config_wifiSoftapOweTransitionSupported" />
           <item type="integer" name="config_wifiDialogGravity" />
+          <item type="bool" name="config_wifiDialogCanceledOnTouchOutside" />
           <item type="bool" name="config_showConfirmationDialogForThirdPartyAppsEnablingWifi" />
           <item type="integer" name="config_p2pInvitationReceivedDialogTimeoutMs"/>
           <item type="bool" name="config_p2pInvitationReceivedDialogNotificationSound"/>
@@ -286,6 +287,7 @@
           <item type="string" name="ok" />
           <item type="string" name="wifi_p2p_invitation_sent_title" />
           <item type="string" name="wifi_p2p_invitation_to_connect_title" />
+          <item type="string" name="wifi_p2p_invitation_seconds_remaining" />
           <item type="string" name="wifi_p2p_from_message" />
           <item type="string" name="wifi_p2p_to_message" />
           <item type="string" name="wifi_p2p_enter_pin_message" />

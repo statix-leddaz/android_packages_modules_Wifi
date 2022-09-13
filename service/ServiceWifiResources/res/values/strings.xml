@@ -100,6 +100,13 @@
     <string name="wifi_p2p_invitation_sent_title">Invitation sent</string>
     <string name="wifi_p2p_invitation_to_connect_title">Invitation to connect</string>
 
+    <!-- The message of the P2P Invitation Received dialog indicating the seconds left to accept before auto rejection [CHAR_LIMIT=NONE] [ICU SYNTAX] -->
+    <string name="wifi_p2p_invitation_seconds_remaining">
+        {0,plural,
+            one{Accept in # second.}
+            other{Accept in # seconds.}
+        }
+    </string>
     <string name="wifi_p2p_from_message">From: </string>
     <string name="wifi_p2p_to_message">To: </string>
     <string name="wifi_p2p_enter_pin_message">Type the required PIN: </string>
@@ -241,8 +248,8 @@
     <string name="wifi_network_disabled_by_admin_button">Close</string>
 
     <!-- Notifying the user that the device will remember Wi-Fi state in APM. -->
-    <string name="wifi_enabled_apm_first_time_title">You turned on Wi\u2011Fi</string>
-    <string name="wifi_enabled_apm_first_time_message">Your phone will keep Wi\u2011Fi on in airplane mode, unless you turn it off while in this mode</string>
+    <string name="wifi_enabled_apm_first_time_title">Wi\u2011Fi on in airplane mode</string>
+    <string name="wifi_enabled_apm_first_time_message">If you keep Wi\u2011Fi on, it will stay on the next time you\'re in airplane mode</string>
     <string name="apm_enabled_first_time_title">Wi\u2011Fi stays on</string>
-    <string name="apm_enabled_first_time_message">Your phone will keep Wi\u2011Fi on in airplane mode, unless you turn it off while in this mode</string>
+    <string name="apm_enabled_first_time_message">Your phone remembers to keep Wi\u2011Fi on in airplane mode. To change this, turn off Wi\u2011Fi.</string>
 </resources>
