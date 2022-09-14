@@ -4060,7 +4060,9 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                                         mSavedPeerConfig);
                                 extras.putBoolean(
                                         WifiP2pManager.EXTRA_PARAM_KEY_INTERNAL_MESSAGE, true);
-                                sendMessage(WifiP2pManager.CONNECT, extras);
+                                final Message msg = obtainMessage(WifiP2pManager.CONNECT, extras);
+                                msg.sendingUid = Process.myUid();
+                                sendMessage(msg);
                             }
                         }
                         break;
