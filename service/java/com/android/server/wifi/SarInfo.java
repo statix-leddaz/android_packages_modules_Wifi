@@ -73,6 +73,8 @@ public class SarInfo {
     private int mLastReportedScenario = INITIAL_SAR_SCENARIO;
     private long mLastReportedScenarioTs = 0;
 
+    private boolean mLastReportedIsWifiClientEnabled = false;
+
     /**
      * shouldReport()
      * This method returns false in the following cases:
@@ -100,6 +102,7 @@ public class SarInfo {
 
         /* Check if some change happened since last successful reporting */
         return ((isWifiSapEnabled != mLastReportedIsWifiSapEnabled)
+                || (isWifiClientEnabled != mLastReportedIsWifiClientEnabled)
                 || (isVoiceCall != mLastReportedIsVoiceCall)
                 || (isEarPieceActive != mLastReportedIsEarPieceActive));
     }
@@ -111,6 +114,7 @@ public class SarInfo {
      */
     public void reportingSuccessful() {
         mLastReportedIsWifiSapEnabled = isWifiSapEnabled;
+        mLastReportedIsWifiClientEnabled = isWifiClientEnabled;
         mLastReportedIsVoiceCall = isVoiceCall;
         mLastReportedIsEarPieceActive = isEarPieceActive;
         mLastReportedScenario = attemptedSarScenario;
@@ -162,6 +166,7 @@ public class SarInfo {
         pw.println("    Earpiece state is : " + isEarPieceActive);
         pw.println("Last reported values:");
         pw.println("    Soft AP state is: " + mLastReportedIsWifiSapEnabled);
+        pw.println("    Wifi Client state is: " + mLastReportedIsWifiClientEnabled);
         pw.println("    Voice Call state is: " + mLastReportedIsVoiceCall);
         pw.println("    Earpiece state is: " + mLastReportedIsEarPieceActive);
         pw.println("Last reported scenario: " + mLastReportedScenario);
