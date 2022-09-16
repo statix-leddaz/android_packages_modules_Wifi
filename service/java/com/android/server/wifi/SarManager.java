@@ -337,6 +337,9 @@ public class SarManager {
         /* Report change to HAL if needed */
         if (mSarInfo.isWifiClientEnabled != newIsEnabled) {
             mSarInfo.isWifiClientEnabled = newIsEnabled;
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "isWifiClientEnabled = " + newIsEnabled);
+            }
             updateSarScenario();
         }
     }
@@ -363,6 +366,9 @@ public class SarManager {
         /* Report change to HAL if needed */
         if (mSarInfo.isWifiSapEnabled != newIsEnabled) {
             mSarInfo.isWifiSapEnabled = newIsEnabled;
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "isSapWifiEnabled = " + newIsEnabled);
+            }
             updateSarScenario();
         }
     }

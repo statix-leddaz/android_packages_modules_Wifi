@@ -70,6 +70,7 @@ import android.net.wifi.WifiSsid;
 import android.os.Handler;
 import android.os.RemoteException;
 import android.os.WorkSource;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.Pair;
@@ -788,9 +789,30 @@ public class WifiVendorHal {
      */
     public void stopVendorHal() {
         synchronized (sLock) {
+            resetSarScenario();
             mHalDeviceManager.stop();
             clearState();
             mLog.info("Vendor Hal stopped").flush();
+        }
+    }
+
+    /**
+     * reset Sar Scenario
+     */
+    private void resetSarScenario() {
+        try {
+            android.hardware.wifi.V1_2.IWifiChip iWifiChipV12 = getWifiChipForV1_2Mockable();
+            if (iWifiChipV12 != null) {
+                WifiStatus status = iWifiChipV12.resetTxPowerScenario();
+                if (ok(status)) {
+                    Settings.Global.putInt(sContext.getContentResolver(), "wifi_sar_dsi", 0);
+                    mLog.d("Resetting SAR scenario");
+                } else {
+                    mLog.e("Failed to reset SAR scenario");
+                }
+            }
+        } catch (RemoteException e) {
+            handleRemoteException(e);
         }
     }
 
@@ -3181,7 +3203,7 @@ public class WifiVendorHal {
      * It handles the case when the device is running the V1_2 version of WifiChip HAL
      */
     private boolean sarPowerBackoffRequired_1_2(SarInfo sarInfo) {
-        if (sarInfo.sarSapSupported && sarInfo.isWifiSapEnabled) {
+        if (sarInfo.sarSapSupported && (sarInfo.isWifiSapEnabled || sarInfo.isWifiClientEnabled)) {
             return true;
         }
         if (sarInfo.sarVoiceCallSupported && (sarInfo.isVoiceCall || sarInfo.isEarPieceActive)) {
@@ -3203,12 +3225,18 @@ public class WifiVendorHal {
      */
     private int frameworkToHalTxPowerScenario_1_2(SarInfo sarInfo) {
         if (sarInfo.sarSapSupported && sarInfo.sarVoiceCallSupported) {
-            if (sarInfo.isVoiceCall || sarInfo.isEarPieceActive) {
-                return android.hardware.wifi.V1_2.IWifiChip
-                        .TxPowerScenario.ON_HEAD_CELL_ON;
-            } else if (sarInfo.isWifiSapEnabled) {
-                return android.hardware.wifi.V1_2.IWifiChip
-                        .TxPowerScenario.ON_BODY_CELL_ON;
+            if (sarInfo.isWifiClientEnabled && sarInfo.isEarPieceActive && !sarInfo.isWifiSapEnabled && !sarInfo.isVoiceCall) {
+                return android.hardware.wifi.V1_2.IWifiChip.TxPowerScenario.ON_HEAD_CELL_OFF;
+            } else if (sarInfo.isWifiSapEnabled && sarInfo.isEarPieceActive) {
+                return android.hardware.wifi.V1_2.IWifiChip.TxPowerScenario.ON_HEAD_CELL_ON;
+            } else if (sarInfo.isWifiClientEnabled && !sarInfo.isWifiSapEnabled && sarInfo.isEarPieceActive && sarInfo.isVoiceCall) {
+                return android.hardware.wifi.V1_2.IWifiChip.TxPowerScenario.ON_HEAD_CELL_ON;
+            } else if (sarInfo.isWifiClientEnabled && !sarInfo.isWifiSapEnabled && !sarInfo.isEarPieceActive && !sarInfo.isVoiceCall) {
+                return android.hardware.wifi.V1_2.IWifiChip.TxPowerScenario.ON_BODY_CELL_OFF;
+            } else if (sarInfo.isWifiClientEnabled && !sarInfo.isWifiSapEnabled && !sarInfo.isEarPieceActive && sarInfo.isVoiceCall) {
+                return android.hardware.wifi.V1_2.IWifiChip.TxPowerScenario.ON_BODY_CELL_ON;
+            } else if (sarInfo.isWifiSapEnabled && !sarInfo.isEarPieceActive) {
+                return android.hardware.wifi.V1_2.IWifiChip.TxPowerScenario.ON_BODY_CELL_ON;
             } else {
                 throw new IllegalArgumentException("bad scenario: no voice call/softAP active");
             }
@@ -3309,6 +3337,7 @@ public class WifiVendorHal {
             android.hardware.wifi.V1_2.IWifiChip iWifiChip, SarInfo sarInfo) {
         WifiStatus status;
         try {
+            mLog.d("selectTxPowerScenario_1_2, sarSapSupported: " + sarInfo.sarSapSupported + " sarVoiceCallSupported: " + sarInfo.sarVoiceCallSupported);
             if (sarPowerBackoffRequired_1_2(sarInfo)) {
                 // Power backoff is needed, so calculate the required scenario,
                 // and attempt to set it.
@@ -3317,6 +3346,7 @@ public class WifiVendorHal {
                     status = iWifiChip.selectTxPowerScenario_1_2(halScenario);
                     if (ok(status)) {
                         mLog.d("Setting SAR scenario to " + halScenario);
+                        Settings.Global.putInt(sContext.getContentResolver(), "wifi_sar_dsi", halScenario);
                         return true;
                     } else {
                         mLog.e("Failed to set SAR scenario to " + halScenario);
@@ -3334,6 +3364,7 @@ public class WifiVendorHal {
                 status = iWifiChip.resetTxPowerScenario();
                 if (ok(status)) {
                     mLog.d("Resetting SAR scenario");
+                    Settings.Global.putInt(sContext.getContentResolver(), "wifi_sar_dsi", 0);
                     return true;
                 } else {
                     mLog.e("Failed to reset SAR scenario");
