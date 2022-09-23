@@ -46,6 +46,7 @@ import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiScanner;
+import android.net.wifi.WifiSsid;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.os.Handler;
 import android.os.Process;
@@ -77,6 +78,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -181,13 +183,21 @@ public class WifiNetworkSuggestionsManager {
         }
 
         @Override
-        public void onConnectChoiceRemoved(String choiceKey) {
+        public void onConnectChoiceRemoved(@NonNull String choiceKey) {
+            if (choiceKey == null) {
+                return;
+            }
             onUserConnectChoiceRemoveForSuggestion(choiceKey);
         }
 
         @Override
-        public void onSecurityParamsUpdate(WifiConfiguration configuration,
-                List<SecurityParams> securityParams) {
+        public void onSecurityParamsUpdate(@NonNull WifiConfiguration configuration,
+                @NonNull List<SecurityParams> securityParams) {
+            if (configuration == null || securityParams == null || securityParams.isEmpty()) {
+                Log.e(TAG, "onSecurityParamsUpdate: must have valid config and "
+                        + "securityParams");
+                return;
+            }
             onSecurityParamsUpdateForSuggestion(configuration, securityParams);
         }
     }
@@ -1026,7 +1036,8 @@ public class WifiNetworkSuggestionsManager {
                 // Install Passpoint config, if failure, ignore that suggestion
                 if (!mWifiInjector.getPasspointManager().addOrUpdateProvider(
                         ewns.wns.passpointConfiguration, uid,
-                        packageName, true, !ewns.wns.isUntrusted())) {
+                        packageName, true, !ewns.wns.isUntrusted(),
+                        ewns.wns.isRestricted())) {
                     Log.e(TAG, "Passpoint profile install failure for FQDN: "
                             + ewns.wns.wifiConfiguration.FQDN);
                     continue;
@@ -1284,8 +1295,6 @@ public class WifiNetworkSuggestionsManager {
             // we want to keep the notification state for all apps that have ever provided
             // suggestions.
             if (mVerboseLoggingEnabled) Log.v(TAG, "No active suggestions for " + packageName);
-            // Stop tracking app-op changes from the app if they don't have active suggestions.
-            stopTrackingAppOpsChange(packageName);
         }
         // Clear the cache.
         WifiConfiguration connected = mWifiInjector.getActiveModeWarden()
@@ -1326,7 +1335,7 @@ public class WifiNetworkSuggestionsManager {
             removeFromPassPointInfoMap(ewns);
         } else {
             if (ewns.wns.wifiConfiguration.isEnterprise()) {
-                mWifiKeyStore.removeKeys(ewns.wns.wifiConfiguration.enterpriseConfig);
+                mWifiKeyStore.removeKeys(ewns.wns.wifiConfiguration.enterpriseConfig, false);
             }
             removeFromScanResultMatchInfoMapAndRemoveRelatedScoreCard(ewns, true);
             mWifiConfigManager.removeConnectChoiceFromAllNetworks(ewns
@@ -1404,6 +1413,8 @@ public class WifiNetworkSuggestionsManager {
         PerAppInfo perAppInfo = mActiveNetworkSuggestionsPerApp.get(packageName);
         if (perAppInfo == null) return;
         removeInternal(List.of(), packageName, perAppInfo, ACTION_REMOVE_SUGGESTION_DISCONNECT);
+        // Stop tracking app-op changes when the App is removed from suggestion database
+        stopTrackingAppOpsChange(packageName);
         // Remove the package fully from the internal database.
         mActiveNetworkSuggestionsPerApp.remove(packageName);
         RemoteCallbackList<ISuggestionConnectionStatusListener> listenerTracker =
@@ -1447,6 +1458,8 @@ public class WifiNetworkSuggestionsManager {
             Map.Entry<String, PerAppInfo> entry = iter.next();
             removeInternal(List.of(), entry.getKey(), entry.getValue(),
                     ACTION_REMOVE_SUGGESTION_DISCONNECT);
+            // Stop tracking app-op changes when the App is removed from suggestion database
+            stopTrackingAppOpsChange(entry.getKey());
             iter.remove();
         }
         mSuggestionStatusListenerPerApp.clear();
@@ -1859,7 +1872,7 @@ public class WifiNetworkSuggestionsManager {
         // As they are all single type configurations, they should have unique keys.
         Map<String, WifiConfiguration> wifiConfigMap = new HashMap<>();
         WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(
-                mWifiConfigManager.getConfiguredNetworks())
+                mWifiConfigManager.getConfiguredNetworks(), true)
                         .forEach(c -> wifiConfigMap.put(c.getProfileKey(), c));
 
         // Create a HashSet to avoid return multiple result for duplicate ScanResult.
@@ -1956,17 +1969,23 @@ public class WifiNetworkSuggestionsManager {
     public List<WifiScanner.ScanSettings.HiddenNetwork> retrieveHiddenNetworkList(
             boolean autoJoinOnly) {
         List<WifiScanner.ScanSettings.HiddenNetwork> hiddenNetworks = new ArrayList<>();
+        Set<WifiSsid> ssidSet = new LinkedHashSet<>();
         for (PerAppInfo appInfo : mActiveNetworkSuggestionsPerApp.values()) {
             if (!appInfo.hasUserApproved) continue;
             for (ExtendedWifiNetworkSuggestion ewns : appInfo.extNetworkSuggestions.values()) {
                 if (!ewns.wns.wifiConfiguration.hiddenSSID) continue;
                 if (autoJoinOnly && !ewns.isAutojoinEnabled) continue;
-                hiddenNetworks.add(
-                        new WifiScanner.ScanSettings.HiddenNetwork(
-                                ewns.wns.wifiConfiguration.SSID));
-                if (hiddenNetworks.size() >= NUMBER_OF_HIDDEN_NETWORK_FOR_ONE_SCAN) {
-                    return hiddenNetworks;
+                ssidSet.addAll(mWifiInjector.getSsidTranslator().getAllPossibleOriginalSsids(
+                        WifiSsid.fromString(ewns.wns.wifiConfiguration.SSID)));
+                if (ssidSet.size() >= NUMBER_OF_HIDDEN_NETWORK_FOR_ONE_SCAN) {
+                    break;
                 }
+            }
+        }
+        for (WifiSsid ssid : ssidSet) {
+            hiddenNetworks.add(new WifiScanner.ScanSettings.HiddenNetwork(ssid.toString()));
+            if (hiddenNetworks.size() >= NUMBER_OF_HIDDEN_NETWORK_FOR_ONE_SCAN) {
+                break;
             }
         }
         return hiddenNetworks;
@@ -2319,6 +2338,8 @@ public class WifiNetworkSuggestionsManager {
                 Log.i(TAG, "Carrier privilege revoked for " + appInfo.packageName);
                 removeInternal(List.of(), appInfo.packageName, appInfo,
                         ACTION_REMOVE_SUGGESTION_DISCONNECT);
+                // Stop tracking app-op changes when the App is removed from suggestion database
+                stopTrackingAppOpsChange(appInfo.packageName);
                 iter.remove();
                 continue;
             }
@@ -2376,6 +2397,8 @@ public class WifiNetworkSuggestionsManager {
             Log.i(TAG, "Carrier privilege revoked for " + appInfo.packageName);
             removeInternal(List.of(), appInfo.packageName, appInfo,
                     ACTION_REMOVE_SUGGESTION_DISCONNECT);
+            // Stop tracking app-op changes when the App is removed from suggestion database
+            stopTrackingAppOpsChange(appInfo.packageName);
             iter.remove();
         }
         saveToStore();
@@ -2681,13 +2704,15 @@ public class WifiNetworkSuggestionsManager {
     }
 
     private void onUserConnectChoiceRemoveForSuggestion(String choiceKey) {
-        mActiveNetworkSuggestionsPerApp.values().stream()
+        if (mActiveNetworkSuggestionsPerApp.values().stream()
                 .flatMap(e -> e.extNetworkSuggestions.values().stream())
                 .filter(ewns -> TextUtils.equals(ewns.connectChoice, choiceKey))
-                .forEach(ewns -> {
+                .peek(ewns -> {
                     ewns.connectChoice = null;
                     ewns.connectChoiceRssi = 0;
-                });
+                }).count() == 0) {
+            return;
+        }
         saveToStore();
     }
 
@@ -2761,7 +2786,8 @@ public class WifiNetworkSuggestionsManager {
             List<SecurityParams> securityParams) {
         Set<ExtendedWifiNetworkSuggestion> matchingExtendedWifiNetworkSuggestions =
                         getNetworkSuggestionsForWifiConfiguration(config, config.BSSID);
-        if (matchingExtendedWifiNetworkSuggestions.isEmpty()) {
+        if (matchingExtendedWifiNetworkSuggestions == null
+                || matchingExtendedWifiNetworkSuggestions.isEmpty()) {
             if (mVerboseLoggingEnabled) {
                 Log.w(TAG, "onSecurityParamsUpdateForSuggestion: no network matches: " + config);
             }

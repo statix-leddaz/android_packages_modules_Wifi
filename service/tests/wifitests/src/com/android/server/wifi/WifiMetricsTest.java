@@ -66,6 +66,7 @@ import android.net.MacAddress;
 import android.net.wifi.EAPConstants;
 import android.net.wifi.IOnWifiUsabilityStatsListener;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SecurityParams;
 import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.SoftApInfo;
@@ -5598,12 +5599,12 @@ public class WifiMetricsTest extends WifiBaseTest {
     public void testConnectionDurationStats() throws Exception {
         for (int i = 0; i < 2; i++) {
             mWifiMetrics.incrementWifiScoreCount(TEST_IFACE_NAME, 52);
-            mWifiMetrics.incrementConnectionDuration(5000, false, true);
+            mWifiMetrics.incrementConnectionDuration(5000, false, true, -50, 10000, 10000);
             mWifiMetrics.incrementWifiScoreCount(TEST_IFACE_NAME, 40);
-            mWifiMetrics.incrementConnectionDuration(5000, false, true);
-            mWifiMetrics.incrementConnectionDuration(3000, true, true);
-            mWifiMetrics.incrementConnectionDuration(1000, false, false);
-            mWifiMetrics.incrementConnectionDuration(500, true, false);
+            mWifiMetrics.incrementConnectionDuration(5000, false, true, -50, 10000, 10000);
+            mWifiMetrics.incrementConnectionDuration(3000, true, true, -50, 10000, 10000);
+            mWifiMetrics.incrementConnectionDuration(1000, false, false, -50, 10000, 10000);
+            mWifiMetrics.incrementConnectionDuration(500, true, false, -50, 10000, 10000);
         }
         dumpProtoAndDeserialize();
 
@@ -6546,18 +6547,18 @@ public class WifiMetricsTest extends WifiBaseTest {
         when(wifiInfo.getFrequency()).thenReturn(5810);
         mWifiMetrics.incrementWifiScoreCount("",  60);
         mWifiMetrics.handlePollResult(TEST_IFACE_NAME, wifiInfo);
-        mWifiMetrics.incrementConnectionDuration(3000, true, true);
+        mWifiMetrics.incrementConnectionDuration(3000, true, true, -50, 10002, 10001);
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 WifiStatsLog.WIFI_HEALTH_STAT_REPORTED, 3000, true, true,
-                WifiStatsLog.WIFI_HEALTH_STAT_REPORTED__BAND__BAND_5G_HIGH));
+                WifiStatsLog.WIFI_HEALTH_STAT_REPORTED__BAND__BAND_5G_HIGH, -50, 10002, 10001));
 
         when(wifiInfo.getFrequency()).thenReturn(2412);
         mWifiMetrics.incrementWifiScoreCount("",  30);
         mWifiMetrics.handlePollResult(TEST_IFACE_NAME, wifiInfo);
-        mWifiMetrics.incrementConnectionDuration(2000, false, true);
+        mWifiMetrics.incrementConnectionDuration(2000, false, true, -55, 20002, 20001);
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 WifiStatsLog.WIFI_HEALTH_STAT_REPORTED, 2000, true, true,
-                WifiStatsLog.WIFI_HEALTH_STAT_REPORTED__BAND__BAND_2G));
+                WifiStatsLog.WIFI_HEALTH_STAT_REPORTED__BAND__BAND_2G, -55, 20002, 20001));
     }
 
     /**
@@ -6592,5 +6593,111 @@ public class WifiMetricsTest extends WifiBaseTest {
         assertKeyCountsEqual(expectedRecentFailureAssociationStatus,
                 mDecodedProto.recentFailureAssociationStatus);
 
+    }
+
+    private void testConnectionNetworkTypeByCandidateSecurityParams(
+            int candidateSecurityType, int expectedType) throws Exception {
+        WifiConfiguration config = null;
+        switch (candidateSecurityType) {
+            case WifiConfiguration.SECURITY_TYPE_OPEN:
+            case WifiConfiguration.SECURITY_TYPE_OWE:
+                config = WifiConfigurationTestUtil.createOpenOweNetwork();
+                break;
+            case WifiConfiguration.SECURITY_TYPE_PSK:
+            case WifiConfiguration.SECURITY_TYPE_SAE:
+                config = WifiConfigurationTestUtil.createPskSaeNetwork();
+                break;
+            case WifiConfiguration.SECURITY_TYPE_EAP:
+            case WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE:
+                config = WifiConfigurationTestUtil.createWpa2Wpa3EnterpriseNetwork();
+                break;
+            case WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT:
+                config = WifiConfigurationTestUtil.createEapSuiteBNetwork();
+                break;
+            case WifiConfiguration.SECURITY_TYPE_WAPI_PSK:
+                config = WifiConfigurationTestUtil.createWapiPskNetwork();
+                break;
+            case WifiConfiguration.SECURITY_TYPE_WAPI_CERT:
+                config = WifiConfigurationTestUtil.createWapiCertNetwork();
+                break;
+        }
+        assertNotNull(config);
+        config.getNetworkSelectionStatus().setCandidateSecurityParams(
+                SecurityParams.createSecurityParamsBySecurityType(candidateSecurityType));
+
+        mWifiMetrics.startConnectionEvent(TEST_IFACE_NAME, config,
+                "RED", WifiMetricsProto.ConnectionEvent.ROAM_NONE);
+        mWifiMetrics.endConnectionEvent(TEST_IFACE_NAME,
+                WifiMetrics.ConnectionEvent.FAILURE_ASSOCIATION_TIMED_OUT,
+                WifiMetricsProto.ConnectionEvent.HLF_NONE,
+                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
+        dumpProtoAndDeserialize();
+
+        assertEquals(1, mDecodedProto.connectionEvent.length);
+        assertEquals(expectedType,
+                mDecodedProto.connectionEvent[0].networkType);
+    }
+
+    @Test
+    public void testConnectionNetworkTypeOpenByCandidateSecurityParams() throws Exception {
+        testConnectionNetworkTypeByCandidateSecurityParams(
+                WifiConfiguration.SECURITY_TYPE_OPEN,
+                WifiMetricsProto.ConnectionEvent.TYPE_OPEN);
+    }
+
+    @Test
+    public void testConnectionNetworkTypePskByCandidateSecurityParams() throws Exception {
+        testConnectionNetworkTypeByCandidateSecurityParams(
+                WifiConfiguration.SECURITY_TYPE_PSK,
+                WifiMetricsProto.ConnectionEvent.TYPE_WPA2);
+    }
+
+    @Test
+    public void testConnectionNetworkTypeEapByCandidateSecurityParams() throws Exception {
+        testConnectionNetworkTypeByCandidateSecurityParams(
+                WifiConfiguration.SECURITY_TYPE_EAP,
+                WifiMetricsProto.ConnectionEvent.TYPE_EAP);
+    }
+
+    @Test
+    public void testConnectionNetworkTypeSaeByCandidateSecurityParams() throws Exception {
+        testConnectionNetworkTypeByCandidateSecurityParams(
+                WifiConfiguration.SECURITY_TYPE_SAE,
+                WifiMetricsProto.ConnectionEvent.TYPE_WPA3);
+    }
+
+    @Test
+    public void testConnectionNetworkTypeSuitBByCandidateSecurityParams() throws Exception {
+        testConnectionNetworkTypeByCandidateSecurityParams(
+                WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT,
+                WifiMetricsProto.ConnectionEvent.TYPE_EAP);
+    }
+
+    @Test
+    public void testConnectionNetworkTypeOweByCandidateSecurityParams() throws Exception {
+        testConnectionNetworkTypeByCandidateSecurityParams(
+                WifiConfiguration.SECURITY_TYPE_OWE,
+                WifiMetricsProto.ConnectionEvent.TYPE_OWE);
+    }
+
+    @Test
+    public void testConnectionNetworkTypeWapiPskByCandidateSecurityParams() throws Exception {
+        testConnectionNetworkTypeByCandidateSecurityParams(
+                WifiConfiguration.SECURITY_TYPE_WAPI_PSK,
+                WifiMetricsProto.ConnectionEvent.TYPE_WAPI);
+    }
+
+    @Test
+    public void testConnectionNetworkTypeWapiCertByCandidateSecurityParams() throws Exception {
+        testConnectionNetworkTypeByCandidateSecurityParams(
+                WifiConfiguration.SECURITY_TYPE_WAPI_CERT,
+                WifiMetricsProto.ConnectionEvent.TYPE_WAPI);
+    }
+
+    @Test
+    public void testConnectionNetworkTypeWpa3EntByCandidateSecurityParams() throws Exception {
+        testConnectionNetworkTypeByCandidateSecurityParams(
+                WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE,
+                WifiMetricsProto.ConnectionEvent.TYPE_EAP);
     }
 }

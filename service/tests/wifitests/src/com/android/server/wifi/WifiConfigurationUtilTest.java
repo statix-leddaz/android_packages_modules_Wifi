@@ -22,6 +22,9 @@ import static android.net.wifi.WifiEnterpriseConfig.OCSP_REQUIRE_CERT_STATUS;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeTrue;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 import android.content.pm.UserInfo;
 import android.net.IpConfiguration;
@@ -39,7 +42,16 @@ import android.util.Pair;
 
 import androidx.test.filters.SmallTest;
 
+import com.android.dx.mockito.inline.extended.ExtendedMockito;
+import com.android.modules.utils.build.SdkLevel;
+
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.mockito.MockitoSession;
+import org.mockito.quality.Strictness;
 
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
@@ -65,6 +77,32 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
             new UserInfo(CURRENT_USER_ID, "owner", 0),
             new UserInfo(CURRENT_USER_MANAGED_PROFILE_USER_ID, "managed profile", 0));
     private static final long SUPPORTED_FEATURES_ALL = Long.MAX_VALUE;
+
+    private MockitoSession mSession;
+
+    @Mock
+    private WifiInjector mWifiInjector;
+    @Mock
+    private WifiGlobals mWifiGlobals;
+
+    @Before
+    public void setUp() throws Exception {
+        MockitoAnnotations.initMocks(this);
+        // static mocking
+        mSession = ExtendedMockito.mockitoSession().strictness(Strictness.LENIENT)
+                .mockStatic(WifiInjector.class, withSettings().lenient())
+                .spyStatic(MacAddress.class)
+                .startMocking();
+        when(WifiInjector.getInstance()).thenReturn(mWifiInjector);
+        when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
+    }
+
+    @After
+    public void cleanUp() throws Exception {
+        if (mSession != null) {
+            mSession.finishMocking();
+        }
+    }
 
     /**
      * Verify that new WifiEnterpriseConfig is detected.
@@ -268,40 +306,6 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
         assertTrue(WifiConfigurationUtil.validate(
                 config, SUPPORTED_FEATURES_ALL, WifiConfigurationUtil.VALIDATE_FOR_UPDATE));
 
-    }
-
-    /**
-     * Verify that the validate method fails to validate WifiConfiguration with bad ssid length.
-     */
-    @Test
-    public void testValidateNegativeCases_BadAsciiSsidLength() {
-        WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
-        assertTrue(WifiConfigurationUtil.validate(config, SUPPORTED_FEATURES_ALL,
-                WifiConfigurationUtil.VALIDATE_FOR_ADD));
-
-        config.SSID = "\"abcdfefeeretretyetretetetetetrertertrsreqwrwe\"";
-        assertFalse(WifiConfigurationUtil.validate(config, SUPPORTED_FEATURES_ALL,
-                WifiConfigurationUtil.VALIDATE_FOR_ADD));
-        config.SSID = "\"\"";
-        assertFalse(WifiConfigurationUtil.validate(config, SUPPORTED_FEATURES_ALL,
-                WifiConfigurationUtil.VALIDATE_FOR_ADD));
-    }
-
-    /**
-     * Verify that the validate method fails to validate WifiConfiguration with bad ssid length.
-     */
-    @Test
-    public void testValidateNegativeCases_BadUtf8SsidLength() {
-        WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
-        assertTrue(WifiConfigurationUtil.validate(config, SUPPORTED_FEATURES_ALL,
-                WifiConfigurationUtil.VALIDATE_FOR_ADD));
-
-        config.SSID = "\"가하아너너ㅓ저저ㅓ어아아다자저ㅓ더타아어어러두어\"";
-        assertFalse(WifiConfigurationUtil.validate(config, SUPPORTED_FEATURES_ALL,
-                WifiConfigurationUtil.VALIDATE_FOR_ADD));
-        config.SSID = "\"\"";
-        assertFalse(WifiConfigurationUtil.validate(config, SUPPORTED_FEATURES_ALL,
-                WifiConfigurationUtil.VALIDATE_FOR_ADD));
     }
 
     /**
@@ -1363,5 +1367,98 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
                   WifiConfigurationUtil.VALIDATE_FOR_ADD));
         assertTrue(WifiConfigurationUtil.validate(config, supportedFeatures,
                   WifiConfigurationUtil.VALIDATE_FOR_UPDATE));
+    }
+
+    @Test
+    public void testConvertMultiTypeConfigsToLegacyConfigs() {
+        assumeTrue(SdkLevel.isAtLeastS());
+        List<WifiConfiguration> expectedResult = new ArrayList<>();
+        List<WifiConfiguration> multiTypeConfigs = new ArrayList<>();
+
+        // Genreate configurations
+        WifiConfiguration pskSaeConfig = new WifiConfiguration();
+        pskSaeConfig.addSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+        // PSK is disabled in this configuration.
+        pskSaeConfig.setSecurityParamsEnabled(WifiConfiguration.SECURITY_TYPE_PSK, false);
+        pskSaeConfig.addSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE);
+
+        WifiConfiguration openOweConfig = new WifiConfiguration();
+        openOweConfig.addSecurityParams(WifiConfiguration.SECURITY_TYPE_OPEN);
+        openOweConfig.addSecurityParams(WifiConfiguration.SECURITY_TYPE_OWE);
+
+        WifiConfiguration pskConfig = new WifiConfiguration();
+        pskConfig.addSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+        pskConfig.setSecurityParamsEnabled(WifiConfiguration.SECURITY_TYPE_PSK, false);
+        pskConfig.getNetworkSelectionStatus().setNetworkSelectionDisableReason(
+                WifiConfiguration.NetworkSelectionStatus
+                        .DISABLED_TRANSITION_DISABLE_INDICATION);
+        pskConfig.getNetworkSelectionStatus().setDisableReasonCounter(
+                WifiConfiguration.NetworkSelectionStatus
+                        .DISABLED_TRANSITION_DISABLE_INDICATION, 1);
+
+        WifiConfiguration saeConfig = new WifiConfiguration();
+        saeConfig.addSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE);
+
+        WifiConfiguration openConfig = new WifiConfiguration();
+        openConfig.addSecurityParams(WifiConfiguration.SECURITY_TYPE_OPEN);
+
+        WifiConfiguration oweConfig = new WifiConfiguration();
+        oweConfig.addSecurityParams(WifiConfiguration.SECURITY_TYPE_OWE);
+
+        // Prepare the input
+        multiTypeConfigs.add(pskSaeConfig);
+        multiTypeConfigs.add(openOweConfig);
+
+        // Prepare expected results
+        expectedResult.clear();
+        expectedResult.add(pskConfig);
+        expectedResult.add(saeConfig);
+        expectedResult.add(openConfig);
+        expectedResult.add(oweConfig);
+        List<WifiConfiguration> singleTypeConfigsWithDisabledType =
+                WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(
+                        multiTypeConfigs, false);
+        WifiConfigurationTestUtil.assertConfigurationsEqualForBackup(
+                expectedResult, singleTypeConfigsWithDisabledType);
+
+        // Prepare expected results
+        expectedResult.clear();
+        expectedResult.add(saeConfig);
+        expectedResult.add(openConfig);
+        expectedResult.add(oweConfig);
+        List<WifiConfiguration> singleTypeConfigsWithoutDisabledType =
+                WifiConfigurationUtil.convertMultiTypeConfigsToLegacyConfigs(
+                        multiTypeConfigs, true);
+        WifiConfigurationTestUtil.assertConfigurationsEqualForBackup(
+                expectedResult, singleTypeConfigsWithoutDisabledType);
+    }
+
+    @Test
+    public void testIsConfigLinkable() throws Exception {
+        WifiConfiguration openConfig = WifiConfigurationTestUtil.createOpenNetwork();
+
+        WifiConfiguration pskConfig = WifiConfigurationTestUtil.createPskNetwork();
+
+        WifiConfiguration pskDisabledConfig = WifiConfigurationTestUtil.createPskNetwork();
+        pskDisabledConfig.setSecurityParamsEnabled(WifiConfiguration.SECURITY_TYPE_PSK, false);
+
+        WifiConfiguration saeConfig = WifiConfigurationTestUtil.createSaeNetwork();
+
+        WifiConfiguration saeDisabledConfig = WifiConfigurationTestUtil.createSaeNetwork();
+        saeDisabledConfig.setSecurityParamsEnabled(WifiConfiguration.SECURITY_TYPE_SAE, false);
+
+        when(mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()).thenReturn(false);
+        assertFalse(WifiConfigurationUtil.isConfigLinkable(openConfig));
+        assertTrue(WifiConfigurationUtil.isConfigLinkable(pskConfig));
+        assertFalse(WifiConfigurationUtil.isConfigLinkable(pskDisabledConfig));
+        assertFalse(WifiConfigurationUtil.isConfigLinkable(saeConfig));
+        assertFalse(WifiConfigurationUtil.isConfigLinkable(saeDisabledConfig));
+
+        when(mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()).thenReturn(true);
+        assertFalse(WifiConfigurationUtil.isConfigLinkable(openConfig));
+        assertTrue(WifiConfigurationUtil.isConfigLinkable(pskConfig));
+        assertFalse(WifiConfigurationUtil.isConfigLinkable(pskDisabledConfig));
+        assertTrue(WifiConfigurationUtil.isConfigLinkable(saeConfig));
+        assertFalse(WifiConfigurationUtil.isConfigLinkable(saeDisabledConfig));
     }
 }

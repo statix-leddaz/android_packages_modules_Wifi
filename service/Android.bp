@@ -107,7 +107,9 @@ java_library {
         "libprotobuf-java-lite",
         "libnanohttpd",
         "modules-utils-locallog",
-        "services.net-module-wifi",
+        "netd-client",
+        "networkstack-client",
+        "net-utils-services-common",
         "wifi-lite-protos",
         "wifi-nano-protos",
     ],
@@ -117,7 +119,10 @@ java_library {
 // ============================================================
 java_library {
     name: "service-wifi",
-    defaults: ["wifi-service-common"],
+    defaults: [
+        "wifi-service-common",
+        "standalone-system-server-module-optimize-defaults",
+    ],
     installable: true,
     static_libs: ["wifi-service-pre-jarjar"],
 
@@ -129,11 +134,6 @@ java_library {
     sdk_version: "system_server_current",
 
     jarjar_rules: ":wifi-jarjar-rules",
-    optimize: {
-        enabled: true,
-        shrink: true,
-        proguard_flags_files: ["proguard.flags"],
-    },
 
     visibility: [
         "//frameworks/opt/net/wifi/service/apex",

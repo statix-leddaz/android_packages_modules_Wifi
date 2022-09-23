@@ -116,6 +116,7 @@ public class WifiNative {
     private boolean mUseFakeScanDetails;
     private final ArrayList<ScanDetail> mFakeScanDetails = new ArrayList<>();
     private long mCachedFeatureSet;
+    private boolean mQosPolicyFeatureEnabled = false;
 
     public WifiNative(WifiVendorHal vendorHal,
                       SupplicantStaIfaceHal staIfaceHal, HostapdHal hostapdHal,
@@ -995,7 +996,7 @@ public class WifiNative {
      * @return list of instance name when succeed, otherwise null.
      */
     @Nullable
-    private List<String> getBridgedApInstances(@NonNull String ifaceName) {
+    public List<String> getBridgedApInstances(@NonNull String ifaceName) {
         synchronized (mLock) {
             if (mWifiVendorHal.isVendorHalSupported()) {
                 return mWifiVendorHal.getBridgedApInstances(ifaceName);
@@ -1171,6 +1172,12 @@ public class WifiNative {
         }
     }
 
+    private void takeBugReportInterfaceFailureIfNeeded(String bugTitle, String bugDetail) {
+        if (mWifiInjector.getDeviceConfigFacade().isInterfaceFailureBugreportEnabled()) {
+            mWifiInjector.getWifiDiagnostics().takeBugReport(bugTitle, bugDetail);
+        }
+    }
+
     /**
      * Setup an interface for client mode (for connectivity) operations.
      *
@@ -1223,10 +1230,10 @@ public class WifiNative {
             }
             if (mContext.getResources().getBoolean(
                     R.bool.config_wifiNetworkCentricQosPolicyFeatureEnabled)) {
-                if (!mSupplicantStaIfaceHal.setNetworkCentricQosPolicyFeatureEnabled(
-                        iface.name, true)) {
-                    Log.e(TAG, "Failed to set QoS policy feature enabled for iface " + iface.name);
-                    return null;
+                mQosPolicyFeatureEnabled = mSupplicantStaIfaceHal
+                        .setNetworkCentricQosPolicyFeatureEnabled(iface.name, true);
+                if (!mQosPolicyFeatureEnabled) {
+                    Log.e(TAG, "Failed to enable QoS policy feature for iface " + iface.name);
                 }
             }
             iface.networkObserver = new NetworkObserverInternal(iface.id);
@@ -1324,14 +1331,20 @@ public class WifiNative {
             @SoftApConfiguration.BandType int band, boolean isBridged,
             @NonNull SoftApManager softApManager) {
         synchronized (mLock) {
+            String bugTitle = "Wi-Fi BugReport (softAp interface failure)";
+            String errorMsg = "";
             if (!startHal()) {
-                Log.e(TAG, "Failed to start Hal");
+                errorMsg = "Failed to start softAp Hal";
+                Log.e(TAG, errorMsg);
                 mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHal();
+                takeBugReportInterfaceFailureIfNeeded(bugTitle, errorMsg);
                 return null;
             }
             if (!startHostapd()) {
-                Log.e(TAG, "Failed to start hostapd");
+                errorMsg = "Failed to start softAp hostapd";
+                Log.e(TAG, errorMsg);
                 mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHostapd();
+                takeBugReportInterfaceFailureIfNeeded(bugTitle, errorMsg);
                 return null;
             }
             Iface iface = mIfaceMgr.allocateIface(Iface.IFACE_TYPE_AP);
@@ -1342,27 +1355,33 @@ public class WifiNative {
             iface.externalListener = interfaceCallback;
             iface.name = createApIface(iface, requestorWs, band, isBridged, softApManager);
             if (TextUtils.isEmpty(iface.name)) {
-                Log.e(TAG, "Failed to create AP iface in vendor HAL");
+                errorMsg = "Failed to create softAp iface in vendor HAL";
+                Log.e(TAG, errorMsg);
                 mIfaceMgr.removeIface(iface.id);
                 mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHal();
+                takeBugReportInterfaceFailureIfNeeded(bugTitle, errorMsg);
                 return null;
             }
             String ifaceInstanceName = iface.name;
             if (isBridged) {
                 List<String> instances = getBridgedApInstances(iface.name);
                 if (instances == null || instances.size() == 0) {
-                    Log.e(TAG, "Failed to get bridged AP instances" + iface.name);
+                    errorMsg = "Failed to get bridged AP instances" + iface.name;
+                    Log.e(TAG, errorMsg);
                     teardownInterface(iface.name);
                     mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHal();
+                    takeBugReportInterfaceFailureIfNeeded(bugTitle, errorMsg);
                     return null;
                 }
                 // Always select first instance as wificond interface.
                 ifaceInstanceName = instances.get(0);
             }
             if (!mWifiCondManager.setupInterfaceForSoftApMode(ifaceInstanceName)) {
-                Log.e(TAG, "Failed to setup iface in wificond on " + iface);
+                errorMsg = "Failed to setup softAp iface in wifiCond manager on " + iface;
+                Log.e(TAG, errorMsg);
                 teardownInterface(iface.name);
                 mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToWificond();
+                takeBugReportInterfaceFailureIfNeeded(bugTitle, errorMsg);
                 return null;
             }
             iface.networkObserver = new NetworkObserverInternal(iface.id);
@@ -1466,10 +1485,10 @@ public class WifiNative {
             }
             if (mContext.getResources().getBoolean(
                     R.bool.config_wifiNetworkCentricQosPolicyFeatureEnabled)) {
-                if (!mSupplicantStaIfaceHal.setNetworkCentricQosPolicyFeatureEnabled(
-                        iface.name, true)) {
-                    Log.e(TAG, "Failed to set QoS policy feature enabled for iface " + iface.name);
-                    return false;
+                mQosPolicyFeatureEnabled = mSupplicantStaIfaceHal
+                        .setNetworkCentricQosPolicyFeatureEnabled(iface.name, true);
+                if (!mQosPolicyFeatureEnabled) {
+                    Log.e(TAG, "Failed to enable QoS policy feature for iface " + iface.name);
                 }
             }
             iface.type = Iface.IFACE_TYPE_STA_FOR_CONNECTIVITY;
@@ -1766,10 +1785,10 @@ public class WifiNative {
             List<NativeScanResult> nativeResults) {
         ArrayList<ScanDetail> results = new ArrayList<>();
         for (NativeScanResult result : nativeResults) {
-            WifiSsid wifiSsid = WifiSsid.fromBytes(result.getSsid());
+            WifiSsid originalSsid = WifiSsid.fromBytes(result.getSsid());
             MacAddress bssidMac = result.getBssid();
             if (bssidMac == null) {
-                Log.e(TAG, "Invalid MAC (BSSID) for SSID " + wifiSsid);
+                Log.e(TAG, "Invalid MAC (BSSID) for SSID " + originalSsid);
                 continue;
             }
             String bssid = bssidMac.toString();
@@ -1788,7 +1807,9 @@ public class WifiNative {
                 continue;
             }
 
-            ScanDetail scanDetail = new ScanDetail(networkDetail, wifiSsid, bssid, flags,
+            WifiSsid translatedSsid = mWifiInjector.getSsidTranslator()
+                    .getTranslatedSsidAndRecordBssidCharset(originalSsid, bssidMac);
+            ScanDetail scanDetail = new ScanDetail(networkDetail, translatedSsid, bssid, flags,
                     result.getSignalMbm() / 100, result.getFrequencyMhz(), result.getTsf(), ies,
                     null, result.getInformationElements());
             ScanResult scanResult = scanDetail.getScanResult();
@@ -2042,8 +2063,11 @@ public class WifiNative {
         }
 
         if (!mHostapdHal.addAccessPoint(ifaceName, config, isMetered, callback::onFailure)) {
-            Log.e(TAG, "Failed to add acccess point");
+            String errorMsg = "Failed to add softAp";
+            Log.e(TAG, errorMsg);
             mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHostapd();
+            takeBugReportInterfaceFailureIfNeeded("Wi-Fi BugReport (softap interface failure)",
+                    errorMsg);
             return false;
         }
 
@@ -4333,6 +4357,13 @@ public class WifiNative {
     }
 
     /**
+     * Check if the network-centric QoS policy feature was successfully enabled.
+     */
+    public boolean isQosPolicyFeatureEnabled() {
+        return mQosPolicyFeatureEnabled;
+    }
+
+    /**
      * Sends a QoS policy response.
      *
      * @param ifaceName Name of the interface.
@@ -4343,6 +4374,10 @@ public class WifiNative {
      */
     public boolean sendQosPolicyResponse(String ifaceName, int qosPolicyRequestId,
             boolean morePolicies, @NonNull List<QosPolicyStatus> qosPolicyStatusList) {
+        if (!mQosPolicyFeatureEnabled) {
+            Log.e(TAG, "Unable to send QoS policy response, feature is not enabled");
+            return false;
+        }
         return mSupplicantStaIfaceHal.sendQosPolicyResponse(ifaceName, qosPolicyRequestId,
                 morePolicies, qosPolicyStatusList);
     }
@@ -4353,6 +4388,10 @@ public class WifiNative {
      * @param ifaceName Name of the interface.
      */
     public boolean removeAllQosPolicies(String ifaceName) {
+        if (!mQosPolicyFeatureEnabled) {
+            Log.e(TAG, "Unable to remove all QoS policies, feature is not enabled");
+            return false;
+        }
         return mSupplicantStaIfaceHal.removeAllQosPolicies(ifaceName);
     }
 
@@ -4374,14 +4413,17 @@ public class WifiNative {
      *
      * @param ifaceName Name of the interface.
      * @param anonymousIdentity the anonymouns identity.
+     * @param updateToNativeService write the data to the native service.
      * @return true if succeeds, false otherwise.
      */
-    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity) {
+    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity,
+            boolean updateToNativeService) {
         if (null == anonymousIdentity) {
             Log.e(TAG, "Cannot set null anonymous identity.");
             return false;
         }
-        return mSupplicantStaIfaceHal.setEapAnonymousIdentity(ifaceName, anonymousIdentity);
+        return mSupplicantStaIfaceHal.setEapAnonymousIdentity(ifaceName, anonymousIdentity,
+                updateToNativeService);
     }
 
     /**

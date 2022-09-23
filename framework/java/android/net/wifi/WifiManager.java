@@ -415,7 +415,8 @@ public class WifiManager {
             API_TETHERED_HOTSPOT,
             API_AUTOJOIN_GLOBAL,
             API_SET_SCAN_SCHEDULE,
-            API_SET_ONE_SHOT_SCREEN_ON_CONNECTIVITY_SCAN_DELAY})
+            API_SET_ONE_SHOT_SCREEN_ON_CONNECTIVITY_SCAN_DELAY,
+            API_SET_NETWORK_SELECTION_CONFIG})
     public @interface ApiType {}
 
     /**
@@ -477,10 +478,28 @@ public class WifiManager {
     public static final int API_SET_ONE_SHOT_SCREEN_ON_CONNECTIVITY_SCAN_DELAY = 7;
 
     /**
+     * A constant used in
+     * {@link WifiManager#getLastCallerInfoForApi(int, Executor, BiConsumer)}
+     * Tracks usage of
+     * {@link WifiManager#setNetworkSelectionConfig(WifiNetworkSelectionConfig)}
+     * @hide
+     */
+    public static final int API_SET_NETWORK_SELECTION_CONFIG = 8;
+
+    /**
+     * A constant used in
+     * {@link WifiManager#getLastCallerInfoForApi(int, Executor, BiConsumer)}
+     * Tracks usage of
+     * {@link WifiManager#setThirdPartyAppEnablingWifiConfirmationDialogEnabled(boolean)}
+     * @hide
+     */
+    public static final int API_SET_THIRD_PARTY_APPS_ENABLING_WIFI_CONFIRMATION_DIALOG = 9;
+
+    /**
      * Used internally to keep track of boundary.
      * @hide
      */
-    public static final int API_MAX = 7;
+    public static final int API_MAX = 10;
 
     /**
      * Broadcast intent action indicating that a Passpoint provider icon has been received.
@@ -764,6 +783,7 @@ public class WifiManager {
      * {@link #SAP_START_FAILURE_GENERAL},
      * {@link #SAP_START_FAILURE_NO_CHANNEL},
      * {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}
+     * {@link #SAP_START_FAILURE_USER_REJECTED}
      *
      * @hide
      */
@@ -870,13 +890,15 @@ public class WifiManager {
         SAP_START_FAILURE_GENERAL,
         SAP_START_FAILURE_NO_CHANNEL,
         SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION,
+        SAP_START_FAILURE_USER_REJECTED,
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface SapStartFailure {}
 
     /**
-     *  All other reasons for AP start failure besides {@link #SAP_START_FAILURE_NO_CHANNEL} and
-     *  {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}.
+     *  All other reasons for AP start failure besides {@link #SAP_START_FAILURE_NO_CHANNEL},
+     *  {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}, and
+     *  {@link #SAP_START_FAILURE_USER_REJECTED}.
      *
      *  @hide
      */
@@ -901,6 +923,13 @@ public class WifiManager {
     @SystemApi
     public static final int SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION = 2;
 
+    /**
+     *  If Wi-Fi AP start failed, this reason code means that the user was asked for confirmation to
+     *  create the AP and the user declined.
+     *
+     *  @hide
+     */
+    public static final int SAP_START_FAILURE_USER_REJECTED = 3;
 
     /** @hide */
     @IntDef(flag = false, prefix = { "SAP_CLIENT_BLOCKED_REASON_" }, value = {
@@ -1825,6 +1854,93 @@ public class WifiManager {
          */
         public @WifiAnnotations.ScanType int getScanType() {
             return mScanType;
+        }
+    }
+
+    /**
+     * This API allows a privileged app to customize the wifi framework's network selection logic.
+     * To revert to default behavior, call this API with a {@link WifiNetworkSelectionConfig}
+     * created from a default {@link WifiNetworkSelectionConfig.Builder}.
+     * <P>
+     * @param nsConfig an Object representing the network selection configuration being programmed.
+     *                 This should be created with a {@link WifiNetworkSelectionConfig.Builder}.
+     *
+     * @throws UnsupportedOperationException if the API is not supported on this SDK version.
+     * @throws IllegalArgumentException if input is invalid.
+     * @throws SecurityException if the caller does not have permission.
+     * @hide
+     */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    @RequiresPermission(anyOf = {
+            android.Manifest.permission.NETWORK_SETTINGS,
+            MANAGE_WIFI_NETWORK_SELECTION
+    })
+    public void setNetworkSelectionConfig(@NonNull WifiNetworkSelectionConfig nsConfig) {
+        try {
+            if (nsConfig == null) {
+                throw new IllegalArgumentException("nsConfig can not be null");
+            }
+            mService.setNetworkSelectionConfig(nsConfig);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Allows a privileged app to enable/disable whether a confirmation dialog should be displayed
+     * when third-party apps attempt to turn on WiFi.
+     *
+     * Use {@link #isThirdPartyAppEnablingWifiConfirmationDialogEnabled()} to get the
+     * currently configured value.
+     *
+     * Note: Only affects behavior for apps with targetSDK < Q, since third party apps are not
+     * allowed to enable wifi on targetSDK >= Q.
+     *
+     * This overrides the overlay value |config_showConfirmationDialogForThirdPartyAppsEnablingWifi|
+     * <P>
+     * @param enable true to enable the confirmation dialog, false otherwise
+     *
+     * @throws UnsupportedOperationException if the API is not supported on this SDK version.
+     * @throws SecurityException if the caller does not have permission.
+     * @hide
+     */
+    @RequiresPermission(anyOf = {
+            android.Manifest.permission.NETWORK_SETTINGS,
+            android.Manifest.permission.NETWORK_SETUP_WIZARD
+    })
+    public void setThirdPartyAppEnablingWifiConfirmationDialogEnabled(boolean enable) {
+        try {
+            mService.setThirdPartyAppEnablingWifiConfirmationDialogEnabled(enable);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Check whether the wifi configuration indicates that a confirmation dialog should be displayed
+     * when third-party apps attempt to turn on WiFi.
+     *
+     * Use {@link #setThirdPartyAppEnablingWifiConfirmationDialogEnabled(boolean)} to set this
+     * value.
+     *
+     * Note: This setting only affects behavior for apps with targetSDK < Q, since third party apps
+     *       are not allowed to enable wifi on targetSDK >= Q.
+     *
+     * <P>
+     * @throws UnsupportedOperationException if the API is not supported on this SDK version.
+     * @throws SecurityException if the caller does not have permission.
+     * @return true if dialog should be displayed, false otherwise.
+     * @hide
+     */
+    @RequiresPermission(anyOf = {
+            android.Manifest.permission.NETWORK_SETTINGS,
+            android.Manifest.permission.NETWORK_SETUP_WIZARD
+    })
+    public boolean isThirdPartyAppEnablingWifiConfirmationDialogEnabled() {
+        try {
+            return mService.isThirdPartyAppEnablingWifiConfirmationDialogEnabled();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -3866,6 +3982,10 @@ public class WifiManager {
      * or {@link WifiManager.ActiveCountryCodeChangedCallback#onCountryCodeInactive()}
      * on registration.
      *
+     * Note: When the global location setting is off or the caller does not have runtime location
+     * permission, caller will not receive the callback even if caller register callback succeeded.
+     *
+     *
      * Caller can remove a previously registered callback using
      * {@link WifiManager#unregisterActiveCountryCodeChangedCallback(
      * ActiveCountryCodeChangedCallback)}.
@@ -4696,7 +4816,7 @@ public class WifiManager {
      * If the LocalOnlyHotspot cannot be created, the {@link LocalOnlyHotspotCallback#onFailed(int)}
      * method will be called. Example failures include errors bringing up the network or if
      * there is an incompatible operating mode.  For example, if the user is currently using Wifi
-     * Tethering to provide an upstream to another device, LocalOnlyHotspot will not start due to
+     * Tethering to provide an upstream to another device, LocalOnlyHotspot may not start due to
      * an incompatible mode. The possible error codes include:
      * {@link LocalOnlyHotspotCallback#ERROR_NO_CHANNEL},
      * {@link LocalOnlyHotspotCallback#ERROR_GENERIC},
@@ -5305,7 +5425,8 @@ public class WifiManager {
          * @param failureReason reason when in failed state. One of
          *                      {@link #SAP_START_FAILURE_GENERAL},
          *                      {@link #SAP_START_FAILURE_NO_CHANNEL},
-         *                      {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}
+         *                      {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION},
+         *                      {@link #SAP_START_FAILURE_USER_REJECTED}
          */
         default void onStateChanged(@WifiApState int state, @SapStartFailure int failureReason) {}
 
@@ -6254,9 +6375,18 @@ public class WifiManager {
     }
 
     /**
-     * Enable/disable auto-join globally.
-     * When auto-join is disabled globally via this API, the user toggling wifi will re-enable
-     * auto-join.
+     * Control whether the device will automatically search for and connect to Wi-Fi networks -
+     * auto-join Wi-Fi networks. Disabling this option will not impact manual connections - i.e.
+     * the user will still be able to manually select and connect to a Wi-Fi network. Disabling
+     * this option significantly impacts the device connectivity and is a restricted operation
+     * (see below for permissions). Note that disabling this operation will also disable
+     * connectivity initiated scanning operations.
+     * <p>
+     * Disabling the auto-join configuration is a temporary operation (with the exception of a
+     * DO/PO caller): it will be reset (to enabled) when the device reboots or the user toggles
+     * Wi-Fi off/on. When the caller is a DO/PO then toggling Wi-Fi will not reset the
+     * configuration. Additionally, if a DO/PO disables auto-join then it cannot be (re)enabled by
+     * a non-DO/PO caller.
      *
      * @param allowAutojoin true to allow auto-join, false to disallow auto-join
      *
@@ -6266,7 +6396,12 @@ public class WifiManager {
      */
     public void allowAutojoinGlobal(boolean allowAutojoin) {
         try {
-            mService.allowAutojoinGlobal(allowAutojoin);
+            Bundle extras = new Bundle();
+            if (SdkLevel.isAtLeastS()) {
+                extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                        mContext.getAttributionSource());
+            }
+            mService.allowAutojoinGlobal(allowAutojoin, mContext.getOpPackageName(), extras);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -8715,7 +8850,8 @@ public class WifiManager {
      * happen:
      * </p>
      * <ul>
-     * <li>Upon finding any of the requested SSIDs, the matching ScanResults will be returned
+     * <li>Upon finding any of the requested SSIDs through either a connectivity scan or PNO scan,
+     * the matching ScanResults will be returned
      * via {@link PnoScanResultsCallback#onScanResultsAvailable(List)}, and the registered PNO
      * scan request will get automatically removed.</li>
      * <li>The external PNO scan request is removed by a call to
@@ -9555,6 +9691,12 @@ public class WifiManager {
             "android.net.wifi.extra.DIALOG_NEUTRAL_BUTTON_TEXT";
 
     /**
+     * Extra long indicating the timeout in milliseconds of a dialog.
+     * @hide
+     */
+    public static final String EXTRA_DIALOG_TIMEOUT_MS = "android.net.wifi.extra.DIALOG_TIMEOUT_MS";
+
+    /**
      * Extra String indicating a P2P device name for a P2P Invitation Sent/Received dialog.
      * @hide
      */
@@ -9571,6 +9713,13 @@ public class WifiManager {
      * @hide
      */
     public static final String EXTRA_P2P_DISPLAY_PIN = "android.net.wifi.extra.P2P_DISPLAY_PIN";
+
+    /**
+     * Extra boolean indicating ACTION_CLOSE_SYSTEM_DIALOGS should not close the Wi-Fi dialogs.
+     * @hide
+     */
+    public static final String EXTRA_CLOSE_SYSTEM_DIALOGS_EXCEPT_WIFI =
+            "android.net.wifi.extra.CLOSE_SYSTEM_DIALOGS_EXCEPT_WIFI";
 
     /**
      * Returns a set of packages that aren't DO or PO but should be able to manage WiFi networks.

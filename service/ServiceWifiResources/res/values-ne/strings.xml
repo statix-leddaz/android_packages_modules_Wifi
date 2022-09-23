@@ -27,6 +27,7 @@
     <string name="notification_channel_network_status" msgid="1631786866932924838">"नेटवर्कको स्थिति"</string>
     <string name="notification_channel_network_alerts" msgid="1391603215241200880">"नेटवर्कका अलर्टहरू"</string>
     <string name="notification_channel_network_available" msgid="8454366142428864948">"नेटवर्क उपलब्ध छ"</string>
+    <string name="notification_channel_apm_alerts" msgid="6775293475896473489">"APM सम्बन्धी अलर्टहरू"</string>
     <string name="wifi_suggestion_title" msgid="2564179935989099139">"सिफारिस गरिएका Wi‑Fi नेटवर्कहरूलाई अनुमति दिनुहोस्?"</string>
     <string name="wifi_suggestion_content" msgid="6985149577828091835">"<xliff:g id="NAME">%s</xliff:g> ले सिफारिस गरेका नेटवर्कहरू। यन्त्र स्वतः जडान हुन सक्छ।"</string>
     <string name="wifi_suggestion_action_allow_app" msgid="7757859972144671588">"अनुमति दिनुहोस्"</string>
@@ -54,6 +55,8 @@
     <string name="ok" msgid="847575529546290102">"ठिक छ"</string>
     <string name="wifi_p2p_invitation_sent_title" msgid="6552639940428040869">"निमन्त्रणा पठाइएको"</string>
     <string name="wifi_p2p_invitation_to_connect_title" msgid="8917157937652519251">"जडानमा निमन्त्रणा"</string>
+    <!-- no translation found for wifi_p2p_invitation_seconds_remaining (8939173828247053616) -->
+    <skip />
     <string name="wifi_p2p_from_message" msgid="5921308150192756898">"बाट:"</string>
     <string name="wifi_p2p_to_message" msgid="3809923305696994787">"प्रापक:"</string>
     <string name="wifi_p2p_enter_pin_message" msgid="5200220251738047620">"आवश्यक PIN टाइप गर्नुहोस्:"</string>
@@ -125,6 +128,11 @@
     <string name="wifi_interface_priority_message_plural" msgid="8178086373318831859">"यसले गर्दा यी एपहरूमा समस्या आउन सक्छ: <xliff:g id="APPS">%3$s</xliff:g>।"</string>
     <string name="wifi_interface_priority_approve" msgid="7877379614986261096">"अनुमति दिनुहोस्"</string>
     <string name="wifi_interface_priority_reject" msgid="1378461018835886777">"अनुमति नदिनुहोस्"</string>
+    <string name="wifi_interface_priority_interface_name_sta" msgid="5107477901500010776">"STA"</string>
+    <string name="wifi_interface_priority_interface_name_ap" msgid="161777054136866061">"Wi-Fi हटस्पट"</string>
+    <string name="wifi_interface_priority_interface_name_ap_bridge" msgid="1270364818879977821">"Wi-Fi हटस्पट"</string>
+    <string name="wifi_interface_priority_interface_name_p2p" msgid="1278122698099149708">"Wi-Fi प्रत्यक्ष"</string>
+    <string name="wifi_interface_priority_interface_name_nan" msgid="8812888073122966870">"Wi‑Fi Aware"</string>
     <string name="wifi_ca_cert_dialog_title" msgid="3872340345882915806">"यो नेटवर्क विश्वसनीय छ?"</string>
     <string name="wifi_ca_cert_dialog_continue_text" msgid="1674156611893471003">"कनेक्ट गर्नुहोस्"</string>
     <string name="wifi_ca_cert_dialog_abort_text" msgid="1303170595421648059">"कनेक्ट नगर्नुहोस्"</string>
@@ -137,6 +145,9 @@
     <string name="wifi_ca_cert_notification_title" msgid="537569884930429796">"नेटवर्कको पुष्टि गरिनु पर्ने हुन्छ"</string>
     <string name="wifi_ca_cert_notification_message" msgid="6413248690626616961">"<xliff:g id="SSID">%1$s</xliff:g> मा कनेक्ट गर्नुअघि यसका नेटवर्कसम्बन्धी विवरण जाँच्नुहोस्। जारी राख्न ट्याप गर्नुहोस्।"</string>
     <string name="wifi_ca_cert_failed_to_install_ca_cert" msgid="4864192219789736195">"प्रमाणपत्र इन्सटल गर्न सकिएन।"</string>
+    <string name="wifi_tofu_invalid_cert_chain_title" msgid="332710627417595752">"<xliff:g id="VALUE">%1$s</xliff:g> मा कनेक्ट गर्न सकिएन"</string>
+    <string name="wifi_tofu_invalid_cert_chain_message" msgid="7047987920029432392">"सर्भरको प्रमाणपत्रको चेन अवैध छ।"</string>
+    <string name="wifi_tofu_invalid_cert_chain_ok_text" msgid="9098567577510279854">"ठिक छ"</string>
     <string name="wifi_ca_cert_dialog_preT_title" msgid="6916320484037009061">"यो नेटवर्क पुष्टि गर्न सकिएन"</string>
     <string name="wifi_ca_cert_dialog_preT_continue_text" msgid="3181614240421159530">"जे भए पनि कनेक्ट गर्नुहोस्"</string>
     <string name="wifi_ca_cert_dialog_preT_abort_text" msgid="1195575129023960325">"कनेक्ट नगर्नुहोस्"</string>
@@ -150,4 +161,11 @@
     <string name="wifi_enable_request_dialog_message" msgid="6395169178524938278">"तपाईं द्रुत सेटिङहरूमा गएर Wi‑Fi अफ गर्न सक्नुहुन्छ"</string>
     <string name="wifi_enable_request_dialog_positive_button" msgid="6050832555821470466">"अनुमति दिनुहोस्"</string>
     <string name="wifi_enable_request_dialog_negative_button" msgid="4754219902374918882">"अनुमति नदिनुहोस्"</string>
+    <string name="wifi_network_disabled_by_admin_title" msgid="9057697656855227293">"नेटवर्क उपलब्ध छैन"</string>
+    <string name="wifi_network_disabled_by_admin_message" msgid="7830360441333155462">"तपाईंका एड्मिनले <xliff:g id="SSID">%1$s</xliff:g> अफ गर्नुभएको छ।"</string>
+    <string name="wifi_network_disabled_by_admin_button" msgid="3350310756265122689">"बन्द गर्नुहोस्"</string>
+    <string name="wifi_enabled_apm_first_time_title" msgid="4814302384637588804">"हवाइजहाज मोडमा Wi-Fi अन रहन्छ"</string>
+    <string name="wifi_enabled_apm_first_time_message" msgid="3804474326110512024">"तपाईंले Wi-Fi अन राखिराख्नुभयो भने तपाईंको फोन अर्को पटक हवाइजहाज मोडमा हुँदा पनि Wi-Fi अन नै रहने छ"</string>
+    <string name="apm_enabled_first_time_title" msgid="2534167413190488009">"Wi‑Fi अन रहन्छ"</string>
+    <string name="apm_enabled_first_time_message" msgid="8381594447227021365">"हवाइजहाज मोडमा पनि तपाईंको फोनमा Wi-Fi अन नै रहने छ। यो विकल्प बदल्न Wi-Fi अफ गर्नुहोस्।"</string>
 </resources>

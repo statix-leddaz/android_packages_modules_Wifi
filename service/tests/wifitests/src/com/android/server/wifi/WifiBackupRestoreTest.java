@@ -257,6 +257,7 @@ public class WifiBackupRestoreTest extends WifiBaseTest {
                     + "<SecurityParamsList>\n"
                     + "<SecurityParams>\n"
                     + "<int name=\"SecurityType\" value=\"2\" />\n"
+                    + "<boolean name=\"IsEnabled\" value=\"true\" />\n"
                     + "<boolean name=\"SaeIsH2eOnlyMode\" value=\"false\" />\n"
                     + "<boolean name=\"SaeIsPkOnlyMode\" value=\"false\" />\n"
                     + "<boolean name=\"IsAddedByAutoUpgrade\" value=\"false\" />\n"
@@ -523,6 +524,24 @@ public class WifiBackupRestoreTest extends WifiBaseTest {
         List<WifiConfiguration> configurations = new ArrayList<>();
         configurations.add(WifiConfigurationTestUtil.createEapNetwork());
         configurations.add(WifiConfigurationTestUtil.createEapSuiteBNetwork());
+
+        byte[] backupData = mWifiBackupRestore.retrieveBackupDataFromConfigurations(configurations);
+        List<WifiConfiguration> retrievedConfigurations =
+                mWifiBackupRestore.retrieveConfigurationsFromBackupData(backupData);
+        assertTrue(retrievedConfigurations.isEmpty());
+        // No valid data to check in dump.
+        mCheckDump = false;
+    }
+
+    /**
+     * Verify that a single ephemeral network configuration is not serialized.
+     */
+    @Test
+    public void testSingleEphemeralNetworkNotBackupRestore() {
+        List<WifiConfiguration> configurations = new ArrayList<>();
+        WifiConfiguration configuration = WifiConfigurationTestUtil.createWepNetworkWithSingleKey();
+        configuration.ephemeral = true;
+        configurations.add(configuration);
 
         byte[] backupData = mWifiBackupRestore.retrieveBackupDataFromConfigurations(configurations);
         List<WifiConfiguration> retrievedConfigurations =
@@ -1031,7 +1050,7 @@ public class WifiBackupRestoreTest extends WifiBaseTest {
     @Test
     public void testSingleNetworkSupplicantBackupRestoreWithUnknownEAPKey() {
         String backupSupplicantConfNetworkBlock = "network={\n"
-                + "ssid=" + WifiConfigurationTestUtil.TEST_SSID + "\n"
+                + "ssid=\"" + WifiConfigurationTestUtil.TEST_SSID + "\"\n"
                 + "psk=" + WifiConfigurationTestUtil.TEST_PSK + "\n"
                 + "key_mgmt=WPA-PSK WPA-PSK-SHA256\n"
                 + "priority=18\n"
@@ -1044,7 +1063,7 @@ public class WifiBackupRestoreTest extends WifiBaseTest {
                         supplicantData, null);
 
         final WifiConfiguration expectedConfiguration = new WifiConfiguration();
-        expectedConfiguration.SSID = WifiConfigurationTestUtil.TEST_SSID;
+        expectedConfiguration.SSID = "\"" + WifiConfigurationTestUtil.TEST_SSID + "\"";
         expectedConfiguration.preSharedKey = WifiConfigurationTestUtil.TEST_PSK;
         expectedConfiguration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
 
