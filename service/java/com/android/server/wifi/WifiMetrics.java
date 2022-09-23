@@ -33,6 +33,7 @@ import android.content.pm.ResolveInfo;
 import android.net.wifi.EAPConstants;
 import android.net.wifi.IOnWifiUsabilityStatsListener;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SecurityParams;
 import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.SoftApInfo;
@@ -128,6 +129,7 @@ import com.android.server.wifi.util.IntCounter;
 import com.android.server.wifi.util.IntHistogram;
 import com.android.server.wifi.util.MetricsUtils;
 import com.android.server.wifi.util.ObjectCounter;
+import com.android.server.wifi.util.StringUtil;
 import com.android.wifi.resources.R;
 
 import org.json.JSONArray;
@@ -945,12 +947,7 @@ public class WifiMetrics {
             StringBuilder sb = new StringBuilder();
             Calendar c = Calendar.getInstance();
             c.setTimeInMillis(mWallClockTimeMs);
-            sb.append(c.get(Calendar.MONTH)).append("-")
-                    .append(c.get(Calendar.DAY_OF_MONTH)).append(" ")
-                    .append(c.get(Calendar.HOUR_OF_DAY)).append(":")
-                    .append(c.get(Calendar.MINUTE)).append(":")
-                    .append(c.get(Calendar.SECOND)).append(".")
-                    .append(c.get(Calendar.MILLISECOND));
+            sb.append(StringUtil.calendarToString(c));
             String eventType = "UNKNOWN";
             switch (mUserActionEvent.eventType) {
                 case UserActionEvent.EVENT_FORGET_WIFI:
@@ -1070,6 +1067,8 @@ public class WifiMetrics {
         public static final int FAILURE_ASSOCIATION_TIMED_OUT = 11;
         // NETWORK_NOT_FOUND
         public static final int FAILURE_NETWORK_NOT_FOUND = 12;
+        // Connection attempt aborted by the watchdog because the AP didn't respond.
+        public static final int FAILURE_NO_RESPONSE = 13;
 
         RouterFingerPrint mRouterFingerPrint;
         private String mConfigSsid;
@@ -1099,12 +1098,7 @@ public class WifiMetrics {
                 if (mConnectionEvent.startTimeMillis == 0) {
                     sb.append("            <null>");
                 } else {
-                    sb.append(c.get(Calendar.MONTH)).append("-")
-                            .append(c.get(Calendar.DAY_OF_MONTH)).append(" ")
-                            .append(c.get(Calendar.HOUR_OF_DAY)).append(":")
-                            .append(c.get(Calendar.MINUTE)).append(":")
-                            .append(c.get(Calendar.SECOND)).append(".")
-                            .append(c.get(Calendar.MILLISECOND));
+                    sb.append(StringUtil.calendarToString(c));
                 }
                 sb.append(", SSID=");
                 sb.append(mConfigSsid);
@@ -1171,6 +1165,9 @@ public class WifiMetrics {
                         break;
                     case FAILURE_NETWORK_NOT_FOUND:
                         sb.append("FAILURE_NETWORK_NOT_FOUND");
+                        break;
+                    case FAILURE_NO_RESPONSE:
+                        sb.append("FAILURE_NO_RESPONSE");
                         break;
                     default:
                         sb.append("UNKNOWN");
@@ -1777,6 +1774,32 @@ public class WifiMetrics {
     private static final int SCREEN_ON = 1;
     private static final int SCREEN_OFF = 0;
 
+    private int convertSecurityTypeToWifiMetricsNetworkType(
+            @WifiConfiguration.SecurityType int type) {
+        switch (type) {
+            case WifiConfiguration.SECURITY_TYPE_OPEN:
+                return WifiMetricsProto.ConnectionEvent.TYPE_OPEN;
+            case WifiConfiguration.SECURITY_TYPE_PSK:
+                return WifiMetricsProto.ConnectionEvent.TYPE_WPA2;
+            case WifiConfiguration.SECURITY_TYPE_EAP:
+                return WifiMetricsProto.ConnectionEvent.TYPE_EAP;
+            case WifiConfiguration.SECURITY_TYPE_SAE:
+                return WifiMetricsProto.ConnectionEvent.TYPE_WPA3;
+            case WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT:
+                return WifiMetricsProto.ConnectionEvent.TYPE_EAP;
+            case WifiConfiguration.SECURITY_TYPE_OWE:
+                return WifiMetricsProto.ConnectionEvent.TYPE_OWE;
+            case WifiConfiguration.SECURITY_TYPE_WAPI_PSK:
+            case WifiConfiguration.SECURITY_TYPE_WAPI_CERT:
+                return WifiMetricsProto.ConnectionEvent.TYPE_WAPI;
+            case WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE:
+                return WifiMetricsProto.ConnectionEvent.TYPE_EAP;
+            // No metric network type for WEP, OSEN, and DPP.
+            default:
+                return WifiMetricsProto.ConnectionEvent.TYPE_UNKNOWN;
+        }
+    }
+
     /**
      * Create a new connection event and check if the new one overlaps with previous one.
      * Call when wifi attempts to make a new network connection
@@ -1875,11 +1898,16 @@ public class WifiMetrics {
                 currentConnectionEvent.mConnectionEvent.networkType =
                         WifiMetricsProto.ConnectionEvent.TYPE_UNKNOWN;
                 currentConnectionEvent.mConnectionEvent.isOsuProvisioned = false;
+                SecurityParams params = config.getNetworkSelectionStatus()
+                        .getCandidateSecurityParams();
                 if (config.isPasspoint()) {
                     currentConnectionEvent.mConnectionEvent.networkType =
                             WifiMetricsProto.ConnectionEvent.TYPE_PASSPOINT;
                     currentConnectionEvent.mConnectionEvent.isOsuProvisioned =
                             !TextUtils.isEmpty(config.updateIdentifier);
+                } else if (null != params) {
+                    currentConnectionEvent.mConnectionEvent.networkType =
+                            convertSecurityTypeToWifiMetricsNetworkType(params.getSecurityType());
                 } else if (WifiConfigurationUtil.isConfigForSaeNetwork(config)) {
                     currentConnectionEvent.mConnectionEvent.networkType =
                             WifiMetricsProto.ConnectionEvent.TYPE_WPA3;
@@ -2105,6 +2133,7 @@ public class WifiMetrics {
         }
     }
 
+    // TODO(b/177341879): Add failure type ConnectionEvent.FAILURE_NO_RESPONSE into Westworld.
     private int getConnectionResultFailureCode(int level2FailureCode, int level2FailureReason) {
         switch (level2FailureCode) {
             case ConnectionEvent.FAILURE_NONE:
@@ -2128,11 +2157,8 @@ public class WifiMetrics {
                 return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_NETWORK_DISCONNECTION;
             case ConnectionEvent.FAILURE_ROAM_TIMEOUT:
                 return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_ROAM_TIMEOUT;
-            case ConnectionEvent.FAILURE_NEW_CONNECTION_ATTEMPT:
-            case ConnectionEvent.FAILURE_REDUNDANT_CONNECTION_ATTEMPT:
-                return -1;
             default:
-                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_UNKNOWN;
+                return -1;
         }
     }
 
@@ -7688,14 +7714,16 @@ public class WifiMetrics {
      * Increment connection duration while link layer stats report are on
      */
     public void incrementConnectionDuration(int timeDeltaLastTwoPollsMs,
-            boolean isThroughputSufficient, boolean isCellularDataAvailable) {
+            boolean isThroughputSufficient, boolean isCellularDataAvailable, int rssi, int txKbps,
+            int rxKbps) {
         synchronized (mLock) {
             mConnectionDurationStats.incrementDurationCount(timeDeltaLastTwoPollsMs,
                     isThroughputSufficient, isCellularDataAvailable, mWifiWins);
 
             int band = KnownBandsChannelHelper.getBand(mLastPollFreq);
             WifiStatsLog.write(WifiStatsLog.WIFI_HEALTH_STAT_REPORTED, timeDeltaLastTwoPollsMs,
-                    isThroughputSufficient || !mWifiWins,  isCellularDataAvailable, band);
+                    isThroughputSufficient || !mWifiWins,  isCellularDataAvailable, band, rssi,
+                    txKbps, rxKbps);
         }
     }
 

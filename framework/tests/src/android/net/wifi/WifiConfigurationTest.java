@@ -116,7 +116,12 @@ public class WifiConfigurationTest {
         config.subscriptionId = 1;
         config.carrierId = 1189;
         config.restricted = true;
+        config.isCurrentlyConnected = true;
         config.setSubscriptionGroup(ParcelUuid.fromString("0000110B-0000-1000-8000-00805F9B34FB"));
+        config.getNetworkSelectionStatus().setDisableTime(12333);
+        config.getNetworkSelectionStatus().setDisableEndTime(45666);
+        assertEquals(12333, config.getNetworkSelectionStatus().getDisableTime());
+        assertEquals(45666, config.getNetworkSelectionStatus().getDisableEndTime());
         Parcel parcelW = Parcel.obtain();
         config.writeToParcel(parcelW, 0);
         byte[] bytes = parcelW.marshall();
@@ -141,12 +146,17 @@ public class WifiConfigurationTest {
         assertEquals(config.subscriptionId, reconfig.subscriptionId);
         assertEquals(config.getSubscriptionGroup(), reconfig.getSubscriptionGroup());
         assertTrue(reconfig.restricted);
+        assertTrue(reconfig.isCurrentlyConnected);
         assertEquals(config.getBssidAllowlist(), reconfig.getBssidAllowlist());
         assertEquals(
                 SecurityParams.createSecurityParamsBySecurityType(
                         WifiConfiguration.SECURITY_TYPE_PSK),
                 reconfig.getSecurityParams(
                         WifiConfiguration.SECURITY_TYPE_PSK));
+        assertEquals(config.getNetworkSelectionStatus().getDisableTime(),
+                reconfig.getNetworkSelectionStatus().getDisableTime());
+        assertEquals(config.getNetworkSelectionStatus().getDisableEndTime(),
+                reconfig.getNetworkSelectionStatus().getDisableEndTime());
 
         Parcel parcelWW = Parcel.obtain();
         reconfig.writeToParcel(parcelWW, 0);
@@ -171,6 +181,7 @@ public class WifiConfigurationTest {
         config.subscriptionId = 1;
         config.carrierId = 1189;
         config.restricted = true;
+        config.isCurrentlyConnected = true;
 
         WifiConfiguration reconfig = new WifiConfiguration(config);
 
@@ -186,6 +197,7 @@ public class WifiConfigurationTest {
         assertEquals(config.carrierId, reconfig.carrierId);
         assertEquals(config.subscriptionId, reconfig.subscriptionId);
         assertTrue(reconfig.restricted);
+        assertTrue(reconfig.isCurrentlyConnected);
     }
 
     @Test
@@ -307,7 +319,7 @@ public class WifiConfigurationTest {
     @Test
     public void testGetKeyIdForCredentials() throws Exception {
         WifiConfiguration config = new WifiConfiguration();
-        final String mSsid = "TestAP";
+        final String mSsid = "\"TestAP\"";
         config.SSID = mSsid;
 
         // Test various combinations
@@ -362,7 +374,7 @@ public class WifiConfigurationTest {
     @Test
     public void testGetKeyIdForCredentialsForSuggestion() throws Exception {
         WifiConfiguration config = new WifiConfiguration();
-        final String mSsid = "TestAP";
+        final String mSsid = "\"TestAP\"";
         final String packageName = "TestApp";
         final String bSsid = MacAddressUtils.createRandomUnicastAddress().toString();
         String suggestionSuffix = "_" + bSsid + "_" + packageName;
@@ -422,7 +434,7 @@ public class WifiConfigurationTest {
     @Test
     public void testGetSsidAndSecurityTypeString() {
         WifiConfiguration config = new WifiConfiguration();
-        final String mSsid = "TestAP";
+        final String mSsid = "\"TestAp\"";
         config.SSID = mSsid;
 
         // Test various combinations
@@ -506,7 +518,7 @@ public class WifiConfigurationTest {
     @Test
     public void testGetNetworkKeyString() {
         WifiConfiguration config = new WifiConfiguration();
-        final String mSsid = "TestAP";
+        final String mSsid = "\"TestAp\"";
         config.SSID = mSsid;
 
         // Test various combinations
@@ -843,7 +855,7 @@ public class WifiConfigurationTest {
     public void testGetProfileKeyString() {
         assumeTrue(SdkLevel.isAtLeastS());
         WifiConfiguration config = new WifiConfiguration();
-        final String mSsid = "TestAP";
+        final String mSsid = "\"TestAp\"";
         config.SSID = mSsid;
         config.carrierId = TEST_CARRIER_ID;
         config.subscriptionId = TEST_SUB_ID;
@@ -855,6 +867,11 @@ public class WifiConfigurationTest {
         config.fromWifiNetworkSuggestion = false;
         assertEquals(createProfileKey(mSsid, KeyMgmt.strings[KeyMgmt.WPA_PSK], TEST_PACKAGE_NAME,
                 TEST_CARRIER_ID, TEST_SUB_ID, false), config.getProfileKey());
+        // Hexadecimal SSIDs should match regardless of upper/lower case.
+        config.SSID = "aBcDeF";
+        assertEquals(createProfileKey("abcdef", KeyMgmt.strings[KeyMgmt.WPA_PSK], TEST_PACKAGE_NAME,
+                TEST_CARRIER_ID, TEST_SUB_ID, false), config.getProfileKey());
+        config.SSID = mSsid;
         config.fromWifiNetworkSuggestion = true;
         assertEquals(createProfileKey(mSsid, KeyMgmt.strings[KeyMgmt.WPA_PSK], TEST_PACKAGE_NAME,
                 TEST_CARRIER_ID, TEST_SUB_ID, true), config.getProfileKey());
@@ -967,7 +984,7 @@ public class WifiConfigurationTest {
     public void testGetProfileKeyOnR() {
         assumeFalse(SdkLevel.isAtLeastS());
         WifiConfiguration config = new WifiConfiguration();
-        final String mSsid = "TestAP";
+        final String mSsid = "\"TestAp\"";
         config.SSID = mSsid;
         config.carrierId = TEST_CARRIER_ID;
         config.subscriptionId = TEST_SUB_ID;
@@ -1322,7 +1339,7 @@ public class WifiConfigurationTest {
     @Test
     public void testGetNetworkKeyFromSecurityTypeString() {
         WifiConfiguration config = new WifiConfiguration();
-        final String mSsid = "TestAP";
+        final String mSsid = "\"TestAp\"";
         config.SSID = mSsid;
         config.carrierId = TEST_CARRIER_ID;
         config.subscriptionId = TEST_SUB_ID;
@@ -1350,7 +1367,7 @@ public class WifiConfigurationTest {
     @Test
     public void testGetAllPersistableNetworkKeysString() {
         WifiConfiguration config = new WifiConfiguration();
-        final String mSsid = "TestAP";
+        final String mSsid = "\"TestAp\"";
         config.SSID = mSsid;
         config.carrierId = TEST_CARRIER_ID;
         config.subscriptionId = TEST_SUB_ID;

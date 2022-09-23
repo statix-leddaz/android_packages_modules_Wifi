@@ -113,6 +113,8 @@ public class HalDeviceManager {
     private ServiceManagerDeathRecipient mServiceManagerDeathRecipient;
     private boolean mIsBridgedSoftApSupported;
     private boolean mIsStaWithBridgedSoftApConcurrencySupported;
+    private boolean mWifiUserApprovalRequiredForD2dInterfacePriority;
+    private boolean mIsConcurrencyComboLoadedFromDriver;
     private ArrayMap<IWifiIface, SoftApManager> mSoftApManagers = new ArrayMap<>();
 
     // cache the value for supporting vendor HAL or not
@@ -175,6 +177,8 @@ public class HalDeviceManager {
         mIsBridgedSoftApSupported = res.getBoolean(R.bool.config_wifiBridgedSoftApSupported);
         mIsStaWithBridgedSoftApConcurrencySupported =
                 res.getBoolean(R.bool.config_wifiStaWithBridgedSoftApConcurrencySupported);
+        mWifiUserApprovalRequiredForD2dInterfacePriority =
+                res.getBoolean(R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority);
         mClock = clock;
         mWifiInjector = wifiInjector;
         mEventHandler = handler;
@@ -268,8 +272,8 @@ public class HalDeviceManager {
      * Note: direct call to HIDL - failure is not-expected.
      */
     public void stop() {
-        stopWifi();
         synchronized (mLock) { // prevents race condition
+            stopWifi();
             mWifi = null;
         }
     }
@@ -789,6 +793,10 @@ public class HalDeviceManager {
 
         IfaceCreationData creationData;
         synchronized (mLock) {
+            if (mWifi == null) {
+                Log.e(TAG, "reportImpactToCreateIface: null IWifi -- ifaceType=" + createIfaceType);
+                return null;
+            }
             WifiChipInfo[] chipInfos = getAllChipInfo();
             if (chipInfos == null) {
                 Log.e(TAG, "createIface: no chip info found");
@@ -1143,6 +1151,10 @@ public class HalDeviceManager {
      */
     private boolean registerWifiHalEventCallback() {
         try {
+            if (mWifi == null) {
+                Log.e(TAG, "registerWifiHalEventCallback called but mWifi is null!?");
+                return false;
+            }
             WifiStatus status;
             android.hardware.wifi.V1_5.IWifi iWifiV15 = getWifiServiceForV1_5Mockable(mWifi);
             if (iWifiV15 != null) {
@@ -1381,6 +1393,11 @@ public class HalDeviceManager {
                     return null;
                 }
 
+                SparseArray<StaticChipInfo> staticChipInfoPerId = new SparseArray<>();
+                for (StaticChipInfo staticChipInfo : getStaticChipInfos()) {
+                    staticChipInfoPerId.put(staticChipInfo.getChipId(), staticChipInfo);
+                }
+
                 int chipInfoIndex = 0;
                 WifiChipInfo[] chipsInfo = new WifiChipInfo[chipIdsResp.value.size()];
 
@@ -1398,35 +1415,39 @@ public class HalDeviceManager {
                         return null;
                     }
 
+                    StaticChipInfo staticChipInfo = staticChipInfoPerId.get(chipId);
                     Mutable<ArrayList<android.hardware.wifi.V1_6.IWifiChip.ChipMode>>
                             availableModesResp = new Mutable<>();
-                    android.hardware.wifi.V1_6.IWifiChip chipV16 =
-                            getWifiChipForV1_6Mockable(chipResp.value);
-                    if (chipV16 != null) {
-                        chipV16.getAvailableModes_1_6((WifiStatus status,
-                                ArrayList<android.hardware.wifi.V1_6.IWifiChip.ChipMode> modes) -> {
-                            statusOk.value = status.code == WifiStatusCode.SUCCESS;
-                            if (statusOk.value) {
-                                availableModesResp.value = modes;
-                            } else {
-                                Log.e(TAG, "getAvailableModes_1_6 failed: "
-                                        + statusString(status));
-                            }
-                        });
-                    } else {
-                        chipResp.value.getAvailableModes((WifiStatus status,
-                                ArrayList<IWifiChip.ChipMode> modes) -> {
-                            statusOk.value = status.code == WifiStatusCode.SUCCESS;
-                            if (statusOk.value) {
-                                availableModesResp.value = upgradeV1_0ChipModesToV1_6(modes);
-                            } else {
-                                Log.e(TAG, "getAvailableModes failed: "
-                                        + statusString(status));
-                            }
-                        });
-                    }
-                    if (!statusOk.value) {
-                        return null;
+                    if (staticChipInfo == null) {
+                        android.hardware.wifi.V1_6.IWifiChip chipV16 =
+                                getWifiChipForV1_6Mockable(chipResp.value);
+                        if (chipV16 != null) {
+                            chipV16.getAvailableModes_1_6((WifiStatus status,
+                                    ArrayList<android.hardware.wifi.V1_6.IWifiChip.ChipMode> modes)
+                                    -> {
+                                statusOk.value = status.code == WifiStatusCode.SUCCESS;
+                                if (statusOk.value) {
+                                    availableModesResp.value = modes;
+                                } else {
+                                    Log.e(TAG, "getAvailableModes_1_6 failed: "
+                                            + statusString(status));
+                                }
+                            });
+                        } else {
+                            chipResp.value.getAvailableModes((WifiStatus status,
+                                    ArrayList<IWifiChip.ChipMode> modes) -> {
+                                statusOk.value = status.code == WifiStatusCode.SUCCESS;
+                                if (statusOk.value) {
+                                    availableModesResp.value = upgradeV1_0ChipModesToV1_6(modes);
+                                } else {
+                                    Log.e(TAG, "getAvailableModes failed: "
+                                            + statusString(status));
+                                }
+                            });
+                        }
+                        if (!statusOk.value) {
+                            return null;
+                        }
                     }
 
                     Mutable<Boolean> currentModeValidResp = new Mutable<>(false);
@@ -1630,7 +1651,11 @@ public class HalDeviceManager {
 
                     chipInfo.chip = chipResp.value;
                     chipInfo.chipId = chipId;
-                    chipInfo.availableModes = availableModesResp.value;
+                    if (staticChipInfo != null) {
+                        chipInfo.availableModes = staticChipInfo.getAvailableModes();
+                    } else {
+                        chipInfo.availableModes = availableModesResp.value;
+                    }
                     chipInfo.currentModeIdValid = currentModeValidResp.value;
                     chipInfo.currentModeId = currentModeResp.value;
                     chipInfo.chipCapabilities = chipCapabilities.value;
@@ -1842,11 +1867,7 @@ public class HalDeviceManager {
                                          + triedCount + " times");
                             }
                             WifiChipInfo[] wifiChipInfos = getAllChipInfo();
-                            if (wifiChipInfos != null) {
-                                mCachedStaticChipInfos =
-                                        convertWifiChipInfoToStaticChipInfos(getAllChipInfo());
-                                saveStaticChipInfoToStore(mCachedStaticChipInfos);
-                            } else {
+                            if (wifiChipInfos == null) {
                                 Log.e(TAG, "Started wifi but could not get current chip info.");
                             }
                             return true;
@@ -1881,22 +1902,19 @@ public class HalDeviceManager {
     private void stopWifi() {
         if (VDBG) Log.d(TAG, "stopWifi");
 
-        synchronized (mLock) {
-            try {
-                if (mWifi == null) {
-                    Log.w(TAG, "stopWifi called but mWifi is null!?");
-                } else {
-                    WifiStatus status = mWifi.stop();
-                    if (status.code != WifiStatusCode.SUCCESS) {
-                        Log.e(TAG, "Cannot stop IWifi: " + statusString(status));
-                    }
-
-                    // even on failure since WTF??
-                    teardownInternal();
+        try {
+            if (mWifi == null) {
+                Log.w(TAG, "stopWifi called but mWifi is null!?");
+            } else {
+                WifiStatus status = mWifi.stop();
+                if (status.code != WifiStatusCode.SUCCESS) {
+                    Log.e(TAG, "Cannot stop IWifi: " + statusString(status));
                 }
-            } catch (RemoteException e) {
-                Log.e(TAG, "stopWifi exception: " + e);
+                // even on failure since WTF??
+                teardownInternal();
             }
+        } catch (RemoteException e) {
+            Log.e(TAG, "stopWifi exception: " + e);
         }
     }
 
@@ -2247,6 +2265,7 @@ public class HalDeviceManager {
             StringBuilder sb = new StringBuilder();
             sb.append("{chipInfo=").append(chipInfo).append(", chipModeId=").append(chipModeId)
                     .append(", interfacesToBeRemovedFirst=").append(interfacesToBeRemovedFirst)
+                    .append(", interfacesToBeDowngraded=").append(interfacesToBeDowngraded)
                     .append(")");
             return sb.toString();
         }
@@ -2369,7 +2388,8 @@ public class HalDeviceManager {
      * Note: both proposals are 'acceptable' bases on priority criteria.
      *
      * Criteria:
-     * - Proposal is better if it means removing fewer high priority interfaces
+     * - Proposal is better if it means removing fewer high priority interfaces, or downgrades the
+     *   fewest interfaces.
      */
     private boolean compareIfaceCreationData(IfaceCreationData val1, IfaceCreationData val2) {
         if (VDBG) Log.d(TAG, "compareIfaceCreationData: val1=" + val1 + ", val2=" + val2);
@@ -2405,14 +2425,23 @@ public class HalDeviceManager {
         }
 
         for (int createType: CREATE_TYPES_BY_PRIORITY) {
-            if (val1NumIfacesToBeRemoved[createType] < val2NumIfacesToBeRemoved[createType]) {
+            if (val1NumIfacesToBeRemoved[createType] != val2NumIfacesToBeRemoved[createType]) {
                 if (VDBG) {
-                    Log.d(TAG, "decision based on createType=" + createType + ": "
-                            + val1NumIfacesToBeRemoved[createType]
-                            + " < " + val2NumIfacesToBeRemoved[createType]);
+                    Log.d(TAG, "decision based on num ifaces to be removed, createType="
+                            + createType + ", new proposal will remove "
+                            + val1NumIfacesToBeRemoved[createType] + " iface, and old proposal"
+                            + "will remove " + val2NumIfacesToBeRemoved[createType] + " iface");
                 }
-                return true;
+                return val1NumIfacesToBeRemoved[createType] < val2NumIfacesToBeRemoved[createType];
             }
+        }
+
+        int val1NumIFacesToBeDowngraded = val1.interfacesToBeDowngraded != null
+                ? val1.interfacesToBeDowngraded.size() : 0;
+        int val2NumIFacesToBeDowngraded = val2.interfacesToBeDowngraded != null
+                ? val2.interfacesToBeDowngraded.size() : 0;
+        if (val1NumIFacesToBeDowngraded != val2NumIFacesToBeDowngraded) {
+            return val1NumIFacesToBeDowngraded < val2NumIFacesToBeDowngraded;
         }
 
         // arbitrary - flip a coin
@@ -2458,18 +2487,29 @@ public class HalDeviceManager {
      * interface request from |existingRequestorWsPriority|.
      *
      * Rule:
+     *  - If |mWifiUserApprovalRequiredForD2dInterfacePriority| is true, AND
+     *    |newRequestorWsPriority| > PRIORITY_BG, AND |requestedCreateType| is
+     *    HDM_CREATE_IFACE_P2P or HDM_CREATE_IFACE_NAN, then YES
      *  - If |newRequestorWsPriority| > |existingRequestorWsPriority|, then YES.
      *  - If they are at the same priority level, then
      *      - If both are privileged and not for the same interface type, then YES.
      *      - Else, NO.
      */
-    private static boolean allowedToDelete(
+    private boolean allowedToDelete(
             @HdmIfaceTypeForCreation int requestedCreateType,
             @RequestorWsPriority int newRequestorWsPriority,
             @HdmIfaceTypeForCreation int existingCreateType,
             @RequestorWsPriority int existingRequestorWsPriority) {
         if (!SdkLevel.isAtLeastS()) {
             return allowedToDeleteForR(requestedCreateType, existingCreateType);
+        }
+        if (mWifiUserApprovalRequiredForD2dInterfacePriority
+                && newRequestorWsPriority > PRIORITY_BG
+                && (requestedCreateType == HDM_CREATE_IFACE_AP
+                || requestedCreateType == HDM_CREATE_IFACE_AP_BRIDGE
+                || requestedCreateType == HDM_CREATE_IFACE_P2P
+                || requestedCreateType == HDM_CREATE_IFACE_NAN)) {
+            return true;
         }
         // If the new request is higher priority than existing priority, then the new requestor
         // wins. This is because at all other priority levels (except privileged), existing caller
@@ -2740,6 +2780,17 @@ public class HalDeviceManager {
                         Log.e(TAG, "executeChipReconfiguration: configureChip error: "
                                 + statusString(status));
                         return null;
+                    }
+                    if (!mIsConcurrencyComboLoadedFromDriver) {
+                        WifiChipInfo[] wifiChipInfos = getAllChipInfo();
+                        if (wifiChipInfos != null) {
+                            mCachedStaticChipInfos =
+                                    convertWifiChipInfoToStaticChipInfos(getAllChipInfo());
+                            saveStaticChipInfoToStore(mCachedStaticChipInfos);
+                            mIsConcurrencyComboLoadedFromDriver = true;
+                        } else {
+                            Log.e(TAG, "Configured chip but could not get current chip info.");
+                        }
                     }
                 } else {
                     // remove all interfaces on the delete list

@@ -48,6 +48,7 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiScanner;
+import android.net.wifi.WifiSsid;
 import android.net.wifi.nl80211.NativeScanResult;
 import android.net.wifi.nl80211.RadioChainInfo;
 import android.net.wifi.nl80211.WifiNl80211Manager;
@@ -72,6 +73,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.stubbing.Answer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -267,6 +269,8 @@ public class WifiNativeTest extends WifiBaseTest {
     @Mock private WifiCountryCode.ChangeListener mWifiCountryCodeChangeListener;
     @Mock WifiSettingsConfigStore mSettingsConfigStore;
     @Mock private SoftApManager mSoftApManager;
+    @Mock private SsidTranslator mSsidTranslator;
+    @Mock DeviceConfigFacade mDeviceConfigFacade;
 
     ArgumentCaptor<WifiNl80211Manager.ScanEventCallback> mScanCallbackCaptor =
             ArgumentCaptor.forClass(WifiNl80211Manager.ScanEventCallback.class);
@@ -301,17 +305,32 @@ public class WifiNativeTest extends WifiBaseTest {
 
         when(mWifiInjector.getSettingsConfigStore()).thenReturn(mSettingsConfigStore);
         when(mWifiInjector.getContext()).thenReturn(mContext);
+        when(mWifiInjector.getSsidTranslator()).thenReturn(mSsidTranslator);
         mResources = getMockResources();
         mResources.setBoolean(R.bool.config_wifiNetworkCentricQosPolicyFeatureEnabled, false);
         when(mContext.getResources()).thenReturn(mResources);
         when(mSettingsConfigStore.get(eq(WIFI_NATIVE_SUPPORTED_FEATURES)))
                 .thenReturn(WIFI_TEST_FEATURE);
+        when(mSsidTranslator.getTranslatedSsidAndRecordBssidCharset(any(), any()))
+                .thenAnswer((Answer<WifiSsid>) invocation ->
+                        getTranslatedSsid(invocation.getArgument(0)));
+        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfigFacade);
+        when(mDeviceConfigFacade.isInterfaceFailureBugreportEnabled()).thenReturn(false);
 
         mWifiNative = new WifiNative(
                 mWifiVendorHal, mStaIfaceHal, mHostapdHal, mWificondControl,
                 mWifiMonitor, mPropertyService, mWifiMetrics,
                 mHandler, mRandom, mBuildProperties, mWifiInjector);
         mWifiNative.initialize();
+    }
+
+    /** Mock translating an SSID */
+    private WifiSsid getTranslatedSsid(WifiSsid ssid) {
+        byte[] ssidBytes = ssid.getBytes();
+        for (int i = 0; i < ssidBytes.length; i++) {
+            ssidBytes[i]++;
+        }
+        return WifiSsid.fromBytes(ssidBytes);
     }
 
     private MockResources getMockResources() {
@@ -901,8 +920,8 @@ public class WifiNativeTest extends WifiBaseTest {
         // Since NativeScanResult is organized differently from ScanResult, this only checks
         // a few fields.
         for (int i = 0; i < mockScanResults.size(); i++) {
-            assertArrayEquals(mockScanResults.get(i).getSsid(),
-                    returnedScanResults.get(i).getScanResult().SSID.getBytes());
+            assertEquals(getTranslatedSsid(WifiSsid.fromBytes(mockScanResults.get(i).getSsid())),
+                    returnedScanResults.get(i).getScanResult().getWifiSsid());
             assertEquals(mockScanResults.get(i).getFrequencyMhz(),
                     returnedScanResults.get(i).getScanResult().frequency);
             assertEquals(mockScanResults.get(i).getTsf(),
@@ -931,8 +950,8 @@ public class WifiNativeTest extends WifiBaseTest {
         // Since NativeScanResult is organized differently from ScanResult, this only checks
         // a few fields.
         for (int i = 0; i < mockScanResults.size(); i++) {
-            assertArrayEquals(mockScanResults.get(i).getSsid(),
-                    returnedScanResults.get(i).getScanResult().SSID.getBytes());
+            assertEquals(getTranslatedSsid(WifiSsid.fromBytes(mockScanResults.get(i).getSsid())),
+                    returnedScanResults.get(i).getScanResult().getWifiSsid());
             assertEquals(mockScanResults.get(i).getFrequencyMhz(),
                     returnedScanResults.get(i).getScanResult().frequency);
             assertEquals(mockScanResults.get(i).getTsf(),
@@ -1366,11 +1385,24 @@ public class WifiNativeTest extends WifiBaseTest {
      */
     @Test
     public void testSetEapAnonymousIdentitySuccess() throws Exception {
-        when(mStaIfaceHal.setEapAnonymousIdentity(any(), any())).thenReturn(true);
+        when(mStaIfaceHal.setEapAnonymousIdentity(any(), any(), anyBoolean())).thenReturn(true);
         final String anonymousIdentity = "abc@realm.com";
-        assertTrue(mWifiNative.setEapAnonymousIdentity(WIFI_IFACE_NAME, anonymousIdentity));
+        assertTrue(mWifiNative.setEapAnonymousIdentity(WIFI_IFACE_NAME, anonymousIdentity, true));
         verify(mStaIfaceHal).setEapAnonymousIdentity(eq(WIFI_IFACE_NAME),
-                eq(anonymousIdentity));
+                eq(anonymousIdentity), eq(true));
+    }
+
+    /**
+     * Verifies setEapAnonymousIdentity() sunny case when native service is
+     * not updated.
+     */
+    @Test
+    public void testSetEapAnonymousIdentitySuccessWithNotUpdateToNativeService() throws Exception {
+        when(mStaIfaceHal.setEapAnonymousIdentity(any(), any(), anyBoolean())).thenReturn(true);
+        final String anonymousIdentity = "abc@realm.com";
+        assertTrue(mWifiNative.setEapAnonymousIdentity(WIFI_IFACE_NAME, anonymousIdentity, false));
+        verify(mStaIfaceHal).setEapAnonymousIdentity(eq(WIFI_IFACE_NAME),
+                eq(anonymousIdentity), eq(false));
     }
 
     /**
@@ -1378,9 +1410,9 @@ public class WifiNativeTest extends WifiBaseTest {
      */
     @Test
     public void testSetEapAnonymousIdentityFailureWithNullString() throws Exception {
-        when(mStaIfaceHal.setEapAnonymousIdentity(any(), any())).thenReturn(true);
-        assertFalse(mWifiNative.setEapAnonymousIdentity(WIFI_IFACE_NAME, null));
-        verify(mStaIfaceHal, never()).setEapAnonymousIdentity(any(), any());
+        when(mStaIfaceHal.setEapAnonymousIdentity(any(), any(), anyBoolean())).thenReturn(true);
+        assertFalse(mWifiNative.setEapAnonymousIdentity(WIFI_IFACE_NAME, null, true));
+        verify(mStaIfaceHal, never()).setEapAnonymousIdentity(any(), any(), anyBoolean());
     }
 
     @Test

@@ -29,6 +29,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.when;
 
 import android.content.Context;
 import android.content.Intent;
@@ -96,8 +97,7 @@ public class ExternalPnoScanRequestManagerTest extends WifiBaseTest {
 
     @Test
     public void testSetRequest_success() throws RemoteException {
-        IPnoScanResultsCallback anotherCallback = mock(IPnoScanResultsCallback.class);
-        InOrder inOrder = inOrder(mCallback, anotherCallback, mIBinder);
+        InOrder inOrder = inOrder(mCallback, mIBinder);
 
         // initial register should be successful
         assertTrue(mExternalPnoScanRequestManager.setRequest(TEST_UID, TEST_PACKAGE, mIBinder,
@@ -107,15 +107,13 @@ public class ExternalPnoScanRequestManagerTest extends WifiBaseTest {
 
         // Another register with same uid should override the existing one.
         assertTrue(mExternalPnoScanRequestManager.setRequest(TEST_UID, TEST_PACKAGE, mIBinder,
-                anotherCallback, TEST_WIFI_SSIDS, TEST_FREQUENCIES_2));
-        inOrder.verify(anotherCallback).onRegisterSuccess();
-        // Verify the original callback has been removed
-        inOrder.verify(mCallback).onRemoved(anyInt());
+                mCallback, TEST_WIFI_SSIDS, TEST_FREQUENCIES_2));
+        inOrder.verify(mCallback).onRegisterSuccess();
 
         // Another register with different uid should fail with REGISTER_PNO_CALLBACK_RESOURCE_BUSY
         assertFalse(mExternalPnoScanRequestManager.setRequest(TEST_UID + 1, TEST_PACKAGE,
-                mIBinder, anotherCallback, TEST_WIFI_SSIDS, TEST_FREQUENCIES));
-        inOrder.verify(anotherCallback).onRegisterFailed(REGISTER_PNO_CALLBACK_RESOURCE_BUSY);
+                mIBinder, mCallback, TEST_WIFI_SSIDS, TEST_FREQUENCIES));
+        inOrder.verify(mCallback).onRegisterFailed(REGISTER_PNO_CALLBACK_RESOURCE_BUSY);
 
 
         assertEquals(EXPECTED_SSIDS_SET, mExternalPnoScanRequestManager.getExternalPnoScanSsids());
@@ -192,12 +190,21 @@ public class ExternalPnoScanRequestManagerTest extends WifiBaseTest {
         scanResult2.setWifiSsid(WifiSsid.fromString(TEST_SSID_1));
         ScanResult scanResult3 = new ScanResult();
         scanResult3.setWifiSsid(WifiSsid.fromString(TEST_SSID_2));
-        ScanResult[] scanResults = new ScanResult[] {scanResult1, scanResult2, scanResult3};
+        List<ScanDetail> scanDetails = new ArrayList<>();
+        ScanDetail scanDetail1 = mock(ScanDetail.class);
+        ScanDetail scanDetail2 = mock(ScanDetail.class);
+        ScanDetail scanDetail3 = mock(ScanDetail.class);
+        when(scanDetail1.getScanResult()).thenReturn(scanResult1);
+        when(scanDetail2.getScanResult()).thenReturn(scanResult2);
+        when(scanDetail3.getScanResult()).thenReturn(scanResult3);
+        scanDetails.add(scanDetail1);
+        scanDetails.add(scanDetail2);
+        scanDetails.add(scanDetail3);
 
         List<ScanResult> expectedResults = new ArrayList<>();
         expectedResults.add(scanResult2);
         expectedResults.add(scanResult3);
-        mExternalPnoScanRequestManager.onPnoNetworkFound(scanResults);
+        mExternalPnoScanRequestManager.onScanResultsAvailable(scanDetails);
         inOrder.verify(mContext).sendBroadcastAsUser(intentArgumentCaptor.capture(), any());
         assertEquals(TEST_PACKAGE, intentArgumentCaptor.getValue().getPackage());
         inOrder.verify(mCallback).onScanResultsAvailable(expectedResults);
@@ -226,10 +233,13 @@ public class ExternalPnoScanRequestManagerTest extends WifiBaseTest {
         // Mock a scan result that's not being requested
         ScanResult scanResult1 = new ScanResult();
         scanResult1.setWifiSsid(WifiSsid.fromString("\"RANDOM_SSID_123\""));
-        ScanResult[] scanResults = new ScanResult[] {scanResult1};
+        List<ScanDetail> scanDetails = new ArrayList<>();
+        ScanDetail scanDetail1 = mock(ScanDetail.class);
+        when(scanDetail1.getScanResult()).thenReturn(scanResult1);
+        scanDetails.add(scanDetail1);
 
         // Results should not be delivered, and the request should still be registered.
-        mExternalPnoScanRequestManager.onPnoNetworkFound(scanResults);
+        mExternalPnoScanRequestManager.onScanResultsAvailable(scanDetails);
         inOrder.verify(mContext, never()).sendBroadcastAsUser(any(), any());
         inOrder.verify(mCallback, never()).onScanResultsAvailable(any());
         inOrder.verify(mCallback, never()).onRemoved(anyInt());

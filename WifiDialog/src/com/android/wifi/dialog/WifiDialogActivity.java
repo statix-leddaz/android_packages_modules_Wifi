@@ -25,6 +25,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.icu.text.MessageFormat;
 import android.media.AudioManager;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
@@ -32,11 +33,18 @@ import android.net.Uri;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
+import android.os.CountDownTimer;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.PowerManager;
 import android.os.Process;
+import android.os.SystemClock;
 import android.os.Vibrator;
+import android.text.Editable;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.text.method.LinkMovementMethod;
 import android.text.style.URLSpan;
 import android.util.ArraySet;
@@ -48,6 +56,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.TextView;
 
@@ -62,9 +71,14 @@ import java.util.Set;
  * Main Activity of the WifiDialog application. All dialogs should be created and managed from here.
  */
 public class WifiDialogActivity extends Activity  {
+    private static int sNumActiveInstances = 0;
+
     private static final String TAG = "WifiDialog";
     private static final String KEY_DIALOG_INTENTS = "KEY_DIALOG_INTENTS";
+    private static final String EXTRA_DIALOG_EXPIRATION_TIME_MS =
+            "com.android.wifi.dialog.DIALOG_START_TIME_MS";
 
+    private @NonNull Handler mHandler = new Handler(Looper.getMainLooper());
     private @Nullable WifiContext mWifiContext;
     private @Nullable WifiManager mWifiManager;
     private boolean mIsVerboseLoggingEnabled;
@@ -73,11 +87,16 @@ public class WifiDialogActivity extends Activity  {
     private @NonNull Set<Intent> mSavedStateIntents = new ArraySet<>();
     private @NonNull SparseArray<Intent> mLaunchIntentsPerId = new SparseArray<>();
     private @NonNull SparseArray<Dialog> mActiveDialogsPerId = new SparseArray<>();
+    private @NonNull SparseArray<CountDownTimer> mActiveCountDownTimersPerId = new SparseArray<>();
 
     // Broadcast receiver for listening to ACTION_CLOSE_SYSTEM_DIALOGS
     private BroadcastReceiver mCloseSystemDialogsReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            if (intent.getBooleanExtra(
+                    WifiManager.EXTRA_CLOSE_SYSTEM_DIALOGS_EXCEPT_WIFI, false)) {
+                return;
+            }
             if (mIsVerboseLoggingEnabled) {
                 Log.v(TAG, "ACTION_CLOSE_SYSTEM_DIALOGS received, cancelling all dialogs.");
             }
@@ -191,6 +210,10 @@ public class WifiDialogActivity extends Activity  {
     @Override
     protected void onStart() {
         super.onStart();
+        sNumActiveInstances++;
+        if (mIsVerboseLoggingEnabled) {
+            Log.v(TAG, "onStart() incrementing sActiveInstances to " + sNumActiveInstances);
+        }
         registerReceiver(
                 mCloseSystemDialogsReceiver, new IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
         ArraySet<Integer> invalidDialogIds = new ArraySet<>();
@@ -234,14 +257,35 @@ public class WifiDialogActivity extends Activity  {
     @Override
     protected void onStop() {
         super.onStop();
-        unregisterReceiver(mCloseSystemDialogsReceiver);
-        // Dismiss and remove any active Dialogs to prevent window leaking.
-        for (int i = 0; i < mActiveDialogsPerId.size(); i++) {
-            Dialog dialog = mActiveDialogsPerId.valueAt(i);
-            dialog.setOnDismissListener(null);
-            dialog.dismiss();
+        sNumActiveInstances--;
+        if (mIsVerboseLoggingEnabled) {
+            Log.v(TAG, "onStop() decrementing sActiveInstances to " + sNumActiveInstances);
         }
-        mActiveDialogsPerId.clear();
+        unregisterReceiver(mCloseSystemDialogsReceiver);
+
+        if (isChangingConfigurations()) {
+            // If we're stopping due to a configuration change, dismiss all the dialogs without
+            // removing it from mLaunchIntentsPerId to prevent window leaking. The dialogs will be
+            // recreated from mLaunchIntentsPerId in onStart().
+            for (int i = 0; i < mActiveDialogsPerId.size(); i++) {
+                Dialog dialog = mActiveDialogsPerId.valueAt(i);
+                // Set the dismiss listener to null to prevent removing the Intent from
+                // mLaunchIntentsPerId.
+                dialog.setOnDismissListener(null);
+                dialog.dismiss();
+            }
+            mActiveDialogsPerId.clear();
+            for (int i = 0; i < mActiveCountDownTimersPerId.size(); i++) {
+                mActiveCountDownTimersPerId.valueAt(i).cancel();
+            }
+            mActiveCountDownTimersPerId.clear();
+        } else if (getSystemService(PowerManager.class).isInteractive()) {
+            // If we're stopping because we're switching to a new Activity, remove and cancel all
+            // the dialogs.
+            while (mActiveDialogsPerId.size() > 0) {
+                removeIntentAndPossiblyFinish(mActiveDialogsPerId.keyAt(0));
+            }
+        }
     }
 
     @Override
@@ -255,7 +299,7 @@ public class WifiDialogActivity extends Activity  {
     }
 
     /**
-     * Remove the Intent and corresponding dialog of the given dialogId (dismissing it if it is
+     * Remove the Intent and corresponding dialog of the given dialogId (cancelling it if it is
      * showing) and finish the Activity if there are no dialogs left to show.
      */
     private void removeIntentAndPossiblyFinish(int dialogId) {
@@ -263,7 +307,12 @@ public class WifiDialogActivity extends Activity  {
         Dialog dialog = mActiveDialogsPerId.get(dialogId);
         mActiveDialogsPerId.remove(dialogId);
         if (dialog != null && dialog.isShowing()) {
-            dialog.dismiss();
+            dialog.cancel();
+        }
+        CountDownTimer timer = mActiveCountDownTimersPerId.get(dialogId);
+        mActiveCountDownTimersPerId.remove(dialogId);
+        if (timer != null) {
+            timer.cancel();
         }
         if (mIsVerboseLoggingEnabled) {
             Log.v(TAG, "Dialog id " + dialogId + " removed.");
@@ -280,7 +329,15 @@ public class WifiDialogActivity extends Activity  {
     protected void onDestroy() {
         super.onDestroy();
         if (isFinishing()) {
-            // Kill the process now instead of waiting indefinitely for ActivityManager to kill it.
+            if (sNumActiveInstances > 0) {
+                if (mIsVerboseLoggingEnabled) {
+                    Log.v(TAG, "Finished with sNumActiveInstances: " + sNumActiveInstances);
+                }
+                return;
+            }
+            if (mIsVerboseLoggingEnabled) {
+                Log.v(TAG, "Finished with no active instances left. Killing process.");
+            }
             Process.killProcess(android.os.Process.myPid());
         }
     }
@@ -294,7 +351,7 @@ public class WifiDialogActivity extends Activity  {
         if (!WifiManager.ACTION_LAUNCH_DIALOG.equals(action)) {
             return false;
         }
-        Dialog dialog = null;
+        final AlertDialog dialog;
         int dialogType = intent.getIntExtra(
                 WifiManager.EXTRA_DIALOG_TYPE, WifiManager.DIALOG_TYPE_UNKNOWN);
         switch (dialogType) {
@@ -327,7 +384,7 @@ public class WifiDialogActivity extends Activity  {
                     Log.v(TAG, "Could not create dialog with id= " + dialogId
                             + " for unknown type: " + dialogType);
                 }
-                break;
+                return false;
         }
         if (dialog == null) {
             return false;
@@ -339,11 +396,53 @@ public class WifiDialogActivity extends Activity  {
             }
             removeIntentAndPossiblyFinish(dialogId);
         });
-        dialog.setCanceledOnTouchOutside(false);
+        dialog.setCanceledOnTouchOutside(getResources().getBoolean(
+                getBooleanId("config_wifiDialogCanceledOnTouchOutside")));
         if (mGravity != Gravity.NO_GRAVITY) {
             dialog.getWindow().setGravity(mGravity);
         }
         mActiveDialogsPerId.put(dialogId, dialog);
+        long timeoutMs = intent.getLongExtra(WifiManager.EXTRA_DIALOG_TIMEOUT_MS, 0);
+        if (timeoutMs > 0) {
+            // Use the original expiration time in case we've reloaded this dialog after a
+            // configuration change.
+            long expirationTimeMs = intent.getLongExtra(EXTRA_DIALOG_EXPIRATION_TIME_MS, 0);
+            if (expirationTimeMs > 0) {
+                timeoutMs = expirationTimeMs - SystemClock.uptimeMillis();
+                if (timeoutMs < 0) {
+                    timeoutMs = 0;
+                }
+            } else {
+                intent.putExtra(
+                        EXTRA_DIALOG_EXPIRATION_TIME_MS, SystemClock.uptimeMillis() + timeoutMs);
+            }
+            CountDownTimer countDownTimer = new CountDownTimer(timeoutMs, 100) {
+                @Override
+                public void onTick(long millisUntilFinished) {
+                    if (dialogType == WifiManager.DIALOG_TYPE_P2P_INVITATION_RECEIVED) {
+                        int secondsRemaining = (int) millisUntilFinished / 1000;
+                        if (millisUntilFinished % 1000 != 0) {
+                            // Round up to the nearest whole second.
+                            secondsRemaining++;
+                        }
+                        dialog.setMessage(MessageFormat.format(
+                                getString(getStringId("wifi_p2p_invitation_seconds_remaining")),
+                                secondsRemaining));
+                    }
+                }
+
+                @Override
+                public void onFinish() {
+                    removeIntentAndPossiblyFinish(dialogId);
+                }
+            }.start();
+            mActiveCountDownTimersPerId.put(dialogId, countDownTimer);
+        } else {
+            if (dialogType == WifiManager.DIALOG_TYPE_P2P_INVITATION_RECEIVED) {
+                // Set the message back to null if we aren't using a timeout.
+                dialog.setMessage(null);
+            }
+        }
         dialog.show();
         if (mIsVerboseLoggingEnabled) {
             Log.v(TAG, "Showing dialog " + dialogId);
@@ -380,7 +479,7 @@ public class WifiDialogActivity extends Activity  {
     /**
      * Returns a simple dialog for the given Intent, or {@code null} if no dialog could be created.
      */
-    private @Nullable Dialog createSimpleDialog(
+    private @Nullable AlertDialog createSimpleDialog(
             int dialogId,
             @Nullable String title,
             @Nullable String message,
@@ -452,7 +551,7 @@ public class WifiDialogActivity extends Activity  {
      * Returns a P2P Invitation Sent Dialog for the given Intent, or {@code null} if no Dialog
      * could be created.
      */
-    private @Nullable Dialog createP2pInvitationSentDialog(
+    private @Nullable AlertDialog createP2pInvitationSentDialog(
             final int dialogId,
             final @NonNull String deviceName,
             @Nullable String displayPin) {
@@ -500,7 +599,7 @@ public class WifiDialogActivity extends Activity  {
      * Returns a P2P Invitation Received Dialog for the given Intent, or {@code null} if no Dialog
      * could be created.
      */
-    private @Nullable Dialog createP2pInvitationReceivedDialog(
+    private @Nullable AlertDialog createP2pInvitationReceivedDialog(
             final int dialogId,
             final @NonNull String deviceName,
             final boolean isPinRequested,
@@ -537,6 +636,8 @@ public class WifiDialogActivity extends Activity  {
         AlertDialog dialog = new AlertDialog.Builder(this,
                 getStyleId("wifi_p2p_invitation_received_dialog"))
                 .setTitle(getString(getStringId("wifi_p2p_invitation_to_connect_title")))
+                // Set the message to "" to allow us to modify it after building (b/36913966).
+                .setMessage("")
                 .setView(textEntryView)
                 .setPositiveButton(getStringId("accept"), (dialogPositive, which) -> {
                     String pin = null;
@@ -564,6 +665,34 @@ public class WifiDialogActivity extends Activity  {
                     getWifiManager().replyToP2pInvitationReceivedDialog(dialogId, false, null);
                 })
                 .create();
+        if (pinEditText != null) {
+            dialog.getWindow().setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+            dialog.setOnShowListener(dialogShow -> {
+                pinEditText.requestFocus();
+                dialog.getButton(Dialog.BUTTON_POSITIVE).setEnabled(false);
+            });
+            pinEditText.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    // No-op.
+                }
+
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                    // No-op.
+                }
+
+                @Override
+                public void afterTextChanged(Editable s) {
+                    if (s.length() == 4 || s.length() == 8) {
+                        dialog.getButton(Dialog.BUTTON_POSITIVE).setEnabled(true);
+                    } else {
+                        dialog.getButton(Dialog.BUTTON_POSITIVE).setEnabled(false);
+                    }
+                }
+            });
+        }
         if ((getResources().getConfiguration().uiMode & Configuration.UI_MODE_TYPE_APPLIANCE)
                 == Configuration.UI_MODE_TYPE_APPLIANCE) {
             // For appliance devices, add a key listener which accepts.

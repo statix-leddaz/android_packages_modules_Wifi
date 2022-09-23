@@ -140,7 +140,7 @@ public class WifiKeyStore {
             }
         }
         // If alias changed, remove the old one.
-        if (!alias.equals(existingAlias)) {
+        if (!TextUtils.equals(alias, existingAlias)) {
             if (existingConfig != null && existingConfig.isAppInstalledDeviceKeyAndCert()) {
                 // Remove old private keys.
                 removeEntryFromKeyStore(existingAlias);
@@ -219,11 +219,12 @@ public class WifiKeyStore {
      * Remove enterprise keys from the network config.
      *
      * @param config Config corresponding to the network.
+     * @param forceRemove remove keys regardless of the key installer.
      */
-    public void removeKeys(WifiEnterpriseConfig config) {
+    public void removeKeys(WifiEnterpriseConfig config, boolean forceRemove) {
         Preconditions.checkNotNull(mKeyStore);
         // Do not remove keys that were manually installed by the user
-        if (config.isAppInstalledDeviceKeyAndCert()) {
+        if (forceRemove || config.isAppInstalledDeviceKeyAndCert()) {
             String client = config.getClientCertificateAlias();
             // a valid client certificate is configured
             if (!TextUtils.isEmpty(client)) {
@@ -237,7 +238,7 @@ public class WifiKeyStore {
         }
 
         // Do not remove CA certs that were manually installed by the user
-        if (config.isAppInstalledCaCert()) {
+        if (forceRemove || config.isAppInstalledCaCert()) {
             String[] aliases = config.getCaCertificateAliases();
             if (aliases == null || aliases.length == 0) {
                 return;
@@ -404,7 +405,7 @@ public class WifiKeyStore {
         // support for both RSA and ECDSA, and for STAs it mandates ECDSA and optionally
         // RSA. In order to be compatible with all WPA3-Enterprise 192-bit deployments,
         // we are supporting both types here.
-        if (sigAlgOid.equals("1.2.840.113549.1.1.12")) {
+        if (TextUtils.equals(sigAlgOid, "1.2.840.113549.1.1.12")) {
             // sha384WithRSAEncryption
             if (x509Certificate.getPublicKey() instanceof RSAPublicKey) {
                 final RSAPublicKey rsaPublicKey = (RSAPublicKey) x509Certificate.getPublicKey();
@@ -418,7 +419,7 @@ public class WifiKeyStore {
                     }
                 }
             }
-        } else if (sigAlgOid.equals("1.2.840.10045.4.3.3")) {
+        } else if (TextUtils.equals(sigAlgOid, "1.2.840.10045.4.3.3")) {
             // ecdsa-with-SHA384
             if (x509Certificate.getPublicKey() instanceof ECPublicKey) {
                 final ECPublicKey ecPublicKey = (ECPublicKey) x509Certificate.getPublicKey();
