@@ -16,6 +16,24 @@
       "message": "Can we abandon this CL? I can see you close the bug now.\n",
       "revId": "543a4e04279a3a4ab6d016da57c5129dfcc64098",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "c1d4de56_822354b9",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1944786
+      },
+      "writtenOn": "2022-09-29T07:57:55Z",
+      "side": 1,
+      "message": "ok",
+      "parentUuid": "bc8b1cec_2fb52b5f",
+      "revId": "543a4e04279a3a4ab6d016da57c5129dfcc64098",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
