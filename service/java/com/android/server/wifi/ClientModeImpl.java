@@ -1229,7 +1229,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 return;
             }
             WifiConfiguration configuration = mWifiConfigManager.getConfiguredNetwork(networkId);
-            if (configuration.subscriptionId == subscriptionId
+            if (configuration != null && configuration.subscriptionId == subscriptionId
                     && configuration.carrierMerged == merged) {
                 Log.i(getTag(), "Carrier network offload disabled, triggering disconnect");
                 sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_CARRIER_OFFLOAD_DISABLED);
@@ -1714,6 +1714,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     /** Stop this ClientModeImpl. Do not interact with ClientModeImpl after it has been stopped. */
     public void stop() {
+        mInsecureEapNetworkHandler.cleanup();
         mSupplicantStateTracker.stop();
         mWifiScoreCard.noteWifiDisabled(mWifiInfo);
         // capture StateMachine LogRecs since we will lose them after we call quitNow()
@@ -1738,7 +1739,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (mDeviceConfigFacade.isAbnormalConnectionFailureBugreportEnabled()) {
             int reasonCode = mWifiScoreCard.detectAbnormalConnectionFailure(ssid);
             if (reasonCode != WifiHealthMonitor.REASON_NO_FAILURE) {
-                String bugTitle = "Wi-Fi BugReport";
+                String bugTitle = "Wi-Fi BugReport: abnormal "
+                        + WifiHealthMonitor.FAILURE_REASON_NAME[reasonCode];
                 String bugDetail = "Detect abnormal "
                         + WifiHealthMonitor.FAILURE_REASON_NAME[reasonCode];
                 mWifiDiagnostics.takeBugReport(bugTitle, bugDetail);
@@ -1750,7 +1752,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (mDeviceConfigFacade.isAbnormalDisconnectionBugreportEnabled()) {
             int reasonCode = mWifiScoreCard.detectAbnormalDisconnection(mInterfaceName);
             if (reasonCode != WifiHealthMonitor.REASON_NO_FAILURE) {
-                String bugTitle = "Wi-Fi BugReport";
+                String bugTitle = "Wi-Fi BugReport: abnormal "
+                        + WifiHealthMonitor.FAILURE_REASON_NAME[reasonCode];
                 String bugDetail = "Detect abnormal "
                         + WifiHealthMonitor.FAILURE_REASON_NAME[reasonCode];
                 mWifiDiagnostics.takeBugReport(bugTitle, bugDetail);
@@ -3216,7 +3219,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (mDeviceConfigFacade.isOverlappingConnectionBugreportEnabled()
                 && overlapWithLastConnectionMs
                 > mDeviceConfigFacade.getOverlappingConnectionDurationThresholdMs()) {
-            String bugTitle = "Wi-Fi BugReport";
+            String bugTitle = "Wi-Fi BugReport: overlapping connection";
             String bugDetail = "Detect abnormal overlapping connection";
             mWifiDiagnostics.takeBugReport(bugTitle, bugDetail);
         }
@@ -5027,6 +5030,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             String decoratedPseudonym = mWifiCarrierInfoManager
                                     .decoratePseudonymWith3GppRealm(config,
                                             anonymousIdentity);
+                            boolean updateToNativeService = false;
                             if (decoratedPseudonym != null
                                     && !decoratedPseudonym.equals(anonymousIdentity)) {
                                 anonymousIdentity = decoratedPseudonym;
@@ -5036,9 +5040,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 if (mVerboseLoggingEnabled) {
                                     log("Update decorated pseudonym: " + anonymousIdentity);
                                 }
-                                mWifiNative.setEapAnonymousIdentity(mInterfaceName,
-                                        anonymousIdentity);
+                                updateToNativeService = true;
                             }
+                            mWifiNative.setEapAnonymousIdentity(mInterfaceName,
+                                    anonymousIdentity, updateToNativeService);
                             if (mVerboseLoggingEnabled) {
                                 log("EAP Pseudonym: " + anonymousIdentity);
                             }
@@ -5102,7 +5107,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
                                 isConnected());
                     }
-                    WifiConfiguration config = getConnectingWifiConfigurationInternal();
+                    WifiConfiguration config = getConnectedWifiConfigurationInternal();
+                    if (config == null) {
+                        config = getConnectingWifiConfigurationInternal();
+                    }
                     clearNetworkCachedDataIfNeeded(config, eventInfo.reasonCode);
                     try {
                         logEventIfManagedNetwork(config,
@@ -7511,9 +7519,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
 
         SecurityParams params = mWifiNative.getCurrentNetworkSecurityParams(mInterfaceName);
-        if (params == null || !params.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
-            return;
-        }
+        if (params == null) return;
+
+        WifiConfiguration tmpConfigForCurrentSecurityParams = new WifiConfiguration();
+        tmpConfigForCurrentSecurityParams.setSecurityParams(params);
+        if (!WifiConfigurationUtil.isConfigLinkable(tmpConfigForCurrentSecurityParams)) return;
 
         // check for FT/PSK
         ScanResult scanResult = mScanRequestProxy.getScanResult(mLastBssid);
