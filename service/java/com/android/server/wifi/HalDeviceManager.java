@@ -1689,34 +1689,56 @@ public class HalDeviceManager {
             newChipMode.id = oldChipMode.id;
             newChipMode.availableCombinations = new ArrayList<>();
             for (IWifiChip.ChipIfaceCombination oldCombo : oldChipMode.availableCombinations) {
-                android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombination newCombo =
-                        new ChipConcurrencyCombination();
+                android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombination
+                        newCombo = new ChipConcurrencyCombination();
                 newCombo.limits = new ArrayList<>();
-                boolean isStaInCombination = false;
-                for (IWifiChip.ChipIfaceCombinationLimit oldLimit : oldCombo.limits) {
-                    if (oldLimit.types.contains(IfaceType.STA)) {
-                        isStaInCombination = true;
-                        break;
-                    }
-                }
-                // Add Bridged AP based on the overlays
-                boolean canAddBridgedAp = isBridgedSoftApSupportedMockable() && !(isStaInCombination
-                        && !isStaWithBridgedSoftApConcurrencySupportedMockable());
+                // Define a duplicate combination list with AP converted to AP_BRIDGED
+                android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombination
+                        newComboWithBridgedAp = new ChipConcurrencyCombination();
+                newComboWithBridgedAp.limits = new ArrayList<>();
+                ChipConcurrencyCombinationLimit bridgedApLimit =
+                        new ChipConcurrencyCombinationLimit();
+                bridgedApLimit.maxIfaces = 1;
+                bridgedApLimit.types = new ArrayList<>();
+                bridgedApLimit.types.add(IfaceConcurrencyType.AP_BRIDGED);
+                newComboWithBridgedAp.limits.add(bridgedApLimit);
+
+                boolean apInCombo = false;
+                // Populate both the combo with AP_BRIDGED and the combo without AP_BRIDGED
                 for (IWifiChip.ChipIfaceCombinationLimit oldLimit : oldCombo.limits) {
                     ChipConcurrencyCombinationLimit newLimit =
                             new ChipConcurrencyCombinationLimit();
                     newLimit.types = new ArrayList<>();
-                    for (int oldType : oldLimit.types) {
-                        int newType = IFACE_TYPE_TO_CONCURRENCY_TYPE_MAP.get(oldType);
-                        newLimit.types.add(newType);
-                        if (oldType == IfaceType.AP && canAddBridgedAp) {
-                            newLimit.types.add(IfaceConcurrencyType.AP_BRIDGED);
-                        }
-                    }
                     newLimit.maxIfaces = oldLimit.maxIfaces;
+                    for (int oldType : oldLimit.types) {
+                        newLimit.types.add(IFACE_TYPE_TO_CONCURRENCY_TYPE_MAP.get(oldType));
+                    }
                     newCombo.limits.add(newLimit);
+
+                    ChipConcurrencyCombinationLimit newLimitForBridgedApCombo =
+                            new ChipConcurrencyCombinationLimit();
+                    newLimitForBridgedApCombo.types = new ArrayList<>(newLimit.types);
+                    newLimitForBridgedApCombo.maxIfaces = newLimit.maxIfaces;
+                    if (newLimitForBridgedApCombo.types.contains(IfaceConcurrencyType.AP)) {
+                        // Skip the limit if it contains AP, since this corresponds to the
+                        // AP_BRIDGED in the duplicate AP_BRIDGED combo.
+                        apInCombo = true;
+                    } else if (!isStaWithBridgedSoftApConcurrencySupportedMockable()
+                            && newLimitForBridgedApCombo.types.contains(IfaceConcurrencyType.STA)) {
+                        // Don't include STA in the AP_BRIDGED combo if STA + AP_BRIDGED is not
+                        // supported.
+                        newLimitForBridgedApCombo.types.remove((Integer) IfaceConcurrencyType.STA);
+                        if (!newLimitForBridgedApCombo.types.isEmpty()) {
+                            newComboWithBridgedAp.limits.add(newLimitForBridgedApCombo);
+                        }
+                    } else {
+                        newComboWithBridgedAp.limits.add(newLimitForBridgedApCombo);
+                    }
                 }
                 newChipMode.availableCombinations.add(newCombo);
+                if (isBridgedSoftApSupportedMockable() && apInCombo) {
+                    newChipMode.availableCombinations.add(newComboWithBridgedAp);
+                }
             }
             newChipModes.add(newChipMode);
         }
@@ -2263,8 +2285,8 @@ public class HalDeviceManager {
     private class IfaceCreationData {
         public WifiChipInfo chipInfo;
         public int chipModeId;
-        public List<WifiIfaceInfo> interfacesToBeRemovedFirst;
-        public List<WifiIfaceInfo> interfacesToBeDowngraded;
+        public @NonNull List<WifiIfaceInfo> interfacesToBeRemovedFirst = new ArrayList<>();
+        public @NonNull List<WifiIfaceInfo> interfacesToBeDowngraded = new ArrayList<>();
 
         @Override
         public String toString() {
@@ -2309,6 +2331,10 @@ public class HalDeviceManager {
             return null;
         }
 
+        IfaceCreationData ifaceCreationData = new IfaceCreationData();
+        ifaceCreationData.chipInfo = chipInfo;
+        ifaceCreationData.chipModeId = chipModeId;
+
         boolean isChipModeChangeProposed =
                 chipInfo.currentModeIdValid && chipInfo.currentModeId != chipModeId;
 
@@ -2328,16 +2354,10 @@ public class HalDeviceManager {
             }
 
             // but if priority allows the mode change then we're good to go
-            IfaceCreationData ifaceCreationData = new IfaceCreationData();
-            ifaceCreationData.chipInfo = chipInfo;
-            ifaceCreationData.chipModeId = chipModeId;
-
             return ifaceCreationData;
         }
 
         // possibly supported
-        List<WifiIfaceInfo> interfacesToBeRemovedFirst = new ArrayList<>();
-        List<WifiIfaceInfo> interfacesToBeDowngraded = new ArrayList<>();
         for (int existingCreateType : CREATE_TYPES_BY_PRIORITY) {
             WifiIfaceInfo[] createTypeIfaces = chipInfo.ifaces[existingCreateType];
             int numExcessIfaces = createTypeIfaces.length - chipCreateTypeCombo[existingCreateType];
@@ -2354,9 +2374,12 @@ public class HalDeviceManager {
                         availableSingleApCapacity -= 1;
                     }
                     if (availableSingleApCapacity >= numExcessIfaces) {
-                        interfacesToBeDowngraded = selectBridgedApInterfacesToDowngrade(
+                        List<WifiIfaceInfo> interfacesToBeDowngraded =
+                                selectBridgedApInterfacesToDowngrade(
                                         numExcessIfaces, createTypeIfaces);
                         if (interfacesToBeDowngraded != null) {
+                            ifaceCreationData.interfacesToBeDowngraded.addAll(
+                                    interfacesToBeDowngraded);
                             continue;
                         }
                         // Can't downgrade enough bridged APs, fall through to delete them.
@@ -2374,16 +2397,9 @@ public class HalDeviceManager {
                     }
                     return null;
                 }
-                interfacesToBeRemovedFirst.addAll(selectedIfacesToDelete);
+                ifaceCreationData.interfacesToBeRemovedFirst.addAll(selectedIfacesToDelete);
             }
         }
-
-        IfaceCreationData ifaceCreationData = new IfaceCreationData();
-        ifaceCreationData.chipInfo = chipInfo;
-        ifaceCreationData.chipModeId = chipModeId;
-        ifaceCreationData.interfacesToBeRemovedFirst = interfacesToBeRemovedFirst;
-        ifaceCreationData.interfacesToBeDowngraded = interfacesToBeDowngraded;
-
         return ifaceCreationData;
     }
 
@@ -2442,10 +2458,8 @@ public class HalDeviceManager {
             }
         }
 
-        int val1NumIFacesToBeDowngraded = val1.interfacesToBeDowngraded != null
-                ? val1.interfacesToBeDowngraded.size() : 0;
-        int val2NumIFacesToBeDowngraded = val2.interfacesToBeDowngraded != null
-                ? val2.interfacesToBeDowngraded.size() : 0;
+        int val1NumIFacesToBeDowngraded = val1.interfacesToBeDowngraded.size();
+        int val2NumIFacesToBeDowngraded = val2.interfacesToBeDowngraded.size();
         if (val1NumIFacesToBeDowngraded != val2NumIFacesToBeDowngraded) {
             return val1NumIFacesToBeDowngraded < val2NumIFacesToBeDowngraded;
         }
