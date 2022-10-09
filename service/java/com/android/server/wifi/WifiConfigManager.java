@@ -551,12 +551,8 @@ public class WifiConfigManager {
                 mRandomizedMacAddressMapping.remove(config.getNetworkKey());
             }
         }
-        MacAddress result = mMacAddressUtil.calculatePersistentMac(config.getNetworkKey(),
-                mMacAddressUtil.obtainMacRandHashFunction(Process.WIFI_UID));
-        if (result == null) {
-            result = mMacAddressUtil.calculatePersistentMac(config.getNetworkKey(),
-                    mMacAddressUtil.obtainMacRandHashFunction(Process.WIFI_UID));
-        }
+        MacAddress result = mMacAddressUtil.calculatePersistentMacForSta(config.getNetworkKey(),
+                Process.WIFI_UID);
         if (result == null) {
             Log.wtf(TAG, "Failed to generate MAC address from KeyStore even after retrying. "
                     + "Using locally generated MAC address instead.");
@@ -1612,6 +1608,20 @@ public class WifiConfigManager {
             }
         }
         return result;
+    }
+
+    /**
+     * Adds a network configuration to our database if a matching configuration cannot be found.
+     * @param config provided WifiConfiguration object.
+     * @param uid    UID of the app requesting the network addition.
+     * @return
+     */
+    public NetworkUpdateResult addNetwork(WifiConfiguration config, int uid) {
+        config.convertLegacyFieldsToSecurityParamsIfNeeded();
+        if (getInternalConfiguredNetwork(config) == null) {
+            return addOrUpdateNetwork(config, uid);
+        }
+        return new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID);
     }
 
     /**
