@@ -46,6 +46,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -75,6 +76,7 @@ import android.hidl.manager.V1_0.IServiceNotification;
 import android.hidl.manager.V1_2.IServiceManager;
 import android.net.wifi.WifiContext;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IHwBinder;
 import android.os.RemoteException;
 import android.os.WorkSource;
@@ -159,6 +161,7 @@ public class HalDeviceManagerTest extends WifiBaseTest {
     private boolean mIsBridgedSoftApSupported = false;
     private boolean mIsStaWithBridgedSoftApConcurrencySupported = false;
     private boolean mWifiUserApprovalRequiredForD2dInterfacePriority = false;
+    private boolean mWaitForDestroyedListeners = false;
 
     private class HalDeviceManagerSpy extends HalDeviceManager {
         HalDeviceManagerSpy() {
@@ -210,6 +213,11 @@ public class HalDeviceManagerTest extends WifiBaseTest {
         protected boolean isStaWithBridgedSoftApConcurrencySupportedMockable() {
             return mIsStaWithBridgedSoftApConcurrencySupported;
         }
+
+        @Override
+        protected boolean isWaitForDestroyedListenersMockable() {
+            return mWaitForDestroyedListeners;
+        }
     }
 
     @Before
@@ -256,6 +264,8 @@ public class HalDeviceManagerTest extends WifiBaseTest {
                 .thenReturn(mIsStaWithBridgedSoftApConcurrencySupported);
         when(mResources.getBoolean(R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority))
                 .thenReturn(mWifiUserApprovalRequiredForD2dInterfacePriority);
+        when(mResources.getBoolean(R.bool.config_wifiWaitForDestroyedListeners))
+                .thenReturn(mWaitForDestroyedListeners);
 
         mDut = new HalDeviceManagerSpy();
     }
@@ -1164,6 +1174,48 @@ public class HalDeviceManagerTest extends WifiBaseTest {
         verify(staIdl, never()).onDestroyed("wlan0");
         lambdaCaptor.getValue().run();
         verify(staIdl).onDestroyed("wlan0");
+    }
+
+    /**
+     * Verify that when the thread that caused an interface to get destroyed is not the thread the
+     * onDestroy callback is intended to be invoked on, dispatchDestroyedListeners will block till
+     * onDestroy callback is done, provided the overlay config_wifiWaitForDestroyedListeners is
+     * True.
+     */
+    @Test
+    public void testOnDestroyedWaitingWithHandlerTriggeredOnDifferentThread() throws Exception {
+        // Enable waiting for destroy listeners
+        mWaitForDestroyedListeners = true;
+        // Setup a separate thread for destroy
+        HandlerThread mHandlerThread = new HandlerThread("DestroyListener");
+        mHandlerThread.start();
+        Handler staIfaceOnDestroyedHandler = spy(mHandlerThread.getThreadHandler());
+        InterfaceDestroyedListener staIdl = mock(InterfaceDestroyedListener.class);
+        // Setup Wi-Fi
+        TestChipV1 chipMock = new TestChipV1();
+        chipMock.initialize();
+        mInOrder = inOrder(mServiceManagerMock, mWifiMock, mWifiMockV15, staIdl, chipMock.chip);
+        executeAndValidateInitializationSequence();
+        // Start Wi-Fi
+        assertTrue(mDut.start());
+        // Create STA Iface.
+        IWifiStaIface staIface = mock(IWifiStaIface.class);
+        doAnswer(new GetNameAnswer("wlan0")).when(staIface).getName(
+                any(IWifiIface.getNameCallback.class));
+        doAnswer(new GetTypeAnswer(IfaceType.STA)).when(staIface).getType(
+                any(IWifiIface.getTypeCallback.class));
+        doAnswer(new CreateXxxIfaceAnswer(chipMock, mStatusOk, staIface)).when(
+                chipMock.chip).createStaIface(any(IWifiChip.createStaIfaceCallback.class));
+        assertEquals(staIface, mDut.createStaIface(staIdl, staIfaceOnDestroyedHandler,
+                TEST_WORKSOURCE_0));
+        // Remove STA interface
+        mDut.removeIface(staIface);
+        // Dispatch
+        mTestLooper.startAutoDispatch();
+        mTestLooper.dispatchAll();
+        // Validate OnDestroyed is called before removing interface.
+        mInOrder.verify(staIdl).onDestroyed("wlan0");
+        mInOrder.verify(chipMock.chip).removeStaIface("wlan0");
     }
 
     /**
@@ -3245,13 +3297,51 @@ public class HalDeviceManagerTest extends WifiBaseTest {
     }
 
     /**
-     * Validate creation of AP Bridge interface fails if there is a STA up and the device doesn't
+     * Validate creation of AP Bridge interface must destroy an existing STA if the device doesn't
      * support STA + Bridged AP.
      */
     @Test
-    public void testCreateApBridgeInterfaceWithStaV15() throws Exception {
+    public void testCreateApBridgeInterfaceWithoutStaBridgedApConcurrencyV15() throws Exception {
         mIsBridgedSoftApSupported = true;
         mIsStaWithBridgedSoftApConcurrencySupported = false;
+        TestChipV5 chipMock = new TestChipV5();
+        setupWifiChipV15(chipMock);
+        chipMock.initialize();
+        mInOrder = inOrder(mServiceManagerMock, mWifiMock, mWifiMockV15, chipMock.chip,
+                mWifiChipV15, mManagerStatusListenerMock);
+        executeAndValidateInitializationSequence();
+        executeAndValidateStartupSequence();
+
+        InterfaceDestroyedListener idl = mock(
+                InterfaceDestroyedListener.class);
+
+        // Create the STA
+        IWifiIface iface = validateInterfaceSequence(chipMock,
+                false, // chipModeValid
+                -1000, // chipModeId (only used if chipModeValid is true)
+                HDM_CREATE_IFACE_STA,
+                "wlan0",
+                TestChipV5.CHIP_MODE_ID,
+                null, // tearDownList
+                idl, // destroyedListener
+                TEST_WORKSOURCE_0 // requestorWs
+        );
+        collector.checkThat("interface was null", iface, IsNull.notNullValue());
+
+        // Cannot create Bridged AP without destroying the STA
+        List<Pair<Integer, WorkSource>> bridgedApDetails = mDut.reportImpactToCreateIface(
+                HDM_CREATE_IFACE_AP_BRIDGE, true, TEST_WORKSOURCE_0);
+        assertFalse(bridgedApDetails.isEmpty());
+    }
+
+    /**
+     * Validate creation of AP Bridge interface succeeds if there is a STA up and the device
+     * supports STA + Bridged AP.
+     */
+    @Test
+    public void testCreateApBridgeInterfaceWithStaBridgedApConcurrencyV15() throws Exception {
+        mIsBridgedSoftApSupported = true;
+        mIsStaWithBridgedSoftApConcurrencySupported = true;
         TestChipV5 chipMock = new TestChipV5();
         setupWifiChipV15(chipMock);
         chipMock.initialize();
@@ -3277,13 +3367,7 @@ public class HalDeviceManagerTest extends WifiBaseTest {
 
         List<Pair<Integer, WorkSource>> bridgedApDetails = mDut.reportImpactToCreateIface(
                 HDM_CREATE_IFACE_AP_BRIDGE, true, TEST_WORKSOURCE_1);
-        // STA + AP_BRIDGED is not supported
-        assertNull(bridgedApDetails);
-
-        mIsStaWithBridgedSoftApConcurrencySupported = true;
-        bridgedApDetails = mDut.reportImpactToCreateIface(
-                HDM_CREATE_IFACE_AP_BRIDGE, true, TEST_WORKSOURCE_1);
-        // STA + AP_BRIDGED supported
+        // STA + AP_BRIDGED not supported
         assertEquals(0, bridgedApDetails.size());
     }
 
@@ -3737,6 +3821,119 @@ public class HalDeviceManagerTest extends WifiBaseTest {
                 TEST_WORKSOURCE_0 // requestorWs
         );
         collector.checkThat("interface was null", iface, IsNull.notNullValue());
+    }
+
+    /**
+     * Validates available modes after driver ready.
+     */
+    @Test
+    public void testCanDeviceSupportCreateTypeComboAfterDriverReadyChipV10() throws Exception {
+        TestChipV10 chipMock = new TestChipV10();
+        chipMock.initialize();
+        mInOrder = inOrder(mServiceManagerMock, mWifiMock, mWifiMockV15, chipMock.chip,
+                mManagerStatusListenerMock);
+        executeAndValidateInitializationSequence();
+
+        // Try to query AP support before starting the HAL. Should return false without any
+        // stored static chip info.
+        when(mWifiMock.isStarted()).thenReturn(false);
+        assertFalse(mDut.canDeviceSupportCreateTypeCombo(new SparseArray<Integer>() {{
+                put(IfaceConcurrencyType.AP, 1);
+            }}
+        ));
+        verify(mWifiMock, never()).getChipIds(any());
+        when(mWifiMock.isStarted()).thenReturn(true);
+
+        // Start the HAL
+        executeAndValidateStartupSequence();
+
+        // Still can't create AP since driver isn't ready.
+        assertFalse(mDut.canDeviceSupportCreateTypeCombo(new SparseArray<Integer>() {{
+                put(IfaceConcurrencyType.AP, 1);
+            }}
+        ));
+
+        // Create a STA to get the available modes driver and save it to store.
+        validateInterfaceSequence(chipMock,
+                false, // chipModeValid
+                -1000, // chipModeId (only used if chipModeValid is true)
+                HDM_CREATE_IFACE_STA, // ifaceTypeToCreate
+                "wlan0", // ifaceName
+                TestChipV10.CHIP_MODE_ID, // finalChipMode
+                null, // tearDownList
+                mock(InterfaceDestroyedListener.class), // destroyedListener
+                TEST_WORKSOURCE_0 // requestorWs
+        );
+        verify(mWifiSettingsConfigStore).put(eq(WifiSettingsConfigStore.WIFI_STATIC_CHIP_INFO),
+                eq(new JSONArray(TestChipV10.STATIC_CHIP_INFO_JSON_STRING).toString()));
+
+        // Now we can create the AP
+        validateInterfaceSequence(chipMock,
+                true, // chipModeValid
+                TestChipV10.CHIP_MODE_ID, // finalChipMode
+                HDM_CREATE_IFACE_AP, // ifaceTypeToCreate
+                "wlan0", // ifaceName
+                TestChipV10.CHIP_MODE_ID, // finalChipMode
+                null, // tearDownList
+                mock(InterfaceDestroyedListener.class), // destroyedListener
+                TEST_WORKSOURCE_0 // requestorWs
+        );
+
+        // Stop and start Wifi and re-initialize the chip to the default available modes.
+        mDut.stop();
+        chipMock.initialize();
+        mInOrder = inOrder(mServiceManagerMock, mWifiMock, mWifiMockV15, chipMock.chip,
+                mManagerStatusListenerMock);
+        executeAndValidateInitializationSequence();
+
+        // Try creating an AP again -- should succeed since we're using the cached
+        // available modes we loaded from the driver.
+        validateInterfaceSequence(chipMock,
+                false, // chipModeValid
+                -1000, // chipModeId (only used if chipModeValid is true)
+                HDM_CREATE_IFACE_AP, // ifaceTypeToCreate
+                "wlan0", // ifaceName
+                TestChipV10.CHIP_MODE_ID, // finalChipMode
+                null, // tearDownList
+                mock(InterfaceDestroyedListener.class), // destroyedListener
+                TEST_WORKSOURCE_0 // requestorWs
+        );
+    }
+
+    /**
+     * Validate only one Bridged AP can be created with TestChipV11, which supports AP + AP.
+     */
+    @Test
+    public void testCreateOnlyOneApBridgedInterfaceTestChipV11() throws Exception {
+        mIsBridgedSoftApSupported = true;
+        TestChipV11 chipMock = new TestChipV11();
+        chipMock.initialize();
+        setupWifiChipV15(chipMock);
+        mInOrder = inOrder(mServiceManagerMock, mWifiMock, mWifiMockV15, chipMock.chip,
+                mWifiChipV15, mManagerStatusListenerMock);
+        executeAndValidateInitializationSequence();
+        executeAndValidateStartupSequence();
+
+        // Get the first Bridged AP
+        ArrayList<String> bridgedApInstances = new ArrayList<>();
+        bridgedApInstances.add("instance0");
+        bridgedApInstances.add("instance1");
+        chipMock.bridgedApInstancesByName.put("wlan0", bridgedApInstances);
+        IWifiIface apBridgedIface = validateInterfaceSequence(chipMock,
+                false, // chipModeValid
+                -1000, // chipModeId (only used if chipModeValid is true)
+                HDM_CREATE_IFACE_AP_BRIDGE, // ifaceTypeToCreate
+                "wlan0", // ifaceName
+                TestChipV11.CHIP_MODE_ID, // finalChipMode
+                null, // tearDownList
+                mock(InterfaceDestroyedListener.class), // destroyedListener
+                TEST_WORKSOURCE_0 // requestorWs
+        );
+        collector.checkThat("Bridged AP not created", apBridgedIface, IsNull.notNullValue());
+
+        // Should not be able to create a second Bridged AP.
+        assertNull(mDut.reportImpactToCreateIface(
+                HDM_CREATE_IFACE_AP_BRIDGE, true, 0, TEST_WORKSOURCE_0));
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -4315,6 +4512,7 @@ public class HalDeviceManagerTest extends WifiBaseTest {
         public WifiStatus answer(int chipMode) {
             mChipMockBase.chipModeValid = true;
             mChipMockBase.chipModeId = chipMode;
+            mChipMockBase.onChipConfigured();
             return mStatusOk;
         }
     }
@@ -4620,6 +4818,10 @@ public class HalDeviceManagerTest extends WifiBaseTest {
                     .when(chip).getSupportedRadioCombinationsMatrix(
                             any(android.hardware.wifi.V1_6.IWifiChip
                                     .getSupportedRadioCombinationsMatrixCallback.class));
+        }
+
+        void onChipConfigured() {
+            // Do nothing
         }
     }
 
@@ -5342,6 +5544,202 @@ public class HalDeviceManagerTest extends WifiBaseTest {
                             android.hardware.wifi.V1_6.IWifiChip.getAvailableModes_1_6Callback
                                     .class));
             mWifiChipV16 = chip;
+        }
+    }
+
+
+    // Test chip configuration V10 to test available modes from driver:
+    // Default:
+    //     mode: STA
+    // After driver ready:
+    //     mode: STA + AP
+    private class TestChipV10 extends ChipMockBase {
+        static final int CHIP_MODE_ID = 100;
+        static final String STATIC_CHIP_INFO_JSON_STRING = "["
+                + "    {"
+                + "        \"chipId\": 10,"
+                + "        \"chipCapabilities\": -1,"
+                + "        \"availableModes\": ["
+                + "            {"
+                + "                \"id\": 100,"
+                + "                \"availableCombinations\": ["
+                + "                    {"
+                + "                        \"limits\": ["
+                + "                            {"
+                + "                                \"maxIfaces\": 1,"
+                + "                                \"types\": [0]"
+                + "                            },"
+                + "                            {"
+                + "                                \"maxIfaces\": 1,"
+                + "                                \"types\": [1]"
+                + "                            }"
+                + "                        ]"
+                + "                    }"
+                + "                ]"
+                + "            }"
+                + "        ]"
+                + "    }"
+                + "]";
+
+        void initialize() throws Exception {
+            super.initialize();
+
+            // chip Id configuration
+            ArrayList<Integer> chipIds;
+            chipId = 10;
+            chipIds = new ArrayList<>();
+            chipIds.add(chipId);
+            doAnswer(new GetChipIdsAnswer(mStatusOk, chipIds)).when(mWifiMock).getChipIds(
+                    any(IWifi.getChipIdsCallback.class));
+
+            doAnswer(new GetChipAnswer(mStatusOk, chip)).when(mWifiMock).getChip(eq(10),
+                    any(IWifi.getChipCallback.class));
+
+            // initialize placeholder chip modes
+            configureDefaultAvailableModes();
+
+            chipModeIdValidForRtt = CHIP_MODE_ID;
+
+            doAnswer(new GetAvailableModesAnswer(this)).when(chip)
+                    .getAvailableModes(any(IWifiChip.getAvailableModesCallback.class));
+        }
+
+        // STA
+        void configureDefaultAvailableModes() {
+            IWifiChip.ChipMode cm;
+            IWifiChip.ChipIfaceCombination cic;
+            IWifiChip.ChipIfaceCombinationLimit cicl;
+
+            availableModes = new ArrayList<>();
+            cm = new IWifiChip.ChipMode();
+            cm.id = CHIP_MODE_ID;
+
+            cic = new IWifiChip.ChipIfaceCombination();
+
+            cicl = new IWifiChip.ChipIfaceCombinationLimit();
+            cicl.maxIfaces = 1;
+            cicl.types.add(IfaceType.STA);
+            cic.limits.add(cicl);
+
+            cm.availableCombinations.add(cic);
+            availableModes.add(cm);
+        }
+
+        // STA + AP
+        void configureDriverAvailableModes() {
+            IWifiChip.ChipMode cm;
+            IWifiChip.ChipIfaceCombination cic;
+            IWifiChip.ChipIfaceCombinationLimit cicl;
+
+            availableModes = new ArrayList<>();
+            cm = new IWifiChip.ChipMode();
+            cm.id = CHIP_MODE_ID;
+
+            cic = new IWifiChip.ChipIfaceCombination();
+
+            cicl = new IWifiChip.ChipIfaceCombinationLimit();
+            cicl.maxIfaces = 1;
+            cicl.types.add(IfaceType.STA);
+            cic.limits.add(cicl);
+
+            cicl = new IWifiChip.ChipIfaceCombinationLimit();
+            cicl.maxIfaces = 1;
+            cicl.types.add(IfaceType.AP);
+            cic.limits.add(cicl);
+
+            cm.availableCombinations.add(cic);
+            availableModes.add(cm);
+        }
+
+        @Override
+        void onChipConfigured() {
+            configureDriverAvailableModes();
+        }
+    }
+
+    // Test chip configuration V11 to test HAL V1.0 AP + AP combination with bridged AP:
+    private class TestChipV11 extends ChipMockBase {
+        static final int CHIP_MODE_ID = 110;
+
+        void initialize() throws Exception {
+            super.initialize();
+            // chip Id configuration
+            ArrayList<Integer> chipIds;
+            chipId = 11;
+            chipIds = new ArrayList<>();
+            chipIds.add(chipId);
+            doAnswer(new GetChipIdsAnswer(mStatusOk, chipIds)).when(mWifiMock).getChipIds(
+                    any(IWifi.getChipIdsCallback.class));
+
+            doAnswer(new GetChipAnswer(mStatusOk, chip)).when(mWifiMock).getChip(eq(chipId),
+                    any(IWifi.getChipCallback.class));
+
+            // initialize placeholder chip modes
+            IWifiChip.ChipMode cm;
+            IWifiChip.ChipIfaceCombination cic;
+            IWifiChip.ChipIfaceCombinationLimit cicl;
+
+            availableModes = new ArrayList<>();
+            cm = new IWifiChip.ChipMode();
+            cm.id = CHIP_MODE_ID;
+
+            // STA + AP
+            cic = new IWifiChip.ChipIfaceCombination();
+
+            cicl = new IWifiChip.ChipIfaceCombinationLimit();
+            cicl.maxIfaces = 1;
+            cicl.types.add(IfaceType.STA);
+            cic.limits.add(cicl);
+
+            cicl = new IWifiChip.ChipIfaceCombinationLimit();
+            cicl.maxIfaces = 1;
+            cicl.types.add(IfaceType.AP);
+            cic.limits.add(cicl);
+
+            cm.availableCombinations.add(cic);
+
+            // STA + (P2P || NAN)
+            cic = new IWifiChip.ChipIfaceCombination();
+
+            cicl = new IWifiChip.ChipIfaceCombinationLimit();
+            cicl.maxIfaces = 1;
+            cicl.types.add(IfaceType.STA);
+            cic.limits.add(cicl);
+
+            cicl = new IWifiChip.ChipIfaceCombinationLimit();
+            cicl.maxIfaces = 1;
+            cicl.types.add(IfaceType.P2P);
+            cicl.types.add(IfaceType.NAN);
+            cic.limits.add(cicl);
+
+            cm.availableCombinations.add(cic);
+
+            // STA + STA
+            cic = new IWifiChip.ChipIfaceCombination();
+
+            cicl = new IWifiChip.ChipIfaceCombinationLimit();
+            cicl.maxIfaces = 2;
+            cicl.types.add(IfaceType.STA);
+            cic.limits.add(cicl);
+
+            cm.availableCombinations.add(cic);
+
+            // AP + AP
+            cic = new IWifiChip.ChipIfaceCombination();
+
+            cicl = new IWifiChip.ChipIfaceCombinationLimit();
+            cicl.maxIfaces = 2;
+            cicl.types.add(IfaceType.AP);
+            cic.limits.add(cicl);
+
+            cm.availableCombinations.add(cic);
+
+            availableModes.add(cm);
+
+            chipModeIdValidForRtt = CHIP_MODE_ID;
+
+            doAnswer(new GetAvailableModesAnswer(this)).when(chip)
+                    .getAvailableModes(any(IWifiChip.getAvailableModesCallback.class));
         }
     }
 }

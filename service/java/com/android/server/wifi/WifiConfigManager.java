@@ -162,7 +162,7 @@ public class WifiConfigManager {
          * Invoked when user connect choice is removed.
          * @param choiceKey The network profile key of the user connect choice that was removed.
          */
-        default void onConnectChoiceRemoved(String choiceKey){ }
+        default void onConnectChoiceRemoved(@NonNull String choiceKey){ }
 
         /**
          * Invoke when security params changed, especially when NetworkTransitionDisable event
@@ -551,12 +551,8 @@ public class WifiConfigManager {
                 mRandomizedMacAddressMapping.remove(config.getNetworkKey());
             }
         }
-        MacAddress result = mMacAddressUtil.calculatePersistentMac(config.getNetworkKey(),
-                mMacAddressUtil.obtainMacRandHashFunction(Process.WIFI_UID));
-        if (result == null) {
-            result = mMacAddressUtil.calculatePersistentMac(config.getNetworkKey(),
-                    mMacAddressUtil.obtainMacRandHashFunction(Process.WIFI_UID));
-        }
+        MacAddress result = mMacAddressUtil.calculatePersistentMacForSta(config.getNetworkKey(),
+                Process.WIFI_UID);
         if (result == null) {
             Log.wtf(TAG, "Failed to generate MAC address from KeyStore even after retrying. "
                     + "Using locally generated MAC address instead.");
@@ -1612,6 +1608,20 @@ public class WifiConfigManager {
             }
         }
         return result;
+    }
+
+    /**
+     * Adds a network configuration to our database if a matching configuration cannot be found.
+     * @param config provided WifiConfiguration object.
+     * @param uid    UID of the app requesting the network addition.
+     * @return
+     */
+    public NetworkUpdateResult addNetwork(WifiConfiguration config, int uid) {
+        config.convertLegacyFieldsToSecurityParamsIfNeeded();
+        if (getInternalConfiguredNetwork(config) == null) {
+            return addOrUpdateNetwork(config, uid);
+        }
+        return new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID);
     }
 
     /**
@@ -2826,10 +2836,8 @@ public class WifiConfigManager {
      *               checked for potential links.
      */
     private void attemptNetworkLinking(WifiConfiguration config) {
-        // Only link WPA_PSK config.
-        if (!config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
-            return;
-        }
+        if (!WifiConfigurationUtil.isConfigLinkable(config)) return;
+
         ScanDetailCache scanDetailCache = getScanDetailCacheForNetwork(config.networkId);
         // Ignore configurations with large number of BSSIDs.
         if (scanDetailCache != null
@@ -2847,10 +2855,9 @@ public class WifiConfigManager {
                 continue;
             }
             // Network Selector will be allowed to dynamically jump from a linked configuration
-            // to another, hence only link configurations that have WPA_PSK security type.
-            if (!linkConfig.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
-                continue;
-            }
+            // to another, hence only link configurations that have WPA_PSK/SAE security type
+            // if auto upgrade enabled (OR) WPA_PSK if auto upgrade disabled.
+            if (!WifiConfigurationUtil.isConfigLinkable(linkConfig)) continue;
             ScanDetailCache linkScanDetailCache =
                     getScanDetailCacheForNetwork(linkConfig.networkId);
             // Ignore configurations with large number of BSSIDs.
@@ -3982,14 +3989,22 @@ public class WifiConfigManager {
         }
         for (String configKey : linkedConfigurations.keySet()) {
             WifiConfiguration linkConfig = getConfiguredNetworkWithoutMasking(configKey);
-            if (linkConfig == null
-                    || !linkConfig.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
-                continue;
+            if (linkConfig == null) continue;
+
+            if (!WifiConfigurationUtil.isConfigLinkable(linkConfig)) continue;
+
+            SecurityParams defaultParams =
+                     SecurityParams.createSecurityParamsBySecurityType(
+                             WifiConfiguration.SECURITY_TYPE_PSK);
+
+            if (!linkConfig.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)
+                    || !linkConfig.getSecurityParams(
+                            WifiConfiguration.SECURITY_TYPE_PSK).isEnabled()) {
+                defaultParams = SecurityParams.createSecurityParamsBySecurityType(
+                        WifiConfiguration.SECURITY_TYPE_SAE);
             }
 
-            linkConfig.getNetworkSelectionStatus().setCandidateSecurityParams(
-                    SecurityParams.createSecurityParamsBySecurityType(
-                            WifiConfiguration.SECURITY_TYPE_PSK));
+            linkConfig.getNetworkSelectionStatus().setCandidateSecurityParams(defaultParams);
             linkedNetworks.put(configKey, linkConfig);
         }
         return linkedNetworks;

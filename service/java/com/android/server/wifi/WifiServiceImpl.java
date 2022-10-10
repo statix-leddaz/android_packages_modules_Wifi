@@ -154,6 +154,7 @@ import android.telephony.PhoneStateListener;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+import android.util.EventLog;
 import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
@@ -1238,7 +1239,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (mWifiPermissionsUtil.checkNetworkSettingsPermission(callingUid)) {
             if (enable) {
                 mWifiThreadRunner.post(
-                        () -> mWifiConnectivityManager.setAutoJoinEnabledExternal(true));
+                        () -> mWifiConnectivityManager.setAutoJoinEnabledExternal(true, false));
                 mWifiMetrics.logUserActionEvent(UserActionEvent.EVENT_TOGGLE_WIFI_ON);
             } else {
                 WifiInfo wifiInfo =
@@ -1565,7 +1566,8 @@ public class WifiServiceImpl extends BaseWifiService {
 
         if (!startSoftApInternal(new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, softApConfig,
-                mTetheredSoftApTracker.getSoftApCapability()), requestorWs)) {
+                mTetheredSoftApTracker.getSoftApCapability(),
+                mCountryCode.getCountryCode()), requestorWs)) {
             mTetheredSoftApTracker.setFailedWhileEnabling();
             return false;
         }
@@ -1610,7 +1612,8 @@ public class WifiServiceImpl extends BaseWifiService {
 
         if (!startSoftApInternal(new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, softApConfig,
-                mTetheredSoftApTracker.getSoftApCapability()), requestorWs)) {
+                mTetheredSoftApTracker.getSoftApCapability(),
+                mCountryCode.getCountryCode()), requestorWs)) {
             mTetheredSoftApTracker.setFailedWhileEnabling();
             return false;
         }
@@ -2201,7 +2204,7 @@ public class WifiServiceImpl extends BaseWifiService {
 
             mActiveConfig = new SoftApModeConfiguration(
                     WifiManager.IFACE_IP_MODE_LOCAL_ONLY,
-                    softApConfig, lohsCapability);
+                    softApConfig, lohsCapability, mCountryCode.getCountryCode());
             mIsExclusive = (request.getCustomConfig() != null);
             // Report the error if we got failure in startSoftApInternal
             if (!startSoftApInternal(mActiveConfig, request.getWorkSource())) {
@@ -2481,7 +2484,15 @@ public class WifiServiceImpl extends BaseWifiService {
             // request. Once that UI dialog is added, we can get rid of this hack and use the UI
             // to elevate the priority of LOHS request only if user approves the request to
             // toggle wifi off for LOHS.
-            requestorWs = mFrameworkFacade.getSettingsWorkSource(mContext);
+            if (mContext.getResources().getBoolean(
+                    R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority)) {
+                // If the interface conflict dialogs are enabled, then we shouldn't fake the
+                // worksource since we need the correct worksource to display the right app label,
+                // and HDM will allow the iface creation as long as the user accepts the dialog.
+                requestorWs = new WorkSource(uid, packageName);
+            } else {
+                requestorWs = mFrameworkFacade.getSettingsWorkSource(mContext);
+            }
         } else {
             if (isPlatformOrTargetSdkLessThanT(packageName, uid)) {
                 if (!isSettingsOrSuw(Binder.getCallingPid(), Binder.getCallingUid())) {
@@ -3874,16 +3885,34 @@ public class WifiServiceImpl extends BaseWifiService {
      * @param choice the OEM's choice to allow auto-join
      */
     @Override
-    public void allowAutojoinGlobal(boolean choice) {
+    public void allowAutojoinGlobal(boolean choice, String packageName, Bundle extras) {
         int callingUid = Binder.getCallingUid();
+        boolean isDeviceAdmin = mWifiPermissionsUtil.isAdmin(callingUid, packageName);
         if (!mWifiPermissionsUtil.checkNetworkSettingsPermission(callingUid)
                 && !mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(callingUid)
-                && !isDeviceOrProfileOwner(callingUid, mContext.getOpPackageName())) {
+                && !isDeviceAdmin) {
             throw new SecurityException("Uid " + callingUid
                     + " is not allowed to set wifi global autojoin");
         }
         mLog.info("allowAutojoinGlobal=% uid=%").c(choice).c(callingUid).flush();
-        mWifiThreadRunner.post(() -> mWifiConnectivityManager.setAutoJoinEnabledExternal(choice));
+        if (!isDeviceAdmin && SdkLevel.isAtLeastS()) {
+            // direct caller is not device admin but there exists and attribution chain. Check
+            // if the original caller is device admin.
+            AttributionSource as = extras.getParcelable(
+                    WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE);
+            if (as != null) {
+                AttributionSource asLast = as;
+                while (asLast.getNext() != null) {
+                    asLast = asLast.getNext();
+                }
+                isDeviceAdmin = mWifiPermissionsUtil.isAdmin(asLast.getUid(),
+                        asLast.getPackageName()) || mWifiPermissionsUtil.isLegacyDeviceAdmin(
+                                asLast.getUid(), asLast.getPackageName());
+            }
+        }
+        boolean finalIsDeviceAdmin = isDeviceAdmin;
+        mWifiThreadRunner.post(() -> mWifiConnectivityManager.setAutoJoinEnabledExternal(choice,
+                finalIsDeviceAdmin));
         mLastCallerInfoManager.put(WifiManager.API_AUTOJOIN_GLOBAL, Process.myTid(),
                 callingUid, Binder.getCallingPid(), "<unknown>", choice);
     }
@@ -4045,9 +4074,11 @@ public class WifiServiceImpl extends BaseWifiService {
 
         for (ConcreteClientModeManager cmm : secondaryCmms) {
             WorkSource reqWs = cmm.getRequestorWs();
+            WorkSource withCaller = new WorkSource(reqWs);
+            withCaller.add(new WorkSource(callingUid, callingPackageName));
             // If there are more than 1 secondary CMM for same app, return any one (should not
             // happen currently since we don't support 3 STA's concurrently).
-            if (reqWs.equals(new WorkSource(callingUid, callingPackageName))) {
+            if (reqWs.equals(withCaller)) {
                 mLog.info("getConnectionInfo providing secondary CMM info").flush();
                 return cmm;
             }
@@ -5125,6 +5156,8 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiThreadRunner.run(() -> {
             List<WifiConfiguration> networks = mWifiConfigManager
                     .getSavedNetworks(Process.WIFI_UID);
+            EventLog.writeEvent(0x534e4554, "231985227", -1,
+                    "Remove certs for factory reset");
             for (WifiConfiguration network : networks) {
                 if (network.isEnterprise()) {
                     mWifiInjector.getWifiKeyStore().removeKeys(network.enterpriseConfig, true);
@@ -5239,11 +5272,12 @@ public class WifiServiceImpl extends BaseWifiService {
             for (int i = mStartIdx; i < nextStartIdx; i++) {
                 WifiConfiguration configuration = mConfigurations.get(i);
                 int networkId =
-                        mWifiConfigManager.addOrUpdateNetwork(configuration, mCallingUid)
+                        mWifiConfigManager.addNetwork(configuration, mCallingUid)
                                 .getNetworkId();
                 if (networkId == WifiConfiguration.INVALID_NETWORK_ID) {
                     Log.e(TAG, "Restore network failed: "
-                            + configuration.getProfileKey());
+                            + configuration.getProfileKey() + ", network might already exist in the"
+                            + " database");
                 } else {
                     // Enable all networks restored.
                     mWifiConfigManager.enableNetwork(networkId, false, mCallingUid, null);

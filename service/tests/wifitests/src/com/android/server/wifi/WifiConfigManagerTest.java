@@ -300,7 +300,8 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                 .thenReturn(true);
         when(mWifiPermissionsUtil.isDeviceInDemoMode(any())).thenReturn(false);
         when(mWifiLastResortWatchdog.shouldIgnoreSsidUpdate()).thenReturn(false);
-        when(mMacAddressUtil.calculatePersistentMac(any(), any())).thenReturn(TEST_RANDOMIZED_MAC);
+        when(mMacAddressUtil.calculatePersistentMacForSta(any(), anyInt()))
+                .thenReturn(TEST_RANDOMIZED_MAC);
         when(mWifiScoreCard.lookupNetwork(any())).thenReturn(mPerNetwork);
 
         WifiContext wifiContext = mock(WifiContext.class);
@@ -326,8 +327,6 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         when(mWifiInjector.getMacAddressUtil()).thenReturn(mMacAddressUtil);
         when(mWifiInjector.getBuildProperties()).thenReturn(mBuildProperties);
 
-        createWifiConfigManager();
-        mWifiConfigManager.addOnNetworkUpdateListener(mWcmListener);
         // static mocking
         mSession = ExtendedMockito.mockitoSession()
                 .mockStatic(WifiInjector.class, withSettings().lenient())
@@ -343,6 +342,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                 WifiManager.WIFI_FEATURE_WPA3_SAE | WifiManager.WIFI_FEATURE_OWE);
         when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(true);
         when(mWifiGlobals.isOweUpgradeEnabled()).thenReturn(true);
+        when(mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()).thenReturn(true);
         when(WifiConfigStore.createUserFiles(anyInt(), anyBoolean())).thenReturn(mock(List.class));
         when(mTelephonyManager.createForSubscriptionId(anyInt())).thenReturn(mDataTelephonyManager);
         when(mBuildProperties.isUserBuild()).thenReturn(false);
@@ -352,6 +352,9 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                 (Answer<List<WifiSsid>>) invocation -> Arrays.asList(invocation.getArgument(0),
                         WifiSsid.fromString(UNTRANSLATED_HEX_SSID))
         );
+
+        createWifiConfigManager();
+        mWifiConfigManager.addOnNetworkUpdateListener(mWcmListener);
     }
 
     /** Mock translating an SSID */
@@ -434,7 +437,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
      */
     @Test
     public void testRandomizedMacIsGeneratedEvenIfKeyStoreFails() {
-        when(mMacAddressUtil.calculatePersistentMac(any(), any())).thenReturn(null);
+        when(mMacAddressUtil.calculatePersistentMacForSta(any(), anyInt())).thenReturn(null);
 
         // Try adding a network.
         WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
@@ -443,9 +446,6 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         verifyAddNetworkToWifiConfigManager(openNetwork);
         List<WifiConfiguration> retrievedNetworks =
                 mWifiConfigManager.getConfiguredNetworksWithPasswords();
-
-        // Verify that we have attempted to generate the MAC address twice (1 retry)
-        verify(mMacAddressUtil, times(2)).calculatePersistentMac(any(), any());
         assertEquals(1, retrievedNetworks.size());
 
         // Verify that despite KeyStore returning null, we are still getting a valid MAC address.
@@ -854,6 +854,21 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         openNetwork.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_NONE;
         networkUpdateResult = updateNetworkToWifiConfigManager(openNetwork);
         assertEquals(WifiConfiguration.INVALID_NETWORK_ID, networkUpdateResult.getNetworkId());
+    }
+
+    @Test
+    public void testAddNetworkDoNotOverrideExistingNetwork() {
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.checkConfigOverridePermission(anyInt())).thenReturn(true);
+        WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
+
+        triggerStoreReadIfNeeded();
+        // Verify add network success for the first time
+        assertNotEquals(WifiConfiguration.INVALID_NETWORK_ID, mWifiConfigManager.addNetwork(
+                config, TEST_CREATOR_UID).getNetworkId());
+        // add the network again and verify it fails due to the same network already existing
+        assertEquals(WifiConfiguration.INVALID_NETWORK_ID, mWifiConfigManager.addNetwork(
+                config, TEST_CREATOR_UID).getNetworkId());
     }
 
     /**
@@ -2718,7 +2733,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         // Verify the MAC address is valid, and is NOT calculated from the (SSID + security type)
         assertTrue(WifiConfiguration.isValidMacAddressForRandomization(
                 getFirstInternalWifiConfiguration().getRandomizedMacAddress()));
-        verify(mMacAddressUtil, never()).calculatePersistentMac(any(), any());
+        verify(mMacAddressUtil, never()).calculatePersistentMacForSta(any(), anyInt());
     }
 
     /**
@@ -2972,6 +2987,70 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                 mWifiConfigManager.getConfiguredNetworks();
         for (WifiConfiguration network : retrievedNetworks) {
             assertNull(network.linkedConfigurations);
+        }
+    }
+
+    /**
+     * Verifies the linking of networks when they have the same default GW Mac address in
+     * {@link WifiConfigManager#getOrCreateScanDetailCacheForNetwork(WifiConfiguration)} for
+     * PSK and SAE networks.
+     */
+    @Test
+    public void testNetworkLinkUsingGwMacAddressWithPskAndSaeTypes() {
+        WifiConfiguration network1 = WifiConfigurationTestUtil.createPskNetwork();
+        WifiConfiguration network2 = WifiConfigurationTestUtil.createPskNetwork();
+        WifiConfiguration network3 = WifiConfigurationTestUtil.createSaeNetwork();
+        network1.preSharedKey = "\"preSharedKey1\"";
+        network2.preSharedKey = "\"preSharedKey2\"";
+        network3.preSharedKey = "\"preSharedKey3\"";
+        verifyAddNetworkToWifiConfigManager(network1);
+        verifyAddNetworkToWifiConfigManager(network2);
+        verifyAddNetworkToWifiConfigManager(network3);
+
+        // Set the same default GW mac address for all of the networks.
+        assertTrue(mWifiConfigManager.setNetworkDefaultGwMacAddress(
+                network1.networkId, TEST_DEFAULT_GW_MAC_ADDRESS));
+        assertTrue(mWifiConfigManager.setNetworkDefaultGwMacAddress(
+                network2.networkId, TEST_DEFAULT_GW_MAC_ADDRESS));
+        assertTrue(mWifiConfigManager.setNetworkDefaultGwMacAddress(
+                network3.networkId, TEST_DEFAULT_GW_MAC_ADDRESS));
+
+        // Now create fake scan detail corresponding to the networks.
+        ScanDetail networkScanDetail1 = createScanDetailForNetwork(network1);
+        ScanDetail networkScanDetail2 = createScanDetailForNetwork(network2);
+        ScanDetail networkScanDetail3 = createScanDetailForNetwork(network3);
+
+        // Now save all these scan details corresponding to each of this network and expect
+        // all of these networks to be linked with each other.
+        assertNotNull(mWifiConfigManager.getSavedNetworkForScanDetailAndCache(
+                networkScanDetail1));
+        assertNotNull(mWifiConfigManager.getSavedNetworkForScanDetailAndCache(
+                networkScanDetail2));
+        assertNotNull(mWifiConfigManager.getSavedNetworkForScanDetailAndCache(
+                networkScanDetail3));
+
+        // Now update the linked networks for all of the networks
+        mWifiConfigManager.updateNetworkSelectionStatus(network1.networkId,
+                TEST_NETWORK_SELECTION_ENABLE_REASON);
+        mWifiConfigManager.updateNetworkSelectionStatus(network2.networkId,
+                TEST_NETWORK_SELECTION_ENABLE_REASON);
+        mWifiConfigManager.updateNetworkSelectionStatus(network3.networkId,
+                TEST_NETWORK_SELECTION_ENABLE_REASON);
+        mWifiConfigManager.updateLinkedNetworks(network1.networkId);
+        mWifiConfigManager.updateLinkedNetworks(network2.networkId);
+        mWifiConfigManager.updateLinkedNetworks(network3.networkId);
+
+        List<WifiConfiguration> retrievedNetworks =
+                mWifiConfigManager.getConfiguredNetworks();
+        for (WifiConfiguration network : retrievedNetworks) {
+            assertEquals(2, network.linkedConfigurations.size());
+            for (WifiConfiguration otherNetwork : retrievedNetworks) {
+                if (otherNetwork == network) {
+                    continue;
+                }
+                assertNotNull(network.linkedConfigurations.get(
+                        otherNetwork.getProfileKey()));
+            }
         }
     }
 
@@ -6548,7 +6627,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
     public void testGetPersistRandomMacAddress() {
         WifiConfiguration network = WifiConfigurationTestUtil.createPskNetwork();
         mWifiConfigManager.getPersistentMacAddress(network);
-        verify(mMacAddressUtil).calculatePersistentMac(eq(network.getNetworkKey()), any());
+        verify(mMacAddressUtil).calculatePersistentMacForSta(eq(network.getNetworkKey()), anyInt());
     }
 
     private void verifyAddUpgradableNetwork(

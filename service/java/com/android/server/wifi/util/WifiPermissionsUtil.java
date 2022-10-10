@@ -950,9 +950,14 @@ public class WifiPermissionsUtil {
     }
 
     private DevicePolicyManager retrieveDevicePolicyManagerFromUserContext(int uid) {
-        Context userContext = createPackageContextAsUser(uid);
-        if (userContext == null) return null;
-        return retrieveDevicePolicyManagerFromContext(userContext);
+        long ident = Binder.clearCallingIdentity();
+        try {
+            Context userContext = createPackageContextAsUser(uid);
+            if (userContext == null) return null;
+            return retrieveDevicePolicyManagerFromContext(userContext);
+        } finally {
+            Binder.restoreCallingIdentity(ident);
+        }
     }
 
     @Nullable
@@ -1221,6 +1226,22 @@ public class WifiPermissionsUtil {
 
         return isDeviceOwner(uid, packageName) || isProfileOwner(uid, packageName)
                 || isOemPrivilegedAdmin;
+    }
+
+    /**
+     * Returns true if a package is a device admin.
+     * Note that device admin is a deprecated concept so this should only be used in very specific
+     * cases which require such checks.
+     */
+    public boolean isLegacyDeviceAdmin(int uid, String packageName) {
+        if (packageName == null) {
+            Log.e(TAG, "isLegacyDeviceAdmin: packageName is null, returning false");
+            return false;
+        }
+        DevicePolicyManager devicePolicyManager =
+                retrieveDevicePolicyManagerFromUserContext(uid);
+        if (devicePolicyManager == null) return false;
+        return devicePolicyManager.packageHasActiveAdmins(packageName);
     }
 
     /**
