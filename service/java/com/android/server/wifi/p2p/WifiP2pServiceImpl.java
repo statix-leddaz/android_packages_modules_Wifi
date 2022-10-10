@@ -133,6 +133,11 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -188,11 +193,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     // It requires to over "DISCOVER_TIMEOUT_S(120)" or "GROUP_CREATING_WAIT_TIME_MS(120)".
     // Otherwise it will cause interface down before function timeout.
     static final long P2P_INTERFACE_IDLE_SHUTDOWN_TIMEOUT_MS = 150_000;
-
-    // Provision discovery requests which are sent in 1 second should be
-    // retransmission packets.
-    @VisibleForTesting
-    static final long P2P_PEER_AUTH_TIMEOUT_MS = 1_000;
 
     private Context mContext;
 
@@ -3124,7 +3124,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         }
                         if (mVerboseLoggingEnabled) logd(getName() + " start listen mode");
                         mWifiNative.p2pStopFind();
-                        if (mWifiNative.p2pExtListen(true, 500, 500)) {
+                        if (mWifiNative.p2pExtListen(true,
+                                mContext.getResources().getInteger(
+                                        R.integer.config_wifiP2pExtListenPeriodMs),
+                                mContext.getResources().getInteger(
+                                        R.integer.config_wifiP2pExtListenIntervalMs))) {
                             replyToMessage(message, WifiP2pManager.START_LISTEN_SUCCEEDED);
                         } else {
                             replyToMessage(message, WifiP2pManager.START_LISTEN_FAILED);
@@ -5406,15 +5410,34 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
         private String generateP2pSsidPostfix(String devName) {
             if (TextUtils.isEmpty(devName)) return "-";
+
             StringBuilder sb = new StringBuilder("-");
-            sb.append(devName.length() > GROUP_NAME_POSTFIX_LENGTH_MAX
-                    ? devName.substring(0, GROUP_NAME_POSTFIX_LENGTH_MAX) : devName);
+            Charset charset = Charset.forName("UTF-8");
+            byte[] rawBytes = devName.getBytes(charset);
+            if (rawBytes.length <= GROUP_NAME_POSTFIX_LENGTH_MAX) {
+                sb.append(devName);
+            } else {
+                CharsetDecoder decoder = charset.newDecoder();
+                ByteBuffer bb = ByteBuffer.wrap(rawBytes, 0, GROUP_NAME_POSTFIX_LENGTH_MAX);
+                CharBuffer cb = CharBuffer.allocate(GROUP_NAME_POSTFIX_LENGTH_MAX);
+
+                // Ignore an incomplete character
+                decoder.onMalformedInput(CodingErrorAction.IGNORE);
+                decoder.decode(bb, cb, true);
+                decoder.flush(cb);
+                sb.append(new String(cb.array(), 0, cb.position()));
+            }
+            Log.i(TAG, "P2P SSID postfix: " + sb.toString()
+                    + " len=" + sb.toString().length()
+                    + " bytes=" + sb.toString().getBytes(charset).length);
             return sb.toString();
         }
 
         private boolean setAndPersistDeviceName(String devName) {
             if (TextUtils.isEmpty(devName)) return false;
-            if (devName.length() > DEVICE_NAME_LENGTH_MAX) return false;
+            if (devName.getBytes(Charset.forName("UTF-8")).length > DEVICE_NAME_LENGTH_MAX) {
+                return false;
+            }
 
             if (mInterfaceName != null) {
                 String postfix = generateP2pSsidPostfix(devName);
@@ -6363,7 +6386,9 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             Long timestamp = mPeerAuthorizingTimestamp.get(deviceAddress);
             if (null == timestamp) return false;
 
-            if (mClock.getElapsedSinceBootMillis() > timestamp + P2P_PEER_AUTH_TIMEOUT_MS) {
+            int timeoutMs = mContext.getResources().getInteger(
+                    R.integer.config_wifiP2pJoinRequestAuthorizingTimeoutMs);
+            if (mClock.getElapsedSinceBootMillis() > timestamp + timeoutMs) {
                 return false;
             }
 
