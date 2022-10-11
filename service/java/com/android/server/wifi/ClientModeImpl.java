@@ -1229,7 +1229,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 return;
             }
             WifiConfiguration configuration = mWifiConfigManager.getConfiguredNetwork(networkId);
-            if (configuration.subscriptionId == subscriptionId
+            if (configuration != null && configuration.subscriptionId == subscriptionId
                     && configuration.carrierMerged == merged) {
                 Log.i(getTag(), "Carrier network offload disabled, triggering disconnect");
                 sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_CARRIER_OFFLOAD_DISABLED);
@@ -5039,8 +5039,14 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 }
                                 updateToNativeService = true;
                             }
-                            mWifiNative.setEapAnonymousIdentity(mInterfaceName,
-                                    anonymousIdentity, updateToNativeService);
+                            // This needs native change to avoid disconnecting from the current
+                            // network. Consider that older releases might not be able to have
+                            // the vendor partition updated, only update to native service on T
+                            // or newer.
+                            if (SdkLevel.isAtLeastT()) {
+                                mWifiNative.setEapAnonymousIdentity(mInterfaceName,
+                                        anonymousIdentity, updateToNativeService);
+                            }
                             if (mVerboseLoggingEnabled) {
                                 log("EAP Pseudonym: " + anonymousIdentity);
                             }
