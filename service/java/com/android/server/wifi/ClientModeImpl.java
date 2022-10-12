@@ -2871,10 +2871,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mWifiInfo.clearCurrentSecurityType();
             mWifiInfo.resetMultiLinkInfo();
         }
-        // Update the L2 Information to IP Layer only after STA is authorized for data transfer.
-        if (state == SupplicantState.COMPLETED) {
-            updateLayer2Information();
-        }
+
         // SSID might have been updated, so call updateCapabilities
         updateCapabilities();
 
@@ -5078,6 +5075,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     }
                     mWifiInfo.setNetworkKey(config.getNetworkKeyFromSecurityType(
                             mWifiInfo.getCurrentSecurityType()));
+                    updateLayer2Information();
                     transitionTo(mL3ProvisioningState);
                     break;
                 }
@@ -5764,6 +5762,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     mLastNetworkId = connectionInfo.networkId;
                     mWifiInfo.setNetworkId(mLastNetworkId);
                     mWifiInfo.setMacAddress(mWifiNative.getMacAddress(mInterfaceName));
+                    updateLayer2Information();
                     if (!Objects.equals(mLastBssid, connectionInfo.bssid)) {
                         mLastBssid = connectionInfo.bssid;
                         sendNetworkChangeBroadcastWithCurrentState();
@@ -6225,6 +6224,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         mLastBssid = connectionInfo.bssid;
                         mWifiInfo.setBSSID(mLastBssid);
                         mWifiInfo.setNetworkId(mLastNetworkId);
+                        updateLayer2Information();
                         sendNetworkChangeBroadcastWithCurrentState();
 
                         // Successful framework roam! (probably)
