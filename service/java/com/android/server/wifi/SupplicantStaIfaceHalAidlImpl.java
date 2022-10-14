@@ -2782,9 +2782,12 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                 nativeInfo.links = new WifiNative.ConnectionMloLink[halInfo.links.length];
 
                 for (int i = 0; i < halInfo.links.length; i++) {
-                    nativeInfo.links[i].linkId = halInfo.links[i].linkId;
-                    nativeInfo.links[i].staMacAddress = MacAddress.fromBytes(
+                    WifiNative.ConnectionMloLink mConnectionMloLink =
+                            new WifiNative.ConnectionMloLink();
+                    mConnectionMloLink.linkId = halInfo.links[i].linkId;
+                    mConnectionMloLink.staMacAddress = MacAddress.fromBytes(
                             halInfo.links[i].staLinkMacAddress);
+                    nativeInfo.links[i] = mConnectionMloLink;
                 }
                 return nativeInfo;
             } catch (RemoteException e) {
