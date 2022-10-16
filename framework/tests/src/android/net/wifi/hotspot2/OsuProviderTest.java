@@ -29,7 +29,6 @@ import org.junit.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -41,14 +40,10 @@ public class OsuProviderTest {
     private static final WifiSsid TEST_SSID =
             WifiSsid.fromBytes("TEST SSID".getBytes(StandardCharsets.UTF_8));
     private static final String TEST_FRIENDLY_NAME = "Friendly Name";
-    private static final Map<String, String> TEST_FRIENDLY_NAMES =
-            new HashMap<String, String>() {
-                {
-                    put("en", TEST_FRIENDLY_NAME);
-                    put("kr", TEST_FRIENDLY_NAME + 2);
-                    put("jp", TEST_FRIENDLY_NAME + 3);
-                }
-            };
+    private static final Map<String, String> TEST_FRIENDLY_NAMES = Map.of(
+            "en", TEST_FRIENDLY_NAME,
+            "kr", TEST_FRIENDLY_NAME + 2,
+            "jp", TEST_FRIENDLY_NAME + 3);
 
     private static final String TEST_SERVICE_DESCRIPTION = "Dummy Service";
     private static final Uri TEST_SERVER_URI = Uri.parse("https://test.com");
