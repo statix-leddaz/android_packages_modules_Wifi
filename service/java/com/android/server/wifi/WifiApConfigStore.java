@@ -531,13 +531,6 @@ public class WifiApConfigStore {
                     + securityType);
             return false;
         }
-
-        try {
-            preSharedKey.getBytes(StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException e) {
-            Log.e(TAG, "softap network password verification failed: malformed string");
-            return false;
-        }
         return true;
     }
 
