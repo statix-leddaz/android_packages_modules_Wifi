@@ -72,6 +72,12 @@ public class NetdWrapper {
          * @param up  True if the physical link-layer connection signal is valid.
          */
         void interfaceLinkStateChanged(String iface, boolean up);
+        /**
+         * Interface added
+         *
+         * @param iface The interface.
+         */
+        void interfaceAdded(String iface);
     }
 
     private class NetdUnsolicitedEventListener extends INetdUnsolicitedEventListener.Stub {
@@ -108,6 +114,7 @@ public class NetdWrapper {
         @Override
         public void onInterfaceAdded(String ifName) throws RemoteException {
             // Unused.
+            mHandler.post(() -> notifyInterfaceAdded(ifName));
         }
 
         @Override
@@ -493,5 +500,15 @@ public class NetdWrapper {
             observer.interfaceLinkStateChanged(iface, up);
         }
     }
+
+    /**
+      * Notify our observers of an interface added
+      */
+     private void notifyInterfaceAdded(String iface) {
+         Log.d(TAG,"NetdWrapper interface add, iface= " + iface);
+         for (NetdEventObserver observer : mObservers) {
+             observer.interfaceAdded(iface);
+         }
+     }
 }
 

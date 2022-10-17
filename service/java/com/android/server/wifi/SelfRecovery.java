@@ -20,6 +20,7 @@ import android.annotation.IntDef;
 import android.content.Context;
 import android.util.Log;
 
+import com.android.server.wifi.WifiNative.InterfaceEventCallback;
 import com.android.wifi.resources.R;
 
 import java.lang.annotation.Retention;
@@ -48,6 +49,7 @@ public class SelfRecovery {
     public static final int REASON_STA_IFACE_DOWN = 2;
     public static final int REASON_API_CALL = 3;
     public static final int REASON_SUBSYSTEM_RESTART = 4;
+    public static final int REASON_IFACE_ADD = 5;
 
     @Retention(RetentionPolicy.SOURCE)
     @IntDef(prefix = {"REASON_"}, value = {
@@ -55,7 +57,8 @@ public class SelfRecovery {
             REASON_WIFINATIVE_FAILURE,
             REASON_STA_IFACE_DOWN,
             REASON_API_CALL,
-            REASON_SUBSYSTEM_RESTART})
+            REASON_SUBSYSTEM_RESTART,
+            REASON_IFACE_ADD})
     public @interface RecoveryReason {}
 
     /**
@@ -71,6 +74,7 @@ public class SelfRecovery {
             STATE_DISABLE_WIFI,
             STATE_RESTART_WIFI})
     private @interface RecoveryState {}
+
 
     private final Context mContext;
     private final ActiveModeWarden mActiveModeWarden;
@@ -100,6 +104,8 @@ public class SelfRecovery {
                 return "API call (e.g. user)";
             case REASON_SUBSYSTEM_RESTART:
                 return "Subsystem Restart";
+            case REASON_IFACE_ADD:
+                return "Interface Added";
             default:
                 return "Unknown " + reason;
         }
@@ -150,6 +156,28 @@ public class SelfRecovery {
         }
     }
 
+    private final InterfaceEventCallback mWifiNativeInterfaceEventCallback =
+        new InterfaceEventCallback() {
+        @Override
+        public void onInterfaceLinkStateChanged(String ifaceName, boolean unusedIsLinkUp) {
+            //unused
+        }
+        @Override
+        public void onInterfaceStatusChanged(String ifaceName, boolean unusedIsLinkUp) {
+            //unused
+        }
+        @Override
+        public void onInterfaceAdded(String ifaceName) {
+            Log.d("InterfaceEventCallback","onInterfaceAdded, ifaceName= " + ifaceName);
+            // Framwork did not trigger recovery, but looks like the firmware crashed?
+            mRecoveryState = STATE_RESTART_WIFI;
+            mSelfRecoveryReason = REASON_IFACE_ADD;
+            mActiveModeWarden.recoveryRestartWifi(mSelfRecoveryReason,
+                    mSelfRecoveryReason != REASON_LAST_RESORT_WATCHDOG
+                     && mSelfRecoveryReason != REASON_API_CALL);
+        }
+    };
+
     public SelfRecovery(Context context, ActiveModeWarden activeModeWarden,
             Clock clock, WifiNative wifiNative) {
         mContext = context;
@@ -159,6 +187,7 @@ public class SelfRecovery {
         mWifiNative = wifiNative;
         mSubsystemRestartListener = new SubsystemRestartListenerInternal();
         mWifiNative.registerSubsystemRestartListener(mSubsystemRestartListener);
+        mWifiNative.setWifiNativeInterfaceEventCallback(mWifiNativeInterfaceEventCallback);
         mRecoveryState = STATE_NO_RECOVERY;
     }
 
