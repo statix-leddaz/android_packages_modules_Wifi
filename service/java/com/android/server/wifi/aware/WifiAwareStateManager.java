@@ -1877,7 +1877,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                             mInterfaceConflictMgr.manageInterfaceConflictForStateMachine(TAG, msg,
                                     this, mWaitingState, mWaitState,
                                     HalDeviceManager.HDM_CREATE_IFACE_NAN,
-                                    new WorkSource(uid, callingPackage));
+                                    new WorkSource(uid, callingPackage), false /* bypassDialog */);
 
                     if (proceedWithOperation == InterfaceConflictManager.ICM_ABORT_COMMAND) {
                         // handling user rejection or possible conflict (pending command)
@@ -3017,8 +3017,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         }
 
         if (failedCommand.arg1 == COMMAND_TYPE_CONNECT) {
+            mWifiAwareNativeManager.releaseAware();
             IWifiAwareEventCallback callback = (IWifiAwareEventCallback) failedCommand.obj;
-
             try {
                 callback.onConnectFail(reason);
                 mAwareMetrics.recordAttachStatus(reason);
