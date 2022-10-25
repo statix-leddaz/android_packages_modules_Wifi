@@ -18,6 +18,8 @@ package com.android.server.wifi;
 
 import static android.net.wifi.WifiConfiguration.MeteredOverride;
 
+import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
+
 import static java.lang.StrictMath.toIntExact;
 
 import android.annotation.IntDef;
@@ -3312,6 +3314,22 @@ public class WifiMetrics {
     }
 
     /**
+     * Increment number of times the P2p on failed due to an error in HAL.
+     */
+    public synchronized void incrementNumSetupP2pInterfaceFailureDueToHal() {
+        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
+                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__P2P_FAILURE_HAL);
+    }
+
+    /**
+     * Increment number of times the P2p on failed due to an error in supplicant.
+     */
+    public synchronized void incrementNumSetupP2pInterfaceFailureDueToSupplicant() {
+        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
+                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__P2P_FAILURE_SUPPLICANT);
+    }
+
+    /**
      * Increment number of times we got client interface down.
      */
     public void incrementNumClientInterfaceDown() {
@@ -5544,7 +5562,13 @@ public class WifiMetrics {
     private void addStaEvent(String ifaceName, StaEvent staEvent) {
         // Nano proto runtime will throw a NPE during serialization if interfaceName is null
         if (ifaceName == null) {
-            Log.wtf(TAG, "Null StaEvent.ifaceName: " + staEventToString(staEvent));
+            // Check if any ConcreteClientModeManager's role is switching to ROLE_CLIENT_PRIMARY
+            ConcreteClientModeManager targetConcreteClientModeManager =
+                    mActiveModeWarden.getClientModeManagerTransitioningIntoRole(
+                            ROLE_CLIENT_PRIMARY);
+            if (targetConcreteClientModeManager == null) {
+                Log.wtf(TAG, "Null StaEvent.ifaceName: " + staEventToString(staEvent));
+            }
             return;
         }
         staEvent.interfaceName = ifaceName;

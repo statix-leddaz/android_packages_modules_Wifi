@@ -57,6 +57,7 @@ import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.SoftApInfo;
 import android.net.wifi.SupplicantState;
+import android.net.wifi.WifiAvailableChannel;
 import android.net.wifi.WifiClient;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiConnectedSessionInfo;
@@ -168,6 +169,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             "set-network-selection-config",
             "set-ipreach-disconnect",
             "get-ipreach-disconnect",
+            "take-bugreport",
+            "get-allowed-channel",
     };
 
     private static final Map<String, Pair<NetworkRequest, ConnectivityManager.NetworkCallback>>
@@ -196,6 +199,16 @@ public class WifiShellCommand extends BasicShellCommandHandler {
     private final HalDeviceManager mHalDeviceManager;
     private final InterfaceConflictManager mInterfaceConflictManager;
     private final SsidTranslator mSsidTranslator;
+    private final WifiDiagnostics mWifiDiagnostics;
+    private final DeviceConfigFacade mDeviceConfig;
+    private static final int[] OP_MODE_LIST = {
+            WifiAvailableChannel.OP_MODE_STA,
+            WifiAvailableChannel.OP_MODE_SAP,
+            WifiAvailableChannel.OP_MODE_WIFI_DIRECT_CLI,
+            WifiAvailableChannel.OP_MODE_WIFI_DIRECT_GO,
+            WifiAvailableChannel.OP_MODE_WIFI_AWARE,
+            WifiAvailableChannel.OP_MODE_TDLS,
+    };
 
     private class SoftApCallbackProxy extends ISoftApCallback.Stub {
         private final PrintWriter mPrintWriter;
@@ -417,6 +430,27 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         mHalDeviceManager = wifiInjector.getHalDeviceManager();
         mInterfaceConflictManager = wifiInjector.getInterfaceConflictManager();
         mSsidTranslator = wifiInjector.getSsidTranslator();
+        mWifiDiagnostics = wifiInjector.getWifiDiagnostics();
+        mDeviceConfig = wifiInjector.getDeviceConfigFacade();
+    }
+
+    private String getOpModeName(@WifiAvailableChannel.OpMode int mode) {
+        switch (mode) {
+            case WifiAvailableChannel.OP_MODE_STA:
+                return "STA";
+            case WifiAvailableChannel.OP_MODE_SAP:
+                return "SAP";
+            case WifiAvailableChannel.OP_MODE_WIFI_DIRECT_CLI:
+                return "WiFi-Direct GC";
+            case WifiAvailableChannel.OP_MODE_WIFI_DIRECT_GO:
+                return "WiFi-Direct GO";
+            case WifiAvailableChannel.OP_MODE_WIFI_AWARE:
+                return "WiFi-Aware";
+            case WifiAvailableChannel.OP_MODE_TDLS:
+                return "TDLS";
+            default:
+                return "";
+        }
     }
 
     @Override
@@ -1699,6 +1733,42 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 case "clear-ssid-charsets":
                     mSsidTranslator.clearMockLocaleCharsets();
                     return 0;
+                case "take-bugreport": {
+                    if (mDeviceConfig.isInterfaceFailureBugreportEnabled()) {
+                        mWifiDiagnostics.takeBugReport("Wifi bugreport test", "");
+                    }
+                    return 0;
+                }
+                case "get-allowed-channel": {
+                    WifiManager wifiManager = mContext.getSystemService(WifiManager.class);
+                    WifiScanner wifiScanner = mContext.getSystemService(WifiScanner.class);
+                    List<WifiAvailableChannel> allowedChannels;
+                    List<Integer> availableChannels;
+
+                    for (int opMode : OP_MODE_LIST) {
+                        String allowedChannel = "";
+                        try {
+                            allowedChannels = wifiManager.getAllowedChannels(
+                                    WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_GHZ, opMode);
+                            for (WifiAvailableChannel channel : allowedChannels) {
+                                allowedChannel += channel.getFrequencyMhz() + " ";
+                            }
+                            pw.println("Allowed ch in " + getOpModeName(opMode) + " mode:\n"
+                                    + allowedChannel);
+                        } catch (UnsupportedOperationException e) {
+                            availableChannels = wifiScanner.getAvailableChannels(
+                                    WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_GHZ);
+                            for (Integer channel : availableChannels) {
+                                allowedChannel += channel + " ";
+                            }
+                            /* In this case, all mode has same allowed channel list. So
+                            immediately return */
+                            pw.println("Allowed ch in all mode:\n" + allowedChannel);
+                            return 0;
+                        }
+                    }
+                    return 0;
+                }
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -2044,7 +2114,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
 
         // Permission approval bypass is only available to requests with both ssid & bssid set.
         // So, find scan result with the best rssi level to set in the request.
-        if (bssid == null && !nullBssid) {
+        if (bssid == null && !nullBssid && !noSsid) {
             ScanResult matchingScanResult =
                     mWifiService.getScanResults(SHELL_PACKAGE_NAME, null)
                             .stream()
@@ -2463,6 +2533,13 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    Sets whether CMD_IP_REACHABILITY_LOST events should trigger disconnects.");
         pw.println("  get-ipreach-disconnect");
         pw.println("    Gets setting of CMD_IP_REACHABILITY_LOST events triggering disconnects.");
+        pw.println("  take-bugreport");
+        pw.println("    take bugreport through betterBug. "
+                + "If it failed, take bugreport through bugreport manager.");
+        pw.println("  get-allowed-channel");
+        pw.println(
+                "    get allowed channels in each operation mode from wifiManager if available. "
+                        + "Otherwise, it returns from wifiScanner.");
     }
 
     private void onHelpPrivileged(PrintWriter pw) {
