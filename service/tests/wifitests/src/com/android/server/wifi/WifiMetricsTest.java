@@ -1625,6 +1625,18 @@ public class WifiMetricsTest extends WifiBaseTest {
                 WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__HAL_CRASH));
     }
 
+    @Test
+    public void testSetupP2pInterfaceFailureCount() throws Exception {
+        mWifiMetrics.incrementNumSetupP2pInterfaceFailureDueToHal();
+        mWifiMetrics.incrementNumSetupP2pInterfaceFailureDueToSupplicant();
+        ExtendedMockito.verify(() -> WifiStatsLog.write(
+                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
+                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__P2P_FAILURE_HAL));
+        ExtendedMockito.verify(() -> WifiStatsLog.write(
+                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
+                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__P2P_FAILURE_SUPPLICANT));
+    }
+
     /**
      *  Assert deserialized metrics Scan Return Entry equals count
      */
@@ -6699,5 +6711,14 @@ public class WifiMetricsTest extends WifiBaseTest {
         testConnectionNetworkTypeByCandidateSecurityParams(
                 WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE,
                 WifiMetricsProto.ConnectionEvent.TYPE_EAP);
+    }
+
+    @Test
+    public void testReportAirplaneModeSession() throws Exception {
+        mWifiMetrics.reportAirplaneModeSession(true, true, false, true, false, false);
+        ExtendedMockito.verify(() -> WifiStatsLog.write(
+                WifiStatsLog.AIRPLANE_MODE_SESSION_REPORTED,
+                WifiStatsLog.AIRPLANE_MODE_SESSION_REPORTED__PACKAGE_NAME__WIFI,
+                true, true, false, true, false, false, false));
     }
 }
