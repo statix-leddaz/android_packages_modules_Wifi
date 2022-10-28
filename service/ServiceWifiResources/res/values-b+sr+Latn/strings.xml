@@ -55,6 +55,8 @@
     <string name="ok" msgid="847575529546290102">"Potvrdi"</string>
     <string name="wifi_p2p_invitation_sent_title" msgid="6552639940428040869">"Pozivnica je poslata"</string>
     <string name="wifi_p2p_invitation_to_connect_title" msgid="8917157937652519251">"Pozivnica za povezivanje"</string>
+    <!-- no translation found for wifi_p2p_invitation_seconds_remaining (8939173828247053616) -->
+    <skip />
     <string name="wifi_p2p_from_message" msgid="5921308150192756898">"Od:"</string>
     <string name="wifi_p2p_to_message" msgid="3809923305696994787">"Kome:"</string>
     <string name="wifi_p2p_enter_pin_message" msgid="5200220251738047620">"Unesite potrebni PIN:"</string>
@@ -103,19 +105,19 @@
   </string-array>
     <string name="wifi_eap_error_message_code_32767" msgid="7094289719914089006">"<xliff:g id="SSID">%1$s</xliff:g> : Greška pri EAP potvrdi identiteta 32767"</string>
   <string-array name="wifi_eap_error_message_code_32767_carrier_overrides">
-    <item msgid="873264900678243330">"<xliff:g id="CARRIER_ID_PREFIX">:::1839:::</xliff:g><xliff:g id="SSID">%1$s</xliff:g> : Postoji problem pri povezivanju na Verizon WiFi Access. Probajte ponovo kasnije ili probajte sa neke druge lokacije."</item>
+    <item msgid="3756793972687282940">"<xliff:g id="CARRIER_ID_PREFIX">:::1839:::</xliff:g><xliff:g id="SSID">%1$s</xliff:g> : Postoji problem pri povezivanju na Verizon Wi-Fi Access. Probajte ponovo kasnije ili probajte sa neke druge lokacije. (greška = 32767)"</item>
   </string-array>
     <string name="wifi_eap_error_message_code_16384" msgid="575394783233092922">"<xliff:g id="SSID">%1$s</xliff:g> : Greška pri EAP potvrdi identiteta 16384"</string>
   <string-array name="wifi_eap_error_message_code_16384_carrier_overrides">
-    <item msgid="5042774904407799226">"<xliff:g id="CARRIER_ID_PREFIX">:::1839:::</xliff:g><xliff:g id="SSID">%1$s</xliff:g> : Postoji problem pri povezivanju na Verizon WiFi Access zbog greške 16384."</item>
+    <item msgid="270219697600808218">"<xliff:g id="CARRIER_ID_PREFIX">:::1839:::</xliff:g><xliff:g id="SSID">%1$s</xliff:g> : Postoji problem pri povezivanju na Verizon Wi-Fi. (greška = 16384)"</item>
   </string-array>
     <string name="wifi_eap_error_message_code_16385" msgid="8392878664662215609">"<xliff:g id="SSID">%1$s</xliff:g> : Greška pri EAP potvrdi identiteta 16385"</string>
   <string-array name="wifi_eap_error_message_code_16385_carrier_overrides">
-    <item msgid="1251122579833932025">"<xliff:g id="CARRIER_ID_PREFIX">:::1839:::</xliff:g><xliff:g id="SSID">%1$s</xliff:g> : Postoji problem pri povezivanju na Verizon WiFi Access zbog greške 16385."</item>
+    <item msgid="50575315771146940">"<xliff:g id="CARRIER_ID_PREFIX">:::1839:::</xliff:g><xliff:g id="SSID">%1$s</xliff:g> : Postoji problem pri povezivanju na Verizon Wi-Fi. (greška = 16385)"</item>
   </string-array>
     <string name="wifi_eap_error_message_unknown_error_code" msgid="4480884285384231323">"<xliff:g id="SSID">%1$s</xliff:g> : Greška pri EAP potvrdi identiteta, nepoznat kôd greške"</string>
   <string-array name="wifi_eap_error_message_unknown_error_code_carrier_overrides">
-    <item msgid="6141795443609380009">"<xliff:g id="CARRIER_ID_PREFIX">:::1839:::</xliff:g><xliff:g id="SSID">%1$s</xliff:g> : Postoji problem pri povezivanju na Verizon WiFi Access."</item>
+    <item msgid="2705387186478280792">"<xliff:g id="CARRIER_ID_PREFIX">:::1839:::</xliff:g><xliff:g id="SSID">%1$s</xliff:g> : Postoji problem pri povezivanju na Verizon Wi-Fi. (greška = nepoznato)"</item>
   </string-array>
     <string name="wifi_softap_auto_shutdown_timeout_expired_title" msgid="4896534374569504484">"Hotspot je isključen"</string>
     <string name="wifi_softap_auto_shutdown_timeout_expired_summary" msgid="7975476698140267728">"Nijedan uređaj nije povezan. Dodirnite da biste izmenili."</string>
@@ -162,11 +164,8 @@
     <string name="wifi_network_disabled_by_admin_title" msgid="9057697656855227293">"Nedostupna mreža"</string>
     <string name="wifi_network_disabled_by_admin_message" msgid="7830360441333155462">"Administrator je onemogućio <xliff:g id="SSID">%1$s</xliff:g>."</string>
     <string name="wifi_network_disabled_by_admin_button" msgid="3350310756265122689">"Zatvori"</string>
-    <!-- no translation found for wifi_enabled_apm_first_time_title (4814302384637588804) -->
-    <skip />
-    <!-- no translation found for wifi_enabled_apm_first_time_message (3804474326110512024) -->
-    <skip />
+    <string name="wifi_enabled_apm_first_time_title" msgid="4814302384637588804">"WiFi je uključen u režimu rada u avionu"</string>
+    <string name="wifi_enabled_apm_first_time_message" msgid="3804474326110512024">"Ako odlučite da ne isključujete WiFi, ostaće uključen sledeći put kada budete u režimu rada u avionu"</string>
     <string name="apm_enabled_first_time_title" msgid="2534167413190488009">"WiFi ostaje uključen"</string>
-    <!-- no translation found for apm_enabled_first_time_message (8381594447227021365) -->
-    <skip />
+    <string name="apm_enabled_first_time_message" msgid="8381594447227021365">"Telefon pamti da ne treba da isključuje WiFi u režimu rada u avionu. Da biste to promenili, isključite WiFi."</string>
 </resources>
