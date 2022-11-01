@@ -438,6 +438,28 @@ public class ConcreteClientModeManager implements ClientModeManager {
         }
     }
 
+    private boolean isAnyImsServiceOverWlanAvailable(int subId) {
+        ImsMmTelManager imsMmTelManager = ImsMmTelManager.createForSubscriptionId(subId);
+        try {
+            int[] possibleServiceOverWlan = new int[] {
+                MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_VOICE,
+                MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_VIDEO,
+                MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_UT,
+                MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_SMS,
+                MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_CALL_COMPOSER,
+            };
+            for (int i: possibleServiceOverWlan) {
+                if (imsMmTelManager.isAvailable(i,
+                        ImsRegistrationImplBase.REGISTRATION_TECH_IWLAN)) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException ex) {
+            Log.e(TAG, "IMS Manager is not available.", ex);
+        }
+        return false;
+    }
+
     /**
      * Get deferring time before turning off WiFi.
      */
@@ -474,17 +496,9 @@ public class ConcreteClientModeManager implements ClientModeManager {
             return 0;
         }
 
-        ImsMmTelManager imsMmTelManager = ImsMmTelManager.createForSubscriptionId(subId);
-        // If no wifi calling, no delay
-        try {
-            if (!imsMmTelManager.isAvailable(
-                    MmTelFeature.MmTelCapabilities.CAPABILITY_TYPE_VOICE,
-                    ImsRegistrationImplBase.REGISTRATION_TECH_IWLAN)) {
-                Log.d(getTag(), "IMS not registered over IWLAN for subId: " + subId);
-                return 0;
-            }
-        } catch (RuntimeException ex) {
-            Log.e(TAG, "IMS Manager is not available.", ex);
+        // If no IMS service over WLAN, no delay
+        if (!isAnyImsServiceOverWlanAvailable(subId)) {
+            Log.d(getTag(), "IMS not registered over IWLAN for subId: " + subId);
             return 0;
         }
 
@@ -895,7 +909,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
                             Log.e(getTag(), "Failed to create ClientInterface. Sit in Idle");
                             takeBugReportInterfaceFailureIfNeeded(
                                     "Wi-Fi BugReport (scan STA interface failure): please report "
-                                            + "it through BetterBug app");
+                                            + "it through BetterBug app",
+                                    "Failed to create client interface in idle state");
                             mModeListener.onStartFailure(ConcreteClientModeManager.this);
                             break;
                         }
@@ -961,7 +976,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
                                     WifiManager.WIFI_STATE_UNKNOWN);
                             takeBugReportInterfaceFailureIfNeeded(
                                     "Wi-Fi BugReport (STA interface failure): please report it "
-                                            + "through BetterBug app");
+                                            + "through BetterBug app",
+                                    "Fail to switch to connection mode in started state");
                             mModeListener.onStartFailure(ConcreteClientModeManager.this);
                             break;
                         }
@@ -1205,9 +1221,9 @@ public class ConcreteClientModeManager implements ClientModeManager {
         }
     }
 
-    private void takeBugReportInterfaceFailureIfNeeded(String bugTitle) {
+    private void takeBugReportInterfaceFailureIfNeeded(String bugTitle, String bugDetail) {
         if (mWifiInjector.getDeviceConfigFacade().isInterfaceFailureBugreportEnabled()) {
-            mWifiInjector.getWifiDiagnostics().takeBugReport(bugTitle, bugTitle);
+            mWifiInjector.getWifiDiagnostics().takeBugReport(bugTitle, bugDetail);
         }
     }
 

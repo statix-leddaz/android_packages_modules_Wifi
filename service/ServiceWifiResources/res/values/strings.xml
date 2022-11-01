@@ -100,6 +100,13 @@
     <string name="wifi_p2p_invitation_sent_title">Invitation sent</string>
     <string name="wifi_p2p_invitation_to_connect_title">Invitation to connect</string>
 
+    <!-- The message of the P2P Invitation Received dialog indicating the seconds left to accept before auto rejection [CHAR_LIMIT=NONE] [ICU SYNTAX] -->
+    <string name="wifi_p2p_invitation_seconds_remaining">
+        {0, plural,
+            =1 {Accept in # second.}
+            other {Accept in # seconds.}
+        }
+    </string>
     <string name="wifi_p2p_from_message">From: </string>
     <string name="wifi_p2p_to_message">To: </string>
     <string name="wifi_p2p_enter_pin_message">Type the required PIN: </string>
@@ -159,19 +166,19 @@
     </string-array>
     <string name="wifi_eap_error_message_code_32767"><xliff:g id="ssid">%1$s</xliff:g> : EAP authentication error 32767</string>
     <string-array name="wifi_eap_error_message_code_32767_carrier_overrides">
-      <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g><xliff:g id="ssid">%1$s</xliff:g> : There is a problem connecting you to Verizon Wi-Fi Access. Try again later or try from a different location.</item>
+      <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g><xliff:g id="ssid">%1$s</xliff:g> : There is a problem connecting you to Verizon Wi-Fi Access. Try again later or try from a different location. (Error = 32767)</item>
     </string-array>
     <string name="wifi_eap_error_message_code_16384"><xliff:g id="ssid">%1$s</xliff:g> : EAP authentication error 16384</string>
     <string-array name="wifi_eap_error_message_code_16384_carrier_overrides">
-      <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g><xliff:g id="ssid">%1$s</xliff:g> : There is a problem connecting you to Verizon Wi-Fi Access due to error 16384.</item>
+      <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g><xliff:g id="ssid">%1$s</xliff:g> : There is a problem connecting you to Verizon Wi-Fi. (Error = 16384)</item>
     </string-array>
     <string name="wifi_eap_error_message_code_16385"><xliff:g id="ssid">%1$s</xliff:g> : EAP authentication error 16385</string>
     <string-array name="wifi_eap_error_message_code_16385_carrier_overrides">
-      <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g><xliff:g id="ssid">%1$s</xliff:g> : There is a problem connecting you to Verizon Wi-Fi Access due to error 16385.</item>
+      <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g><xliff:g id="ssid">%1$s</xliff:g> : There is a problem connecting you to Verizon Wi-Fi. (Error = 16385)</item>
     </string-array>
     <string name="wifi_eap_error_message_unknown_error_code"><xliff:g id="ssid">%1$s</xliff:g> : EAP authentication error, unknown error code</string>
     <string-array name="wifi_eap_error_message_unknown_error_code_carrier_overrides">
-      <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g><xliff:g id="ssid">%1$s</xliff:g> : There is a problem connecting you to Verizon Wi-Fi Access.</item>
+      <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g><xliff:g id="ssid">%1$s</xliff:g> : There is a problem connecting you to Verizon Wi-Fi. (Error = Unknown)</item>
     </string-array>
 
 
