@@ -162,8 +162,8 @@ public class WifiAwareServiceImplTest extends WifiBaseTest {
                 anyInt())).thenReturn(true);
 
         when(mInterfaceConflictManager.manageInterfaceConflictForStateMachine(any(), any(), any(),
-                any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any())).thenReturn(
-                InterfaceConflictManager.ICM_EXECUTE_COMMAND);
+                any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any(), anyBoolean()))
+                .thenReturn(InterfaceConflictManager.ICM_EXECUTE_COMMAND);
 
         mDut = new WifiAwareServiceImplSpy(mContextMock);
         Resources resources = mock(Resources.class);
@@ -196,6 +196,8 @@ public class WifiAwareServiceImplTest extends WifiBaseTest {
     @Test
     public void testGetAwareResources() {
         mDut.getAvailableAwareResources();
+        verify(mAwareStateManagerMock, never()).getAvailableAwareResources();
+        mMockLooper.dispatchAll();
         verify(mAwareStateManagerMock).getAvailableAwareResources();
     }
 

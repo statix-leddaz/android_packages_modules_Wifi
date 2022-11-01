@@ -1229,7 +1229,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 return;
             }
             WifiConfiguration configuration = mWifiConfigManager.getConfiguredNetwork(networkId);
-            if (configuration.subscriptionId == subscriptionId
+            if (configuration != null && configuration.subscriptionId == subscriptionId
                     && configuration.carrierMerged == merged) {
                 Log.i(getTag(), "Carrier network offload disabled, triggering disconnect");
                 sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_CARRIER_OFFLOAD_DISABLED);
@@ -2874,10 +2874,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mWifiInfo.clearCurrentSecurityType();
             mWifiInfo.resetMultiLinkInfo();
         }
-        // Update the L2 Information to IP Layer only after STA is authorized for data transfer.
-        if (state == SupplicantState.COMPLETED) {
-            updateLayer2Information();
-        }
+
         // SSID might have been updated, so call updateCapabilities
         updateCapabilities();
 
@@ -5042,8 +5039,14 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 }
                                 updateToNativeService = true;
                             }
-                            mWifiNative.setEapAnonymousIdentity(mInterfaceName,
-                                    anonymousIdentity, updateToNativeService);
+                            // This needs native change to avoid disconnecting from the current
+                            // network. Consider that older releases might not be able to have
+                            // the vendor partition updated, only update to native service on T
+                            // or newer.
+                            if (SdkLevel.isAtLeastT()) {
+                                mWifiNative.setEapAnonymousIdentity(mInterfaceName,
+                                        anonymousIdentity, updateToNativeService);
+                            }
                             if (mVerboseLoggingEnabled) {
                                 log("EAP Pseudonym: " + anonymousIdentity);
                             }
@@ -5075,6 +5078,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     }
                     mWifiInfo.setNetworkKey(config.getNetworkKeyFromSecurityType(
                             mWifiInfo.getCurrentSecurityType()));
+                    updateLayer2Information();
                     transitionTo(mL3ProvisioningState);
                     break;
                 }
@@ -5107,7 +5111,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
                                 isConnected());
                     }
-                    WifiConfiguration config = getConnectingWifiConfigurationInternal();
+                    WifiConfiguration config = getConnectedWifiConfigurationInternal();
+                    if (config == null) {
+                        config = getConnectingWifiConfigurationInternal();
+                    }
                     clearNetworkCachedDataIfNeeded(config, eventInfo.reasonCode);
                     try {
                         logEventIfManagedNetwork(config,
@@ -5761,6 +5768,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     mLastNetworkId = connectionInfo.networkId;
                     mWifiInfo.setNetworkId(mLastNetworkId);
                     mWifiInfo.setMacAddress(mWifiNative.getMacAddress(mInterfaceName));
+                    updateLayer2Information();
                     if (!Objects.equals(mLastBssid, connectionInfo.bssid)) {
                         mLastBssid = connectionInfo.bssid;
                         sendNetworkChangeBroadcastWithCurrentState();
@@ -6222,6 +6230,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         mLastBssid = connectionInfo.bssid;
                         mWifiInfo.setBSSID(mLastBssid);
                         mWifiInfo.setNetworkId(mLastNetworkId);
+                        updateLayer2Information();
                         sendNetworkChangeBroadcastWithCurrentState();
 
                         // Successful framework roam! (probably)
