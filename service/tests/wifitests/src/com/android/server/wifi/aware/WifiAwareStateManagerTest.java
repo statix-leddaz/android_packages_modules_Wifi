@@ -206,8 +206,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         when(mMockContext.getResources()).thenReturn(mResources);
 
         when(mInterfaceConflictManager.manageInterfaceConflictForStateMachine(any(), any(), any(),
-                any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any())).thenReturn(
-                InterfaceConflictManager.ICM_EXECUTE_COMMAND);
+                any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any(), anyBoolean()))
+                .thenReturn(InterfaceConflictManager.ICM_EXECUTE_COMMAND);
 
         ArgumentCaptor<BroadcastReceiver> bcastRxCaptor = ArgumentCaptor.forClass(
                 BroadcastReceiver.class);
@@ -3404,6 +3404,44 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         verifyNoMoreInteractions(mMockNative, mockCallback);
     }
 
+
+    /**
+     * Verify when attach aware failed, the aware interface will be released.
+     */
+    @Test
+    public void testAttachFailureAndReleaseAware() throws Exception {
+        final int clientId = 132;
+        final int uid = 1000;
+        final int pid = 2000;
+        final String callingPackage = "com.google.somePackage";
+        final String callingFeature = "com.google.someFeature";
+
+        ConfigRequest configRequest = new ConfigRequest.Builder().build();
+
+        ArgumentCaptor<Short> transactionId = ArgumentCaptor.forClass(Short.class);
+        IWifiAwareEventCallback mockCallback = mock(IWifiAwareEventCallback.class);
+        InOrder inOrder = inOrder(mMockNative, mockCallback, mMockNativeManager);
+
+        mDut.enableUsage();
+        mMockLooper.dispatchAll();
+
+        // (1) connect and succeed
+        mDut.connect(clientId, uid, pid, callingPackage, callingFeature, mockCallback,
+                configRequest, false, mExtras);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNativeManager).tryToGetAware(new WorkSource(uid, callingPackage));
+        inOrder.verify(mMockNative).enableAndConfigure(transactionId.capture(), eq(configRequest),
+                eq(false), eq(true), eq(true), eq(false), eq(false), eq(false), anyInt());
+        short transactionIdConfig = transactionId.getValue();
+        mDut.onConfigFailedResponse(transactionIdConfig, NanStatusType.INTERNAL_FAILURE);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNativeManager).releaseAware();
+        inOrder.verify(mockCallback).onConnectFail(NanStatusType.INTERNAL_FAILURE);
+
+
+        verifyNoMoreInteractions(mMockNative, mockCallback);
+    }
+
     /**
      * Validate that trying to update-subscribe on a publish session fails.
      */
@@ -4389,32 +4427,34 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
 
         // simulate user approval needed
         when(mInterfaceConflictManager.manageInterfaceConflictForStateMachine(any(), any(), any(),
-                any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any())).thenAnswer(
-                new MockAnswerUtil.AnswerWithArguments() {
-                        public int answer(String tag, Message msg, StateMachine stateMachine,
-                                WaitingState waitingState, State targetState, int createIfaceType,
-                                WorkSource requestorWs) {
-                            stateMachine.deferMessage(msg);
-                            stateMachine.transitionTo(waitingState);
-                            return InterfaceConflictManager.ICM_SKIP_COMMAND_WAIT_FOR_USER;
-                        }
-                    });
+                any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any(), anyBoolean()))
+                .thenAnswer(new MockAnswerUtil.AnswerWithArguments() {
+                    public int answer(String tag, Message msg, StateMachine stateMachine,
+                            WaitingState waitingState, State targetState, int createIfaceType,
+                            WorkSource requestorWs,
+                            boolean bypassDialog) {
+                        stateMachine.deferMessage(msg);
+                        stateMachine.transitionTo(waitingState);
+                        return InterfaceConflictManager.ICM_SKIP_COMMAND_WAIT_FOR_USER;
+                    }
+                });
         mDut.connect(clientId, uid, pid, callingPackage, callingFeature, mockCallback,
                 configRequest, false, mExtras);
         mMockLooper.dispatchAll();
         inOrder.verify(mInterfaceConflictManager).manageInterfaceConflictForStateMachine(any(),
                 any(), any(), mWaitingStateCaptor.capture(), mTargetStateCaptor.capture(),
-                eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any());
+                eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any(), anyBoolean());
 
         // simulate user approval triggered and granted/rejected (userAcceptsRequest)
         when(mInterfaceConflictManager.manageInterfaceConflictForStateMachine(any(), any(), any(),
-                any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any())).thenReturn(
-                userAcceptsRequest ? InterfaceConflictManager.ICM_EXECUTE_COMMAND
+                any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any(), anyBoolean()))
+                .thenReturn(userAcceptsRequest ? InterfaceConflictManager.ICM_EXECUTE_COMMAND
                         : InterfaceConflictManager.ICM_ABORT_COMMAND);
         mWaitingStateCaptor.getValue().sendTransitionStateCommand(mTargetStateCaptor.getValue());
         mMockLooper.dispatchAll();
         inOrder.verify(mInterfaceConflictManager).manageInterfaceConflictForStateMachine(any(),
-                any(), any(), any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any());
+                any(), any(), any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_NAN), any(),
+                anyBoolean());
 
         if (userAcceptsRequest) {
             verify(mMockNative).enableAndConfigure(anyShort(), eq(configRequest), eq(false),

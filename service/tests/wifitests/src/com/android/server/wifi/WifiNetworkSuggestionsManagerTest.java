@@ -2010,6 +2010,39 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
     }
 
     /**
+     * Verify triggering of config store write after successful addition of network suggestions.
+     * And store write is failure because out of memory.
+     */
+    @Test
+    public void testAddNetworkSuggestionsConfigStoreWriteFailedByOOM() {
+        when(mWifiConfigManager.saveToStore(anyBoolean())).thenThrow(new OutOfMemoryError())
+                .thenReturn(true);
+        WifiNetworkSuggestion networkSuggestion = createWifiNetworkSuggestion(
+                WifiConfigurationTestUtil.createOpenNetwork(), null, false, false, true, true,
+                DEFAULT_PRIORITY_GROUP);
+
+        List<WifiNetworkSuggestion> networkSuggestionList =
+                new ArrayList<WifiNetworkSuggestion>() {{
+                    add(networkSuggestion);
+                }};
+        assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_ERROR_INTERNAL,
+                mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
+                        TEST_PACKAGE_1, TEST_FEATURE));
+
+        // Verify config store interactions.
+        verify(mWifiConfigManager, times(2)).saveToStore(true);
+        assertTrue(mDataSource.hasNewDataToSerialize());
+
+        Map<String, PerAppInfo> networkSuggestionsMapToWrite = mDataSource.toSerialize();
+        assertEquals(1, networkSuggestionsMapToWrite.size());
+        assertEquals(0, networkSuggestionsMapToWrite.get(TEST_PACKAGE_1)
+                .extNetworkSuggestions.size());
+
+        // Ensure that the new data flag has been reset after read.
+        assertFalse(mDataSource.hasNewDataToSerialize());
+    }
+
+    /**
      * Verify triggering of config store write after successful removal of network suggestions.
      */
     @Test
@@ -2441,28 +2474,18 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
     @Test
     public void testAppOpsChangeAfterConfigStoreLoad() {
         PerAppInfo appInfo = new PerAppInfo(TEST_UID_1, TEST_PACKAGE_1, TEST_FEATURE);
-        WifiNetworkSuggestion networkSuggestion = createWifiNetworkSuggestion(
-                WifiConfigurationTestUtil.createOpenNetwork(), null, false, false, true, true,
-                DEFAULT_PRIORITY_GROUP);
-        ExtendedWifiNetworkSuggestion ewns =
-                ExtendedWifiNetworkSuggestion.fromWns(networkSuggestion, appInfo, true);
-        appInfo.extNetworkSuggestions.put(ewns.hashCode(), ewns);
+        appInfo.hasUserApproved = true;
         mDataSource.fromDeserialized(new HashMap<String, PerAppInfo>() {{
                     put(TEST_PACKAGE_1, appInfo);
                 }});
-
-        Set<WifiNetworkSuggestion> allNetworkSuggestions =
-                mWifiNetworkSuggestionsManager.getAllNetworkSuggestions();
-        Set<WifiNetworkSuggestion> expectedAllNetworkSuggestions =
-                new HashSet<WifiNetworkSuggestion>() {{
-                    add(networkSuggestion);
-                }};
-        assertEquals(expectedAllNetworkSuggestions, allNetworkSuggestions);
-
+        // Even the app has no suggestion still monitor the ops change
         verify(mAppOpsManager).startWatchingMode(eq(OPSTR_CHANGE_WIFI_STATE), eq(TEST_PACKAGE_1),
                 mAppOpChangedListenerCaptor.capture());
         AppOpsManager.OnOpChangedListener listener = mAppOpChangedListenerCaptor.getValue();
         assertNotNull(listener);
+
+        assertTrue(mWifiNetworkSuggestionsManager.getAllNetworkSuggestions().isEmpty());
+        assertTrue(mWifiNetworkSuggestionsManager.hasUserApprovedForApp(TEST_PACKAGE_1));
 
         // allow change wifi state.
         when(mAppOpsManager.unsafeCheckOpNoThrow(
@@ -2471,8 +2494,7 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 .thenReturn(MODE_ALLOWED);
         listener.onOpChanged(OPSTR_CHANGE_WIFI_STATE, TEST_PACKAGE_1);
         mLooper.dispatchAll();
-        allNetworkSuggestions = mWifiNetworkSuggestionsManager.getAllNetworkSuggestions();
-        assertEquals(expectedAllNetworkSuggestions, allNetworkSuggestions);
+        assertTrue(mWifiNetworkSuggestionsManager.hasUserApprovedForApp(TEST_PACKAGE_1));
 
         // disallow change wifi state & ensure we remove all the suggestions for that app.
         when(mAppOpsManager.unsafeCheckOpNoThrow(
@@ -2482,6 +2504,8 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         listener.onOpChanged(OPSTR_CHANGE_WIFI_STATE, TEST_PACKAGE_1);
         mLooper.dispatchAll();
         assertTrue(mWifiNetworkSuggestionsManager.getAllNetworkSuggestions().isEmpty());
+        // And user approval is also removed
+        assertFalse(mWifiNetworkSuggestionsManager.hasUserApprovedForApp(TEST_PACKAGE_1));
     }
 
     /**
