@@ -22,5 +22,11 @@
     <!-- Setting maxSdk to lock the module to R. minSdk is auto-set by build system -->
     <!--uses-sdk android:maxSdkVersion="30" android:targetSdkVersion="30"/>
     -->
+    <install-constraints>
+        <!-- Starting TM QPR1 PackageManager will restrict the installation of this package to
+             the fingerprints specified below
+         -->
+        <fingerprint-prefix android:value="Android/aosp_barbet/barbet"/>
+    </install-constraints>
 </manifest>
 
