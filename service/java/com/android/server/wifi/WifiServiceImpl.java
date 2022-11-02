@@ -792,6 +792,8 @@ public class WifiServiceImpl extends BaseWifiService {
             mLohsSoftApTracker.handleBootCompleted();
             mWifiInjector.getSarManager().handleBootCompleted();
             mWifiInjector.getSsidTranslator().handleBootCompleted();
+            mWifiInjector.getPasspointManager().handleBootCompleted();
+            mWifiInjector.getInterfaceConflictManager().handleBootCompleted();
             updateVerboseLoggingEnabled();
         });
     }
@@ -2484,7 +2486,15 @@ public class WifiServiceImpl extends BaseWifiService {
             // request. Once that UI dialog is added, we can get rid of this hack and use the UI
             // to elevate the priority of LOHS request only if user approves the request to
             // toggle wifi off for LOHS.
-            requestorWs = mFrameworkFacade.getSettingsWorkSource(mContext);
+            if (mContext.getResources().getBoolean(
+                    R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority)) {
+                // If the interface conflict dialogs are enabled, then we shouldn't fake the
+                // worksource since we need the correct worksource to display the right app label,
+                // and HDM will allow the iface creation as long as the user accepts the dialog.
+                requestorWs = new WorkSource(uid, packageName);
+            } else {
+                requestorWs = mFrameworkFacade.getSettingsWorkSource(mContext);
+            }
         } else {
             if (isPlatformOrTargetSdkLessThanT(packageName, uid)) {
                 if (!isSettingsOrSuw(Binder.getCallingPid(), Binder.getCallingUid())) {
@@ -5264,11 +5274,12 @@ public class WifiServiceImpl extends BaseWifiService {
             for (int i = mStartIdx; i < nextStartIdx; i++) {
                 WifiConfiguration configuration = mConfigurations.get(i);
                 int networkId =
-                        mWifiConfigManager.addOrUpdateNetwork(configuration, mCallingUid)
+                        mWifiConfigManager.addNetwork(configuration, mCallingUid)
                                 .getNetworkId();
                 if (networkId == WifiConfiguration.INVALID_NETWORK_ID) {
                     Log.e(TAG, "Restore network failed: "
-                            + configuration.getProfileKey());
+                            + configuration.getProfileKey() + ", network might already exist in the"
+                            + " database");
                 } else {
                     // Enable all networks restored.
                     mWifiConfigManager.enableNetwork(networkId, false, mCallingUid, null);
