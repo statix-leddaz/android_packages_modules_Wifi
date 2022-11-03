@@ -318,6 +318,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
     private Bundle mAttribution = new Bundle();
     private static final String DPP_URI = "DPP:some_dpp_uri";
     private static final String DPP_PRODUCT_INFO = "DPP:some_dpp_uri_info";
+    private static final WorkSource SETTINGS_WORKSOURCE =
+            new WorkSource(Process.SYSTEM_UID, "system-service");
 
     private final ArgumentCaptor<BroadcastReceiver> mBroadcastReceiverCaptor =
             ArgumentCaptor.forClass(BroadcastReceiver.class);
@@ -773,7 +775,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
         assertTrue(mWifiServiceImpl.setWifiEnabled(TEST_PACKAGE_NAME, false));
         mLooper.dispatchAll();
-        verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(true);
+        verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(true, false);
         inorder.verify(mWifiMetrics).logUserActionEvent(UserActionEvent.EVENT_TOGGLE_WIFI_ON);
         inorder.verify(mWifiMetrics).incrementNumWifiToggles(eq(true), eq(true));
         inorder.verify(mWifiMetrics).logUserActionEvent(eq(UserActionEvent.EVENT_TOGGLE_WIFI_OFF),
@@ -2822,6 +2824,36 @@ public class WifiServiceImplTest extends WifiBaseTest {
     }
 
     /**
+     * Test that connected SSID and BSSID for secondary CMM are exposed to an app that requests
+     * the second STA on a device that supports STA + STA. The request WorkSource of CMM is settings
+     * promoted.
+     */
+    @Test
+    public void testConnectedIdsAreVisibleFromAppRequestingSecondaryCmmWIthPromotesSettingsWs()
+            throws Exception {
+        WifiInfo wifiInfo = setupForGetConnectionInfo();
+        ConcreteClientModeManager secondaryCmm = mock(ConcreteClientModeManager.class);
+        WorkSource ws = new WorkSource(Binder.getCallingUid(), TEST_PACKAGE);
+        ws.add(SETTINGS_WORKSOURCE);
+        when(secondaryCmm.getRequestorWs()).thenReturn(ws);
+        when(secondaryCmm.syncRequestConnectionInfo()).thenReturn(wifiInfo);
+        when(mActiveModeWarden.getClientModeManagersInRoles(
+                ROLE_CLIENT_LOCAL_ONLY, ROLE_CLIENT_SECONDARY_LONG_LIVED))
+                .thenReturn(Arrays.asList(secondaryCmm));
+
+        mLooper.startAutoDispatch();
+        WifiInfo connectionInfo = parcelingRoundTrip(
+                mWifiServiceImpl.getConnectionInfo(TEST_PACKAGE, TEST_FEATURE_ID));
+        mLooper.stopAutoDispatchAndIgnoreExceptions();
+
+        assertEquals(TEST_SSID_WITH_QUOTES, connectionInfo.getSSID());
+        assertEquals(TEST_BSSID, connectionInfo.getBSSID());
+        assertEquals(TEST_NETWORK_ID, connectionInfo.getNetworkId());
+        assertEquals(TEST_FQDN, connectionInfo.getPasspointFqdn());
+        assertEquals(TEST_FRIENDLY_NAME, connectionInfo.getPasspointProviderFriendlyName());
+    }
+
+    /**
      * Test that connected SSID and BSSID for primary CMM are exposed to an app that is not the one
      * that requests the second STA on a device that supports STA + STA.
      */
@@ -4741,11 +4773,11 @@ public class WifiServiceImplTest extends WifiBaseTest {
             configurations.add(config);
         }
         reset(mWifiConfigManager);
-        when(mWifiConfigManager.addOrUpdateNetwork(any(), anyInt()))
+        when(mWifiConfigManager.addNetwork(any(), anyInt()))
                 .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         mWifiServiceImpl.restoreNetworks(configurations);
         mLooper.dispatchAll();
-        verify(mWifiConfigManager, times(configNum)).addOrUpdateNetwork(eq(config), anyInt());
+        verify(mWifiConfigManager, times(configNum)).addNetwork(eq(config), anyInt());
         verify(mWifiConfigManager, times(configNum)).enableNetwork(
                 eq(TEST_NETWORK_ID), eq(false), anyInt(), eq(null));
         verify(mWifiConfigManager, times(configNum)).allowAutojoin(eq(TEST_NETWORK_ID),
@@ -7687,7 +7719,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 .thenReturn(false);
         when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(false);
         when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(false);
-        mWifiServiceImpl.allowAutojoinGlobal(true);
+        mWifiServiceImpl.allowAutojoinGlobal(true, TEST_PACKAGE_NAME, mExtras);
     }
 
     @Test
@@ -7696,33 +7728,68 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
         when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
                 .thenReturn(true);
-        when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(false);
-        when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(false);
-        mWifiServiceImpl.allowAutojoinGlobal(true);
+        when(mWifiPermissionsUtil.isAdmin(anyInt(), anyString())).thenReturn(false);
+        mWifiServiceImpl.allowAutojoinGlobal(true, TEST_PACKAGE_NAME, mExtras);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(true, false);
 
         // verify allowAutojoinGlobal with NETWORK_SETTINGS
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
         when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
                 .thenReturn(false);
-        when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(false);
-        when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(false);
-        mWifiServiceImpl.allowAutojoinGlobal(true);
+        when(mWifiPermissionsUtil.isAdmin(anyInt(), anyString())).thenReturn(false);
+        mWifiServiceImpl.allowAutojoinGlobal(true, TEST_PACKAGE_NAME, mExtras);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager, times(2)).setAutoJoinEnabledExternal(true, false);
 
-        // verify allowAutojoinGlobal with DO
+        // verify allowAutojoinGlobal with device admin
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
         when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
                 .thenReturn(false);
-        when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(true);
-        when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(false);
-        mWifiServiceImpl.allowAutojoinGlobal(true);
+        when(mWifiPermissionsUtil.isAdmin(anyInt(), anyString())).thenReturn(true);
+        mWifiServiceImpl.allowAutojoinGlobal(true, TEST_PACKAGE_NAME, mExtras);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(true, true);
+    }
 
-        // verify allowAutojoinGlobal with PO
+    @Test
+    public void testAutoJoinGlobalWithAttributionSourceChain() {
+        assumeTrue(SdkLevel.isAtLeastS());
+
+        // verify allowAutojoinGlobal with device admin in attribution source chain
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
         when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(true);
+        when(mWifiPermissionsUtil.isAdmin(anyInt(), anyString())).thenReturn(false);
+        // mock attribution chain
+        AttributionSource attributionSource = mock(AttributionSource.class);
+        mAttribution.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE, attributionSource);
+        when(attributionSource.getUid()).thenReturn(TEST_UID);
+        when(attributionSource.getPackageName()).thenReturn(TEST_PACKAGE_NAME);
+        AttributionSource originalCaller = mock(AttributionSource.class);
+        when(originalCaller.getUid()).thenReturn(OTHER_TEST_UID);
+        when(originalCaller.getPackageName()).thenReturn(TEST_PACKAGE_NAME_OTHER);
+        when(attributionSource.getNext()).thenReturn(originalCaller);
+        // mock the original caller to be device admin via the isAdmin check
+        when(mWifiPermissionsUtil.isAdmin(OTHER_TEST_UID, TEST_PACKAGE_NAME_OTHER))
+                .thenReturn(true);
+        mWifiServiceImpl.allowAutojoinGlobal(true, TEST_PACKAGE_NAME, mAttribution);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(true, true);
+
+        // mock the original caller to be not a device admin and then verify again.
+        when(mWifiPermissionsUtil.isAdmin(OTHER_TEST_UID, TEST_PACKAGE_NAME_OTHER))
                 .thenReturn(false);
-        when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), anyString())).thenReturn(false);
-        when(mWifiPermissionsUtil.isProfileOwner(anyInt(), anyString())).thenReturn(true);
-        mWifiServiceImpl.allowAutojoinGlobal(true);
+        mWifiServiceImpl.allowAutojoinGlobal(false, TEST_PACKAGE_NAME, mAttribution);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(false, false);
+
+        // mock the original caller to be device admin via the isLegacyDeviceAdmin check
+        when(mWifiPermissionsUtil.isLegacyDeviceAdmin(OTHER_TEST_UID, TEST_PACKAGE_NAME_OTHER))
+                .thenReturn(true);
+        mWifiServiceImpl.allowAutojoinGlobal(true, TEST_PACKAGE_NAME, mAttribution);
+        mLooper.dispatchAll();
+        verify(mWifiConnectivityManager, times(2)).setAutoJoinEnabledExternal(true, true);
     }
 
     @Test

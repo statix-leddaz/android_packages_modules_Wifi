@@ -187,6 +187,7 @@ public class WifiConnectivityManager {
     private int mWifiState = WIFI_STATE_UNKNOWN;
     private int mInitialScanState = INITIAL_SCAN_STATE_COMPLETE;
     private boolean mAutoJoinEnabledExternal = true; // enabled by default
+    private boolean mAutoJoinEnabledExternalSetByDeviceAdmin = false;
     private boolean mUntrustedConnectionAllowed = false;
     private Set<Integer> mRestrictedConnectionAllowedUids = new ArraySet<>();
     private boolean mOemPaidConnectionAllowed = false;
@@ -851,6 +852,9 @@ public class WifiConnectivityManager {
 
         @Override
         public void onResults(WifiScanner.ScanData[] results) {
+            if (mIsLocationModeEnabled) {
+                mExternalPnoScanRequestManager.onScanResultsAvailable(mScanDetails);
+            }
             if (!mWifiEnabled || !mAutoJoinEnabled) {
                 clearScanDetails();
                 mWaitForFullBandScanResults = false;
@@ -1078,6 +1082,9 @@ public class WifiConnectivityManager {
                 }
                 mScanDetails.add(new ScanDetail(result));
             }
+            if (mIsLocationModeEnabled) {
+                mExternalPnoScanRequestManager.onScanResultsAvailable(mScanDetails);
+            }
 
             // Create a new list to avoid looping call trigger concurrent exception.
             List<ScanDetail> scanDetailList = new ArrayList<>(mScanDetails);
@@ -1102,9 +1109,6 @@ public class WifiConnectivityManager {
                             resetLowRssiNetworkRetryDelay();
                         }
                     });
-            if (mIsLocationModeEnabled) {
-                mExternalPnoScanRequestManager.onPnoNetworkFound(results);
-            }
         }
     }
 
@@ -2400,19 +2404,23 @@ public class WifiConnectivityManager {
     // Start a connectivity scan. The scan method is chosen according to
     // the current screen state and WiFi state.
     private void startConnectivityScan(boolean scanImmediately) {
+        boolean noPotentialNetworkAvailable = hasNoPotentialNetworkAvailable();
         localLog("startConnectivityScan: screenOn=" + mScreenOn
                 + " wifiState=" + stateToString(mWifiState)
                 + " scanImmediately=" + scanImmediately
                 + " wifiEnabled=" + mWifiEnabled
                 + " mAutoJoinEnabled=" + mAutoJoinEnabled
                 + " mAutoJoinEnabledExternal=" + mAutoJoinEnabledExternal
+                + " mAutoJoinEnabledExternalSetByDeviceAdmin="
+                + mAutoJoinEnabledExternalSetByDeviceAdmin
                 + " mSpecificNetworkRequestInProgress=" + mSpecificNetworkRequestInProgress
                 + " mTrustedConnectionAllowed=" + mTrustedConnectionAllowed
                 + " isSufficiencyCheckEnabled=" + mNetworkSelector.isSufficiencyCheckEnabled()
                 + " isAssociatedNetworkSelectionEnabled="
-                + mNetworkSelector.isAssociatedNetworkSelectionEnabled());
+                + mNetworkSelector.isAssociatedNetworkSelectionEnabled()
+                + " noPotentialNetworkAvailable=" + noPotentialNetworkAvailable);
 
-        if (!mWifiEnabled || !mAutoJoinEnabled) {
+        if (!mWifiEnabled || !mAutoJoinEnabled || noPotentialNetworkAvailable) {
             return;
         }
 
@@ -2548,6 +2556,41 @@ public class WifiConnectivityManager {
         String suggestionKey = network.getWifiConfiguration().getProfileKey();
         WifiConfiguration config = mConfigManager.getConfiguredNetwork(suggestionKey);
         return (config != null && config.networkId == currentNetworkId);
+    }
+
+    /**
+     * Check if there are no potential networks available for connection
+     * This is true if both of the following is satisfied:
+     * 1. Device has no network whether saved, passpoint, or suggestion.
+     * 2. Open network notifier is disabled.
+     */
+    private boolean hasNoPotentialNetworkAvailable() {
+        List<WifiConfiguration> savedNetworks =
+                mConfigManager.getSavedNetworks(Process.WIFI_UID);
+        // If we have any saved networks, then no need to proceed
+        if (savedNetworks.size() > 0) {
+            return false;
+        }
+
+        List<PasspointConfiguration> passpointNetworks =
+                mPasspointManager.getProviderConfigs(Process.WIFI_UID, true);
+        // If we have any passpoint networks, then no need to proceed
+        if (passpointNetworks.size() > 0) {
+            return false;
+        }
+
+        Set<WifiNetworkSuggestion> suggestionsNetworks =
+                mWifiNetworkSuggestionsManager.getAllApprovedNetworkSuggestions();
+        // If we have any suggestion networks, then no need to proceed
+        if (suggestionsNetworks.size() > 0) {
+            return false;
+        }
+
+        // Next verify that open network notifier is disabled
+        if (mOpenNetworkNotifier.isSettingEnabled()) {
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -3035,9 +3078,14 @@ public class WifiConnectivityManager {
     /**
      * Turn on/off the auto join at runtime
      */
-    public void setAutoJoinEnabledExternal(boolean enable) {
+    public void setAutoJoinEnabledExternal(boolean enable, boolean isDeviceAdmin) {
         localLog("Set auto join " + (enable ? "enabled" : "disabled"));
-
+        if (!mAutoJoinEnabledExternal && mAutoJoinEnabledExternalSetByDeviceAdmin
+                && !isDeviceAdmin) {
+            localLog("Set auto join ignored since it was disabled by a device admin.");
+            return;
+        }
+        mAutoJoinEnabledExternalSetByDeviceAdmin = isDeviceAdmin;
         if (mAutoJoinEnabledExternal != enable) {
             mAutoJoinEnabledExternal = enable;
             checkAllStatesAndEnableAutoJoin();
