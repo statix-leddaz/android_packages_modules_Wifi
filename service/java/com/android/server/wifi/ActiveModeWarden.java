@@ -506,6 +506,11 @@ public class ActiveModeWarden {
         mIsShuttingdown = true;
     }
 
+    /** @return Returns whether device is shutting down */
+    public boolean isShuttingDown() {
+        return mIsShuttingdown;
+    }
+
     /**
      * @return Returns whether we can create more client mode managers or not.
      */
@@ -999,8 +1004,9 @@ public class ActiveModeWarden {
         return null;
     }
 
+    /** Get any client mode manager in the given target role, or null if none was found. */
     @Nullable
-    private ConcreteClientModeManager getClientModeManagerTransitioningIntoRole(ClientRole role) {
+    public ConcreteClientModeManager getClientModeManagerTransitioningIntoRole(ClientRole role) {
         for (ConcreteClientModeManager manager : mClientModeManagers) {
             if (manager.getTargetRole() == role) return manager;
         }
