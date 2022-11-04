@@ -775,6 +775,8 @@ public class ClientModeImplTest extends WifiBaseTest {
                 mBroadcastQueue, mWifiNetworkSelector, mTelephonyManager, mWifiInjector,
                 mSettingsConfigStore, false, mWifiNotificationManager);
 
+        mCmi.mInsecureEapNetworkHandler = mInsecureEapNetworkHandler;
+
         mWifiCoreThread = getCmiHandlerThread(mCmi);
 
         mBinderToken = Binder.clearCallingIdentity();
@@ -1500,8 +1502,12 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
-        // No decorated pseudonum, only update the cached data.
-        verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            // No decorated pseudonum, only update the cached data.
+            verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym), eq(false));
+        } else {
+            verify(mWifiNative, never()).setEapAnonymousIdentity(any(), any(), anyBoolean());
+        }
         assertEquals(pseudonym,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
         // Verify that WifiConfigManager#addOrUpdateNetwork() was called if there we received a
@@ -1558,7 +1564,12 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
-        verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym + "@" + realm), eq(true));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym + "@" + realm),
+                    eq(true));
+        } else {
+            verify(mWifiNative, never()).setEapAnonymousIdentity(any(), any(), anyBoolean());
+        }
         assertEquals(pseudonym + "@" + realm,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
         // Verify that WifiConfigManager#addOrUpdateNetwork() was called if there we received a
@@ -1612,8 +1623,12 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
-        // No decorated pseudonum, only update the cached data.
-        verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            // No decorated pseudonum, only update the cached data.
+            verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym), eq(false));
+        } else {
+            verify(mWifiNative, never()).setEapAnonymousIdentity(any(), any(), anyBoolean());
+        }
         assertEquals(pseudonym,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
         // Verify that WifiConfigManager#addOrUpdateNetwork() was called if there we received a
@@ -1672,8 +1687,12 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
-        // No decorated pseudonum, only update the cached data.
-        verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym), eq(false));
+        if (SdkLevel.isAtLeastT()) {
+            // No decorated pseudonum, only update the cached data.
+            verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym), eq(false));
+        } else {
+            verify(mWifiNative, never()).setEapAnonymousIdentity(any(), any(), anyBoolean());
+        }
         assertEquals(pseudonym,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
         // Verify that WifiConfigManager#addOrUpdateNetwork() was called if there we received a
@@ -3400,6 +3419,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 .thenReturn(Collections.emptySet());
         when(mWifiNetworkFactory.getSpecificNetworkRequestUidAndPackageName(any(), any()))
                 .thenReturn(Pair.create(Process.INVALID_UID, ""));
+        mCmi.enableRssiPolling(true);
         // Simulate the first connection.
         connectWithValidInitRssi(-42);
 
@@ -3426,7 +3446,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(mClock.getWallClockMillis()).thenReturn(startMillis + 0);
         when(mPerNetwork.getTxLinkBandwidthKbps()).thenReturn(82_000);
         when(mPerNetwork.getRxLinkBandwidthKbps()).thenReturn(92_000);
-        mCmi.enableRssiPolling(true);
+        mCmi.sendMessage(ClientModeImpl.CMD_RSSI_POLL, 1);
         mLooper.dispatchAll();
         when(mClock.getWallClockMillis()).thenReturn(startMillis + 3333);
         mLooper.dispatchAll();
@@ -3438,12 +3458,24 @@ public class ClientModeImplTest extends WifiBaseTest {
         assertEquals(82_000, networkCapabilities.getLinkUpstreamBandwidthKbps());
         assertEquals(92_000, networkCapabilities.getLinkDownstreamBandwidthKbps());
 
+        // NetworkCapabilities should be updated when the connected channel frequency is changed
+        // For example due to AP channel switch announcement(CSA).
+        WifiNl80211Manager.SignalPollResult signalPollResult1 =
+                new WifiNl80211Manager.SignalPollResult(-42, 65, 54, sFreq1);
+        when(mWifiNative.signalPoll(any())).thenReturn(signalPollResult1);
+        mCmi.sendMessage(ClientModeImpl.CMD_RSSI_POLL, 1);
+        mLooper.dispatchAll();
+
+        verify(mCmi.mNetworkAgent, times(4))
+                .sendNetworkCapabilitiesAndCache(networkCapabilitiesCaptor.capture());
+        assertEquals(sFreq1, mWifiInfo.getFrequency());
+
         // No update after a small change of bandwidth
         when(mPerNetwork.getTxLinkBandwidthKbps()).thenReturn(72_000);
         when(mPerNetwork.getRxLinkBandwidthKbps()).thenReturn(82_000);
         when(mClock.getWallClockMillis()).thenReturn(startMillis + 3333);
         mLooper.dispatchAll();
-        verify(mCmi.mNetworkAgent, times(3))
+        verify(mCmi.mNetworkAgent, times(4))
                 .sendNetworkCapabilitiesAndCache(networkCapabilitiesCaptor.capture());
         networkCapabilities = networkCapabilitiesCaptor.getValue();
         assertEquals(82_000, networkCapabilities.getLinkUpstreamBandwidthKbps());
@@ -4508,22 +4540,24 @@ public class ClientModeImplTest extends WifiBaseTest {
      */
     @Test
     public void testLayer2InformationUpdate() throws Exception {
+        InOrder inOrder = inOrder(mIpClient);
         when(mWifiScoreCard.getL2KeyAndGroupHint(any())).thenReturn(
                 Pair.create("Wad", "Gab"));
         // Simulate connection
         connect();
 
+        inOrder.verify(mIpClient).updateLayer2Information(any());
+        inOrder.verify(mIpClient).startProvisioning(any());
+
         // Simulate Roaming
         when(mWifiScoreCard.getL2KeyAndGroupHint(any())).thenReturn(
                 Pair.create("aaa", "bbb"));
-        mCmi.sendMessage(WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0,
-                new StateChangeResult(FRAMEWORK_NETWORK_ID, TEST_WIFI_SSID, TEST_BSSID_STR1,
-                        SupplicantState.ASSOCIATED));
-        mCmi.sendMessage(WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0,
-                new StateChangeResult(0, TEST_WIFI_SSID, TEST_BSSID_STR1,
-                        SupplicantState.COMPLETED));
+        // Now send a network connection (indicating a roam) event
+        mCmi.sendMessage(WifiMonitor.NETWORK_CONNECTION_EVENT,
+                new NetworkConnectionEventInfo(0, TEST_WIFI_SSID, TEST_BSSID_STR1, false));
         mLooper.dispatchAll();
 
+        inOrder.verify(mIpClient).updateLayer2Information(any());
 
         // Simulate disconnection
         when(mWifiScoreCard.getL2KeyAndGroupHint(any())).thenReturn(new Pair<>(null, null));
@@ -4534,6 +4568,9 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         verify(mWifiScoreCard, times(3)).getL2KeyAndGroupHint(any());
         verify(mIpClient, times(3)).updateLayer2Information(any());
+
+
+
     }
 
     /**
@@ -8389,6 +8426,16 @@ public class ClientModeImplTest extends WifiBaseTest {
         mCmi.mInsecureEapNetworkHandlerCallbacksImpl.onError(testConfig.SSID);
         mLooper.dispatchAll();
         verify(mWifiNative).disconnect(eq(WIFI_IFACE_NAME));
+    }
+
+    /**
+     * Verify that InsecureEapNetworkHandler cleanup() is called if wifi is disabled.
+     */
+    @Test
+    public void verifyInsecureEapNetworkCleanUpWhenDisabled() throws Exception {
+        mCmi.stop();
+        mLooper.dispatchAll();
+        verify(mInsecureEapNetworkHandler).cleanup();
     }
 
     /**

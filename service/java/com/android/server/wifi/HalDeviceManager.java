@@ -115,6 +115,7 @@ public class HalDeviceManager {
     private boolean mIsStaWithBridgedSoftApConcurrencySupported;
     private boolean mWifiUserApprovalRequiredForD2dInterfacePriority;
     private boolean mIsConcurrencyComboLoadedFromDriver;
+    private boolean mWaitForDestroyedListeners;
     private ArrayMap<IWifiIface, SoftApManager> mSoftApManagers = new ArrayMap<>();
 
     // cache the value for supporting vendor HAL or not
@@ -179,6 +180,7 @@ public class HalDeviceManager {
                 res.getBoolean(R.bool.config_wifiStaWithBridgedSoftApConcurrencySupported);
         mWifiUserApprovalRequiredForD2dInterfacePriority =
                 res.getBoolean(R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority);
+        mWaitForDestroyedListeners = res.getBoolean(R.bool.config_wifiWaitForDestroyedListeners);
         mClock = clock;
         mWifiInjector = wifiInjector;
         mEventHandler = handler;
@@ -1021,6 +1023,10 @@ public class HalDeviceManager {
         return mIsStaWithBridgedSoftApConcurrencySupported;
     }
 
+    protected boolean isWaitForDestroyedListenersMockable() {
+        return mWaitForDestroyedListeners;
+    }
+
     // internal implementation
 
     private void initializeInternal() {
@@ -1683,34 +1689,56 @@ public class HalDeviceManager {
             newChipMode.id = oldChipMode.id;
             newChipMode.availableCombinations = new ArrayList<>();
             for (IWifiChip.ChipIfaceCombination oldCombo : oldChipMode.availableCombinations) {
-                android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombination newCombo =
-                        new ChipConcurrencyCombination();
+                android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombination
+                        newCombo = new ChipConcurrencyCombination();
                 newCombo.limits = new ArrayList<>();
-                boolean isStaInCombination = false;
-                for (IWifiChip.ChipIfaceCombinationLimit oldLimit : oldCombo.limits) {
-                    if (oldLimit.types.contains(IfaceType.STA)) {
-                        isStaInCombination = true;
-                        break;
-                    }
-                }
-                // Add Bridged AP based on the overlays
-                boolean canAddBridgedAp = isBridgedSoftApSupportedMockable() && !(isStaInCombination
-                        && !isStaWithBridgedSoftApConcurrencySupportedMockable());
+                // Define a duplicate combination list with AP converted to AP_BRIDGED
+                android.hardware.wifi.V1_6.IWifiChip.ChipConcurrencyCombination
+                        newComboWithBridgedAp = new ChipConcurrencyCombination();
+                newComboWithBridgedAp.limits = new ArrayList<>();
+                ChipConcurrencyCombinationLimit bridgedApLimit =
+                        new ChipConcurrencyCombinationLimit();
+                bridgedApLimit.maxIfaces = 1;
+                bridgedApLimit.types = new ArrayList<>();
+                bridgedApLimit.types.add(IfaceConcurrencyType.AP_BRIDGED);
+                newComboWithBridgedAp.limits.add(bridgedApLimit);
+
+                boolean apInCombo = false;
+                // Populate both the combo with AP_BRIDGED and the combo without AP_BRIDGED
                 for (IWifiChip.ChipIfaceCombinationLimit oldLimit : oldCombo.limits) {
                     ChipConcurrencyCombinationLimit newLimit =
                             new ChipConcurrencyCombinationLimit();
                     newLimit.types = new ArrayList<>();
-                    for (int oldType : oldLimit.types) {
-                        int newType = IFACE_TYPE_TO_CONCURRENCY_TYPE_MAP.get(oldType);
-                        newLimit.types.add(newType);
-                        if (oldType == IfaceType.AP && canAddBridgedAp) {
-                            newLimit.types.add(IfaceConcurrencyType.AP_BRIDGED);
-                        }
-                    }
                     newLimit.maxIfaces = oldLimit.maxIfaces;
+                    for (int oldType : oldLimit.types) {
+                        newLimit.types.add(IFACE_TYPE_TO_CONCURRENCY_TYPE_MAP.get(oldType));
+                    }
                     newCombo.limits.add(newLimit);
+
+                    ChipConcurrencyCombinationLimit newLimitForBridgedApCombo =
+                            new ChipConcurrencyCombinationLimit();
+                    newLimitForBridgedApCombo.types = new ArrayList<>(newLimit.types);
+                    newLimitForBridgedApCombo.maxIfaces = newLimit.maxIfaces;
+                    if (newLimitForBridgedApCombo.types.contains(IfaceConcurrencyType.AP)) {
+                        // Skip the limit if it contains AP, since this corresponds to the
+                        // AP_BRIDGED in the duplicate AP_BRIDGED combo.
+                        apInCombo = true;
+                    } else if (!isStaWithBridgedSoftApConcurrencySupportedMockable()
+                            && newLimitForBridgedApCombo.types.contains(IfaceConcurrencyType.STA)) {
+                        // Don't include STA in the AP_BRIDGED combo if STA + AP_BRIDGED is not
+                        // supported.
+                        newLimitForBridgedApCombo.types.remove((Integer) IfaceConcurrencyType.STA);
+                        if (!newLimitForBridgedApCombo.types.isEmpty()) {
+                            newComboWithBridgedAp.limits.add(newLimitForBridgedApCombo);
+                        }
+                    } else {
+                        newComboWithBridgedAp.limits.add(newLimitForBridgedApCombo);
+                    }
                 }
                 newChipMode.availableCombinations.add(newCombo);
+                if (isBridgedSoftApSupportedMockable() && apInCombo) {
+                    newChipMode.availableCombinations.add(newComboWithBridgedAp);
+                }
             }
             newChipModes.add(newChipMode);
         }
@@ -1985,7 +2013,7 @@ public class HalDeviceManager {
     private void managerStatusListenerDispatch() {
         synchronized (mLock) {
             for (ManagerStatusListenerProxy cb : mManagerStatusListeners) {
-                cb.trigger();
+                cb.trigger(false);
             }
         }
     }
@@ -2257,8 +2285,8 @@ public class HalDeviceManager {
     private class IfaceCreationData {
         public WifiChipInfo chipInfo;
         public int chipModeId;
-        public List<WifiIfaceInfo> interfacesToBeRemovedFirst;
-        public List<WifiIfaceInfo> interfacesToBeDowngraded;
+        public @NonNull List<WifiIfaceInfo> interfacesToBeRemovedFirst = new ArrayList<>();
+        public @NonNull List<WifiIfaceInfo> interfacesToBeDowngraded = new ArrayList<>();
 
         @Override
         public String toString() {
@@ -2303,6 +2331,10 @@ public class HalDeviceManager {
             return null;
         }
 
+        IfaceCreationData ifaceCreationData = new IfaceCreationData();
+        ifaceCreationData.chipInfo = chipInfo;
+        ifaceCreationData.chipModeId = chipModeId;
+
         boolean isChipModeChangeProposed =
                 chipInfo.currentModeIdValid && chipInfo.currentModeId != chipModeId;
 
@@ -2322,16 +2354,10 @@ public class HalDeviceManager {
             }
 
             // but if priority allows the mode change then we're good to go
-            IfaceCreationData ifaceCreationData = new IfaceCreationData();
-            ifaceCreationData.chipInfo = chipInfo;
-            ifaceCreationData.chipModeId = chipModeId;
-
             return ifaceCreationData;
         }
 
         // possibly supported
-        List<WifiIfaceInfo> interfacesToBeRemovedFirst = new ArrayList<>();
-        List<WifiIfaceInfo> interfacesToBeDowngraded = new ArrayList<>();
         for (int existingCreateType : CREATE_TYPES_BY_PRIORITY) {
             WifiIfaceInfo[] createTypeIfaces = chipInfo.ifaces[existingCreateType];
             int numExcessIfaces = createTypeIfaces.length - chipCreateTypeCombo[existingCreateType];
@@ -2348,9 +2374,12 @@ public class HalDeviceManager {
                         availableSingleApCapacity -= 1;
                     }
                     if (availableSingleApCapacity >= numExcessIfaces) {
-                        interfacesToBeDowngraded = selectBridgedApInterfacesToDowngrade(
+                        List<WifiIfaceInfo> interfacesToBeDowngraded =
+                                selectBridgedApInterfacesToDowngrade(
                                         numExcessIfaces, createTypeIfaces);
                         if (interfacesToBeDowngraded != null) {
+                            ifaceCreationData.interfacesToBeDowngraded.addAll(
+                                    interfacesToBeDowngraded);
                             continue;
                         }
                         // Can't downgrade enough bridged APs, fall through to delete them.
@@ -2368,16 +2397,9 @@ public class HalDeviceManager {
                     }
                     return null;
                 }
-                interfacesToBeRemovedFirst.addAll(selectedIfacesToDelete);
+                ifaceCreationData.interfacesToBeRemovedFirst.addAll(selectedIfacesToDelete);
             }
         }
-
-        IfaceCreationData ifaceCreationData = new IfaceCreationData();
-        ifaceCreationData.chipInfo = chipInfo;
-        ifaceCreationData.chipModeId = chipModeId;
-        ifaceCreationData.interfacesToBeRemovedFirst = interfacesToBeRemovedFirst;
-        ifaceCreationData.interfacesToBeDowngraded = interfacesToBeDowngraded;
-
         return ifaceCreationData;
     }
 
@@ -2436,10 +2458,8 @@ public class HalDeviceManager {
             }
         }
 
-        int val1NumIFacesToBeDowngraded = val1.interfacesToBeDowngraded != null
-                ? val1.interfacesToBeDowngraded.size() : 0;
-        int val2NumIFacesToBeDowngraded = val2.interfacesToBeDowngraded != null
-                ? val2.interfacesToBeDowngraded.size() : 0;
+        int val1NumIFacesToBeDowngraded = val1.interfacesToBeDowngraded.size();
+        int val2NumIFacesToBeDowngraded = val2.interfacesToBeDowngraded.size();
         if (val1NumIFacesToBeDowngraded != val2NumIFacesToBeDowngraded) {
             return val1NumIFacesToBeDowngraded < val2NumIFacesToBeDowngraded;
         }
@@ -2483,6 +2503,50 @@ public class HalDeviceManager {
     }
 
     /**
+     * Returns true if the requested iface can delete an existing iface only after user approval.
+     */
+    public boolean needsUserApprovalToDelete(
+            int requestedCreateType, WorkSource newWorksource,
+            int existingCreateType, WorkSource existingWorksource) {
+        return needsUserApprovalToDelete(
+                requestedCreateType,
+                getRequestorWsPriority(mWifiInjector.makeWsHelper(newWorksource)),
+                existingCreateType,
+                getRequestorWsPriority(mWifiInjector.makeWsHelper(existingWorksource)));
+    }
+
+    private boolean needsUserApprovalToDelete(
+            int requestedCreateType, int newRequestorWsPriority,
+            int existingCreateType, int existingRequestorWsPriority) {
+        if (!mWifiUserApprovalRequiredForD2dInterfacePriority
+                || newRequestorWsPriority <= PRIORITY_BG
+                || existingRequestorWsPriority == PRIORITY_INTERNAL) {
+            return false;
+        }
+
+        if (requestedCreateType == HDM_CREATE_IFACE_AP
+                || requestedCreateType == HDM_CREATE_IFACE_AP_BRIDGE) {
+            if (existingCreateType == HDM_CREATE_IFACE_P2P
+                    || existingCreateType == HDM_CREATE_IFACE_NAN) {
+                return true;
+            }
+        } else if (requestedCreateType == HDM_CREATE_IFACE_P2P) {
+            if (existingCreateType == HDM_CREATE_IFACE_AP
+                    || existingCreateType == HDM_CREATE_IFACE_AP_BRIDGE
+                    || existingCreateType == HDM_CREATE_IFACE_NAN) {
+                return true;
+            }
+        } else if (requestedCreateType == HDM_CREATE_IFACE_NAN) {
+            if (existingCreateType == HDM_CREATE_IFACE_AP
+                    || existingCreateType == HDM_CREATE_IFACE_AP_BRIDGE
+                    || existingCreateType == HDM_CREATE_IFACE_P2P) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Returns whether interface request from |newRequestorWsPriority| is allowed to delete an
      * interface request from |existingRequestorWsPriority|.
      *
@@ -2503,14 +2567,13 @@ public class HalDeviceManager {
         if (!SdkLevel.isAtLeastS()) {
             return allowedToDeleteForR(requestedCreateType, existingCreateType);
         }
-        if (mWifiUserApprovalRequiredForD2dInterfacePriority
-                && newRequestorWsPriority > PRIORITY_BG
-                && (requestedCreateType == HDM_CREATE_IFACE_AP
-                || requestedCreateType == HDM_CREATE_IFACE_AP_BRIDGE
-                || requestedCreateType == HDM_CREATE_IFACE_P2P
-                || requestedCreateType == HDM_CREATE_IFACE_NAN)) {
+
+        // Defer deletion decision to the InterfaceConflictManager dialog.
+        if (needsUserApprovalToDelete(requestedCreateType, newRequestorWsPriority,
+                existingCreateType, existingRequestorWsPriority)) {
             return true;
         }
+
         // If the new request is higher priority than existing priority, then the new requestor
         // wins. This is because at all other priority levels (except privileged), existing caller
         // wins if both the requests are at the same priority level.
@@ -2985,7 +3048,7 @@ public class HalDeviceManager {
         }
 
         for (InterfaceDestroyedListenerProxy listener : triggerList) {
-            listener.trigger();
+            listener.trigger(isWaitForDestroyedListenersMockable());
         }
     }
 
@@ -3005,7 +3068,7 @@ public class HalDeviceManager {
         }
 
         for (InterfaceDestroyedListenerProxy listener : triggerList) {
-            listener.trigger();
+            listener.trigger(false);
         }
     }
 
@@ -3063,7 +3126,7 @@ public class HalDeviceManager {
             return currentTid == handlerTid;
         }
 
-        void trigger() {
+        void trigger(boolean isRunAtFront) {
             // TODO(b/199792691): The thread check is needed to preserve the existing
             //  assumptions of synchronous execution of the "onDestroyed" callback as much as
             //  possible. This is needed to prevent regressions caused by posting to the handler
@@ -3074,6 +3137,12 @@ public class HalDeviceManager {
             if (requestedToRunInCurrentThread()) {
                 // Already running on the same handler thread. Trigger listener synchronously.
                 action();
+            } else if (isRunAtFront) {
+                // Current thread is not the thread the listener should be invoked on.
+                // Post action to the intended thread and run synchronously.
+                new WifiThreadRunner(mHandler).runAtFront(() -> {
+                    action();
+                });
             } else {
                 // Current thread is not the thread the listener should be invoked on.
                 // Post action to the intended thread.
