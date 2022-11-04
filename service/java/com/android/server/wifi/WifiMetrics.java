@@ -18,6 +18,8 @@ package com.android.server.wifi;
 
 import static android.net.wifi.WifiConfiguration.MeteredOverride;
 
+import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
+
 import static java.lang.StrictMath.toIntExact;
 
 import android.annotation.IntDef;
@@ -2133,6 +2135,30 @@ public class WifiMetrics {
         }
     }
 
+    /**
+     * Report an airplane mode session.
+     *
+     * @param wifiOnBeforeEnteringApm Whether Wi-Fi is on before entering airplane mode
+     * @param wifiOnAfterEnteringApm Whether Wi-Fi is on after entering airplane mode
+     * @param wifiOnBeforeExitingApm Whether Wi-Fi is on before exiting airplane mode
+     * @param apmEnhancementActive Whether the user has activated the airplane mode enhancement
+     *                            feature by toggling Wi-Fi in airplane mode
+     * @param userToggledWifiDuringApm Whether the user toggled Wi-Fi during the current
+     *                                  airplane mode
+     * @param userToggledWifiAfterEnteringApmWithinMinute Whether the user toggled Wi-Fi within one
+     *                                                    minute of entering airplane mode
+     */
+    public void reportAirplaneModeSession(boolean wifiOnBeforeEnteringApm,
+            boolean wifiOnAfterEnteringApm, boolean wifiOnBeforeExitingApm,
+            boolean apmEnhancementActive, boolean userToggledWifiDuringApm,
+            boolean userToggledWifiAfterEnteringApmWithinMinute) {
+        WifiStatsLog.write(WifiStatsLog.AIRPLANE_MODE_SESSION_REPORTED,
+                WifiStatsLog.AIRPLANE_MODE_SESSION_REPORTED__PACKAGE_NAME__WIFI,
+                wifiOnBeforeEnteringApm, wifiOnAfterEnteringApm, wifiOnBeforeExitingApm,
+                apmEnhancementActive, userToggledWifiDuringApm,
+                userToggledWifiAfterEnteringApmWithinMinute, false);
+    }
+
     // TODO(b/177341879): Add failure type ConnectionEvent.FAILURE_NO_RESPONSE into Westworld.
     private int getConnectionResultFailureCode(int level2FailureCode, int level2FailureReason) {
         switch (level2FailureCode) {
@@ -3309,6 +3335,22 @@ public class WifiMetrics {
         mWifiLogProto.numSetupSoftApInterfaceFailureDueToHostapd++;
         WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
                 WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__SOFT_AP_FAILURE_HOSTAPD);
+    }
+
+    /**
+     * Increment number of times the P2p on failed due to an error in HAL.
+     */
+    public synchronized void incrementNumSetupP2pInterfaceFailureDueToHal() {
+        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
+                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__P2P_FAILURE_HAL);
+    }
+
+    /**
+     * Increment number of times the P2p on failed due to an error in supplicant.
+     */
+    public synchronized void incrementNumSetupP2pInterfaceFailureDueToSupplicant() {
+        WifiStatsLog.write(WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED,
+                WifiStatsLog.WIFI_SETUP_FAILURE_CRASH_REPORTED__TYPE__P2P_FAILURE_SUPPLICANT);
     }
 
     /**
@@ -5544,7 +5586,13 @@ public class WifiMetrics {
     private void addStaEvent(String ifaceName, StaEvent staEvent) {
         // Nano proto runtime will throw a NPE during serialization if interfaceName is null
         if (ifaceName == null) {
-            Log.wtf(TAG, "Null StaEvent.ifaceName: " + staEventToString(staEvent));
+            // Check if any ConcreteClientModeManager's role is switching to ROLE_CLIENT_PRIMARY
+            ConcreteClientModeManager targetConcreteClientModeManager =
+                    mActiveModeWarden.getClientModeManagerTransitioningIntoRole(
+                            ROLE_CLIENT_PRIMARY);
+            if (targetConcreteClientModeManager == null) {
+                Log.wtf(TAG, "Null StaEvent.ifaceName: " + staEventToString(staEvent));
+            }
             return;
         }
         staEvent.interfaceName = ifaceName;

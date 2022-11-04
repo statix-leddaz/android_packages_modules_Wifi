@@ -50,6 +50,7 @@ import android.os.Handler;
 import android.os.SystemClock;
 import android.os.WorkSource;
 import android.text.TextUtils;
+import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
 import android.util.SparseArray;
@@ -117,6 +118,7 @@ public class WifiNative {
     private final ArrayList<ScanDetail> mFakeScanDetails = new ArrayList<>();
     private long mCachedFeatureSet;
     private boolean mQosPolicyFeatureEnabled = false;
+    private final Map<String, String> mWifiCondIfacesForBridgedAp = new ArrayMap<>();
 
     public WifiNative(WifiVendorHal vendorHal,
                       SupplicantStaIfaceHal staIfaceHal, HostapdHal hostapdHal,
@@ -691,7 +693,12 @@ public class WifiNative {
             if (!mHostapdHal.removeAccessPoint(iface.name)) {
                 Log.e(TAG, "Failed to remove access point on " + iface);
             }
-            if (!mWifiCondManager.tearDownSoftApInterface(iface.name)) {
+            String wificondIface = iface.name;
+            String bridgedApInstance = mWifiCondIfacesForBridgedAp.remove(iface.name);
+            if (bridgedApInstance != null) {
+                wificondIface = bridgedApInstance;
+            }
+            if (!mWifiCondManager.tearDownSoftApInterface(wificondIface)) {
                 Log.e(TAG, "Failed to teardown iface in wificond on " + iface);
             }
             stopHostapdIfNecessary();
@@ -1172,6 +1179,12 @@ public class WifiNative {
         }
     }
 
+    private void takeBugReportInterfaceFailureIfNeeded(String bugTitle, String bugDetail) {
+        if (mWifiInjector.getDeviceConfigFacade().isInterfaceFailureBugreportEnabled()) {
+            mWifiInjector.getWifiDiagnostics().takeBugReport(bugTitle, bugDetail);
+        }
+    }
+
     /**
      * Setup an interface for client mode (for connectivity) operations.
      *
@@ -1325,14 +1338,20 @@ public class WifiNative {
             @SoftApConfiguration.BandType int band, boolean isBridged,
             @NonNull SoftApManager softApManager) {
         synchronized (mLock) {
+            String bugTitle = "Wi-Fi BugReport (softAp interface failure)";
+            String errorMsg = "";
             if (!startHal()) {
-                Log.e(TAG, "Failed to start Hal");
+                errorMsg = "Failed to start softAp Hal";
+                Log.e(TAG, errorMsg);
                 mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHal();
+                takeBugReportInterfaceFailureIfNeeded(bugTitle, errorMsg);
                 return null;
             }
             if (!startHostapd()) {
-                Log.e(TAG, "Failed to start hostapd");
+                errorMsg = "Failed to start softAp hostapd";
+                Log.e(TAG, errorMsg);
                 mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHostapd();
+                takeBugReportInterfaceFailureIfNeeded(bugTitle, errorMsg);
                 return null;
             }
             Iface iface = mIfaceMgr.allocateIface(Iface.IFACE_TYPE_AP);
@@ -1343,27 +1362,34 @@ public class WifiNative {
             iface.externalListener = interfaceCallback;
             iface.name = createApIface(iface, requestorWs, band, isBridged, softApManager);
             if (TextUtils.isEmpty(iface.name)) {
-                Log.e(TAG, "Failed to create AP iface in vendor HAL");
+                errorMsg = "Failed to create softAp iface in vendor HAL";
+                Log.e(TAG, errorMsg);
                 mIfaceMgr.removeIface(iface.id);
                 mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHal();
+                takeBugReportInterfaceFailureIfNeeded(bugTitle, errorMsg);
                 return null;
             }
             String ifaceInstanceName = iface.name;
             if (isBridged) {
                 List<String> instances = getBridgedApInstances(iface.name);
                 if (instances == null || instances.size() == 0) {
-                    Log.e(TAG, "Failed to get bridged AP instances" + iface.name);
+                    errorMsg = "Failed to get bridged AP instances" + iface.name;
+                    Log.e(TAG, errorMsg);
                     teardownInterface(iface.name);
                     mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHal();
+                    takeBugReportInterfaceFailureIfNeeded(bugTitle, errorMsg);
                     return null;
                 }
                 // Always select first instance as wificond interface.
                 ifaceInstanceName = instances.get(0);
+                mWifiCondIfacesForBridgedAp.put(iface.name, ifaceInstanceName);
             }
             if (!mWifiCondManager.setupInterfaceForSoftApMode(ifaceInstanceName)) {
-                Log.e(TAG, "Failed to setup iface in wificond on " + iface);
+                errorMsg = "Failed to setup softAp iface in wifiCond manager on " + iface;
+                Log.e(TAG, errorMsg);
                 teardownInterface(iface.name);
                 mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToWificond();
+                takeBugReportInterfaceFailureIfNeeded(bugTitle, errorMsg);
                 return null;
             }
             iface.networkObserver = new NetworkObserverInternal(iface.id);
@@ -2045,8 +2071,11 @@ public class WifiNative {
         }
 
         if (!mHostapdHal.addAccessPoint(ifaceName, config, isMetered, callback::onFailure)) {
-            Log.e(TAG, "Failed to add acccess point");
+            String errorMsg = "Failed to add softAp";
+            Log.e(TAG, errorMsg);
             mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHostapd();
+            takeBugReportInterfaceFailureIfNeeded("Wi-Fi BugReport (softap interface failure)",
+                    errorMsg);
             return false;
         }
 
@@ -4392,14 +4421,17 @@ public class WifiNative {
      *
      * @param ifaceName Name of the interface.
      * @param anonymousIdentity the anonymouns identity.
+     * @param updateToNativeService write the data to the native service.
      * @return true if succeeds, false otherwise.
      */
-    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity) {
+    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity,
+            boolean updateToNativeService) {
         if (null == anonymousIdentity) {
             Log.e(TAG, "Cannot set null anonymous identity.");
             return false;
         }
-        return mSupplicantStaIfaceHal.setEapAnonymousIdentity(ifaceName, anonymousIdentity);
+        return mSupplicantStaIfaceHal.setEapAnonymousIdentity(ifaceName, anonymousIdentity,
+                updateToNativeService);
     }
 
     /**

@@ -97,6 +97,8 @@ public class InterfaceConflictManagerTest {
         when(mResources.getBoolean(
                 R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority)).thenReturn(true);
 
+        when(mHdm.needsUserApprovalToDelete(anyInt(), any(), anyInt(), any())).thenReturn(true);
+
         when(mFrameworkFacade.getAppName(any(), anyString(), anyInt())).thenReturn(TEST_APP_NAME);
         when(mWifiDialogManager.createSimpleDialog(
                 any(), any(), any(), any(), any(), any(), any())).thenReturn(mDialogHandle);
@@ -105,6 +107,7 @@ public class InterfaceConflictManagerTest {
     private void initInterfaceConflictManager() {
         mDut = new InterfaceConflictManager(mWifiContext, mFrameworkFacade, mHdm,
                 new WifiThreadRunner(new Handler(mTestLooper.getLooper())), mWifiDialogManager);
+        mDut.handleBootCompleted();
     }
 
     /**
@@ -121,7 +124,7 @@ public class InterfaceConflictManagerTest {
         assertEquals(InterfaceConflictManager.ICM_EXECUTE_COMMAND,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", Message.obtain(),
                         mStateMachine, mWaitingState, mTargetState,
-                        HalDeviceManager.HDM_CREATE_IFACE_NAN, TEST_WS));
+                        HalDeviceManager.HDM_CREATE_IFACE_NAN, TEST_WS, false));
 
         verify(mStateMachine, never()).transitionTo(mWaitingState);
         verify(mWifiDialogManager, never()).createSimpleDialog(
@@ -144,7 +147,25 @@ public class InterfaceConflictManagerTest {
         assertEquals(InterfaceConflictManager.ICM_EXECUTE_COMMAND,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", Message.obtain(),
                         mStateMachine, mWaitingState, mTargetState,
-                        HalDeviceManager.HDM_CREATE_IFACE_NAN, TEST_WS));
+                        HalDeviceManager.HDM_CREATE_IFACE_NAN, TEST_WS, false));
+
+        verify(mStateMachine, never()).transitionTo(mWaitingState);
+        verify(mWifiDialogManager, never()).createSimpleDialog(
+                any(), any(), any(), any(), any(), any(), any());
+        verify(mDialogHandle, never()).launchDialog();
+    }
+
+    /**
+     * Verify that bypassDialog == true will continue operation even with user approval enabled.
+     */
+    @Test
+    public void testBypassDialog() {
+        initInterfaceConflictManager();
+
+        assertEquals(InterfaceConflictManager.ICM_EXECUTE_COMMAND,
+                mDut.manageInterfaceConflictForStateMachine("Some Tag", Message.obtain(),
+                        mStateMachine, mWaitingState, mTargetState,
+                        HalDeviceManager.HDM_CREATE_IFACE_NAN, TEST_WS, true));
 
         verify(mStateMachine, never()).transitionTo(mWaitingState);
         verify(mWifiDialogManager, never()).createSimpleDialog(
@@ -169,7 +190,7 @@ public class InterfaceConflictManagerTest {
         assertEquals(InterfaceConflictManager.ICM_EXECUTE_COMMAND,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg,
                         mStateMachine, mWaitingState, mTargetState,
-                        interfaceType, TEST_WS));
+                        interfaceType, TEST_WS, false));
         verify(mStateMachine, never()).transitionTo(mWaitingState);
         verify(mStateMachine, never()).deferMessage(msg);
         verify(mWifiDialogManager, never()).createSimpleDialog(
@@ -182,12 +203,36 @@ public class InterfaceConflictManagerTest {
         assertEquals(InterfaceConflictManager.ICM_EXECUTE_COMMAND,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg,
                         mStateMachine, mWaitingState, mTargetState,
-                        interfaceType, TEST_WS));
+                        interfaceType, TEST_WS, false));
         verify(mStateMachine, never()).transitionTo(mWaitingState);
         verify(mStateMachine, never()).deferMessage(msg);
         verify(mWifiDialogManager, never()).createSimpleDialog(
                 any(), any(), any(), any(), any(), any(), any());
         verify(mDialogHandle, never()).launchDialog();
+    }
+
+    /**
+     * Verify that if interface cannot be created or if interface can be created w/o side effects
+     * then command simply proceeds.
+     */
+    @Test
+    public void testUserApprovalNotNeeded() {
+        initInterfaceConflictManager();
+
+        int interfaceType = HalDeviceManager.HDM_CREATE_IFACE_P2P;
+        Message msg = Message.obtain();
+
+        // can delete iface without user approval
+        when(mHdm.reportImpactToCreateIface(eq(interfaceType), eq(false), eq(TEST_WS))).thenReturn(
+                Arrays.asList(Pair.create(HalDeviceManager.HDM_CREATE_IFACE_NAN,
+                        new WorkSource(10, "something else"))));
+        when(mHdm.needsUserApprovalToDelete(anyInt(), any(), anyInt(), any())).thenReturn(false);
+
+        // request should pass through without the dialog
+        assertEquals(InterfaceConflictManager.ICM_EXECUTE_COMMAND,
+                mDut.manageInterfaceConflictForStateMachine("Some Tag", msg,
+                        mStateMachine, mWaitingState, mTargetState,
+                        interfaceType, TEST_WS, false));
     }
 
     /**
@@ -209,7 +254,7 @@ public class InterfaceConflictManagerTest {
         assertEquals(InterfaceConflictManager.ICM_SKIP_COMMAND_WAIT_FOR_USER,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg,
                         mStateMachine, mWaitingState, mTargetState,
-                        interfaceType, TEST_WS));
+                        interfaceType, TEST_WS, false));
         verify(mStateMachine).transitionTo(mWaitingState);
         verify(mStateMachine).deferMessage(msg);
         verify(mWifiDialogManager).createSimpleDialog(
@@ -223,7 +268,7 @@ public class InterfaceConflictManagerTest {
         // re-execute command and get indication to proceed without waiting/dialog
         assertEquals(InterfaceConflictManager.ICM_EXECUTE_COMMAND,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg, mStateMachine,
-                        mWaitingState, mTargetState, interfaceType, TEST_WS));
+                        mWaitingState, mTargetState, interfaceType, TEST_WS, false));
         verify(mStateMachine, times(1)).transitionTo(mWaitingState);
         verify(mStateMachine, times(1)).deferMessage(msg);
         verify(mWifiDialogManager, times(1)).createSimpleDialog(
@@ -250,7 +295,7 @@ public class InterfaceConflictManagerTest {
         assertEquals(InterfaceConflictManager.ICM_SKIP_COMMAND_WAIT_FOR_USER,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg,
                         mStateMachine, mWaitingState, mTargetState,
-                        interfaceType, TEST_WS));
+                        interfaceType, TEST_WS, false));
         verify(mStateMachine).transitionTo(mWaitingState);
         verify(mStateMachine).deferMessage(msg);
         verify(mWifiDialogManager).createSimpleDialog(
@@ -264,7 +309,7 @@ public class InterfaceConflictManagerTest {
         // re-execute command and get indication to abort
         assertEquals(InterfaceConflictManager.ICM_ABORT_COMMAND,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg, mStateMachine,
-                        mWaitingState, mTargetState, interfaceType, TEST_WS));
+                        mWaitingState, mTargetState, interfaceType, TEST_WS, false));
         verify(mStateMachine, times(1)).transitionTo(mWaitingState);
         verify(mStateMachine, times(1)).deferMessage(msg);
         verify(mWifiDialogManager, times(1)).createSimpleDialog(
@@ -290,7 +335,7 @@ public class InterfaceConflictManagerTest {
         // send request
         assertEquals(InterfaceConflictManager.ICM_SKIP_COMMAND_WAIT_FOR_USER,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg, mStateMachine,
-                        mWaitingState, mTargetState, interfaceType, TEST_WS));
+                        mWaitingState, mTargetState, interfaceType, TEST_WS, false));
         verify(mStateMachine, times(1)).transitionTo(mWaitingState);
         verify(mStateMachine, times(1)).deferMessage(msg);
         verify(mWifiDialogManager, times(1)).createSimpleDialog(
@@ -304,7 +349,7 @@ public class InterfaceConflictManagerTest {
         // re-execute command and get indication to proceed
         assertEquals(InterfaceConflictManager.ICM_EXECUTE_COMMAND,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg, mStateMachine,
-                        mWaitingState, mTargetState, interfaceType, TEST_WS));
+                        mWaitingState, mTargetState, interfaceType, TEST_WS, false));
         verify(mStateMachine, times(1)).transitionTo(mWaitingState);
         verify(mStateMachine, times(1)).deferMessage(msg);
         verify(mWifiDialogManager, times(1)).createSimpleDialog(
@@ -325,7 +370,8 @@ public class InterfaceConflictManagerTest {
             when(WaitingState.wasMessageInWaitingState(waitingMsg)).thenReturn(true);
             assertEquals(InterfaceConflictManager.ICM_EXECUTE_COMMAND,
                     mDut.manageInterfaceConflictForStateMachine("Some Tag", waitingMsg,
-                            mStateMachine, mWaitingState, mTargetState, interfaceType, TEST_WS));
+                            mStateMachine, mWaitingState, mTargetState, interfaceType, TEST_WS,
+                            false));
             verify(mStateMachine, times(1)).transitionTo(mWaitingState);
             verify(mStateMachine, never()).deferMessage(waitingMsg);
             verify(mWifiDialogManager, times(1)).createSimpleDialog(
@@ -338,7 +384,8 @@ public class InterfaceConflictManagerTest {
                             new WorkSource(10, "something else"))));
             assertEquals(InterfaceConflictManager.ICM_SKIP_COMMAND_WAIT_FOR_USER,
                     mDut.manageInterfaceConflictForStateMachine("Some Tag", waitingMsg,
-                            mStateMachine, mWaitingState, mTargetState, interfaceType, TEST_WS));
+                            mStateMachine, mWaitingState, mTargetState, interfaceType, TEST_WS,
+                            false));
             verify(mStateMachine, times(2)).transitionTo(mWaitingState);
             verify(mStateMachine, times(1)).deferMessage(waitingMsg);
             verify(mWifiDialogManager, times(2)).createSimpleDialog(
@@ -367,7 +414,7 @@ public class InterfaceConflictManagerTest {
         // send request
         assertEquals(InterfaceConflictManager.ICM_SKIP_COMMAND_WAIT_FOR_USER,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg, mStateMachine,
-                        mWaitingState, mTargetState, interfaceType, TEST_WS));
+                        mWaitingState, mTargetState, interfaceType, TEST_WS, false));
         verify(mStateMachine, times(1)).transitionTo(mWaitingState);
         verify(mStateMachine, times(1)).deferMessage(msg);
         verify(mWifiDialogManager, times(1)).createSimpleDialog(
@@ -381,7 +428,7 @@ public class InterfaceConflictManagerTest {
         // re-execute command and get indication to abort
         assertEquals(InterfaceConflictManager.ICM_ABORT_COMMAND,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg, mStateMachine,
-                        mWaitingState, mTargetState, interfaceType, TEST_WS));
+                        mWaitingState, mTargetState, interfaceType, TEST_WS, false));
         verify(mStateMachine, times(1)).transitionTo(mWaitingState);
         verify(mStateMachine, times(1)).deferMessage(msg);
         verify(mWifiDialogManager, times(1)).createSimpleDialog(
@@ -397,13 +444,16 @@ public class InterfaceConflictManagerTest {
             when(WaitingState.wasMessageInWaitingState(waitingMsg)).thenReturn(true);
             assertEquals(InterfaceConflictManager.ICM_ABORT_COMMAND,
                     mDut.manageInterfaceConflictForStateMachine("Some Tag", waitingMsg,
-                            mStateMachine, mWaitingState, mTargetState, interfaceType, TEST_WS));
+                            mStateMachine, mWaitingState, mTargetState, interfaceType, TEST_WS,
+                            false));
             assertEquals(InterfaceConflictManager.ICM_ABORT_COMMAND,
                     mDut.manageInterfaceConflictForStateMachine("Some Tag", waitingMsg,
-                            mStateMachine, mWaitingState, mTargetState, interfaceType, TEST_WS));
+                            mStateMachine, mWaitingState, mTargetState, interfaceType, TEST_WS,
+                            false));
             assertEquals(InterfaceConflictManager.ICM_ABORT_COMMAND,
                     mDut.manageInterfaceConflictForStateMachine("Some Tag", waitingMsg,
-                            mStateMachine, mWaitingState, mTargetState, interfaceType, TEST_WS));
+                            mStateMachine, mWaitingState, mTargetState, interfaceType, TEST_WS,
+                            false));
             verify(mStateMachine, times(1)).transitionTo(mWaitingState);
             verify(mStateMachine, never()).deferMessage(waitingMsg);
             verify(mWifiDialogManager, times(1)).createSimpleDialog(
@@ -446,7 +496,7 @@ public class InterfaceConflictManagerTest {
         assertEquals(InterfaceConflictManager.ICM_EXECUTE_COMMAND,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg,
                         mStateMachine, mWaitingState, mTargetState,
-                        interfaceType, TEST_WS));
+                        interfaceType, TEST_WS, false));
         verify(mStateMachine, never()).transitionTo(mWaitingState);
         verify(mStateMachine, never()).deferMessage(msg);
         verify(mWifiDialogManager, never()).createSimpleDialog(
@@ -486,7 +536,7 @@ public class InterfaceConflictManagerTest {
         assertEquals(InterfaceConflictManager.ICM_SKIP_COMMAND_WAIT_FOR_USER,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg,
                         mStateMachine, mWaitingState, mTargetState,
-                        interfaceType, TEST_WS));
+                        interfaceType, TEST_WS, false));
         verify(mStateMachine).transitionTo(mWaitingState);
         verify(mStateMachine).deferMessage(msg);
         verify(mWifiDialogManager).createSimpleDialog(
@@ -514,7 +564,7 @@ public class InterfaceConflictManagerTest {
         assertEquals(InterfaceConflictManager.ICM_SKIP_COMMAND_WAIT_FOR_USER,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", msg,
                         mStateMachine, mWaitingState, mTargetState,
-                        interfaceType, TEST_WS));
+                        interfaceType, TEST_WS, false));
         verify(mStateMachine).transitionTo(mWaitingState);
         verify(mStateMachine).deferMessage(msg);
         verify(mWifiDialogManager).createSimpleDialog(
@@ -533,7 +583,7 @@ public class InterfaceConflictManagerTest {
         assertEquals(InterfaceConflictManager.ICM_SKIP_COMMAND_WAIT_FOR_USER,
                 mDut.manageInterfaceConflictForStateMachine("Some Tag", newMsg,
                         mStateMachine, mWaitingState, mTargetState,
-                        interfaceType, TEST_WS));
+                        interfaceType, TEST_WS, false));
         verify(mStateMachine, times(2)).transitionTo(mWaitingState);
         verify(mStateMachine, times(1)).deferMessage(newMsg);
         verify(mWifiDialogManager, times(2)).createSimpleDialog(
