@@ -27,6 +27,7 @@ import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_P2P_PENDING_F
 import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_VERBOSE_LOGGING_ENABLED;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -108,6 +109,7 @@ import android.os.UserManager;
 import android.os.WorkSource;
 import android.os.test.TestLooper;
 import android.provider.Settings;
+import android.text.TextUtils;
 import android.view.Display;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -122,6 +124,7 @@ import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.Clock;
+import com.android.server.wifi.DeviceConfigFacade;
 import com.android.server.wifi.FakeWifiLog;
 import com.android.server.wifi.FrameworkFacade;
 import com.android.server.wifi.HalDeviceManager;
@@ -254,6 +257,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Mock AlertDialog mAlertDialog;
     @Mock AsyncChannel mAsyncChannel;
     CoexManager.CoexListener mCoexListener;
+    @Mock DeviceConfigFacade mDeviceConfigFacade;
 
     private void generatorTestData() {
         mTestWifiP2pGroup = new WifiP2pGroup();
@@ -1080,7 +1084,11 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         assertEquals(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION, intent.getAction());
         assertEquals(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT, intent.getFlags());
         assertEquals(mTestThisDevice.deviceName, device.deviceName);
-        assertEquals(ANONYMIZED_DEVICE_ADDRESS, device.deviceAddress);
+        if (!TextUtils.isEmpty(mTestThisDevice.deviceAddress)) {
+            assertEquals(ANONYMIZED_DEVICE_ADDRESS, device.deviceAddress);
+        } else {
+            assertEquals(mTestThisDevice.deviceAddress, device.deviceAddress);
+        }
         assertEquals(mTestThisDevice.primaryDeviceType, device.primaryDeviceType);
         assertEquals(mTestThisDevice.secondaryDeviceType, device.secondaryDeviceType);
         assertEquals(mTestThisDevice.wpsConfigMethodsSupported, device.wpsConfigMethodsSupported);
@@ -1106,9 +1114,17 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
      */
     private void checkSendThisDeviceChangedBroadcast() {
         ArgumentCaptor<Intent> intentCaptor = ArgumentCaptor.forClass(Intent.class);
-        String[] permission_gold = new String[] {
-                android.Manifest.permission.ACCESS_FINE_LOCATION,
-                android.Manifest.permission.ACCESS_WIFI_STATE};
+        String[] permission_gold;
+        if (mWifiPermissionsUtil.isLocationModeEnabled()) {
+            permission_gold = new String[]{
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_WIFI_STATE};
+        } else {
+            permission_gold = new String[]{
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_WIFI_STATE,
+                    android.Manifest.permission.NETWORK_SETTINGS};
+        }
         ArgumentCaptor<String []> permissionCaptor = ArgumentCaptor.forClass(String[].class);
         verify(mContext, atLeastOnce()).sendBroadcastWithMultiplePermissions(
                 intentCaptor.capture(), permissionCaptor.capture());
@@ -1124,8 +1140,10 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                     intentCaptor.capture(), any(), any());
             verify(mBroadcastOptions, atLeastOnce())
                     .setRequireAllOfPermissions(TEST_REQUIRED_PERMISSIONS_T);
-            verify(mBroadcastOptions, atLeastOnce())
-                    .setRequireNoneOfPermissions(TEST_EXCLUDED_PERMISSIONS_T);
+            if (mWifiPermissionsUtil.isLocationModeEnabled()) {
+                verify(mBroadcastOptions, atLeastOnce())
+                        .setRequireNoneOfPermissions(TEST_EXCLUDED_PERMISSIONS_T);
+            }
             verifyDeviceChangedBroadcastIntent(intentCaptor.getValue());
         }
     }
@@ -1287,6 +1305,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         }).when(mCoexManager).registerCoexListener(any(CoexManager.CoexListener.class));
         when(mCoexManager.getCoexRestrictions()).thenReturn(0);
         when(mCoexManager.getCoexUnsafeChannels()).thenReturn(Collections.emptyList());
+        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfigFacade);
+        when(mDeviceConfigFacade.isP2pFailureBugreportEnabled()).thenReturn(false);
 
         mWifiP2pServiceImpl = new WifiP2pServiceImpl(mContext, mWifiInjector);
         if (supported) {
@@ -2521,7 +2541,34 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         // p2pFlush should be invoked once in forceP2pEnabled.
         verify(mWifiNative).p2pFlush();
         verify(mWifiNative).p2pStopFind();
-        verify(mWifiNative).p2pExtListen(eq(true), anyInt(), anyInt());
+        verify(mWifiNative).p2pExtListen(eq(true), eq(P2P_EXT_LISTEN_PERIOD_MS),
+                eq(P2P_EXT_LISTEN_INTERVAL_MS));
+        assertTrue(mClientHandler.hasMessages(WifiP2pManager.START_LISTEN_SUCCEEDED));
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq(TEST_PACKAGE_NAME),
+                    eq("testFeature"), anyInt(), eq(true));
+        }
+    }
+
+    /**
+     * Verify the caller with proper permission sends WifiP2pManager.START_LISTEN.
+     */
+    @Test
+    public void testStartListenSuccessWithGroup() throws Exception {
+        setTargetSdkGreaterThanT();
+        when(mWifiNative.p2pExtListen(eq(true), anyInt(), anyInt())).thenReturn(true);
+        mockEnterGroupCreatedState();
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.START_LISTEN);
+        // p2pFlush should be invoked once in forceP2pEnabled.
+        verify(mWifiNative).p2pFlush();
+        verify(mWifiNative).p2pStopFind();
+        verify(mWifiNative).p2pExtListen(eq(true), eq(P2P_EXT_LISTEN_PERIOD_MS),
+                eq(P2P_EXT_LISTEN_INTERVAL_MS));
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.START_LISTEN_SUCCEEDED));
         if (SdkLevel.isAtLeastT()) {
             verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
@@ -5515,7 +5562,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     }
 
     /**
-     * Verify the group owner intent value is selected correctly when no STA connection.
+     * Verify the group owner intent value is selected correctly when there is no STA connection.
      */
     @Test
     public void testGroupOwnerIntentSelectionWithoutStaConnection() throws Exception {
@@ -5524,60 +5571,36 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     }
 
     /**
-     * Verify the group owner intent value is selected correctly when 2.4GHz STA connection
-     * without 2.4GHz/5GHz DBS support.
-     */
-    @Test
-    public void testGroupOwnerIntentSelectionWith24GStaConnectionWithout24g5gDbs()
-            throws Exception {
-        verifyGroupOwnerIntentSelection(1, 2412, 5);
-    }
-
-    /**
-     * Verify the group owner intent value is selected correctly when 2.4GHz STA connection
-     * with 2.4GHz/5GHz DBS support.
+     * Verify the group owner intent value is selected correctly when STA is connected in 2.4GHz
      */
     @Test
     public void testGroupOwnerIntentSelectionWith24GStaConnectionWith24g5gDbs() throws Exception {
-        when(mWifiNative.is24g5gDbsSupported()).thenReturn(true);
         verifyGroupOwnerIntentSelection(1, 2412, 7);
     }
 
     /**
-     * Verify the group owner intent value is selected correctly when 5GHz STA connection
-     * without 2.4GHz/5GHz DBS and 5GHz/6GHz DBS support.
+     * Verify the group owner intent value is selected correctly when STA is connected in 5GHz
+     * without 5GHz/6GHz DBS support.
      */
     @Test
-    public void testGroupOwnerIntentSelectionWith5GHzStaConnectionWithout24g5gDbs5g6gDbs()
+    public void testGroupOwnerIntentSelectionWith5GHzStaConnectionWithout5g6gDbs()
             throws Exception {
-        verifyGroupOwnerIntentSelection(1, 5200, 10);
-    }
-
-    /**
-     * Verify the group owner intent value is selected correctly when 5GHz STA connection
-     * with 2.4GHz/5GHz DBS and without 5GHz/6GHz DBS support.
-     */
-    @Test
-    public void testGroupOwnerIntentSelectionWith5GHzStaConnectionWith24g5gDbsWithout5g6gDbs()
-            throws Exception {
-        when(mWifiNative.is24g5gDbsSupported()).thenReturn(true);
         verifyGroupOwnerIntentSelection(1, 5200, 8);
     }
 
     /**
-     * Verify the group owner intent value is selected correctly when 5GHz STA connection
-     * with 2.4GHz/5GHz DBS and 5GHz/6GHz DBS support.
+     * Verify the group owner intent value is selected correctly when STA is connected in 5GHz
+     * with 5GHz/6GHz DBS support.
      */
     @Test
     public void testGroupOwnerIntentSelectionWith5GHzStaConnectionWith24g5gDbs5g6gDbs()
             throws Exception {
-        when(mWifiNative.is24g5gDbsSupported()).thenReturn(true);
         when(mWifiNative.is5g6gDbsSupported()).thenReturn(true);
         verifyGroupOwnerIntentSelection(1, 5200, 9);
     }
 
     /**
-     * Verify the group owner intent value is selected correctly when 6GHz STA connection
+     * Verify the group owner intent value is selected correctly when STA is connected in 6GHz
      * without 5GHz/6GHz DBS support.
      */
     @Test
@@ -5587,7 +5610,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     }
 
     /**
-     * Verify the group owner intent value is selected correctly when 6GHz STA connection
+     * Verify the group owner intent value is selected correctly when STA is connected in 6GHz
      * with 5GHz/6GHz DBS support.
      */
     @Test
@@ -6633,6 +6656,25 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
 
         verify(mWifiNative, userAcceptsRequest ? times(1) : never()).setupInterface(any(), any(),
                 eq(new WorkSource(mClient1.getCallingUid(), TEST_PACKAGE_NAME)));
+        if (userAcceptsRequest) {
+            // Device status is AVAILABLE
+            mTestThisDevice.status = WifiP2pDevice.AVAILABLE;
+            checkSendThisDeviceChangedBroadcast();
+            sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_DEVICE_INFO);
+            verify(mClientHandler, times(2)).sendMessage(mMessageCaptor.capture());
+            assertEquals(WifiP2pManager.RESPONSE_DEVICE_INFO, mMessageCaptor.getValue().what);
+            assertEquals(WifiP2pDevice.AVAILABLE,
+                    ((WifiP2pDevice) mMessageCaptor.getValue().obj).status);
+        } else {
+            // Device status is UNAVAILABLE
+            mTestThisDevice = new WifiP2pDevice();
+            checkSendThisDeviceChangedBroadcast();
+            sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_DEVICE_INFO);
+            verify(mClientHandler, times(2)).sendMessage(mMessageCaptor.capture());
+            assertEquals(WifiP2pManager.RESPONSE_DEVICE_INFO, mMessageCaptor.getValue().what);
+            assertEquals(WifiP2pDevice.UNAVAILABLE,
+                    ((WifiP2pDevice) mMessageCaptor.getValue().obj).status);
+        }
     }
 
     /**
@@ -6949,5 +6991,35 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                 eq(mTestWifiP2pDevice.deviceAddress), anyBoolean(),
                 any(), anyInt(), any(), any());
         verify(mDialogHandle).launchDialog(P2P_INVITATION_RECEIVED_TIMEOUT_MS);
+    }
+
+    @Test
+    public void testP2pInfoIsClearedWhenP2pIsDisabledDurningNegotiation() throws Exception {
+        forceP2pEnabled(mClient1);
+        WifiP2pGroup group = new WifiP2pGroup();
+        group.setNetworkId(WifiP2pGroup.NETWORK_ID_PERSISTENT);
+        group.setNetworkName("DIRECT-xy-NEW");
+        group.setOwner(new WifiP2pDevice("thisDeviceMac"));
+        group.setIsGroupOwner(true);
+        group.setInterface(IFACE_NAME_P2P);
+        sendGroupStartedMsg(group);
+
+        // P2P group is formed, the internal group data are filled.
+        // The tether request is not done yet, so it stays at GroupNegotiationState.
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_CONNECTION_INFO);
+        verify(mClientHandler).sendMessage(mMessageCaptor.capture());
+        assertEquals(WifiP2pManager.RESPONSE_CONNECTION_INFO, mMessageCaptor.getValue().what);
+        assertTrue(((WifiP2pInfo) mMessageCaptor.getValue().obj).groupFormed);
+
+        // Go back to P2pDisabledState.
+        sendP2pStateMachineMessage(WifiP2pServiceImpl.DISABLE_P2P);
+        sendP2pStateMachineMessage(WifiP2pMonitor.SUP_DISCONNECTION_EVENT);
+        mLooper.dispatchAll();
+
+        // p2p info should be cleared.
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_CONNECTION_INFO);
+        verify(mClientHandler, times(2)).sendMessage(mMessageCaptor.capture());
+        assertEquals(WifiP2pManager.RESPONSE_CONNECTION_INFO, mMessageCaptor.getValue().what);
+        assertFalse(((WifiP2pInfo) mMessageCaptor.getValue().obj).groupFormed);
     }
 }

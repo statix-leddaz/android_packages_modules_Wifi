@@ -1391,6 +1391,12 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             }
         }
 
+        private void takeBugReportP2pFailureIfNeeded(String bugTitle, String bugDetail) {
+            if (mWifiInjector.getDeviceConfigFacade().isP2pFailureBugreportEnabled()) {
+                mWifiInjector.getWifiDiagnostics().takeBugReport(bugTitle, bugDetail);
+            }
+        }
+
         // Clear internal data when P2P is shut down due to wifi off or no client.
         // For idle shutdown case, there are clients and data should be restored when
         // P2P goes back P2pEnabledState.
@@ -2219,6 +2225,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 mInterfaceName = null; // reset iface name on disable.
                 mActiveClients.clear();
                 clearP2pInternalDataIfNecessary();
+                if (mIsBootComplete) {
+                    updateThisDevice(WifiP2pDevice.UNAVAILABLE);
+                }
+                resetWifiP2pInfo();
+                mGroup = null;
             }
         }
 
@@ -2267,13 +2278,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             }
 
             @Override
-            public void enter() {
-                if (mIsBootComplete) {
-                    updateThisDevice(WifiP2pDevice.UNAVAILABLE);
-                }
-            }
-
-            @Override
             public boolean processMessage(Message message) {
                 if (mVerboseLoggingEnabled) logd(getName() + message.toString());
                 boolean wasInWaitingState = WaitingState.wasMessageInWaitingState(message);
@@ -2302,6 +2306,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                                         false /* bypassDialog */);
                         if (proceedWithOperation == InterfaceConflictManager.ICM_ABORT_COMMAND) {
                             Log.e(TAG, "User refused to set up P2P");
+                            updateThisDevice(WifiP2pDevice.UNAVAILABLE);
                         } else if (proceedWithOperation
                                 == InterfaceConflictManager.ICM_EXECUTE_COMMAND) {
                             if (setupInterface()) {
@@ -2375,6 +2380,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                                         false /* bypassDialog */);
                         if (proceedWithOperation == InterfaceConflictManager.ICM_ABORT_COMMAND) {
                             Log.e(TAG, "User refused to set up P2P");
+                            updateThisDevice(WifiP2pDevice.UNAVAILABLE);
                             return NOT_HANDLED;
                         } else if (proceedWithOperation
                                 == InterfaceConflictManager.ICM_EXECUTE_COMMAND) {
@@ -2729,7 +2735,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         }
                         if (mVerboseLoggingEnabled) logd(getName() + " start listen mode");
                         mWifiNative.p2pStopFind();
-                        if (mWifiNative.p2pExtListen(true, 500, 500)) {
+                        if (mWifiNative.p2pExtListen(true,
+                                mContext.getResources().getInteger(
+                                        R.integer.config_wifiP2pExtListenPeriodMs),
+                                mContext.getResources().getInteger(
+                                        R.integer.config_wifiP2pExtListenIntervalMs))) {
                             replyToMessage(message, WifiP2pManager.START_LISTEN_SUCCEEDED);
                         } else {
                             replyToMessage(message, WifiP2pManager.START_LISTEN_FAILED);
@@ -3224,7 +3234,13 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 switch (message.what) {
                     case GROUP_CREATING_TIMED_OUT:
                         if (sGroupCreatingTimeoutIndex == message.arg1) {
-                            if (mVerboseLoggingEnabled) logd("Group negotiation timed out");
+                            String errorMsg = "P2P group negotiation timed out";
+                            if (mVerboseLoggingEnabled) logd(getName() + errorMsg);
+                            if (mWifiP2pMetrics.isP2pFastConnectionType()) {
+                                takeBugReportP2pFailureIfNeeded("Wi-Fi BugReport (P2P "
+                                        + mWifiP2pMetrics.getP2pGroupRoleString()
+                                        + " creation failure)", errorMsg);
+                            }
                             mWifiP2pMetrics.endConnectionEvent(
                                     P2pConnectionEvent.CLF_TIMEOUT);
                             handleGroupCreationFailure();
@@ -3657,7 +3673,13 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         }
                         // continue with group removal handling
                     case WifiP2pMonitor.P2P_GROUP_REMOVED_EVENT:
-                        if (mVerboseLoggingEnabled) logd(getName() + " go failure");
+                        String errorMsg = "P2P group is removed";
+                        if (mVerboseLoggingEnabled) logd(getName() + errorMsg);
+                        if (mWifiP2pMetrics.isP2pFastConnectionType()) {
+                            takeBugReportP2pFailureIfNeeded("Wi-Fi BugReport (P2P "
+                                    + mWifiP2pMetrics.getP2pGroupRoleString()
+                                    + " negotiation failure)", errorMsg);
+                        }
                         mWifiP2pMetrics.endConnectionEvent(
                                 P2pConnectionEvent.CLF_UNKNOWN);
                         handleGroupCreationFailure();
@@ -6161,27 +6183,19 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             /*
              * GO intent table
              * STA Freq         2.4GHz/5GHz DBS 5GHz/6GHz DBS   GO intent
-             * 2.4 GHz          No              X               5
              * N/A              X               X               6 (default)
-             * 2.4 GHz          Yes             X               7
-             * 5 GHz            Yes             No              8
-             * 5 GHz            Yes             Yes             9
-             * 5 GHz            No              X               10
+             * 2.4 GHz          X               X               7
+             * 5 GHz            X               No              8
+             * 5 GHz            X               Yes             9
              * 6 GHz            X               No              11
              * 6 Ghz            X               Yes             12
              */
             if (wifiInfo.getNetworkId() == WifiConfiguration.INVALID_NETWORK_ID) {
                 intent = DEFAULT_GROUP_OWNER_INTENT;
             } else if (ScanResult.is24GHz(freq)) {
-                if (mWifiNative.is24g5gDbsSupported()) {
-                    intent = 7;
-                } else {
-                    intent = 5;
-                }
+                intent = 7;
             } else if (ScanResult.is5GHz(freq)) {
-                if (!mWifiNative.is24g5gDbsSupported()) {
-                    intent = 10;
-                } else if (mWifiNative.is5g6gDbsSupported()) {
+                if (mWifiNative.is5g6gDbsSupported()) {
                     intent = 9;
                 } else {
                     intent = 8;

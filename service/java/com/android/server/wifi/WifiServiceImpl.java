@@ -792,6 +792,8 @@ public class WifiServiceImpl extends BaseWifiService {
             mLohsSoftApTracker.handleBootCompleted();
             mWifiInjector.getSarManager().handleBootCompleted();
             mWifiInjector.getSsidTranslator().handleBootCompleted();
+            mWifiInjector.getPasspointManager().handleBootCompleted();
+            mWifiInjector.getInterfaceConflictManager().handleBootCompleted();
             updateVerboseLoggingEnabled();
         });
     }

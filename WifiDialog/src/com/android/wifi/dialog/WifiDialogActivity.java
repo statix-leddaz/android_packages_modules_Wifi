@@ -78,6 +78,8 @@ public class WifiDialogActivity extends Activity  {
     private static final String KEY_DIALOG_INTENTS = "KEY_DIALOG_INTENTS";
     private static final String EXTRA_DIALOG_EXPIRATION_TIME_MS =
             "com.android.wifi.dialog.DIALOG_START_TIME_MS";
+    private static final String EXTRA_DIALOG_P2P_PIN_INPUT =
+            "com.android.wifi.dialog.DIALOG_P2P_PIN_INPUT";
 
     private @NonNull Handler mHandler = new Handler(Looper.getMainLooper());
     private @Nullable WifiContext mWifiContext;
@@ -499,7 +501,8 @@ public class WifiDialogActivity extends Activity  {
                         Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
         }
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(
+                new ContextThemeWrapper(this, getStyleId("wifi_dialog")))
                 .setTitle(title)
                 .setMessage(spannableMessage)
                 .setPositiveButton(positiveButtonText, (dialogPositive, which) -> {
@@ -576,7 +579,8 @@ public class WifiDialogActivity extends Activity  {
             addRowToP2pDialog(group, getStringId("wifi_p2p_show_pin_message"), displayPin);
         }
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(
+                new ContextThemeWrapper(this, getStyleId("wifi_dialog")))
                 .setTitle(getString(getStringId("wifi_p2p_invitation_sent_title")))
                 .setView(textEntryView)
                 .setPositiveButton(getStringId("ok"), (dialogPositive, which) -> {
@@ -670,7 +674,24 @@ public class WifiDialogActivity extends Activity  {
             dialog.getWindow().setSoftInputMode(
                     WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
             dialog.setOnShowListener(dialogShow -> {
-                pinEditText.requestFocus();
+                Intent intent = mLaunchIntentsPerId.get(dialogId);
+                if (intent != null) {
+                    // Populate the pin EditText with the previous user input if we're recreating
+                    // the dialog after a configuration change.
+                    CharSequence previousPin =
+                            intent.getCharSequenceExtra(EXTRA_DIALOG_P2P_PIN_INPUT);
+                    if (previousPin != null) {
+                        pinEditText.setText(previousPin);
+                    }
+                }
+                if (getResources().getConfiguration().orientation
+                        == Configuration.ORIENTATION_PORTRAIT
+                        || (getResources().getConfiguration().screenLayout
+                        & Configuration.SCREENLAYOUT_SIZE_MASK)
+                        >= Configuration.SCREENLAYOUT_SIZE_LARGE) {
+                    pinEditText.requestFocus();
+                    pinEditText.setSelection(pinEditText.getText().length());
+                }
                 dialog.getButton(Dialog.BUTTON_POSITIVE).setEnabled(false);
             });
             pinEditText.addTextChangedListener(new TextWatcher() {
@@ -686,6 +707,12 @@ public class WifiDialogActivity extends Activity  {
 
                 @Override
                 public void afterTextChanged(Editable s) {
+                    Intent intent = mLaunchIntentsPerId.get(dialogId);
+                    if (intent != null) {
+                        // Store the current input in the Intent in case we need to reload from a
+                        // configuration change.
+                        intent.putExtra(EXTRA_DIALOG_P2P_PIN_INPUT, s);
+                    }
                     if (s.length() == 4 || s.length() == 8) {
                         dialog.getButton(Dialog.BUTTON_POSITIVE).setEnabled(true);
                     } else {
