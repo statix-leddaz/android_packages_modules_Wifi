@@ -66,10 +66,9 @@ public class InterfaceConflictManager {
     private final WifiThreadRunner mThreadRunner;
     private final WifiDialogManager mWifiDialogManager;
 
-    private final Resources mResources;
-    private final boolean mUserApprovalNeeded;
-    private final Set<String> mUserApprovalExemptedPackages;
-    private final boolean mUserApprovalNotRequireForDisconnectedP2p;
+    private boolean mUserApprovalNeeded = false;
+    private Set<String> mUserApprovalExemptedPackages = new ArraySet<>();
+    private boolean mUserApprovalNotRequireForDisconnectedP2p = false;
     private boolean mUserApprovalNeededOverride = false;
     private boolean mUserApprovalNeededOverrideValue = false;
 
@@ -93,17 +92,6 @@ public class InterfaceConflictManager {
         mHdm = hdm;
         mThreadRunner = threadRunner;
         mWifiDialogManager = wifiDialogManager;
-
-        mResources = mContext.getResources();
-        mUserApprovalNeeded = mResources.getBoolean(
-                R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority);
-        String[] packageList = mResources.getStringArray(
-                R.array.config_wifiExcludedFromUserApprovalForD2dInterfacePriority);
-        mUserApprovalExemptedPackages =
-                (packageList == null || packageList.length == 0) ? Collections.emptySet()
-                        : new ArraySet<>(packageList);
-        mUserApprovalNotRequireForDisconnectedP2p = mResources.getBoolean(
-                R.bool.config_wifiUserApprovalNotRequireForDisconnectedP2p);
 
         // Monitor P2P connection for auto-approval
         IntentFilter intentFilter = new IntentFilter();
@@ -298,6 +286,19 @@ public class InterfaceConflictManager {
                 return ICM_EXECUTE_COMMAND;
             }
 
+            boolean shouldShowDialogToDelete = false;
+            for (Pair<Integer, WorkSource> ifaceToDelete : impact) {
+                if (mHdm.needsUserApprovalToDelete(createIfaceType, requestorWs,
+                        ifaceToDelete.first, ifaceToDelete.second)) {
+                    shouldShowDialogToDelete = true;
+                    break;
+                }
+            }
+            // None of the interfaces to delete require us to show a dialog.
+            if (!shouldShowDialogToDelete) {
+                return ICM_EXECUTE_COMMAND;
+            }
+
             // defer message to have it executed again automatically when switching
             // states - want to do it now so that it will be at the top of the queue
             // when we switch back. Will need to skip it if the user rejected it!
@@ -363,17 +364,18 @@ public class InterfaceConflictManager {
         String impactedPackages = TextUtils.join(", ", impactedPackagesSet);
         String impactedInterfaces = TextUtils.join(", ", impactedInterfacesSet);
 
+        Resources res = mContext.getResources();
         return mWifiDialogManager.createSimpleDialog(
-                mResources.getString(R.string.wifi_interface_priority_title,
+                res.getString(R.string.wifi_interface_priority_title,
                         requestorAppName, requestedInterface, impactedPackages, impactedInterfaces),
-                impactedPackagesSet.size() == 1 ? mResources.getString(
+                impactedPackagesSet.size() == 1 ? res.getString(
                         R.string.wifi_interface_priority_message, requestorAppName,
                         requestedInterface, impactedPackages, impactedInterfaces)
-                        : mResources.getString(R.string.wifi_interface_priority_message_plural,
+                        : res.getString(R.string.wifi_interface_priority_message_plural,
                                 requestorAppName, requestedInterface, impactedPackages,
                                 impactedInterfaces),
-                mResources.getString(R.string.wifi_interface_priority_approve),
-                mResources.getString(R.string.wifi_interface_priority_reject),
+                res.getString(R.string.wifi_interface_priority_approve),
+                res.getString(R.string.wifi_interface_priority_reject),
                 null,
                 new WifiDialogManager.SimpleDialogCallback() {
                     @Override
@@ -407,18 +409,19 @@ public class InterfaceConflictManager {
     }
 
     private String getInterfaceName(@HalDeviceManager.HdmIfaceTypeForCreation int createIfaceType) {
+        Resources res = mContext.getResources();
         switch (createIfaceType) {
             case HDM_CREATE_IFACE_STA:
-                return mResources.getString(R.string.wifi_interface_priority_interface_name_sta);
+                return res.getString(R.string.wifi_interface_priority_interface_name_sta);
             case HDM_CREATE_IFACE_AP:
-                return mResources.getString(R.string.wifi_interface_priority_interface_name_ap);
+                return res.getString(R.string.wifi_interface_priority_interface_name_ap);
             case HDM_CREATE_IFACE_AP_BRIDGE:
-                return mResources.getString(
+                return res.getString(
                         R.string.wifi_interface_priority_interface_name_ap_bridge);
             case HDM_CREATE_IFACE_P2P:
-                return mResources.getString(R.string.wifi_interface_priority_interface_name_p2p);
+                return res.getString(R.string.wifi_interface_priority_interface_name_p2p);
             case HDM_CREATE_IFACE_NAN:
-                return mResources.getString(R.string.wifi_interface_priority_interface_name_nan);
+                return res.getString(R.string.wifi_interface_priority_interface_name_nan);
         }
         return "Unknown";
     }
@@ -441,6 +444,22 @@ public class InterfaceConflictManager {
             mUserApprovalPendingTag = null;
             mUserJustApproved = false;
         }
+    }
+
+    /**
+     * Initialization after boot completes to get boot-dependent resources.
+     */
+    public void handleBootCompleted() {
+        Resources res = mContext.getResources();
+        mUserApprovalNeeded = res.getBoolean(
+                R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority);
+        String[] packageList = res.getStringArray(
+                R.array.config_wifiExcludedFromUserApprovalForD2dInterfacePriority);
+        mUserApprovalExemptedPackages =
+                (packageList == null || packageList.length == 0) ? Collections.emptySet()
+                        : new ArraySet<>(packageList);
+        mUserApprovalNotRequireForDisconnectedP2p = res.getBoolean(
+                R.bool.config_wifiUserApprovalNotRequireForDisconnectedP2p);
     }
 
     /**
