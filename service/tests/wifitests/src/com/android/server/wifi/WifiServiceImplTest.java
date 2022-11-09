@@ -2840,6 +2840,12 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mActiveModeWarden.getClientModeManagersInRoles(
                 ROLE_CLIENT_LOCAL_ONLY, ROLE_CLIENT_SECONDARY_LONG_LIVED))
                 .thenReturn(Arrays.asList(secondaryCmm));
+        ConcreteClientModeManager primaryCmm = mock(ConcreteClientModeManager.class);
+        when(primaryCmm.syncRequestConnectionInfo()).thenReturn(new WifiInfo());
+        when(mActiveModeWarden.getPrimaryClientModeManager()).thenReturn(primaryCmm);
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(SETTINGS_WORKSOURCE.getUid(0)))
+                .thenReturn(true);
+
 
         mLooper.startAutoDispatch();
         WifiInfo connectionInfo = parcelingRoundTrip(
@@ -2851,6 +2857,16 @@ public class WifiServiceImplTest extends WifiBaseTest {
         assertEquals(TEST_NETWORK_ID, connectionInfo.getNetworkId());
         assertEquals(TEST_FQDN, connectionInfo.getPasspointFqdn());
         assertEquals(TEST_FRIENDLY_NAME, connectionInfo.getPasspointProviderFriendlyName());
+        verify(mActiveModeWarden, never()).getPrimaryClientModeManager();
+
+        mLooper.startAutoDispatch();
+        connectionInfo = parcelingRoundTrip(mWifiServiceImpl
+                .getConnectionInfo(SETTINGS_WORKSOURCE.getPackageName(0), TEST_FEATURE_ID));
+        mLooper.stopAutoDispatchAndIgnoreExceptions();
+
+        assertEquals(WifiManager.UNKNOWN_SSID, connectionInfo.getSSID());
+        verify(mActiveModeWarden).getPrimaryClientModeManager();
+        verify(primaryCmm).syncRequestConnectionInfo();
     }
 
     /**
@@ -4773,11 +4789,11 @@ public class WifiServiceImplTest extends WifiBaseTest {
             configurations.add(config);
         }
         reset(mWifiConfigManager);
-        when(mWifiConfigManager.addOrUpdateNetwork(any(), anyInt()))
+        when(mWifiConfigManager.addNetwork(any(), anyInt()))
                 .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
         mWifiServiceImpl.restoreNetworks(configurations);
         mLooper.dispatchAll();
-        verify(mWifiConfigManager, times(configNum)).addOrUpdateNetwork(eq(config), anyInt());
+        verify(mWifiConfigManager, times(configNum)).addNetwork(eq(config), anyInt());
         verify(mWifiConfigManager, times(configNum)).enableNetwork(
                 eq(TEST_NETWORK_ID), eq(false), anyInt(), eq(null));
         verify(mWifiConfigManager, times(configNum)).allowAutojoin(eq(TEST_NETWORK_ID),
