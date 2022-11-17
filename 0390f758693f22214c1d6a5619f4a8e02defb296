@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "aaf879db_a7c66c35",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 7
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1467989
+      },
+      "writtenOn": "2022-11-17T18:06:00Z",
+      "side": 1,
+      "message": "I think this may trigger merge conflict when automoerge to the internal master.\nShall we start with internal master and cherry-pick to the AOSP?",
+      "revId": "0390f758693f22214c1d6a5619f4a8e02defb296",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
