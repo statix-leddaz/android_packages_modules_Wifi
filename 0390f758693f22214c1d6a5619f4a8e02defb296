@@ -16,6 +16,24 @@
       "message": "I think this may trigger merge conflict when automoerge to the internal master.\nShall we start with internal master and cherry-pick to the AOSP?",
       "revId": "0390f758693f22214c1d6a5619f4a8e02defb296",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "4bcdb72c_2d9fbd48",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 7
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1535516
+      },
+      "writtenOn": "2022-11-17T22:27:00Z",
+      "side": 1,
+      "message": "If there was a merge conflict it would\u0027ve been caught by presubmit, but presubmit passed.\n\nI want to submit to aosp first so it automerges everywhere, instead of having to submit to internal master, tm-qpr-dev-plus-aosp, tm-dev-plus-aosp, and aosp master.",
+      "parentUuid": "aaf879db_a7c66c35",
+      "revId": "0390f758693f22214c1d6a5619f4a8e02defb296",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
