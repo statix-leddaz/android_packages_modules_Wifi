@@ -323,6 +323,14 @@ public class WifiNetworkSelector {
             return false;
         }
 
+        // MIUI ADD: START
+        if (wifiInfo.isPrimary() && mWifiInjector != null && mWifiInjector.getWifiDataStall() != null
+                && !mWifiInjector.getWifiDataStall().isThroughputSufficient()) {
+            localLog("Current network is not sufficient by WifiDataStall.");
+            return false;
+        }
+        // END
+
         return true;
     }
 
