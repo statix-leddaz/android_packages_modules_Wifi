@@ -3905,6 +3905,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 mIsScreenStateChangeReceiverRegistered = false;
             }
 
+            mInsecureEapNetworkHandler.clearConnection();
             stopClientMode();
             mWifiScoreCard.doWrites();
         }
