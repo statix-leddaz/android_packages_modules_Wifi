@@ -171,7 +171,7 @@ public class InsecureEapNetworkHandler {
     }
 
     /** Clear data on disconnecting a connection. */
-    private void clearConnection() {
+    public void clearConnection() {
         unregisterCertificateNotificationReceiver();
         dismissDialogAndNotification();
         clearInternalData();
