@@ -7340,6 +7340,13 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         linkedConfig.networkId, params));
 
         List<String> allowlistSsids = new ArrayList<>(linkedNetworks.values().stream()
+                .peek(linkedConfig -> {
+                    if (mVerboseLoggingEnabled && !linkedConfig.allowAutojoin) {
+                        Log.d(TAG, "linkedConfig is skipped: " + linkedConfig.SSID
+                                + " " + linkedConfig.networkId);
+                    }
+                })
+                .filter(linkedConfig -> linkedConfig.allowAutojoin)
                 .map(linkedConfig -> linkedConfig.SSID)
                 .collect(Collectors.toList()));
         if (linkedNetworks.size() > 0) {
