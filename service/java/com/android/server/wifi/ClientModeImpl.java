@@ -28,6 +28,7 @@ import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_LONG_LIVED;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_TRANSIENT;
 import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_STA_FACTORY_MAC_ADDRESS;
+import static com.android.server.wifi.WifiSettingsConfigStore.SECONDARY_WIFI_STA_FACTORY_MAC_ADDRESS;
 import static com.android.server.wifi.proto.WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__SUPPLICANT_DISCONNECTED;
 
 import android.annotation.IntDef;
@@ -6610,7 +6611,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 mWifiGlobals.isSaveFactoryMacToConfigStoreEnabled();
         if (saveFactoryMacInConfigStore) {
             // Already present, just return.
-            String factoryMacAddressStr = mSettingsConfigStore.get(WIFI_STA_FACTORY_MAC_ADDRESS);
+            String factoryMacAddressStr = mSettingsConfigStore.get(isPrimary()
+                ? WIFI_STA_FACTORY_MAC_ADDRESS : SECONDARY_WIFI_STA_FACTORY_MAC_ADDRESS);
             if (factoryMacAddressStr != null) return MacAddress.fromString(factoryMacAddressStr);
         }
         MacAddress factoryMacAddress = mWifiNative.getStaFactoryMacAddress(mInterfaceName);
@@ -6620,7 +6622,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             return null;
         }
         if (saveFactoryMacInConfigStore) {
-            mSettingsConfigStore.put(WIFI_STA_FACTORY_MAC_ADDRESS, factoryMacAddress.toString());
+            mSettingsConfigStore.put(isPrimary()
+                ? WIFI_STA_FACTORY_MAC_ADDRESS : SECONDARY_WIFI_STA_FACTORY_MAC_ADDRESS,
+                factoryMacAddress.toString());
             Log.i(TAG, "Factory MAC address stored in config store: " + factoryMacAddress);
         }
         Log.i(TAG, "Factory MAC address retrieved: " + factoryMacAddress);
