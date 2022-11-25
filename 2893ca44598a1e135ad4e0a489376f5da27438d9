@@ -33,6 +33,24 @@
       "message": "Why do we need to merge to aosp/master?",
       "revId": "2893ca44598a1e135ad4e0a489376f5da27438d9",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "6c4a8666_349cd6cf",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1882601
+      },
+      "writtenOn": "2022-11-25T23:20:14Z",
+      "side": 1,
+      "message": "I think a similar CL just opened at https://r.android.com/2256055.\n\nSince the new CL was on aosp/master, I thought we could cherry-pick the old CL in order to avoid a merge conflict. Another option might be to use the new CL, but add a Merged-In line.\n\nLet me know what you think.",
+      "parentUuid": "593f5c32_d44a0169",
+      "revId": "2893ca44598a1e135ad4e0a489376f5da27438d9",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
