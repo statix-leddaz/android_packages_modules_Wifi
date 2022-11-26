@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "7eed01be_a97130ad",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1723020
+      },
+      "writtenOn": "2022-11-26T03:28:36Z",
+      "side": 1,
+      "message": "Please review the patch. You can find details at Partners tracker #259865318",
+      "revId": "e2c4062a34fdbe51e2f1ae2a8ba1d729da903630",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
