@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "6ae965ba_73912ade",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1567049
+      },
+      "writtenOn": "2022-11-26T03:40:36Z",
+      "side": 1,
+      "message": "Thanks for catching this bug. and upstreaming the fix. Will cherry pick to Android 14.",
+      "revId": "26907be66a7918ac864b8d2b56c07384b682336c",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
