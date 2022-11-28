@@ -55,8 +55,7 @@
     <string name="ok" msgid="847575529546290102">"Në rregull"</string>
     <string name="wifi_p2p_invitation_sent_title" msgid="6552639940428040869">"Ftesa u dërgua"</string>
     <string name="wifi_p2p_invitation_to_connect_title" msgid="8917157937652519251">"Ftesë për t\'u lidhur"</string>
-    <!-- no translation found for wifi_p2p_invitation_seconds_remaining (4214101104506918344) -->
-    <skip />
+    <string name="wifi_p2p_invitation_seconds_remaining" msgid="4214101104506918344">"{0,plural, =1{Prano pas # sekonde.}other{Prano pas # sekondash.}}"</string>
     <string name="wifi_p2p_from_message" msgid="5921308150192756898">"Nga:"</string>
     <string name="wifi_p2p_to_message" msgid="3809923305696994787">"Për:"</string>
     <string name="wifi_p2p_enter_pin_message" msgid="5200220251738047620">"Shkruaj PIN-in e kërkuar:"</string>
@@ -165,7 +164,9 @@
     <string name="wifi_network_disabled_by_admin_message" msgid="7830360441333155462">"<xliff:g id="SSID">%1$s</xliff:g> është çaktivizuar nga administratori yt."</string>
     <string name="wifi_network_disabled_by_admin_button" msgid="3350310756265122689">"Mbyll"</string>
     <string name="wifi_enabled_apm_first_time_title" msgid="4814302384637588804">"Wi‑Fi është në modalitetin e aeroplanit"</string>
-    <string name="wifi_enabled_apm_first_time_message" msgid="3804474326110512024">"Nëse e mban Wi-Fi të aktivizuar, ai do të qëndrojë i aktivizuar herën tjetër që je në modalitetin e aeroplanit"</string>
+    <!-- no translation found for wifi_enabled_apm_first_time_message (5443101896157496353) -->
+    <skip />
     <string name="apm_enabled_first_time_title" msgid="2534167413190488009">"Wi‑Fi qëndron aktiv"</string>
-    <string name="apm_enabled_first_time_message" msgid="8381594447227021365">"Telefoni yt kujtohet që ta mbajë Wi-Fi të aktivizuar në modalitetin e aeroplanit. Për ta ndryshuar këtë, çaktivizo Wi‑Fi."</string>
+    <!-- no translation found for apm_enabled_first_time_message (4753441005253327841) -->
+    <skip />
 </resources>

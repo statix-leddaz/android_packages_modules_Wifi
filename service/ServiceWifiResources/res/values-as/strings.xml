@@ -55,8 +55,7 @@
     <string name="ok" msgid="847575529546290102">"ঠিক আছে"</string>
     <string name="wifi_p2p_invitation_sent_title" msgid="6552639940428040869">"আমন্ত্ৰণ পঠোৱা হ’ল"</string>
     <string name="wifi_p2p_invitation_to_connect_title" msgid="8917157937652519251">"সংযোগ হ\'বলৈ আমন্ত্ৰণ"</string>
-    <!-- no translation found for wifi_p2p_invitation_seconds_remaining (4214101104506918344) -->
-    <skip />
+    <string name="wifi_p2p_invitation_seconds_remaining" msgid="4214101104506918344">"{0,plural, =1{# ছেকেণ্ডত গ্ৰহণ কৰক।}one{# ছেকেণ্ডত গ্ৰহণ কৰক।}other{# ছেকেণ্ডত গ্ৰহণ কৰক।}}"</string>
     <string name="wifi_p2p_from_message" msgid="5921308150192756898">"প্ৰেৰক:"</string>
     <string name="wifi_p2p_to_message" msgid="3809923305696994787">"প্ৰতি:"</string>
     <string name="wifi_p2p_enter_pin_message" msgid="5200220251738047620">"প্ৰয়োজনীয় পিন নম্বৰটো লিখক:"</string>
@@ -165,7 +164,9 @@
     <string name="wifi_network_disabled_by_admin_message" msgid="7830360441333155462">"আপোনাৰ প্ৰশাসকে <xliff:g id="SSID">%1$s</xliff:g> অক্ষম কৰিছে।"</string>
     <string name="wifi_network_disabled_by_admin_button" msgid="3350310756265122689">"বন্ধ কৰক"</string>
     <string name="wifi_enabled_apm_first_time_title" msgid="4814302384637588804">"এয়াৰপ্লেন ম’ডত ৱাই‐ফাই অন হৈ থাকিব"</string>
-    <string name="wifi_enabled_apm_first_time_message" msgid="3804474326110512024">"যদি আপুনি ৱাই‐ফাই অন কৰি ৰাখে, তেন্তে পৰৱৰ্তী সময়ত আপুনি এয়াৰপ্লেন ম’ডত থকাৰ সময়ত এইটো অন হৈ থাকিব"</string>
+    <!-- no translation found for wifi_enabled_apm_first_time_message (5443101896157496353) -->
+    <skip />
     <string name="apm_enabled_first_time_title" msgid="2534167413190488009">"Wi‑Fi অন হৈ থাকিব"</string>
-    <string name="apm_enabled_first_time_message" msgid="8381594447227021365">"আপোনাৰ ফ’নটোৱে এয়াৰপ্লেন ম’ডত ৱাই-ফাই অন ৰাখিবলৈ মনত ৰাখে। এইটো সলনি কৰিবলৈ, ৱাই-ফাই অফ কৰক।"</string>
+    <!-- no translation found for apm_enabled_first_time_message (4753441005253327841) -->
+    <skip />
 </resources>

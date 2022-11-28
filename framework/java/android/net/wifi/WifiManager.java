@@ -37,6 +37,8 @@ import android.annotation.SystemApi;
 import android.annotation.SystemService;
 import android.app.ActivityManager;
 import android.app.admin.WifiSsidPolicy;
+import android.compat.annotation.ChangeId;
+import android.compat.annotation.EnabledAfter;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.content.Context;
 import android.net.ConnectivityManager;
@@ -133,6 +135,16 @@ import java.util.function.Consumer;
 public class WifiManager {
 
     private static final String TAG = "WifiManager";
+
+    /**
+     * Local networks should not be modified by B&R since the user may have
+     * updated it with the latest configurations.
+     * @hide
+     */
+    @ChangeId
+    @EnabledAfter(targetSdkVersion = Build.VERSION_CODES.S_V2)
+    public static final long NOT_OVERRIDE_EXISTING_NETWORKS_ON_RESTORE = 234793325L;
+
     // Supplicant error codes:
     /**
      * The error code if there was a problem authenticating.
@@ -4222,8 +4234,8 @@ public class WifiManager {
      * <li>Device Owner (DO), Profile Owner (PO) and system apps.
      * </ul>
      *
-     * Starting with Build.VERSION_CODES#T, DO/COPE may set a user restriction
-     * (DISALLOW_CHANGE_WIFI_STATE) to only allow DO/PO to use this API.
+     * Starting with {@link android.os.Build.VERSION_CODES#TIRAMISU}, DO/COPE may set
+     * a user restriction (DISALLOW_CHANGE_WIFI_STATE) to only allow DO/PO to use this API.
      */
     @Deprecated
     public boolean setWifiEnabled(boolean enabled) {
