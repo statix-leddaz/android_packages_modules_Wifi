@@ -34,6 +34,24 @@
       "parentUuid": "6ae965ba_73912ade",
       "revId": "26907be66a7918ac864b8d2b56c07384b682336c",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "bca47d00_222ad142",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1567049
+      },
+      "writtenOn": "2022-11-29T01:20:27Z",
+      "side": 1,
+      "message": "We will merge it to AOSP. Thanks.",
+      "parentUuid": "5c6da540_49ad3572",
+      "revId": "26907be66a7918ac864b8d2b56c07384b682336c",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
