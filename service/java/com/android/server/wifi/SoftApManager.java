@@ -115,6 +115,8 @@ public class SoftApManager implements ActiveModeManager {
 
     private final WifiApConfigStore mWifiApConfigStore;
 
+    private ClientModeImplListener mCmiListener;
+
     private final WifiMetrics mWifiMetrics;
     private final long mId;
 
@@ -402,12 +404,12 @@ public class SoftApManager implements ActiveModeManager {
                 .config_wifiFrameworkSoftApDisableBridgedModeShutdownIdleInstanceWhenCharging);
         mCmiMonitor = cmiMonitor;
         mActiveModeWarden = activeModeWarden;
-        mCmiMonitor.registerListener(new ClientModeImplListener() {
+        mCmiListener = new ClientModeImplListener() {
             @Override
             public void onL2Connected(@NonNull ConcreteClientModeManager clientModeManager) {
                 SoftApManager.this.onL2Connected(clientModeManager);
             }
-        });
+        };
         updateSafeChannelFrequencyList();
         mId = id;
         mRole = role;
@@ -431,6 +433,10 @@ public class SoftApManager implements ActiveModeManager {
     public void stop() {
         Log.d(getTag(), " currentstate: " + getCurrentStateName());
         mStateMachine.sendMessage(SoftApStateMachine.CMD_STOP);
+        if (mCmiListener != null) {
+            mCmiMonitor.unregisterListener(mCmiListener);
+            mCmiListener = null;
+        }
     }
 
     private boolean isOweTransition() {
