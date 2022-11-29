@@ -55,8 +55,7 @@
     <string name="ok" msgid="847575529546290102">"ตกลง"</string>
     <string name="wifi_p2p_invitation_sent_title" msgid="6552639940428040869">"ส่งข้อความเชิญแล้ว"</string>
     <string name="wifi_p2p_invitation_to_connect_title" msgid="8917157937652519251">"ข้อความเชิญเพื่อเชื่อมต่อ"</string>
-    <!-- no translation found for wifi_p2p_invitation_seconds_remaining (4214101104506918344) -->
-    <skip />
+    <string name="wifi_p2p_invitation_seconds_remaining" msgid="4214101104506918344">"{0,plural, =1{ตอบรับภายใน # วินาที}other{ตอบรับภายใน # วินาที}}"</string>
     <string name="wifi_p2p_from_message" msgid="5921308150192756898">"จาก:"</string>
     <string name="wifi_p2p_to_message" msgid="3809923305696994787">"ถึง:"</string>
     <string name="wifi_p2p_enter_pin_message" msgid="5200220251738047620">"พิมพ์ PIN ที่ต้องการ:"</string>
@@ -165,7 +164,9 @@
     <string name="wifi_network_disabled_by_admin_message" msgid="7830360441333155462">"ผู้ดูแลระบบปิดใช้ <xliff:g id="SSID">%1$s</xliff:g>"</string>
     <string name="wifi_network_disabled_by_admin_button" msgid="3350310756265122689">"ปิด"</string>
     <string name="wifi_enabled_apm_first_time_title" msgid="4814302384637588804">"Wi‑Fi จะเปิดในโหมดบนเครื่องบิน"</string>
-    <string name="wifi_enabled_apm_first_time_message" msgid="3804474326110512024">"หากคุณเปิด Wi‑Fi ไว้ ระบบจะเปิด Wi‑Fi ในครั้งถัดไปที่คุณอยู่ในโหมดบนเครื่องบิน"</string>
+    <!-- no translation found for wifi_enabled_apm_first_time_message (5443101896157496353) -->
+    <skip />
     <string name="apm_enabled_first_time_title" msgid="2534167413190488009">"Wi-Fi เปิดอยู่"</string>
-    <string name="apm_enabled_first_time_message" msgid="8381594447227021365">"โทรศัพท์จำว่าจะต้องเปิด Wi-Fi ในโหมดบนเครื่องบิน หากต้องการเปลี่ยนแปลง ให้ปิด Wi‑Fi"</string>
+    <!-- no translation found for apm_enabled_first_time_message (4753441005253327841) -->
+    <skip />
 </resources>
