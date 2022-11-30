@@ -55,8 +55,7 @@
     <string name="ok" msgid="847575529546290102">"Ok"</string>
     <string name="wifi_p2p_invitation_sent_title" msgid="6552639940428040869">"Einladung gesendet"</string>
     <string name="wifi_p2p_invitation_to_connect_title" msgid="8917157937652519251">"Einladung zum Aufbau einer Verbindung"</string>
-    <!-- no translation found for wifi_p2p_invitation_seconds_remaining (4214101104506918344) -->
-    <skip />
+    <string name="wifi_p2p_invitation_seconds_remaining" msgid="4214101104506918344">"{0,plural, =1{In # Sekunde akzeptieren.}other{In # Sekunden akzeptieren.}}"</string>
     <string name="wifi_p2p_from_message" msgid="5921308150192756898">"Von:"</string>
     <string name="wifi_p2p_to_message" msgid="3809923305696994787">"An:"</string>
     <string name="wifi_p2p_enter_pin_message" msgid="5200220251738047620">"Gib die PIN ein:"</string>
@@ -165,7 +164,9 @@
     <string name="wifi_network_disabled_by_admin_message" msgid="7830360441333155462">"Die Funktion „<xliff:g id="SSID">%1$s</xliff:g>“ wurde von deinem Administrator deaktiviert."</string>
     <string name="wifi_network_disabled_by_admin_button" msgid="3350310756265122689">"Schließen"</string>
     <string name="wifi_enabled_apm_first_time_title" msgid="4814302384637588804">"WLAN im Flugzeugmodus"</string>
-    <string name="wifi_enabled_apm_first_time_message" msgid="3804474326110512024">"Wenn du WLAN an lässt, bleibt es eingeschaltet, wenn du das nächste Mal in den Flugmodus wechselst"</string>
+    <!-- no translation found for wifi_enabled_apm_first_time_message (5443101896157496353) -->
+    <skip />
     <string name="apm_enabled_first_time_title" msgid="2534167413190488009">"WLAN bleibt eingeschaltet"</string>
-    <string name="apm_enabled_first_time_message" msgid="8381594447227021365">"Dein Smartphone lässt das WLAN im Flugmodus eingeschaltet. Deaktiviere WLAN, um dies zu ändern."</string>
+    <!-- no translation found for apm_enabled_first_time_message (4753441005253327841) -->
+    <skip />
 </resources>

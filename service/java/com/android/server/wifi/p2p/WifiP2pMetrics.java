@@ -16,6 +16,8 @@
 
 package com.android.server.wifi.p2p;
 
+import static android.os.Process.SYSTEM_UID;
+
 import android.content.Context;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
@@ -333,6 +335,22 @@ public class WifiP2pMetrics {
         }
     }
 
+    /** Returns if current connection event type is FAST connection */
+    public boolean isP2pFastConnectionType() {
+        if (mCurrentConnectionEvent == null) {
+            return false;
+        }
+        return P2pConnectionEvent.CONNECTION_FAST == mCurrentConnectionEvent.connectionType;
+    }
+
+    /** Gets current connection event group role string */
+    public String getP2pGroupRoleString() {
+        if (mCurrentConnectionEvent == null) {
+            return "UNKNOWN";
+        }
+        return (GroupEvent.GROUP_OWNER == mCurrentConnectionEvent.groupRole) ? "GO" : "GC";
+    }
+
     /**
      * Create a new connection event. Call when p2p attempts to make a new connection to
      * another peer. If there is a current 'un-ended' connection event, it will be ended with
@@ -342,7 +360,8 @@ public class WifiP2pMetrics {
      * @param config configuration used for this connection.
      * @param groupRole groupRole used for this connection.
      */
-    public void startConnectionEvent(int connectionType, WifiP2pConfig config, int groupRole) {
+    public void startConnectionEvent(int connectionType, WifiP2pConfig config, int groupRole,
+            int uid) {
         synchronized (mLock) {
             // handle overlapping connection event first.
             if (mCurrentConnectionEvent != null) {
@@ -366,6 +385,7 @@ public class WifiP2pMetrics {
                         (config.groupOwnerBand < MIN_2G_FREQUENCY_MHZ) ? 0 : config.groupOwnerBand;
             }
             mCurrentConnectionEvent.staFrequencyMhz = getWifiStaFrequency();
+            mCurrentConnectionEvent.uid = uid;
 
             mConnectionEventList.add(mCurrentConnectionEvent);
         }
@@ -385,7 +405,7 @@ public class WifiP2pMetrics {
                 // There won't be a connection starting event in framework.
                 // THe framework only get the connection ending event in GroupStarted state.
                 startConnectionEvent(P2pConnectionEvent.CONNECTION_REINVOKE, null,
-                        GroupEvent.GROUP_UNKNOWN);
+                        GroupEvent.GROUP_UNKNOWN, SYSTEM_UID);
             }
 
             mCurrentConnectionEvent.durationTakenToConnectMillis = (int)
@@ -400,7 +420,8 @@ public class WifiP2pMetrics {
                     convertGroupRole(mCurrentConnectionEvent.groupRole),
                     convertBandStatsLog(mCurrentConnectionEvent.band),
                     mCurrentConnectionEvent.frequencyMhz,
-                    mCurrentConnectionEvent.staFrequencyMhz);
+                    mCurrentConnectionEvent.staFrequencyMhz,
+                    mCurrentConnectionEvent.uid);
             mCurrentConnectionEvent = null;
         }
     }

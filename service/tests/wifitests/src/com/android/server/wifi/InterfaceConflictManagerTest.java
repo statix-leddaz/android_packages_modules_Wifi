@@ -38,6 +38,7 @@ import android.os.Handler;
 import android.os.Message;
 import android.os.WorkSource;
 import android.os.test.TestLooper;
+import android.util.LocalLog;
 import android.util.Pair;
 
 import androidx.test.filters.SmallTest;
@@ -46,6 +47,7 @@ import com.android.dx.mockito.inline.extended.ExtendedMockito;
 import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
 import com.android.server.wifi.util.WaitingState;
+import com.android.server.wifi.util.WorkSourceHelper;
 import com.android.wifi.resources.R;
 
 import org.junit.Before;
@@ -66,6 +68,7 @@ public class InterfaceConflictManagerTest {
     private TestLooper mTestLooper;
     private InterfaceConflictManager mDut;
 
+    @Mock WifiInjector mWifiInjector;
     @Mock WifiContext mWifiContext;
     @Mock Resources mResources;
     @Mock FrameworkFacade mFrameworkFacade;
@@ -75,11 +78,18 @@ public class InterfaceConflictManagerTest {
     @Mock WaitingState mWaitingState;
     @Mock WifiDialogManager mWifiDialogManager;
     @Mock WifiDialogManager.DialogHandle mDialogHandle;
+    @Mock LocalLog mLocalLog;
+    @Mock WorkSourceHelper mWsHelper;
+    @Mock WorkSourceHelper mExistingWsHelper;
 
     private static final int TEST_UID = 1234;
     private static final String TEST_PACKAGE_NAME = "some.package.name";
     private static final String TEST_APP_NAME = "Some App Name";
     private static final WorkSource TEST_WS = new WorkSource(TEST_UID, TEST_PACKAGE_NAME);
+    private static final int EXISTING_UID = 5678;
+    private static final String EXISTING_PACKAGE_NAME = "existing.package.name";
+    private static final WorkSource EXISTING_WS =
+            new WorkSource(EXISTING_UID, EXISTING_PACKAGE_NAME);
 
     ArgumentCaptor<WifiDialogManager.SimpleDialogCallback> mCallbackCaptor =
             ArgumentCaptor.forClass(WifiDialogManager.SimpleDialogCallback.class);
@@ -102,11 +112,15 @@ public class InterfaceConflictManagerTest {
         when(mFrameworkFacade.getAppName(any(), anyString(), anyInt())).thenReturn(TEST_APP_NAME);
         when(mWifiDialogManager.createSimpleDialog(
                 any(), any(), any(), any(), any(), any(), any())).thenReturn(mDialogHandle);
+
+        when(mWifiInjector.makeWsHelper(eq(TEST_WS))).thenReturn(mWsHelper);
+        when(mWifiInjector.makeWsHelper(eq(EXISTING_WS))).thenReturn(mExistingWsHelper);
     }
 
     private void initInterfaceConflictManager() {
-        mDut = new InterfaceConflictManager(mWifiContext, mFrameworkFacade, mHdm,
-                new WifiThreadRunner(new Handler(mTestLooper.getLooper())), mWifiDialogManager);
+        mDut = new InterfaceConflictManager(mWifiInjector, mWifiContext, mFrameworkFacade, mHdm,
+                new WifiThreadRunner(new Handler(mTestLooper.getLooper())), mWifiDialogManager,
+                mLocalLog);
         mDut.handleBootCompleted();
     }
 
