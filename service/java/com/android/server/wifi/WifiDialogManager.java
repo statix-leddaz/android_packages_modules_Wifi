@@ -588,15 +588,20 @@ public class WifiDialogManager {
             @NonNull P2pInvitationReceivedDialogCallback callback,
             @NonNull WifiThreadRunner callbackThreadRunner) {
         try {
-            return new DialogHandle(
-                    new P2pInvitationReceivedDialogHandle(
-                            deviceName,
-                            isPinRequested,
-                            displayPin,
-                            displayId,
-                            callback,
-                            callbackThreadRunner)
-            );
+            if (getBaseLaunchIntent(WifiManager.DIALOG_TYPE_P2P_INVITATION_RECEIVED) != null) {
+                return new DialogHandle(
+                        new P2pInvitationReceivedDialogHandle(
+                                deviceName,
+                                isPinRequested,
+                                displayPin,
+                                displayId,
+                                callback,
+                                callbackThreadRunner)
+                );
+            } else {
+                Log.d(TAG,"getBaseLaunchIntent is null");
+                return null;
+            }
         } catch (IllegalArgumentException e) {
             Log.e(TAG, "Could not create DialogHandle for P2P Invitation Received dialog: " + e);
             return null;
@@ -676,8 +681,13 @@ public class WifiDialogManager {
             @Nullable String displayPin,
             int displayId) {
         try {
-            return new DialogHandle(new P2pInvitationSentDialogHandle(deviceName, displayPin,
-                    displayId));
+            if (getBaseLaunchIntent(WifiManager.DIALOG_TYPE_P2P_INVITATION_SENT) != null) {
+                return new DialogHandle(new P2pInvitationSentDialogHandle(deviceName, displayPin,
+                        displayId));
+            } else {
+                Log.d(TAG,"getBaseLaunchIntent is null");
+                return null;
+            }
         } catch (IllegalArgumentException e) {
             Log.e(TAG, "Could not create DialogHandle for P2P Invitation Sent dialog: " + e);
             return null;
