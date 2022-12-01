@@ -35,6 +35,7 @@ import android.text.style.URLSpan;
 import android.util.ArraySet;
 import android.util.Log;
 import android.util.SparseArray;
+import android.view.ContextThemeWrapper;
 import android.view.Display;
 import android.view.Gravity;
 import android.view.View;
@@ -507,7 +508,8 @@ public class WifiDialogManager {
                 mTimeoutRunnable = null;
             }
             mTimeoutMs = timeoutMs;
-            mAlertDialog = mFrameworkFacade.makeAlertDialogBuilder(mContext)
+            mAlertDialog = mFrameworkFacade.makeAlertDialogBuilder(
+                    new ContextThemeWrapper(mContext, R.style.wifi_dialog))
                     .setTitle(mTitle)
                     .setMessage(mMessage)
                     .setPositiveButton(mPositiveButtonText, (dialogPositive, which) -> {
@@ -996,19 +998,17 @@ public class WifiDialogManager {
     private class P2pInvitationSentDialogHandle extends DialogHandleInternal {
         P2pInvitationSentDialogHandle(
                 final @NonNull String deviceName,
-                final @NonNull String displayPin,
+                final @Nullable String displayPin,
                 int displayId) throws IllegalArgumentException {
             Intent intent = getBaseLaunchIntent(WifiManager.DIALOG_TYPE_P2P_INVITATION_SENT);
             if (intent != null) {
                 intent.putExtra(WifiManager.EXTRA_P2P_DEVICE_NAME, deviceName)
                         .putExtra(WifiManager.EXTRA_P2P_DISPLAY_PIN, displayPin);
+                setIntent(intent);
             }
             setDisplayId(displayId);
             if (deviceName == null) {
                 throw new IllegalArgumentException("Device name cannot be null!");
-            }
-            if (displayPin == null) {
-                throw new IllegalArgumentException("Display PIN cannot be null!");
             }
         }
     }
