@@ -308,8 +308,9 @@ public class WifiInjector {
                         mFrameworkFacade, mContext);
         // Modules interacting with Native.
         mHalDeviceManager = new HalDeviceManager(mContext, mClock, this, wifiHandler);
-        mInterfaceConflictManager = new InterfaceConflictManager(mContext, mFrameworkFacade,
-                mHalDeviceManager, mWifiThreadRunner, mWifiDialogManager);
+        mInterfaceConflictManager = new InterfaceConflictManager(this, mContext, mFrameworkFacade,
+                mHalDeviceManager, mWifiThreadRunner, mWifiDialogManager, new LocalLog(
+                mContext.getSystemService(ActivityManager.class).isLowRamDevice() ? 128 : 256));
         mWifiVendorHal = new WifiVendorHal(mContext, mHalDeviceManager, wifiHandler, mWifiGlobals,
                 mSsidTranslator);
         mSupplicantStaIfaceHal = new SupplicantStaIfaceHal(
