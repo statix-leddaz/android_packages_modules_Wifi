@@ -48,8 +48,6 @@ java_library {
     installable: false,
     defaults: ["wifi-service-common"],
     srcs: [ ":wifi-service-srcs" ],
-    // java_api_finder must accompany `srcs`
-    plugins: ["java_api_finder"],
 
     sdk_version: "system_server_current",
     lint: {
@@ -67,6 +65,7 @@ java_library {
         // compile time
         "framework-wifi-pre-jarjar",
         "framework-bluetooth",
+        "framework-configinfrastructure",
         "framework-connectivity.stubs.module_lib",
         "framework-connectivity-t.stubs.module_lib",
         "framework-statsd.stubs.module_lib",
