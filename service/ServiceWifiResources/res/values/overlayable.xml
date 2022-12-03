@@ -219,6 +219,7 @@
           <item type="integer" name="config_wifiP2pDeviceNamePostfixNumDigits" />
           <item type="integer" name="config_wifiMaxNumWifiConfigurations" />
           <item type="bool" name="config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW" />
+          <item type="bool" name="config_wifiIpReachabilityDisconnectEnabled" />
           <item type="integer" name="config_wifiConnectivityLocalLogMaxLinesLowRam" />
           <item type="integer" name="config_wifiConnectivityLocalLogMaxLinesHighRam" />
           <item type="integer" name="config_wifiClientModeImplNumLogRecs" />

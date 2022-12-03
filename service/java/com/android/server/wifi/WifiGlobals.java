@@ -43,7 +43,6 @@ public class WifiGlobals {
     private final Context mContext;
 
     private final AtomicInteger mPollRssiIntervalMillis = new AtomicInteger(-1);
-    private final AtomicBoolean mIpReachabilityDisconnectEnabled = new AtomicBoolean(true);
     private final AtomicBoolean mIsBluetoothConnected = new AtomicBoolean(false);
 
     // This is read from the overlay, cache it after boot up.
@@ -68,6 +67,8 @@ public class WifiGlobals {
     private final int mWifiLowConnectedScoreScanPeriodSeconds;
     // This is read from the overlay, cache it after boot up.
     private final boolean mWifiAllowInsecureEnterpriseConfiguration;
+    // This is read from the overlay, cache it after boot up.
+    private final boolean mIpReachabilityDisconnectEnabled;
 
     // This is set by WifiManager#setVerboseLoggingEnabled(int).
     private boolean mIsShowKeyVerboseLoggingModeEnabled = false;
@@ -100,6 +101,8 @@ public class WifiGlobals {
                 R.integer.config_wifiLowConnectedScoreScanPeriodSeconds);
         mWifiAllowInsecureEnterpriseConfiguration = mContext.getResources().getBoolean(
                 R.bool.config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW);
+        mIpReachabilityDisconnectEnabled = mContext.getResources().getBoolean(
+                R.bool.config_wifiIpReachabilityDisconnectEnabled);
     }
 
     /** Get the interval between RSSI polls, in milliseconds. */
