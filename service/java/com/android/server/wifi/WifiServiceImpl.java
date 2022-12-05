@@ -20,6 +20,7 @@ import static android.app.AppOpsManager.MODE_ALLOWED;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import static android.net.wifi.WifiManager.LocalOnlyHotspotCallback.ERROR_GENERIC;
 import static android.net.wifi.WifiManager.LocalOnlyHotspotCallback.ERROR_NO_CHANNEL;
+import static android.net.wifi.WifiManager.NOT_OVERRIDE_EXISTING_NETWORKS_ON_RESTORE;
 import static android.net.wifi.WifiManager.PnoScanResultsCallback.REGISTER_PNO_CALLBACK_PNO_NOT_SUPPORTED;
 import static android.net.wifi.WifiManager.SAP_START_FAILURE_NO_CHANNEL;
 import static android.net.wifi.WifiManager.WIFI_AP_STATE_DISABLED;
@@ -58,6 +59,7 @@ import android.annotation.Nullable;
 import android.app.AppOpsManager;
 import android.app.admin.DevicePolicyManager;
 import android.app.admin.WifiSsidPolicy;
+import android.app.compat.CompatChanges;
 import android.bluetooth.BluetoothAdapter;
 import android.content.AttributionSource;
 import android.content.BroadcastReceiver;
@@ -1108,7 +1110,8 @@ public class WifiServiceImpl extends BaseWifiService {
                 || mWifiPermissionsUtil.isAdmin(uid, packageName)
                 || mWifiPermissionsUtil.isSystem(packageName, uid)
                 // TODO(b/140540984): Remove this bypass.
-                || mWifiPermissionsUtil.checkSystemAlertWindowPermission(uid, packageName);
+                || (mWifiPermissionsUtil.checkSystemAlertWindowPermission(uid, packageName)
+                && !isGuestUser());
     }
 
     private boolean isGuestUser() {
@@ -2453,7 +2456,6 @@ public class WifiServiceImpl extends BaseWifiService {
 
         mLog.info("start lohs uid=% pid=%").c(uid).c(pid).flush();
 
-        final WorkSource requestorWs;
         // Permission requirements are different with/without custom config.
         if (customConfig == null) {
             if (enforceChangePermission(packageName) != MODE_ALLOWED) {
@@ -2476,25 +2478,6 @@ public class WifiServiceImpl extends BaseWifiService {
                         extras.getParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE),
                         false, TAG + " startLocalOnlyHotspot");
             }
-            // TODO(b/162344695): Exception added for LOHS. This exception is need to avoid
-            // breaking existing LOHS behavior: LOHS AP iface is allowed to delete STA iface
-            // (even if LOHS app has lower priority than user toggled on STA iface). This does
-            // not fit in with the new context based concurrency priority in HalDeviceManager,
-            // but we cannot break existing API's. So, we artificially boost the priority of
-            // the request by "faking" the requestor context as settings app.
-            // We probably need some UI dialog to allow the user to grant the app's LOHS
-            // request. Once that UI dialog is added, we can get rid of this hack and use the UI
-            // to elevate the priority of LOHS request only if user approves the request to
-            // toggle wifi off for LOHS.
-            if (mContext.getResources().getBoolean(
-                    R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority)) {
-                // If the interface conflict dialogs are enabled, then we shouldn't fake the
-                // worksource since we need the correct worksource to display the right app label,
-                // and HDM will allow the iface creation as long as the user accepts the dialog.
-                requestorWs = new WorkSource(uid, packageName);
-            } else {
-                requestorWs = mFrameworkFacade.getSettingsWorkSource(mContext);
-            }
         } else {
             if (isPlatformOrTargetSdkLessThanT(packageName, uid)) {
                 if (!isSettingsOrSuw(Binder.getCallingPid(), Binder.getCallingUid())) {
@@ -2505,8 +2488,6 @@ public class WifiServiceImpl extends BaseWifiService {
                         extras.getParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE),
                         false, TAG + " startLocalOnlyHotspot");
             }
-            // Already privileged, no need to fake.
-            requestorWs = new WorkSource(uid, packageName);
         }
 
         // verify that tethering is not disabled
@@ -2529,6 +2510,7 @@ public class WifiServiceImpl extends BaseWifiService {
             Binder.restoreCallingIdentity(ident);
         }
         // check if we are currently tethering
+        final WorkSource requestorWs = new WorkSource(uid, packageName);
         if (!mActiveModeWarden.canRequestMoreSoftApManagers(requestorWs)
                 && mTetheredSoftApTracker.getState() == WIFI_AP_STATE_ENABLED) {
             // Tethering is enabled, cannot start LocalOnlyHotspot
@@ -4058,11 +4040,7 @@ public class WifiServiceImpl extends BaseWifiService {
      * WifiNetworkSpecifier request or oem paid/private suggestion).
      */
     private ClientModeManager getClientModeManagerIfSecondaryCmmRequestedByCallerPresent(
-            int callingUid, @NonNull String callingPackageName, boolean settingOrSuw) {
-        // For settings or setup wizard we should always return the primary.
-        if (settingOrSuw) {
-            return mActiveModeWarden.getPrimaryClientModeManager();
-        }
+            int callingUid, @NonNull String callingPackageName) {
         List<ConcreteClientModeManager> secondaryCmms = null;
         ActiveModeManager.ClientConnectivityRole roleSecondaryLocalOnly =
                 ROLE_CLIENT_LOCAL_ONLY;
@@ -4079,7 +4057,11 @@ public class WifiServiceImpl extends BaseWifiService {
         }
 
         for (ConcreteClientModeManager cmm : secondaryCmms) {
-            WorkSource reqWs = cmm.getRequestorWs();
+            WorkSource reqWs = new WorkSource(cmm.getRequestorWs());
+            if (reqWs.size() > 1 && cmm.getRole() == roleSecondaryLocalOnly) {
+                // Remove promoted settings WorkSource if present
+                reqWs.remove(mFrameworkFacade.getSettingsWorkSource(mContext));
+            }
             WorkSource withCaller = new WorkSource(reqWs);
             withCaller.add(new WorkSource(callingUid, callingPackageName));
             // If there are more than 1 secondary CMM for same app, return any one (should not
@@ -4107,12 +4089,10 @@ public class WifiServiceImpl extends BaseWifiService {
         }
         mWifiPermissionsUtil.checkPackage(uid, callingPackage);
         long ident = Binder.clearCallingIdentity();
-        boolean isSettingsOrSuw = mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
-                || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid);
         try {
             WifiInfo wifiInfo = mWifiThreadRunner.call(
                     () -> getClientModeManagerIfSecondaryCmmRequestedByCallerPresent(
-                            uid, callingPackage, isSettingsOrSuw)
+                            uid, callingPackage)
                             .syncRequestConnectionInfo(), new WifiInfo());
             long redactions = wifiInfo.getApplicableRedactions();
             if (mWifiPermissionsUtil.checkLocalMacAddressPermission(uid)) {
@@ -4122,7 +4102,8 @@ public class WifiServiceImpl extends BaseWifiService {
                 }
                 redactions &= ~NetworkCapabilities.REDACT_FOR_LOCAL_MAC_ADDRESS;
             }
-            if (isSettingsOrSuw) {
+            if (mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
+                    || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid)) {
                 if (mVerboseLoggingEnabled) {
                     Log.v(TAG, "Clearing REDACT_FOR_NETWORK_SETTINGS for " + callingPackage
                             + "(uid=" + uid + ")");
@@ -4609,11 +4590,9 @@ public class WifiServiceImpl extends BaseWifiService {
         if (mVerboseLoggingEnabled) {
             mLog.info("getDhcpInfo uid=%").c(callingUid).flush();
         }
-        boolean isSettingsOrSuw = mWifiPermissionsUtil.checkNetworkSettingsPermission(callingUid)
-                || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(callingUid);
         DhcpResultsParcelable dhcpResults = mWifiThreadRunner.call(
                 () -> getClientModeManagerIfSecondaryCmmRequestedByCallerPresent(
-                        callingUid, packageName, isSettingsOrSuw)
+                        callingUid, packageName)
                         .syncGetDhcpResultsParcelable(), new DhcpResultsParcelable());
 
         DhcpInfo info = new DhcpInfo();
@@ -4917,6 +4896,8 @@ public class WifiServiceImpl extends BaseWifiService {
                 mSettingsStore.dump(fd, pw, args);
                 mActiveModeWarden.dump(fd, pw, args);
                 mMakeBeforeBreakManager.dump(fd, pw, args);
+                pw.println();
+                mWifiInjector.getInterfaceConflictManager().dump(fd, pw, args);
                 pw.println();
                 mWifiTrafficPoller.dump(fd, pw, args);
                 pw.println();
@@ -5228,7 +5209,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (mVerboseLoggingEnabled) {
             mLog.info("getCurrentNetwork uid=%").c(Binder.getCallingUid()).flush();
         }
-        return getPrimaryClientModeManagerBlockingThreadSafe().syncGetCurrentNetwork();
+        return mActiveModeWarden.getCurrentNetwork();
     }
 
     public static String toHexString(String s) {
@@ -5280,9 +5261,15 @@ public class WifiServiceImpl extends BaseWifiService {
             final int nextStartIdx = Math.min(mStartIdx + mBatchNum, mConfigurations.size());
             for (int i = mStartIdx; i < nextStartIdx; i++) {
                 WifiConfiguration configuration = mConfigurations.get(i);
-                int networkId =
-                        mWifiConfigManager.addNetwork(configuration, mCallingUid)
-                                .getNetworkId();
+                int networkId;
+                if (CompatChanges.isChangeEnabled(NOT_OVERRIDE_EXISTING_NETWORKS_ON_RESTORE,
+                        mCallingUid)) {
+                    networkId = mWifiConfigManager.addNetwork(configuration, mCallingUid)
+                            .getNetworkId();
+                } else {
+                    networkId = mWifiConfigManager.addOrUpdateNetwork(configuration, mCallingUid)
+                            .getNetworkId();
+                }
                 if (networkId == WifiConfiguration.INVALID_NETWORK_ID) {
                     Log.e(TAG, "Restore network failed: "
                             + configuration.getProfileKey() + ", network might already exist in the"
