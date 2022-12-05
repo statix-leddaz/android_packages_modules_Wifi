@@ -877,4 +877,7 @@
     <!-- The world mode country code value definition in the wifi driver -->
     <string translatable="false" name="config_wifiDriverWorldModeCountryCode">00</string>
 
+    <!-- Indicate IP Reachability lost to be ignored after 10 sec of connection/roam -->
+    <bool translatable="false" name="config_disconnectOnlyOnInitialIpReachability">true</bool>
+
 </resources>
