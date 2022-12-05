@@ -68,6 +68,8 @@ public class WifiGlobals {
     private final int mWifiLowConnectedScoreScanPeriodSeconds;
     // This is read from the overlay, cache it after boot up.
     private final boolean mWifiAllowInsecureEnterpriseConfiguration;
+    // This is read from the overlay, cache it after boot up.
+    private final boolean mIsDisconnectOnlyOnInitialIpReachability;
 
     // This is set by WifiManager#setVerboseLoggingEnabled(int).
     private boolean mIsShowKeyVerboseLoggingModeEnabled = false;
@@ -100,6 +102,8 @@ public class WifiGlobals {
                 R.integer.config_wifiLowConnectedScoreScanPeriodSeconds);
         mWifiAllowInsecureEnterpriseConfiguration = mContext.getResources().getBoolean(
                 R.bool.config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW);
+        mIsDisconnectOnlyOnInitialIpReachability = mContext.getResources()
+                .getBoolean(R.bool.config_disconnectOnlyOnInitialIpReachability);
     }
 
     /** Get the interval between RSSI polls, in milliseconds. */
@@ -242,6 +246,11 @@ public class WifiGlobals {
         return mClientModeImplNumLogRecs;
     }
 
+    /** Check if IP Reachability lost need to be monitor for first 10 sec of connection/roam. */
+    public boolean getDisconnectOnlyOnInitialIpReachability() {
+        return mIsDisconnectOnlyOnInitialIpReachability;
+    }
+
     /** Get whether to use the saved factory MAC address when available **/
     public boolean isSaveFactoryMacToConfigStoreEnabled() {
         return mSaveFactoryMacToConfigStoreEnabled;
@@ -285,5 +294,7 @@ public class WifiGlobals {
                 + mIsUsingExternalScorer);
         pw.println("mWifiAllowInsecureEnterpriseConfiguratio"
                 + mWifiAllowInsecureEnterpriseConfiguration);
+        pw.println("mIsDisconnectOnlyOnInitialIpReachability="
+                + mIsDisconnectOnlyOnInitialIpReachability);
     }
 }
