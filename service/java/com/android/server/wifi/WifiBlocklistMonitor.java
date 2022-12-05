@@ -421,6 +421,13 @@ public class WifiBlocklistMonitor {
                 localLog("Ignoring failure to wait for watchdog to trigger first.");
                 return false;
             }
+            if(rssi == WifiConfiguration.INVALID_RSSI && bssid != null) {
+                ScanResult scanResult =
+                        WifiInjector.getInstance().getScanRequestProxy().getScanResult(bssid);
+                if(scanResult != null) {
+                    rssi = scanResult.level;
+                }
+            }
             int baseBlockDurationMs = getBaseBlockDurationForReason(reasonCode);
             addToBlocklist(entry,
                     getBlocklistDurationWithExponentialBackoff(currentStreak, baseBlockDurationMs),
