@@ -650,6 +650,9 @@ public class WifiScoreCard {
      * Clear the blocklist streak count for all APs that belong to this SSID.
      */
     public void resetBssidBlocklistStreakForSsid(@NonNull String ssid) {
+        if (ssid == null) {
+            return;
+        }
         Iterator<Map.Entry<MacAddress, PerBssid>> it = mApForBssid.entrySet().iterator();
         while (it.hasNext()) {
             PerBssid perBssid = it.next().getValue();
