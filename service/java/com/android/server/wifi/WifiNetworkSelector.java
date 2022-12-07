@@ -293,7 +293,7 @@ public class WifiNetworkSelector {
 
         // External scorer is not being used, and the current network's score is below the
         // sufficient score threshold configured for the AOSP scorer.
-        if (!mWifiGlobals.isUsingExternalScorer()
+        if (wifiInfo.isPrimary() && !mWifiGlobals.isUsingExternalScorer()
                 && wifiInfo.getScore()
                 < mWifiGlobals.getWifiLowConnectedScoreThresholdToTriggerScanForMbb()) {
             return false;
