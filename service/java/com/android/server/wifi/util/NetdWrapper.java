@@ -139,6 +139,11 @@ public class NetdWrapper {
         }
 
         @Override
+        public void onTcpConnectEvent(int netId, String ipAddr, int port, int uid) {
+            // Unused.
+        }
+
+        @Override
         public int getInterfaceVersion() {
             return INetdUnsolicitedEventListener.VERSION;
         }
