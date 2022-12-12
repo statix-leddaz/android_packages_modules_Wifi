@@ -227,7 +227,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
         try {
             enforcePermission(uid, packageName, featureId,
                     isPrivilegedMessage(WifiScanner.CMD_DEREGISTER_SCAN_LISTENER),
-                    false, false);
+                    true, false);
         } catch (SecurityException e) {
             localLog("unregisterScanListener: failed to authorize app: " + packageName + " uid "
                     + uid);
@@ -283,7 +283,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
         try {
             enforcePermission(uid, packageName, featureId,
                     isPrivilegedMessage(WifiScanner.CMD_STOP_BACKGROUND_SCAN),
-                    false, false);
+                    true, false);
         } catch (SecurityException e) {
             localLog("stopBackgroundScan: failed to authorize app: " + packageName + " uid "
                     + uid);
@@ -298,6 +298,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
         localLog("stop background scan: " + client);
         Message msg = Message.obtain();
         msg.what = WifiScanner.CMD_STOP_BACKGROUND_SCAN;
+        msg.obj = new ScanParams(listener, null, null);
         msg.sendingUid = uid;
         mBackgroundScanStateMachine.sendMessage(msg);
     }
@@ -380,7 +381,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
         try {
             enforcePermission(uid, packageName, featureId,
                     isPrivilegedMessage(WifiScanner.CMD_STOP_SINGLE_SCAN),
-                    false, false);
+                    true, false);
         } catch (SecurityException e) {
             localLog("stopScan: failed to authorize app: " + packageName + " uid "
                     + uid);
@@ -396,6 +397,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
             localLog("stop scan: " + client);
             Message msg = Message.obtain();
             msg.what = WifiScanner.CMD_STOP_SINGLE_SCAN;
+            msg.obj = new ScanParams(listener, null, null);
             msg.sendingUid = uid;
             mSingleScanStateMachine.sendMessage(msg);
         });
@@ -453,7 +455,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
         try {
             enforcePermission(uid, packageName, featureId,
                     isPrivilegedMessage(WifiScanner.CMD_STOP_PNO_SCAN),
-                    false, false);
+                    true, false);
         } catch (SecurityException e) {
             localLog("stopPnoScan: failed to authorize app: " + packageName + " uid "
                     + uid);
@@ -993,11 +995,9 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
         /**
          * Helper method to handle the scan start message.
          */
-        private void handleScanStartMessage(ClientInfo ci, Message msg) {
-            ScanParams scanParams = (ScanParams) msg.obj;
-            if (scanParams == null) {
-                logCallback("singleScanInvalidRequest",  ci, "null params");
-                ci.replyFailed(WifiScanner.REASON_INVALID_REQUEST, "params null");
+        private void handleScanStartMessage(ClientInfo ci, ScanParams scanParams) {
+            if (ci == null) {
+                logCallback("singleScanInvalidRequest", ci, "null params");
                 return;
             }
             ScanSettings scanSettings = scanParams.settings;
@@ -1075,13 +1075,17 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
                         return HANDLED;
                     case WifiScanner.CMD_START_SINGLE_SCAN:
                         ScanParams scanParams = (ScanParams) msg.obj;
-                        ClientInfo ci = mClients.get(scanParams.listener);
-                        handleScanStartMessage(ci, msg);
+                        if (scanParams != null) {
+                            ClientInfo ci = mClients.get(scanParams.listener);
+                            handleScanStartMessage(ci, scanParams);
+                        }
                         return HANDLED;
                     case WifiScanner.CMD_STOP_SINGLE_SCAN:
                         scanParams = (ScanParams) msg.obj;
-                        ci = mClients.get(scanParams.listener);
-                        removeSingleScanRequests(ci);
+                        if (scanParams != null) {
+                            ClientInfo ci = mClients.get(scanParams.listener);
+                            removeSingleScanRequests(ci);
+                        }
                         return HANDLED;
                     case CMD_SCAN_RESULTS_AVAILABLE:
                         if (DBG) localLog("ignored scan results available event");
@@ -2515,10 +2519,11 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
         private void addSingleScanRequest(ScanSettings settings) {
             if (DBG) localLog("Starting single scan");
             if (mInternalClientInfo != null) {
-                mSingleScanStateMachine.sendMessage(
-                        WifiScanner.CMD_START_SINGLE_SCAN,
-                        new ScanParams(mInternalClientInfo.mListener, settings,
-                                ClientModeImpl.WIFI_WORK_SOURCE));
+                Message msg = Message.obtain();
+                msg.what = WifiScanner.CMD_START_SINGLE_SCAN;
+                msg.obj = new ScanParams(mInternalClientInfo.mListener, settings,
+                        ClientModeImpl.WIFI_WORK_SOURCE);
+                mSingleScanStateMachine.sendMessage(msg);
             }
             mWifiMetrics.getScanMetrics().setWorkSource(ClientModeImpl.WIFI_WORK_SOURCE);
         }
