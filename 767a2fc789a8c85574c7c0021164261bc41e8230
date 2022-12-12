@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "5ddf84bb_882962df",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2022-12-12T15:58:57Z",
+      "side": 1,
+      "message": "Please review the latest version of the code - it no longer throws that exception.",
+      "revId": "767a2fc789a8c85574c7c0021164261bc41e8230",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
