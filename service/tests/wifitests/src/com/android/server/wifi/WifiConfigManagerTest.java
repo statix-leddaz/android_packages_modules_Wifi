@@ -2221,12 +2221,12 @@ public class WifiConfigManagerTest extends WifiBaseTest {
      */
     @Test
     public void testUpdateSecurityTypeClearsHasEverConnected() {
-        WifiConfiguration pskNetwork = WifiConfigurationTestUtil.createPskNetwork();
-        verifyAddNetworkHasEverConnectedFalse(pskNetwork);
-        verifyUpdateNetworkAfterConnectHasEverConnectedTrue(pskNetwork.networkId);
+        WifiConfiguration saeNetwork = WifiConfigurationTestUtil.createSaeNetwork();
+        verifyAddNetworkHasEverConnectedFalse(saeNetwork);
+        verifyUpdateNetworkAfterConnectHasEverConnectedTrue(saeNetwork.networkId);
 
-        pskNetwork.setSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE);
-        verifyUpdateNetworkWithCredentialChangeHasEverConnectedFalse(pskNetwork);
+        saeNetwork.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+        verifyUpdateNetworkWithCredentialChangeHasEverConnectedFalse(saeNetwork);
     }
 
     /**
@@ -5765,10 +5765,11 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         NetworkUpdateResult result = updateNetworkToWifiConfigManager(configuration);
         assertTrue(result.getNetworkId() != WifiConfiguration.INVALID_NETWORK_ID);
         assertFalse(result.isNewNetwork());
-
+        android.util.Log.d("ZYoo", "WifiConfigManagerTest -> * result11111111111: " + result);
         verifyNetworkUpdateBroadcast();
         // Verify that the config store write was triggered with this new configuration.
         verifyNetworkInConfigStoreData(configuration);
+        android.util.Log.d("ZYoo", "WifiConfigManagerTest -> * result22222222222: " + result);
         return result;
     }
 
