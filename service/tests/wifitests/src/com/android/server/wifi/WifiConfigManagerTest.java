@@ -2221,12 +2221,12 @@ public class WifiConfigManagerTest extends WifiBaseTest {
      */
     @Test
     public void testUpdateSecurityTypeClearsHasEverConnected() {
-        WifiConfiguration pskNetwork = WifiConfigurationTestUtil.createPskNetwork();
-        verifyAddNetworkHasEverConnectedFalse(pskNetwork);
-        verifyUpdateNetworkAfterConnectHasEverConnectedTrue(pskNetwork.networkId);
+        WifiConfiguration saeNetwork = WifiConfigurationTestUtil.createSaeNetwork();
+        verifyAddNetworkHasEverConnectedFalse(saeNetwork);
+        verifyUpdateNetworkAfterConnectHasEverConnectedTrue(saeNetwork.networkId);
 
-        pskNetwork.setSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE);
-        verifyUpdateNetworkWithCredentialChangeHasEverConnectedFalse(pskNetwork);
+        saeNetwork.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+        verifyUpdateNetworkWithCredentialChangeHasEverConnectedFalse(saeNetwork);
     }
 
     /**

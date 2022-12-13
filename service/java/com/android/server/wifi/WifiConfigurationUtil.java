@@ -360,7 +360,9 @@ public class WifiConfigurationUtil {
                 newConfig.allowedSuiteBCiphers)) {
             return true;
         }
-        if (!existingConfig.getSecurityParamsList().equals(newConfig.getSecurityParamsList())) {
+        WifiConfiguration temp = new WifiConfiguration(newConfig);
+        ignoreIsAddedByAutoUpgrade(existingConfig.getSecurityParamsList(), temp);
+        if (!existingConfig.getSecurityParamsList().equals(temp.getSecurityParamsList())) {
             return true;
         }
         if (!Objects.equals(existingConfig.preSharedKey, newConfig.preSharedKey)) {
@@ -386,6 +388,15 @@ public class WifiConfigurationUtil {
             return true;
         }
         return false;
+    }
+
+    private static void ignoreIsAddedByAutoUpgrade(List<SecurityParams> exist,
+                                                   WifiConfiguration temp) {
+        for (SecurityParams param : exist) {
+            temp.setSecurityParamsIsAddedByAutoUpgrade(
+                    param.getSecurityType(),
+                    param.isAddedByAutoUpgrade());
+        }
     }
 
     private static boolean validateSsid(String ssid, boolean isAdd) {
