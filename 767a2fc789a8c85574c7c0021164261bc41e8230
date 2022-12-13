@@ -16,6 +16,24 @@
       "message": "Please review the latest version of the code - it no longer throws that exception.",
       "revId": "767a2fc789a8c85574c7c0021164261bc41e8230",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "5fe564e8_ebf92a14",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1937729
+      },
+      "writtenOn": "2022-12-13T05:37:02Z",
+      "side": 1,
+      "message": "Thanks for the heads up. But I don\u0027t find an newer version of WifiSSid or WifiNative which don\u0027t throw that exception. E.g: This is the point which I found:\nhttps://android.googlesource.com/platform/packages/modules/Wifi/+/refs/heads/master/framework/java/android/net/wifi/WifiSsid.java#54\n\nOr isn\u0027t WifiNative#convertNativeScanResults() called anymore or an left-over fragment?\n\nCan you please point me to the newer version?",
+      "parentUuid": "5ddf84bb_882962df",
+      "revId": "767a2fc789a8c85574c7c0021164261bc41e8230",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
