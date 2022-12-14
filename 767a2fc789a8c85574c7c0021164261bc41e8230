@@ -52,6 +52,24 @@
       "parentUuid": "5fe564e8_ebf92a14",
       "revId": "767a2fc789a8c85574c7c0021164261bc41e8230",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b60575f3_3c6d781e",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1937729
+      },
+      "writtenOn": "2022-12-14T19:10:44Z",
+      "side": 1,
+      "message": "Thanks for pointing this out!\nI wasn\u0027t aware of the mainline branch, but thought all new things are also included in \"master\". I can confirm that the change in WifiSSid doesn\u0027t crash the system anymore in real live scenarios :)\n\nAlso an other guy told me, that CtsWifiTestCases, which previously crashed in the middle, are running fine now.",
+      "parentUuid": "155120e2_dba58c98",
+      "revId": "767a2fc789a8c85574c7c0021164261bc41e8230",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
