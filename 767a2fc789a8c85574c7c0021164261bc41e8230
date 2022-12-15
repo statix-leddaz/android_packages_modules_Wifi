@@ -70,6 +70,24 @@
       "parentUuid": "155120e2_dba58c98",
       "revId": "767a2fc789a8c85574c7c0021164261bc41e8230",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "3873dce9_51e69d3b",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1943370
+      },
+      "writtenOn": "2022-12-15T06:23:20Z",
+      "side": 1,
+      "message": "And that\u0027s me. :-)\n\nEtan, any chance we could have this submitted to `master` or even to the qpr branches also? Because, devices that don\u0027t use WiFi mainline for GPSU will continue to use the AOSP ones and we end up with this crash.\n\nI understand that WiFi mainline is mandatory in U but the flattened apex variant still would continue to use the AOSP one.\n\nThanks.",
+      "parentUuid": "b60575f3_3c6d781e",
+      "revId": "767a2fc789a8c85574c7c0021164261bc41e8230",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ],
   "submitRequirementResults": [
