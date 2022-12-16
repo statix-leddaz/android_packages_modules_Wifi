@@ -1886,6 +1886,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                     eq("testFeature"), anyInt(), eq(false));
         }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.CREATE_GROUP_FAILED));
+        verify(mWifiP2pMetrics).endConnectionEvent(eq(P2pConnectionEvent.CLF_CREATE_GROUP_FAILED));
     }
 
     /**
@@ -2848,7 +2849,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mWifiP2pMetrics).startConnectionEvent(
                 eq(P2pConnectionEvent.CONNECTION_FRESH),
                 configCaptor.capture(),
-                eq(WifiMetricsProto.GroupEvent.GROUP_UNKNOWN));
+                eq(WifiMetricsProto.GroupEvent.GROUP_UNKNOWN),
+                eq(mClient1.getCallingUid()));
         assertEquals(mTestWifiP2pPeerConfig.toString(), configCaptor.getValue().toString());
     }
 
@@ -2882,7 +2884,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mWifiP2pMetrics).startConnectionEvent(
                 eq(P2pConnectionEvent.CONNECTION_REINVOKE),
                 configCaptor.capture(),
-                eq(WifiMetricsProto.GroupEvent.GROUP_UNKNOWN));
+                eq(WifiMetricsProto.GroupEvent.GROUP_UNKNOWN),
+                eq(mClient1.getCallingUid()));
         assertEquals(mTestWifiP2pPeerConfig.toString(), configCaptor.getValue().toString());
     }
 
@@ -2913,7 +2916,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mWifiP2pMetrics).startConnectionEvent(
                 eq(P2pConnectionEvent.CONNECTION_REINVOKE),
                 eq(null),
-                eq(WifiMetricsProto.GroupEvent.GROUP_OWNER));
+                eq(WifiMetricsProto.GroupEvent.GROUP_OWNER),
+                eq(mClient1.getCallingUid()));
     }
 
     /**
@@ -2940,7 +2944,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mWifiP2pMetrics).startConnectionEvent(
                 eq(P2pConnectionEvent.CONNECTION_LOCAL),
                 eq(null),
-                eq(WifiMetricsProto.GroupEvent.GROUP_OWNER));
+                eq(WifiMetricsProto.GroupEvent.GROUP_OWNER),
+                eq(mClient1.getCallingUid()));
     }
 
     /**
@@ -2966,7 +2971,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mWifiP2pMetrics).startConnectionEvent(
                 eq(P2pConnectionEvent.CONNECTION_LOCAL),
                 eq(null),
-                eq(WifiMetricsProto.GroupEvent.GROUP_OWNER));
+                eq(WifiMetricsProto.GroupEvent.GROUP_OWNER),
+                eq(mClient1.getCallingUid()));
     }
 
     /**
@@ -2996,7 +3002,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mWifiP2pMetrics).startConnectionEvent(
                 eq(P2pConnectionEvent.CONNECTION_FAST),
                 configCaptor.capture(),
-                eq(WifiMetricsProto.GroupEvent.GROUP_CLIENT));
+                eq(WifiMetricsProto.GroupEvent.GROUP_CLIENT),
+                eq(mClient1.getCallingUid()));
         assertEquals(mTestWifiP2pFastConnectionConfig.toString(),
                 configCaptor.getValue().toString());
     }
@@ -3027,7 +3034,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mWifiP2pMetrics).startConnectionEvent(
                 eq(P2pConnectionEvent.CONNECTION_FAST),
                 configCaptor.capture(),
-                eq(WifiMetricsProto.GroupEvent.GROUP_OWNER));
+                eq(WifiMetricsProto.GroupEvent.GROUP_OWNER),
+                eq(mClient1.getCallingUid()));
         assertEquals(mTestWifiP2pFastConnectionConfig.toString(),
                 configCaptor.getValue().toString());
     }
@@ -3312,7 +3320,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                     .setRequireNoneOfPermissions(TEST_EXCLUDED_PERMISSIONS_T);
         }
 
-        verify(mWifiP2pMetrics).endConnectionEvent(eq(P2pConnectionEvent.CLF_UNKNOWN));
+        verify(mWifiP2pMetrics).endConnectionEvent(eq(P2pConnectionEvent.CLF_GROUP_REMOVED));
     }
 
     @Test
@@ -5867,7 +5875,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mWifiP2pMetrics).startConnectionEvent(
                 eq(P2pConnectionEvent.CONNECTION_FRESH),
                 configCaptor.capture(),
-                eq(WifiMetricsProto.GroupEvent.GROUP_UNKNOWN));
+                eq(WifiMetricsProto.GroupEvent.GROUP_UNKNOWN),
+                eq(mClient1.getCallingUid()));
         assertEquals(mTestWifiP2pPeerConfig.toString(), configCaptor.getValue().toString());
         // Verify timer is cannelled
         // Includes re-schedule 3 times:
