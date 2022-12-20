@@ -24,6 +24,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "50c23397_1ae886bc",
+        "filename": "service/java/com/android/server/wifi/ConcreteClientModeManager.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 736,
+      "author": {
+        "id": 1937835
+      },
+      "writtenOn": "2022-12-20T13:19:35Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "cc5372e6_8ca616f2",
+      "range": {
+        "startLine": 736,
+        "startChar": 20,
+        "endLine": 736,
+        "endChar": 64
+      },
+      "revId": "8cab07f95439628cf5cb38fdce20934ce17667d9",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "5c4f862d_c79a2350",
@@ -47,6 +71,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "2326d712_6f762903",
+        "filename": "service/java/com/android/server/wifi/SelfRecovery.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 167,
+      "author": {
+        "id": 1937835
+      },
+      "writtenOn": "2022-12-20T13:19:35Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "5c4f862d_c79a2350",
+      "range": {
+        "startLine": 167,
+        "startChar": 8,
+        "endLine": 167,
+        "endChar": 41
+      },
+      "revId": "8cab07f95439628cf5cb38fdce20934ce17667d9",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "8d98ce43_51684a9a",
@@ -60,6 +108,30 @@
       "writtenOn": "2022-12-19T21:36:58Z",
       "side": 1,
       "message": "I\u0027m not sure if we should disable wifi when the overlay is disabled, since it could accidentally disable wifi if this codepath somehow gets triggered. Would be better to just ignore this message.",
+      "range": {
+        "startLine": 202,
+        "startChar": 16,
+        "endLine": 202,
+        "endChar": 56
+      },
+      "revId": "8cab07f95439628cf5cb38fdce20934ce17667d9",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "dfc18e55_31639d0b",
+        "filename": "service/java/com/android/server/wifi/SelfRecovery.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 202,
+      "author": {
+        "id": 1937835
+      },
+      "writtenOn": "2022-12-20T13:19:35Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "8d98ce43_51684a9a",
       "range": {
         "startLine": 202,
         "startChar": 16,
