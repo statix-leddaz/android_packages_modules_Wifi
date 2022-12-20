@@ -22,6 +22,30 @@
       },
       "revId": "3621065d86964b65d4ece54962ff324f861ed901",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "28ab31aa_c7f39c39",
+        "filename": "service/ServiceWifiResources/res/values/config.xml",
+        "patchSetId": 4
+      },
+      "lineNbr": 566,
+      "author": {
+        "id": 1937835
+      },
+      "writtenOn": "2022-12-20T13:19:51Z",
+      "side": 1,
+      "message": "Updated in aosp/2364019.",
+      "parentUuid": "d2df92f6_abcecc4e",
+      "range": {
+        "startLine": 566,
+        "startChar": 4,
+        "endLine": 566,
+        "endChar": 87
+      },
+      "revId": "3621065d86964b65d4ece54962ff324f861ed901",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
