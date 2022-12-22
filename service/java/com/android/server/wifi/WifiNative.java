@@ -1617,10 +1617,11 @@ public class WifiNative {
      * Returns null on failure.
      */
     public WifiNl80211Manager.SignalPollResult signalPoll(@NonNull String ifaceName) {
-        if (mMockWifiModem != null && mMockWifiModem.getMockWifiNl80211Manager() != null) {
-            // TODO: Call only when mock signalPoll is ready. i.e. test data is configured.
+        if (mMockWifiModem != null && mMockWifiModem.getWifiNl80211Manager() != null
+                && mMockWifiModem.getMockWifiNl80211Manager() != null
+                && mMockWifiModem.getMockWifiNl80211Manager().isMethodConfigured("signalPoll")) {
             Log.i(TAG, "signalPoll was called from mock wificond");
-            return mMockWifiModem.getMockWifiNl80211Manager().signalPoll(ifaceName);
+            return mMockWifiModem.getWifiNl80211Manager().signalPoll(ifaceName);
         }
         return mWifiCondManager.signalPoll(ifaceName);
     }
@@ -4479,5 +4480,17 @@ public class WifiNative {
         String serviceName = mMockWifiModem != null ? mMockWifiModem.getServiceName() : null;
         Log.d(TAG, "getMockWifiServiceName - service name is " + serviceName);
         return serviceName;
+    }
+
+    /**
+     * Sets mocked methods which like to be called.
+     *
+     * @param methods the methods string with formats HAL name - method name, ...
+     */
+    public boolean setMockWifiMethods(String methods) {
+        if (mMockWifiModem == null || methods == null) {
+            return false;
+        }
+        return mMockWifiModem.setMockedMethods(methods);
     }
 }
