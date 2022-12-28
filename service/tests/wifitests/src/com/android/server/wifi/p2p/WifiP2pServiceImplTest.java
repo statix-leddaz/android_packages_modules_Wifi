@@ -1886,6 +1886,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                     eq("testFeature"), anyInt(), eq(false));
         }
         assertTrue(mClientHandler.hasMessages(WifiP2pManager.CREATE_GROUP_FAILED));
+        verify(mWifiP2pMetrics).endConnectionEvent(eq(P2pConnectionEvent.CLF_CREATE_GROUP_FAILED));
     }
 
     /**
@@ -2579,6 +2580,24 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
             verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq(TEST_PACKAGE_NAME),
                     eq("testFeature"), anyInt(), eq(true));
         }
+    }
+
+    @Test
+    public void testStartListenAndSetChannelFailureWithDefaultStateHandling() throws Exception {
+        setTargetSdkGreaterThanT();
+        when(mInterfaceConflictManager.manageInterfaceConflictForStateMachine(any(), any(), any(),
+                any(), any(), eq(HalDeviceManager.HDM_CREATE_IFACE_P2P), any(), anyBoolean()))
+                .thenReturn(InterfaceConflictManager.ICM_ABORT_COMMAND);
+
+        mockEnterDisabledState();
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.START_LISTEN);
+        verify(mWifiNative, never()).setupInterface(any(), any(), any());
+        assertTrue(mClientHandler.hasMessages(WifiP2pManager.START_LISTEN_FAILED));
+
+        mockEnterDisabledState();
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.SET_CHANNEL);
+        verify(mWifiNative, never()).setupInterface(any(), any(), any());
+        assertTrue(mClientHandler.hasMessages(WifiP2pManager.SET_CHANNEL_FAILED));
     }
 
     /**
@@ -3319,7 +3338,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                     .setRequireNoneOfPermissions(TEST_EXCLUDED_PERMISSIONS_T);
         }
 
-        verify(mWifiP2pMetrics).endConnectionEvent(eq(P2pConnectionEvent.CLF_UNKNOWN));
+        verify(mWifiP2pMetrics).endConnectionEvent(eq(P2pConnectionEvent.CLF_GROUP_REMOVED));
     }
 
     @Test
