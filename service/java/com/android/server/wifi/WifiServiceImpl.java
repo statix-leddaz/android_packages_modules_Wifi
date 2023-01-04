@@ -210,6 +210,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * WifiService handles remote WiFi operation requests by implementing
@@ -526,9 +527,6 @@ public class WifiServiceImpl extends BaseWifiService {
             if (!mWifiConfigManager.loadFromStore()) {
                 Log.e(TAG, "Failed to load from config store");
             }
-            if (!mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()) {
-                mWifiConfigManager.updateTrustOnFirstUseFlag(isTrustOnFirstUseSupported());
-            }
             mWifiConfigManager.incrementNumRebootsSinceLastUse();
             // config store is read, check if verbose logging is enabled.
             enableVerboseLoggingInternal(
@@ -796,6 +794,10 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiInjector.getSsidTranslator().handleBootCompleted();
             mWifiInjector.getPasspointManager().handleBootCompleted();
             mWifiInjector.getInterfaceConflictManager().handleBootCompleted();
+            // HW capabilities is ready after boot completion.
+            if (!mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()) {
+                mWifiConfigManager.updateTrustOnFirstUseFlag(isTrustOnFirstUseSupported());
+            }
             updateVerboseLoggingEnabled();
         });
     }
@@ -4505,9 +4507,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (mContext.getResources().getBoolean(R.bool.config_wifi24ghzSupport)) {
             return true;
         }
-        return mWifiThreadRunner.call(
-                () -> mWifiNative.getChannelsForBand(WifiScanner.WIFI_BAND_24_GHZ).length > 0,
-                false);
+        return mActiveModeWarden.isBandSupportedForSta(WifiScanner.WIFI_BAND_24_GHZ);
     }
 
 
@@ -4524,9 +4524,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (mContext.getResources().getBoolean(R.bool.config_wifi5ghzSupport)) {
             return true;
         }
-        return mWifiThreadRunner.call(
-                () -> mWifiNative.getChannelsForBand(WifiScanner.WIFI_BAND_5_GHZ).length > 0,
-                false);
+        return mActiveModeWarden.isBandSupportedForSta(WifiScanner.WIFI_BAND_5_GHZ);
     }
 
     @Override
@@ -4542,9 +4540,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (mContext.getResources().getBoolean(R.bool.config_wifi6ghzSupport)) {
             return true;
         }
-        return mWifiThreadRunner.call(
-                () -> mWifiNative.getChannelsForBand(WifiScanner.WIFI_BAND_6_GHZ).length > 0,
-                false);
+        return mActiveModeWarden.isBandSupportedForSta(WifiScanner.WIFI_BAND_6_GHZ);
     }
 
     @Override
@@ -4564,9 +4560,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (mContext.getResources().getBoolean(R.bool.config_wifi60ghzSupport)) {
             return true;
         }
-        return mWifiThreadRunner.call(
-                () -> mWifiNative.getChannelsForBand(WifiScanner.WIFI_BAND_60_GHZ).length > 0,
-                false);
+        return mActiveModeWarden.isBandSupportedForSta(WifiScanner.WIFI_BAND_60_GHZ);
     }
 
     @Override
@@ -5209,7 +5203,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (mVerboseLoggingEnabled) {
             mLog.info("getCurrentNetwork uid=%").c(Binder.getCallingUid()).flush();
         }
-        return getPrimaryClientModeManagerBlockingThreadSafe().syncGetCurrentNetwork();
+        return mActiveModeWarden.getCurrentNetwork();
     }
 
     public static String toHexString(String s) {
@@ -6565,6 +6559,44 @@ public class WifiServiceImpl extends BaseWifiService {
         }
         if (!isValidBandForGetUsableChannels(band)) {
             throw new IllegalArgumentException("Unsupported band: " + band);
+        }
+        // If querying the usable channels for SoftAp mode and regulatory filtered, return from
+        // cached softAp capabilities directly.
+        if (mode == WifiAvailableChannel.OP_MODE_SAP
+                && filter == WifiAvailableChannel.FILTER_REGULATORY) {
+            int[] chans;
+            switch (band) {
+                case WifiScanner.WIFI_BAND_24_GHZ:
+                    chans =
+                            mTetheredSoftApTracker.getSoftApCapability().getSupportedChannelList(
+                                    SoftApConfiguration.BAND_2GHZ);
+                    break;
+                case WifiScanner.WIFI_BAND_5_GHZ:
+                    chans =
+                            mTetheredSoftApTracker.getSoftApCapability().getSupportedChannelList(
+                                    SoftApConfiguration.BAND_5GHZ);
+                    break;
+                case WifiScanner.WIFI_BAND_6_GHZ:
+                    chans =
+                            mTetheredSoftApTracker.getSoftApCapability().getSupportedChannelList(
+                                    SoftApConfiguration.BAND_6GHZ);
+                    break;
+                case WifiScanner.WIFI_BAND_60_GHZ:
+                    chans =
+                            mTetheredSoftApTracker.getSoftApCapability().getSupportedChannelList(
+                                    SoftApConfiguration.BAND_60GHZ);
+                    break;
+                default:
+                    chans = null;
+                    break;
+            }
+            if (chans != null) {
+                return Arrays.stream(chans).mapToObj(
+                        v -> new WifiAvailableChannel(
+                                ScanResult.convertChannelToFrequencyMhzIfSupported(v, band),
+                                WifiAvailableChannel.OP_MODE_SAP)).collect(
+                        Collectors.toList());
+            }
         }
         List<WifiAvailableChannel> channels = mWifiThreadRunner.call(
                 () -> mWifiNative.getUsableChannels(band, mode, filter), null);
