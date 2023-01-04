@@ -8128,6 +8128,17 @@ public class ClientModeImplTest extends WifiBaseTest {
                 .setNetworkDefaultGwMacAddress(mConnectedNetwork.networkId, gatewayMac);
         verify(mWifiConfigManager, never()).updateLinkedNetworks(connectedConfig.networkId);
 
+        // FT/SAE scan, do not update linked networks
+        ScanResult ftSaeScan = new ScanResult();
+        ftSaeScan.capabilities = "FT/SAE";
+        when(mScanRequestProxy.getScanResult(any())).thenReturn(ftSaeScan);
+        mWifiNetworkAgentCallbackCaptor.getValue().onValidationStatus(
+                NetworkAgent.VALIDATION_STATUS_VALID, null /* captivePortalUrl */);
+        mLooper.dispatchAll();
+        verify(mWifiConfigManager)
+                .setNetworkDefaultGwMacAddress(mConnectedNetwork.networkId, gatewayMac);
+        verify(mWifiConfigManager, never()).updateLinkedNetworks(connectedConfig.networkId);
+
         // Null scan, do not update linked networks
         mWifiNetworkAgentCallbackCaptor.getValue().onValidationStatus(
                 NetworkAgent.VALIDATION_STATUS_VALID, null /* captivePortalUrl */);
@@ -8444,7 +8455,7 @@ public class ClientModeImplTest extends WifiBaseTest {
             mCmi.sendMessage(WifiMonitor.TOFU_ROOT_CA_CERTIFICATE,
                     FRAMEWORK_NETWORK_ID, 0, FakeKeys.CA_CERT0);
             mLooper.dispatchAll();
-            verify(mInsecureEapNetworkHandler).setPendingCertificate(
+            verify(mInsecureEapNetworkHandler).addPendingCertificate(
                     eq(eapTlsConfig.SSID), eq(0), eq(FakeKeys.CA_CERT0));
         }
 
