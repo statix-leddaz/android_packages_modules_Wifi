@@ -152,6 +152,9 @@ java_sdk_library {
         "//frameworks/opt/net/wifi/service:__subpackages__",
         "//packages/modules/Wifi/service:__subpackages__",
         "//packages/modules/Wifi/WifiDialog:__subpackages__",
+
+        // TODO(b/200577024): Remove this, currently used by vendor modules
+        "//vendor:__subpackages__",
     ] + test_access_hidden_api_whitelist,
 
     apex_available: [
