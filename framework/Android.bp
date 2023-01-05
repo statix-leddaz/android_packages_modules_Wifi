@@ -152,6 +152,8 @@ java_sdk_library {
         "//frameworks/opt/net/wifi/service:__subpackages__",
         "//packages/modules/Wifi/service:__subpackages__",
         "//packages/modules/Wifi/WifiDialog:__subpackages__",
+
+        "//vendor/google_arc/libs/arc-net-services:__subpackages__", // b/200577024 for context
     ] + test_access_hidden_api_whitelist,
 
     apex_available: [
