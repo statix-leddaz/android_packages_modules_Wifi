@@ -16,6 +16,23 @@
       "message": "For reference, the vendor cl is ag/20886974",
       "revId": "94932110aacb922484dd519737de323dbffcb192",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "7bb745cf_2ed18f07",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-01-06T22:16:12Z",
+      "side": 1,
+      "message": "Please see bug for further discussion.",
+      "revId": "94932110aacb922484dd519737de323dbffcb192",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
