@@ -1,6 +1,23 @@
 {
   "comments": [
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "1a80f47b_54158ab0",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1240997
+      },
+      "writtenOn": "2023-01-09T19:38:26Z",
+      "side": 1,
+      "message": "Please see comments, and would it possible to add some unit tests? Thanks!",
+      "revId": "8cab07f95439628cf5cb38fdce20934ce17667d9",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "cc5372e6_8ca616f2",
@@ -132,6 +149,30 @@
       "side": 1,
       "message": "Done",
       "parentUuid": "8d98ce43_51684a9a",
+      "range": {
+        "startLine": 202,
+        "startChar": 16,
+        "endLine": 202,
+        "endChar": 56
+      },
+      "revId": "8cab07f95439628cf5cb38fdce20934ce17667d9",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "2b9a71b4_8fe7b463",
+        "filename": "service/java/com/android/server/wifi/SelfRecovery.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 202,
+      "author": {
+        "id": 1240997
+      },
+      "writtenOn": "2023-01-09T19:38:26Z",
+      "side": 1,
+      "message": "Sorry for not being clear in the previous comment. The concern I had was the particular line of \"mActiveModeWarden.recoveryDisableWifi()\", because it would actually shutdown all wifi CMMs. So was suggesting to modify the code to something like the following, to just ignore REASON_IFACE_ADDED when the feature is disabled:\n\nif (reason \u003d\u003d REASON_IFACE_ADDED \u0026\u0026 !mIsRecoveriesForIfaceAddedEnabled) {\n    Log.e(TAG, \"Recovery disabled. Disabling wifi\");\n    return;\n}",
+      "parentUuid": "dfc18e55_31639d0b",
       "range": {
         "startLine": 202,
         "startChar": 16,
