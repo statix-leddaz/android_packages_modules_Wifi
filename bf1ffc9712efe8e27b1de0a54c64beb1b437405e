@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "fedb57cb_1c0c8948",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/SelfRecoveryInterfaceAddedTest.java",
+        "patchSetId": 5
+      },
+      "lineNbr": 55,
+      "author": {
+        "id": 1240997
+      },
+      "writtenOn": "2023-01-17T23:10:02Z",
+      "side": 1,
+      "message": "Can we also verify that when this is set to false, then recovery will not happen?",
+      "range": {
+        "startLine": 55,
+        "startChar": 30,
+        "endLine": 55,
+        "endChar": 87
+      },
+      "revId": "bf1ffc9712efe8e27b1de0a54c64beb1b437405e",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
