@@ -41,9 +41,7 @@ import android.net.LinkProperties;
 import android.net.MacAddress;
 import android.net.NetworkInfo;
 import android.net.NetworkStack;
-import android.net.TetheringInterface;
 import android.net.TetheringManager;
-import android.net.TetheringManager.TetheringEventCallback;
 import android.net.ip.IIpClient;
 import android.net.ip.IpClientCallbacks;
 import android.net.ip.IpClientUtil;
@@ -218,8 +216,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     private WifiGlobals mWifiGlobals;
     private UserManager mUserManager;
     private InterfaceConflictManager mInterfaceConflictManager;
-    private TetheringManager mTetheringManager = null;
     private WifiP2pNative mWifiNative;
+    private HalDeviceManager mHalDeviceManager;
 
     private static final Boolean JOIN_GROUP = true;
     private static final Boolean FORM_GROUP = false;
@@ -310,8 +308,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     private static final int IPC_DHCP_RESULTS               =   BASE + 32;
     private static final int IPC_PROVISIONING_SUCCESS       =   BASE + 33;
     private static final int IPC_PROVISIONING_FAILURE       =   BASE + 34;
-    @VisibleForTesting
-    static final int TETHER_INTERFACE_STATE_CHANGED         =   BASE + 35;
+
+    private static final int TETHER_INTERFACE_STATE_CHANGED =   BASE + 35;
 
     private static final int UPDATE_P2P_DISALLOWED_CHANNELS =   BASE + 36;
 
@@ -636,6 +634,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         HandlerThread wifiP2pThread = mWifiInjector.getWifiP2pServiceHandlerThread();
         mClientHandler = new ClientHandler(TAG, wifiP2pThread.getLooper());
         mWifiNative = mWifiInjector.getWifiP2pNative();
+        mHalDeviceManager = mWifiInjector.getHalDeviceManager();
         mP2pStateMachine = new P2pStateMachine(TAG, wifiP2pThread.getLooper(), mP2pSupported);
         mP2pStateMachine.setDbg(false); // can enable for very verbose logs
         mP2pStateMachine.start();
@@ -652,10 +651,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     public void handleBootCompleted() {
         updateVerboseLoggingEnabled();
         mIsBootComplete = true;
-        mTetheringManager = mContext.getSystemService(TetheringManager.class);
-        if (mTetheringManager == null) {
-            Log.wtf(TAG, "Tethering manager is null when WifiP2pServiceImp handles boot completed");
-        }
     }
 
     private void updateVerboseLoggingEnabled() {
@@ -1031,21 +1026,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         private WifiP2pMonitor mWifiMonitor = mWifiInjector.getWifiP2pMonitor();
         private final WifiP2pDeviceList mPeers = new WifiP2pDeviceList();
         private String mInterfaceName;
-        private TetheringEventCallback mTetheringEventCallback =
-                new TetheringManager.TetheringEventCallback() {
-                    @Override
-                    public void onLocalOnlyInterfacesChanged(Set<TetheringInterface> interfaces) {
-                        ArrayList<String> ifaceList = interfaces.stream().map(
-                                p -> p.getInterface()).collect(
-                                Collectors.toCollection(ArrayList::new));
-                        if (interfaces.stream().anyMatch(
-                                p -> p.getType() == TetheringManager.TETHERING_WIFI_P2P)) {
-                            logd(getName() + " Tethering localOnlyInterfacesChanged"
-                                    + " callback for ifaceList: " + ifaceList);
-                            sendMessage(TETHER_INTERFACE_STATE_CHANGED, ifaceList);
-                        }
-                    }
-                };
 
         private List<CoexUnsafeChannel> mCoexUnsafeChannels = new ArrayList<>();
         private int mUserListenChannel = 0;
@@ -1154,6 +1134,16 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         }
                     }
                 }, new IntentFilter(LocationManager.MODE_CHANGED_ACTION));
+                // Register for tethering state
+                mContext.registerReceiver(new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        final ArrayList<String> interfaces = intent.getStringArrayListExtra(
+                                TetheringManager.EXTRA_ACTIVE_LOCAL_ONLY);
+
+                        sendMessage(TETHER_INTERFACE_STATE_CHANGED, interfaces);
+                    }
+                }, new IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED));
                 mSettingsConfigStore.registerChangeListener(
                         WIFI_VERBOSE_LOGGING_ENABLED,
                         (key, newValue) -> enableVerboseLogging(newValue),
@@ -2253,7 +2243,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         }
 
         class P2pDisabledState extends State {
-            private void setupInterfaceFeatures(String interfaceName) {
+            private void setupInterfaceFeatures() {
                 if (mWifiGlobals.isP2pMacRandomizationSupported()) {
                     Log.i(TAG, "Supported feature: P2P MAC randomization");
                     mWifiNative.setMacRandomization(true);
@@ -2282,11 +2272,16 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 if (mInterfaceName == null) {
                     String errorMsg = "Failed to setup interface for P2P";
                     Log.e(TAG, errorMsg);
-                    takeBugReportInterfaceFailureIfNeeded("Wi-Fi BugReport (P2P interface failure)",
-                            errorMsg);
+                    if (!mHalDeviceManager.isItPossibleToCreateIface(
+                            HalDeviceManager.HDM_CREATE_IFACE_P2P, requestorWs)) {
+                        Log.w(TAG, "Interface resource is not available");
+                    } else {
+                        takeBugReportInterfaceFailureIfNeeded(
+                                "Wi-Fi BugReport (P2P interface failure)", errorMsg);
+                    }
                     return false;
                 }
-                setupInterfaceFeatures(mInterfaceName);
+                setupInterfaceFeatures();
                 try {
                     mNetdWrapper.setInterfaceUp(mInterfaceName);
                 } catch (IllegalStateException ie) {
@@ -2427,10 +2422,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
                 sendP2pConnectionChangedBroadcast();
                 initializeP2pSettings();
-                if (mTetheringManager != null) {
-                    mTetheringManager.registerTetheringEventCallback(getHandler()::post,
-                            mTetheringEventCallback);
-                }
             }
 
             @Override
@@ -2833,9 +2824,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 mUserListenChannel = 0;
                 mUserOperatingChannel = 0;
                 mCoexUnsafeChannels.clear();
-                if (mTetheringManager != null) {
-                    mTetheringManager.unregisterTetheringEventCallback(mTetheringEventCallback);
-                }
             }
         }
 
