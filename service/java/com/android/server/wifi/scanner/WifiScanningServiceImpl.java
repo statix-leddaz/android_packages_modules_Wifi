@@ -2277,6 +2277,8 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
             nativePnoSetting.min5GHzRssi = pnoSettings.min5GHzRssi;
             nativePnoSetting.min24GHzRssi = pnoSettings.min24GHzRssi;
             nativePnoSetting.min6GHzRssi = pnoSettings.min6GHzRssi;
+            nativePnoSetting.scanIterations = pnoSettings.scanIterations;
+            nativePnoSetting.scanIntervalMultiplier = pnoSettings.scanIntervalMultiplier;
             nativePnoSetting.isConnected = pnoSettings.isConnected;
             nativePnoSetting.networkList =
                     new WifiNative.PnoNetwork[pnoSettings.networkList.length];
@@ -2813,6 +2815,8 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
           .append(" min5GhzRssi:").append(pnoSettings.min5GHzRssi)
           .append(" min24GhzRssi:").append(pnoSettings.min24GHzRssi)
           .append(" min6GhzRssi:").append(pnoSettings.min6GHzRssi)
+          .append(" scanIterations:").append(pnoSettings.scanIterations)
+          .append(" scanIntervalMultiplier:").append(pnoSettings.scanIntervalMultiplier)
           .append(" isConnected:").append(pnoSettings.isConnected)
           .append(" networks:[ ");
         if (pnoSettings.networkList != null) {
