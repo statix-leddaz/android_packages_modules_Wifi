@@ -42,20 +42,12 @@ filegroup {
     ],
 }
 
-filegroup {
-    name: "wifi-service-BaseWifiService",
-    srcs: ["java/com/android/server/wifi/BaseWifiService.java"],
-    path: "java",
-}
-
 // pre-jarjar version of wifi-service that builds against pre-jarjar version of framework-wifi
 java_library {
     name: "wifi-service-pre-jarjar",
     installable: false,
     defaults: ["wifi-service-common"],
     srcs: [ ":wifi-service-srcs" ],
-    // java_api_finder must accompany `srcs`
-    plugins: ["java_api_finder"],
 
     sdk_version: "system_server_current",
     lint: {
@@ -73,6 +65,7 @@ java_library {
         // compile time
         "framework-wifi-pre-jarjar",
         "framework-bluetooth",
+        "framework-configinfrastructure",
         "framework-connectivity.stubs.module_lib",
         "framework-connectivity-t.stubs.module_lib",
         "framework-statsd.stubs.module_lib",
@@ -87,10 +80,17 @@ java_library {
         "android.hardware.wifi-V1.3-java",
         "android.hardware.wifi-V1.4-java",
         "android.hardware.wifi-V1.5-java",
+        "android.hardware.wifi-V1.6-java",
+        // AIDL hostapd implementation
+        "android.hardware.wifi.hostapd-V1-java",
+        // HIDL hostapd implementation
         "android.hardware.wifi.hostapd-V1.0-java",
         "android.hardware.wifi.hostapd-V1.1-java",
         "android.hardware.wifi.hostapd-V1.2-java",
         "android.hardware.wifi.hostapd-V1.3-java",
+        // AIDL supplicant implementation
+        "android.hardware.wifi.supplicant-V1-java",
+        // HIDL supplicant implementation
         "android.hardware.wifi.supplicant-V1.0-java",
         "android.hardware.wifi.supplicant-V1.1-java",
         "android.hardware.wifi.supplicant-V1.2-java",
