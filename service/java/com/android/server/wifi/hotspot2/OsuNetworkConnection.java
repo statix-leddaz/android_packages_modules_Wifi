@@ -191,10 +191,11 @@ public class OsuNetworkConnection {
         config.providerFriendlyName = friendlyName;
 
         if (TextUtils.isEmpty(nai)) {
-            config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_OPEN);
+            config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
         } else {
             // Setup OSEN connection with Unauthenticated user TLS and WFA Root certs
-            config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_OSEN);
+            config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.OSEN);
+            config.allowedProtocols.set(WifiConfiguration.Protocol.OSEN);
             config.enterpriseConfig.setDomainSuffixMatch(nai);
             config.enterpriseConfig.setEapMethod(WifiEnterpriseConfig.Eap.UNAUTH_TLS);
             config.enterpriseConfig.setCaPath(WfaKeyStore.DEFAULT_WFA_CERT_DIR);
@@ -232,10 +233,10 @@ public class OsuNetworkConnection {
     /**
      * Method to update logging level in this class
      *
-     * @param verbose enables verbose logging
+     * @param verbose more than 0 enables verbose logging
      */
-    public void enableVerboseLogging(boolean verbose) {
-        mVerboseLoggingEnabled = verbose;
+    public void enableVerboseLogging(int verbose) {
+        mVerboseLoggingEnabled = verbose > 0 ? true : false;
     }
 
     private class ConnectivityCallbacks extends ConnectivityManager.NetworkCallback {

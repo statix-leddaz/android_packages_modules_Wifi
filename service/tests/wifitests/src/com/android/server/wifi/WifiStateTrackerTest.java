@@ -18,7 +18,6 @@ package com.android.server.wifi;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -31,16 +30,15 @@ import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-/** Unit tests for {@link com.android.server.wifi.WifiStateTracker}. */
+/*
+ * Unit tests for {@link com.android.server.wifi.WifiStateTracker}.
+ */
 @SmallTest
 public class WifiStateTrackerTest extends WifiBaseTest {
 
     private static final String TAG = "WifiStateTrackerTest";
-
-    private static final String WLAN0 = "wlan0";
-    private static final String WLAN1 = "wlan1";
-
-    @Mock BatteryStatsManager mBatteryStats;
+    @Mock
+    BatteryStatsManager mBatteryStats;
     private WifiStateTracker mWifiStateTracker;
 
     /**
@@ -58,14 +56,11 @@ public class WifiStateTrackerTest extends WifiBaseTest {
      */
     @Test
     public void testBatteryStatsUpdated() throws Exception {
-        int[] relevantStates = {
-                WifiStateTracker.SCAN_MODE,
-                WifiStateTracker.CONNECTED,
-                WifiStateTracker.DISCONNECTED,
-                WifiStateTracker.SOFT_AP
-        };
-        for (int relevantState : relevantStates) {
-            mWifiStateTracker.updateState(WLAN0, relevantState);
+        int[] relevantStates = new int[] { WifiStateTracker.SCAN_MODE,
+                WifiStateTracker.CONNECTED, WifiStateTracker.DISCONNECTED,
+                WifiStateTracker.SOFT_AP};
+        for (int i = 0; i < relevantStates.length; i++) {
+            mWifiStateTracker.updateState(relevantStates[i]);
         }
         verify(mBatteryStats, times(relevantStates.length)).reportWifiState(anyInt(), any());
     }
@@ -76,48 +71,11 @@ public class WifiStateTrackerTest extends WifiBaseTest {
      */
     @Test
     public void testBatteryStatsNotUpdated() throws Exception {
-        int[] irrelevantStates = {
-                WifiStateTracker.SCAN_MODE - 1,
-                WifiStateTracker.SOFT_AP + 1
-        };
-        for (int irrelevantState : irrelevantStates) {
-            mWifiStateTracker.updateState(WLAN0, irrelevantState);
+        int[] irrelevantStates = new int[] { WifiStateTracker.SCAN_MODE - 1,
+                WifiStateTracker.SOFT_AP + 1};
+        for (int i = 0; i < irrelevantStates.length; i++) {
+            mWifiStateTracker.updateState(irrelevantStates[i]);
         }
         verify(mBatteryStats, times(0)).reportWifiState(anyInt(), any());
-    }
-
-    @Test
-    public void updateOnMultipleIfaces() throws Exception {
-        mWifiStateTracker.updateState(WLAN0, WifiStateTracker.INVALID);
-        verify(mBatteryStats, never()).reportWifiState(anyInt(), any());
-
-        mWifiStateTracker.updateState(WLAN0, WifiStateTracker.DISCONNECTED);
-        verify(mBatteryStats).reportWifiState(
-                BatteryStatsManager.WIFI_STATE_ON_DISCONNECTED, null);
-
-        mWifiStateTracker.updateState(WLAN0, WifiStateTracker.CONNECTED);
-        verify(mBatteryStats).reportWifiState(
-                BatteryStatsManager.WIFI_STATE_ON_CONNECTED_STA, null);
-
-        mWifiStateTracker.updateState(WLAN1, WifiStateTracker.DISCONNECTED);
-        verify(mBatteryStats).reportWifiState(
-                BatteryStatsManager.WIFI_STATE_ON_CONNECTED_STA, null);
-
-        mWifiStateTracker.updateState(WLAN1, WifiStateTracker.CONNECTED);
-        verify(mBatteryStats).reportWifiState(
-                BatteryStatsManager.WIFI_STATE_ON_CONNECTED_STA, null);
-
-        mWifiStateTracker.updateState(WLAN0, WifiStateTracker.DISCONNECTED);
-        verify(mBatteryStats).reportWifiState(
-                BatteryStatsManager.WIFI_STATE_ON_CONNECTED_STA, null);
-
-        mWifiStateTracker.updateState(WLAN1, WifiStateTracker.DISCONNECTED);
-        verify(mBatteryStats, times(2)).reportWifiState(
-                BatteryStatsManager.WIFI_STATE_ON_DISCONNECTED, null);
-        verify(mBatteryStats, times(3)).reportWifiState(anyInt(), any());
-
-        mWifiStateTracker.updateState(WLAN1, WifiStateTracker.INVALID);
-        mWifiStateTracker.updateState(WLAN0, WifiStateTracker.INVALID);
-        verify(mBatteryStats, times(3)).reportWifiState(anyInt(), any());
     }
 }

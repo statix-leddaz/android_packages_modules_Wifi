@@ -1114,11 +1114,16 @@ public class RttServiceImpl extends IWifiRttManager.Stub {
                     }
 
                     int errorCode = RangingResult.STATUS_FAIL;
+                    if (!isCalledFromPrivilegedContext) {
+                        if (!peer.supports80211mc) {
+                            errorCode = RangingResult.STATUS_RESPONDER_DOES_NOT_SUPPORT_IEEE80211MC;
+                        }
+                    }
 
                     if (peer.peerHandle == null) {
                         finalResults.add(
                                 new RangingResult(errorCode, peer.macAddress, 0, 0, 0, 0, 0, null,
-                                        null, null, 0, false));
+                                        null, null, 0));
                     } else {
                         finalResults.add(
                                 new RangingResult(errorCode, peer.peerHandle, 0, 0, 0, 0, 0, null,
@@ -1143,32 +1148,32 @@ public class RttServiceImpl extends IWifiRttManager.Stub {
                         finalResults.add(new RangingResult(
                                 status,
                                 peer.macAddress,
-                                resultForRequest.mDistanceMm,
-                                resultForRequest.mDistanceStdDevMm,
-                                resultForRequest.mRssi,
-                                resultForRequest.mNumAttemptedMeasurements,
-                                resultForRequest.mNumSuccessfulMeasurements,
+                                resultForRequest.getDistanceMm(),
+                                resultForRequest.getDistanceStdDevMm(),
+                                resultForRequest.getRssi(),
+                                resultForRequest.getNumAttemptedMeasurements(),
+                                resultForRequest.getNumSuccessfulMeasurements(),
                                 lci,
                                 lcr,
                                 responderLocation,
-                                resultForRequest.mTimestamp,
-                                resultForRequest.mIs80211mcMeasurement));
+                                resultForRequest.getRangingTimestampMillis()));
                     } else {
                         finalResults.add(new RangingResult(
                                 status,
                                 peer.peerHandle,
-                                resultForRequest.mDistanceMm,
-                                resultForRequest.mDistanceStdDevMm,
-                                resultForRequest.mRssi,
-                                resultForRequest.mNumAttemptedMeasurements,
-                                resultForRequest.mNumSuccessfulMeasurements,
+                                resultForRequest.getDistanceMm(),
+                                resultForRequest.getDistanceStdDevMm(),
+                                resultForRequest.getRssi(),
+                                resultForRequest.getNumAttemptedMeasurements(),
+                                resultForRequest.getNumSuccessfulMeasurements(),
                                 lci,
                                 lcr,
                                 responderLocation,
-                                resultForRequest.mTimestamp));
+                                resultForRequest.getRangingTimestampMillis()));
                     }
                 }
             }
+
             return finalResults;
         }
 

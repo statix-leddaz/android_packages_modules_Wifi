@@ -17,17 +17,14 @@
 package com.android.server.wifi;
 
 import android.annotation.Nullable;
-import android.content.Context;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiEnterpriseConfig;
-import android.os.UserHandle;
 import android.security.KeyChain;
 import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
 
 import com.android.internal.util.Preconditions;
-import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.util.ArrayUtils;
 
 import java.security.Key;
@@ -36,9 +33,6 @@ import java.security.KeyStoreException;
 import java.security.Principal;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
-import java.security.interfaces.ECPublicKey;
-import java.security.interfaces.RSAPublicKey;
-import java.security.spec.ECParameterSpec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -55,16 +49,12 @@ public class WifiKeyStore {
     private boolean mVerboseLoggingEnabled = false;
 
     @Nullable private final KeyStore mKeyStore;
-    private final Context mContext;
-    private final FrameworkFacade mFrameworkFacade;
 
-    WifiKeyStore(Context context, @Nullable KeyStore keyStore, FrameworkFacade frameworkFacade) {
+    WifiKeyStore(@Nullable KeyStore keyStore) {
         mKeyStore = keyStore;
         if (mKeyStore == null) {
             Log.e(TAG, "Unable to retrieve keystore, all key operations will fail");
         }
-        mContext = context;
-        mFrameworkFacade = frameworkFacade;
     }
 
     /**
@@ -111,8 +101,7 @@ public class WifiKeyStore {
         }
         X509Certificate[] caCertificates = config.getCaCertificates();
         Set<String> oldCaCertificatesToRemove = new ArraySet<>();
-        if (existingConfig != null && existingConfig.getCaCertificateAliases() != null
-                && existingConfig.isAppInstalledCaCert()) {
+        if (existingConfig != null && existingConfig.getCaCertificateAliases() != null) {
             oldCaCertificatesToRemove.addAll(
                     Arrays.asList(existingConfig.getCaCertificateAliases()));
         }
@@ -136,10 +125,8 @@ public class WifiKeyStore {
         }
         // If alias changed, remove the old one.
         if (!alias.equals(existingAlias)) {
-            if (existingConfig != null && existingConfig.isAppInstalledDeviceKeyAndCert()) {
-                // Remove old private keys.
-                removeEntryFromKeyStore(existingAlias);
-            }
+            // Remove old private keys.
+            removeEntryFromKeyStore(existingAlias);
         }
         // Remove any old CA certs.
         for (String oldAlias : oldCaCertificatesToRemove) {
@@ -273,23 +260,6 @@ public class WifiKeyStore {
             existingEnterpriseConfig = existingConfig.enterpriseConfig;
             existingKeyId = existingConfig.getKeyIdForCredentials(existingConfig);
         }
-
-        if (SdkLevel.isAtLeastS()) {
-            // If client key is in KeyChain, convert KeyChain alias into a grant string that can be
-            // used by the supplicant like a normal alias.
-            final String keyChainAlias = enterpriseConfig.getClientKeyPairAliasInternal();
-            if (keyChainAlias != null) {
-                final String grantString = mFrameworkFacade.getWifiKeyGrantAsUser(
-                        mContext, UserHandle.getUserHandleForUid(config.creatorUid), keyChainAlias);
-                if (grantString == null) {
-                    // The key is not granted to Wifi uid or the alias is invalid.
-                    Log.e(TAG, "Unable to get key grant");
-                    return false;
-                }
-                enterpriseConfig.setClientCertificateAlias(grantString);
-            }
-        }
-
         if (!needsKeyStore(enterpriseConfig)) {
             return true;
         }
@@ -306,7 +276,7 @@ public class WifiKeyStore {
 
         // For WPA3-Enterprise 192-bit networks, set the SuiteBCipher field based on the
         // CA certificate type. Suite-B requires SHA384, reject other certs.
-        if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT)) {
+        if (config.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.SUITE_B_192)) {
             // Read the CA certificates, and initialize
             String[] caAliases = config.enterpriseConfig.getCaCertificateAliases();
 
@@ -361,9 +331,8 @@ public class WifiKeyStore {
             }
 
             if (clientCertType == caCertType) {
-                config.enableSuiteBCiphers(
-                        clientCertType == WifiConfiguration.SuiteBCipher.ECDHE_ECDSA,
-                        clientCertType == WifiConfiguration.SuiteBCipher.ECDHE_RSA);
+                config.allowedSuiteBCiphers.clear();
+                config.allowedSuiteBCiphers.set(clientCertType);
             } else {
                 Log.e(TAG, "Client certificate for Suite-B is incompatible with the CA "
                         + "certificate");
@@ -389,7 +358,6 @@ public class WifiKeyStore {
                 Log.d(TAG, "Checking cert " + p.getName());
             }
         }
-        int bitLength = 0;
 
         // Wi-Fi alliance requires the use of both ECDSA secp384r1 and RSA 3072 certificates
         // in WPA3-Enterprise 192-bit security networks, which are also known as Suite-B-192
@@ -401,56 +369,18 @@ public class WifiKeyStore {
         // we are supporting both types here.
         if (sigAlgOid.equals("1.2.840.113549.1.1.12")) {
             // sha384WithRSAEncryption
-            if (x509Certificate.getPublicKey() instanceof RSAPublicKey) {
-                final RSAPublicKey rsaPublicKey = (RSAPublicKey) x509Certificate.getPublicKey();
-                if (rsaPublicKey.getModulus() != null) {
-                    bitLength = rsaPublicKey.getModulus().bitLength();
-                    if (bitLength >= 3072) {
-                        if (mVerboseLoggingEnabled) {
-                            Log.d(TAG, "Found Suite-B RSA certificate");
-                        }
-                        return WifiConfiguration.SuiteBCipher.ECDHE_RSA;
-                    }
-                }
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "Found Suite-B RSA certificate");
             }
+            return WifiConfiguration.SuiteBCipher.ECDHE_RSA;
         } else if (sigAlgOid.equals("1.2.840.10045.4.3.3")) {
             // ecdsa-with-SHA384
-            if (x509Certificate.getPublicKey() instanceof ECPublicKey) {
-                final ECPublicKey ecPublicKey = (ECPublicKey) x509Certificate.getPublicKey();
-                final ECParameterSpec ecParameterSpec = ecPublicKey.getParams();
-                if (ecParameterSpec != null && ecParameterSpec.getOrder() != null) {
-                    bitLength = ecParameterSpec.getOrder().bitLength();
-                    if (bitLength >= 384) {
-                        if (mVerboseLoggingEnabled) {
-                            Log.d(TAG, "Found Suite-B ECDSA certificate");
-                        }
-                        return WifiConfiguration.SuiteBCipher.ECDHE_ECDSA;
-                    }
-                }
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "Found Suite-B ECDSA certificate");
             }
+            return WifiConfiguration.SuiteBCipher.ECDHE_ECDSA;
         }
-        Log.e(TAG, "Invalid certificate type for Suite-B: " + sigAlgOid + " or insufficient"
-                + " bit length: " + bitLength);
+        Log.e(TAG, "Invalid certificate type for Suite-B: " + sigAlgOid);
         return -1;
-    }
-
-    /**
-     * Requests a grant from KeyChain and populates client certificate alias with it.
-     *
-     * @return true if no problems encountered.
-     */
-    public boolean validateKeyChainAlias(String alias, int uid) {
-        if (TextUtils.isEmpty(alias)) {
-            Log.e(TAG, "Alias cannot be empty");
-            return false;
-        }
-
-        if (!SdkLevel.isAtLeastS()) {
-            Log.w(TAG, "Attempt to use a KeyChain key on pre-S device");
-            return false;
-        }
-
-        return mFrameworkFacade.hasWifiKeyGrantAsUser(
-                mContext, UserHandle.getUserHandleForUid(uid), alias);
     }
 }

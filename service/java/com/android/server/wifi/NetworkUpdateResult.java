@@ -18,86 +18,57 @@ package com.android.server.wifi;
 
 import static android.net.wifi.WifiConfiguration.INVALID_NETWORK_ID;
 
-import java.util.Objects;
-
 public class NetworkUpdateResult {
-    private final int mNetId;
-    private final boolean mIpChanged;
-    private final boolean mProxyChanged;
-    private final boolean mCredentialChanged;
-    private final boolean mIsNewNetwork;
+    int netId;
+    boolean ipChanged;
+    boolean proxyChanged;
+    boolean credentialChanged;
+    boolean isNewNetwork = false;
 
-    public NetworkUpdateResult(int netId) {
-        this(netId, false, false, false, false);
+    public NetworkUpdateResult(int id) {
+        netId = id;
+        ipChanged = false;
+        proxyChanged = false;
+        credentialChanged = false;
     }
 
-    public NetworkUpdateResult(
-            int netId,
-            boolean ip,
-            boolean proxy,
-            boolean credential,
-            boolean isNewNetwork) {
-        mNetId = netId;
-        mIpChanged = ip;
-        mProxyChanged = proxy;
-        mCredentialChanged = credential;
-        mIsNewNetwork = isNewNetwork;
+    public NetworkUpdateResult(boolean ip, boolean proxy, boolean credential) {
+        netId = INVALID_NETWORK_ID;
+        ipChanged = ip;
+        proxyChanged = proxy;
+        credentialChanged = credential;
     }
 
-    /** Make an instance of NetworkUpdateResult whose {@link #isSuccess()} method returns false. */
-    public static NetworkUpdateResult makeFailed() {
-        return new NetworkUpdateResult(INVALID_NETWORK_ID);
+    public void setNetworkId(int id) {
+        netId = id;
     }
 
     public int getNetworkId() {
-        return mNetId;
+        return netId;
     }
 
     public boolean hasIpChanged() {
-        return mIpChanged;
+        return ipChanged;
     }
 
     public boolean hasProxyChanged() {
-        return mProxyChanged;
+        return proxyChanged;
     }
 
     public boolean hasCredentialChanged() {
-        return mCredentialChanged;
+        return credentialChanged;
     }
 
     public boolean isNewNetwork() {
-        return mIsNewNetwork;
+        return isNewNetwork;
+    }
+
+    public void setIsNewNetwork(boolean isNew) {
+        isNewNetwork = isNew;
     }
 
     public boolean isSuccess() {
-        return mNetId != INVALID_NETWORK_ID;
+        return netId != INVALID_NETWORK_ID;
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        NetworkUpdateResult that = (NetworkUpdateResult) o;
-        return mNetId == that.mNetId
-                && mIpChanged == that.mIpChanged
-                && mProxyChanged == that.mProxyChanged
-                && mCredentialChanged == that.mCredentialChanged
-                && mIsNewNetwork == that.mIsNewNetwork;
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(mNetId, mIpChanged, mProxyChanged, mCredentialChanged, mIsNewNetwork);
-    }
-
-    @Override
-    public String toString() {
-        return "NetworkUpdateResult{"
-                + "mNetId=" + mNetId
-                + ", mIpChanged=" + mIpChanged
-                + ", mProxyChanged=" + mProxyChanged
-                + ", mCredentialChanged=" + mCredentialChanged
-                + ", mIsNewNetwork=" + mIsNewNetwork
-                + '}';
-    }
 }

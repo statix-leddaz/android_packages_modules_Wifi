@@ -16,7 +16,6 @@
 
 package com.android.server.wifi.p2p;
 
-import android.annotation.NonNull;
 import android.hardware.wifi.supplicant.V1_0.ISupplicantP2pIfaceCallback;
 import android.hardware.wifi.supplicant.V1_0.WpsConfigMethods;
 import android.net.wifi.WpsInfo;
@@ -38,18 +37,14 @@ import java.util.List;
 /**
  * Class used for processing all P2P callbacks.
  */
-public class SupplicantP2pIfaceCallbackImpl extends ISupplicantP2pIfaceCallback.Stub {
-    private static final String TAG = "SupplicantP2pIfaceCallbackImpl";
+public class SupplicantP2pIfaceCallback extends ISupplicantP2pIfaceCallback.Stub {
+    private static final String TAG = "SupplicantP2pIfaceCallback";
     private static boolean sVerboseLoggingEnabled = true;
 
-    private final SupplicantP2pIfaceHal mP2pIfaceHal;
     private final String mInterface;
     private final WifiP2pMonitor mMonitor;
 
-    public SupplicantP2pIfaceCallbackImpl(
-            @NonNull SupplicantP2pIfaceHal p2pIfaceHal,
-            @NonNull String iface, @NonNull WifiP2pMonitor monitor) {
-        mP2pIfaceHal = p2pIfaceHal;
+    public SupplicantP2pIfaceCallback(String iface, WifiP2pMonitor monitor) {
         mInterface = iface;
         mMonitor = monitor;
     }

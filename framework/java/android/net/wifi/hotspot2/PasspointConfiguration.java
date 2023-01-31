@@ -23,24 +23,16 @@ import android.annotation.CurrentTimeMillisLong;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.SystemApi;
-import android.net.wifi.WifiManager;
 import android.net.wifi.hotspot2.pps.Credential;
 import android.net.wifi.hotspot2.pps.HomeSp;
 import android.net.wifi.hotspot2.pps.Policy;
 import android.net.wifi.hotspot2.pps.UpdateParameter;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcel;
 import android.os.Parcelable;
-import android.telephony.SubscriptionInfo;
-import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Log;
-
-import androidx.annotation.RequiresApi;
-
-import com.android.modules.utils.build.SdkLevel;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -420,12 +412,6 @@ public final class PasspointConfiguration implements Parcelable {
     private int mCarrierId = TelephonyManager.UNKNOWN_CARRIER_ID;
 
     /**
-     * The subscription ID identifies the SIM card who provides this network configuration.
-     * See {@link SubscriptionInfo#getSubscriptionId()}
-     */
-    private int mSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
-
-    /**
      * Set the carrier ID associated with current configuration.
      * @param carrierId {@code mCarrierId}
      * @hide
@@ -444,24 +430,6 @@ public final class PasspointConfiguration implements Parcelable {
     }
 
     /**
-     * Set the subscription ID associated with current configuration.
-     * @param subscriptionId {@code mSubscriptionId}
-     * @hide
-     */
-    public void setSubscriptionId(int subscriptionId) {
-        this.mSubscriptionId = subscriptionId;
-    }
-
-    /**
-     * Get the carrier ID associated with current configuration.
-     * @return {@code mSubscriptionId}
-     * @hide
-     */
-    public int getSubscriptionId() {
-        return mSubscriptionId;
-    }
-
-    /**
      * The auto-join configuration specifies whether or not the Passpoint Configuration is
      * considered for auto-connection. If true then yes, if false then it isn't considered as part
      * of auto-connection - but can still be manually connected to.
@@ -476,32 +444,6 @@ public final class PasspointConfiguration implements Parcelable {
     private boolean mIsMacRandomizationEnabled = true;
 
     /**
-     * Whether this passpoint configuration should use enhanced MAC randomization.
-     */
-    private boolean mIsEnhancedMacRandomizationEnabled = false;
-
-
-    /**
-     * Indicate whether the network is oem paid or not. Networks are considered oem paid
-     * if the corresponding connection is only available to system apps.
-     * @hide
-     */
-    private boolean mIsOemPaid;
-
-    /**
-     * Indicate whether the network is oem private or not. Networks are considered oem private
-     * if the corresponding connection is only available to system apps.
-     * @hide
-     */
-    private boolean mIsOemPrivate;
-
-    /**
-     * Indicate whether or not the network is a carrier merged network.
-     * @hide
-     */
-    private boolean mIsCarrierMerged;
-
-    /**
      * Indicates if the end user has expressed an explicit opinion about the
      * meteredness of this network, such as through the Settings app.
      * This value is one of {@link #METERED_OVERRIDE_NONE}, {@link #METERED_OVERRIDE_METERED},
@@ -512,8 +454,6 @@ public final class PasspointConfiguration implements Parcelable {
      * By default this field is set to {@link #METERED_OVERRIDE_NONE}.
      */
     private int mMeteredOverride = METERED_OVERRIDE_NONE;
-
-    private String mDecoratedIdentityPrefix;
 
     /**
      * Configures the auto-association status of this Passpoint configuration. A value of true
@@ -538,20 +478,6 @@ public final class PasspointConfiguration implements Parcelable {
      */
     public void setMacRandomizationEnabled(boolean enabled) {
         mIsMacRandomizationEnabled = enabled;
-    }
-
-    /**
-     * This setting is only applicable if MAC randomization is enabled.
-     * If set to true, the framework will periodically generate new MAC addresses for new
-     * connections.
-     * If set to false (the default), the framework will use the same locally generated MAC address
-     * for connections to this passpoint configuration.
-     * @param enabled true to use enhanced MAC randomization, false to use persistent MAC
-     *                randomization.
-     * @hide
-     */
-    public void setEnhancedMacRandomizationEnabled(boolean enabled) {
-        mIsEnhancedMacRandomizationEnabled = enabled;
     }
 
     /**
@@ -605,67 +531,6 @@ public final class PasspointConfiguration implements Parcelable {
     }
 
     /**
-     * When MAC randomization is enabled, this indicates whether enhanced MAC randomization or
-     * persistent MAC randomization will be used for connections to this Passpoint network.
-     * If true, the MAC address used for connections will periodically change. Otherwise, the same
-     * locally generated MAC will be used for all connections to this passpoint configuration.
-     *
-     * @return true for enhanced MAC randomization enabled. False for disabled.
-     * @hide
-     */
-    public boolean isEnhancedMacRandomizationEnabled() {
-        return mIsEnhancedMacRandomizationEnabled;
-    }
-
-    /**
-     * Set whether the network is oem paid or not.
-     * @hide
-     */
-    public void setOemPaid(boolean isOemPaid) {
-        mIsOemPaid = isOemPaid;
-    }
-
-    /**
-     * Get whether the network is oem paid or not.
-     * @hide
-     */
-    public boolean isOemPaid() {
-        return mIsOemPaid;
-    }
-
-    /**
-     * Set whether the network is oem private or not.
-     * @hide
-     */
-    public void setOemPrivate(boolean isOemPrivate) {
-        mIsOemPrivate = isOemPrivate;
-    }
-
-    /**
-     * Get whether the network is oem private or not.
-     * @hide
-     */
-    public boolean isOemPrivate() {
-        return mIsOemPrivate;
-    }
-
-    /**
-     * Set whether the network is carrier merged or not.
-     * @hide
-     */
-    public void setCarrierMerged(boolean isCarrierMerged) {
-        mIsCarrierMerged = isCarrierMerged;
-    }
-
-    /**
-     * Get whether the network is carrier merged or not.
-     * @hide
-     */
-    public boolean isCarrierMerged() {
-        return mIsCarrierMerged;
-    }
-
-    /**
      * Constructor for creating PasspointConfiguration with default values.
      */
     public PasspointConfiguration() {}
@@ -707,15 +572,9 @@ public final class PasspointConfiguration implements Parcelable {
         mServiceFriendlyNames = source.mServiceFriendlyNames;
         mAaaServerTrustedNames = source.mAaaServerTrustedNames;
         mCarrierId = source.mCarrierId;
-        mSubscriptionId = source.mSubscriptionId;
         mIsAutojoinEnabled = source.mIsAutojoinEnabled;
         mIsMacRandomizationEnabled = source.mIsMacRandomizationEnabled;
-        mIsEnhancedMacRandomizationEnabled = source.mIsEnhancedMacRandomizationEnabled;
         mMeteredOverride = source.mMeteredOverride;
-        mIsCarrierMerged = source.mIsCarrierMerged;
-        mIsOemPaid = source.mIsOemPaid;
-        mIsOemPrivate = source.mIsOemPrivate;
-        mDecoratedIdentityPrefix = source.mDecoratedIdentityPrefix;
     }
 
     @Override
@@ -747,13 +606,7 @@ public final class PasspointConfiguration implements Parcelable {
         dest.writeInt(mCarrierId);
         dest.writeBoolean(mIsAutojoinEnabled);
         dest.writeBoolean(mIsMacRandomizationEnabled);
-        dest.writeBoolean(mIsEnhancedMacRandomizationEnabled);
         dest.writeInt(mMeteredOverride);
-        dest.writeInt(mSubscriptionId);
-        dest.writeBoolean(mIsCarrierMerged);
-        dest.writeBoolean(mIsOemPaid);
-        dest.writeBoolean(mIsOemPrivate);
-        dest.writeString(mDecoratedIdentityPrefix);
     }
 
     @Override
@@ -784,17 +637,11 @@ public final class PasspointConfiguration implements Parcelable {
                 && mUsageLimitDataLimit == that.mUsageLimitDataLimit
                 && mUsageLimitTimeLimitInMinutes == that.mUsageLimitTimeLimitInMinutes
                 && mCarrierId == that.mCarrierId
-                && mSubscriptionId == that.mSubscriptionId
-                && mIsOemPrivate == that.mIsOemPrivate
-                && mIsOemPaid == that.mIsOemPaid
-                && mIsCarrierMerged == that.mIsCarrierMerged
                 && mIsAutojoinEnabled == that.mIsAutojoinEnabled
                 && mIsMacRandomizationEnabled == that.mIsMacRandomizationEnabled
-                && mIsEnhancedMacRandomizationEnabled == that.mIsEnhancedMacRandomizationEnabled
                 && mMeteredOverride == that.mMeteredOverride
                 && (mServiceFriendlyNames == null ? that.mServiceFriendlyNames == null
-                : mServiceFriendlyNames.equals(that.mServiceFriendlyNames))
-                && Objects.equals(mDecoratedIdentityPrefix, that.mDecoratedIdentityPrefix);
+                : mServiceFriendlyNames.equals(that.mServiceFriendlyNames));
     }
 
     @Override
@@ -804,8 +651,7 @@ public final class PasspointConfiguration implements Parcelable {
                 mSubscriptionExpirationTimeMillis, mUsageLimitUsageTimePeriodInMinutes,
                 mUsageLimitStartTimeInMillis, mUsageLimitDataLimit, mUsageLimitTimeLimitInMinutes,
                 mServiceFriendlyNames, mCarrierId, mIsAutojoinEnabled, mIsMacRandomizationEnabled,
-                mIsEnhancedMacRandomizationEnabled, mMeteredOverride, mSubscriptionId,
-                mIsCarrierMerged, mIsOemPaid, mIsOemPrivate, mDecoratedIdentityPrefix);
+                mMeteredOverride);
     }
 
     @Override
@@ -859,15 +705,9 @@ public final class PasspointConfiguration implements Parcelable {
             builder.append("ServiceFriendlyNames: ").append(mServiceFriendlyNames);
         }
         builder.append("CarrierId:" + mCarrierId);
-        builder.append("SubscriptionId:" + mSubscriptionId);
         builder.append("IsAutojoinEnabled:" + mIsAutojoinEnabled);
         builder.append("mIsMacRandomizationEnabled:" + mIsMacRandomizationEnabled);
-        builder.append("mIsEnhancedMacRandomizationEnabled:" + mIsEnhancedMacRandomizationEnabled);
         builder.append("mMeteredOverride:" + mMeteredOverride);
-        builder.append("mIsCarrierMerged:" + mIsCarrierMerged);
-        builder.append("mIsOemPaid:" + mIsOemPaid);
-        builder.append("mIsOemPrivate:" + mIsOemPrivate);
-        builder.append("mDecoratedUsernamePrefix:" + mDecoratedIdentityPrefix);
         return builder.toString();
     }
 
@@ -975,14 +815,7 @@ public final class PasspointConfiguration implements Parcelable {
                 config.mCarrierId = in.readInt();
                 config.mIsAutojoinEnabled = in.readBoolean();
                 config.mIsMacRandomizationEnabled = in.readBoolean();
-                config.mIsEnhancedMacRandomizationEnabled = in.readBoolean();
                 config.mMeteredOverride = in.readInt();
-                config.mSubscriptionId = in.readInt();
-                config.mIsCarrierMerged = in.readBoolean();
-                config.mIsOemPaid = in.readBoolean();
-                config.mIsOemPrivate = in.readBoolean();
-                config.mDecoratedIdentityPrefix = in.readString();
-
                 return config;
             }
 
@@ -1084,42 +917,5 @@ public final class PasspointConfiguration implements Parcelable {
         sb.append(String.format("%s_%x%x", mHomeSp.getFqdn(), mHomeSp.getUniqueId(),
                 mCredential.getUniqueId()));
         return sb.toString();
-    }
-
-    /**
-     * Set a prefix for a decorated identity as per RFC 7542.
-     * This prefix must contain a list of realms (could be a list of 1) delimited by a '!'
-     * character. e.g. homerealm.example.org! or proxyrealm.example.net!homerealm.example.org!
-     * A prefix of "homerealm.example.org!" will generate a decorated identity that
-     * looks like: homerealm.example.org!user@otherrealm.example.net
-     * Calling with a null parameter will clear the decorated prefix.
-     * Note: Caller must verify that the device supports this feature by calling
-     * {@link WifiManager#isDecoratedIdentitySupported()}
-     *
-     * @param decoratedIdentityPrefix The prefix to add to the outer/anonymous identity
-     */
-    @RequiresApi(Build.VERSION_CODES.S)
-    public void setDecoratedIdentityPrefix(@Nullable String decoratedIdentityPrefix) {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
-        if (!TextUtils.isEmpty(decoratedIdentityPrefix) && !decoratedIdentityPrefix.endsWith("!")) {
-            throw new IllegalArgumentException(
-                    "Decorated identity prefix must be delimited by '!'");
-        }
-        mDecoratedIdentityPrefix = decoratedIdentityPrefix;
-    }
-
-    /**
-     * Get the decorated identity prefix.
-     *
-     * @return The decorated identity prefix
-     */
-    @RequiresApi(Build.VERSION_CODES.S)
-    public @Nullable String getDecoratedIdentityPrefix() {
-        if (!SdkLevel.isAtLeastS()) {
-            throw new UnsupportedOperationException();
-        }
-        return mDecoratedIdentityPrefix;
     }
 }

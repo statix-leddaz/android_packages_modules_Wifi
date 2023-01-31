@@ -16,7 +16,6 @@
 
 package com.android.server.wifi;
 
-import android.annotation.IntDef;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiManager;
@@ -35,8 +34,6 @@ import com.android.server.wifi.hotspot2.AnqpEvent;
 import com.android.server.wifi.hotspot2.IconEvent;
 import com.android.server.wifi.hotspot2.WnmData;
 
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -44,6 +41,7 @@ import java.util.Set;
 /**
  * Listen for events from the wpa_supplicant & wificond and broadcast them on
  * to the various {@link ClientModeImpl} modules interested in handling these events.
+ * @hide
  */
 public class WifiMonitor {
     private static final String TAG = "WifiMonitor";
@@ -51,6 +49,10 @@ public class WifiMonitor {
     /* Supplicant events reported to a state machine */
     private static final int BASE = Protocol.BASE_WIFI_MONITOR;
 
+    /* Connection to supplicant established */
+    public static final int SUP_CONNECTION_EVENT                 = BASE + 1;
+    /* Connection to supplicant lost */
+    public static final int SUP_DISCONNECTION_EVENT              = BASE + 2;
    /* Network connection completed */
     public static final int NETWORK_CONNECTION_EVENT             = BASE + 3;
     /* Network disconnection completed */
@@ -86,24 +88,17 @@ public class WifiMonitor {
     public static final int ANQP_DONE_EVENT                      = BASE + 44;
     public static final int ASSOCIATED_BSSID_EVENT               = BASE + 45;
     public static final int TARGET_BSSID_EVENT                   = BASE + 46;
-    public static final int NETWORK_NOT_FOUND_EVENT              = BASE + 47;
 
-    /* Passpoint ANQP events */
+    /* hotspot 2.0 ANQP events */
     public static final int GAS_QUERY_START_EVENT                = BASE + 51;
     public static final int GAS_QUERY_DONE_EVENT                 = BASE + 52;
     public static final int RX_HS20_ANQP_ICON_EVENT              = BASE + 53;
 
-    /* Passpoint events */
+    /* hotspot 2.0 events */
     public static final int HS20_REMEDIATION_EVENT               = BASE + 61;
-    public static final int HS20_DEAUTH_IMMINENT_EVENT           = BASE + 62;
-    public static final int HS20_TERMS_AND_CONDITIONS_ACCEPTANCE_REQUIRED_EVENT = BASE + 63;
 
     /* MBO/OCE events */
     public static final int MBO_OCE_BSS_TM_HANDLING_DONE         = BASE + 71;
-
-    /* Transition Disable Indication */
-    public static final int TRANSITION_DISABLE_INDICATION        = BASE + 72;
-
 
     /* WPS config errrors */
     private static final int CONFIG_MULTIPLE_PBC_DETECTED = 12;
@@ -113,37 +108,20 @@ public class WifiMonitor {
     private static final int REASON_TKIP_ONLY_PROHIBITED = 1;
     private static final int REASON_WEP_PROHIBITED = 2;
 
-    /* Transition disable indication */
-    public static final int TDI_USE_WPA3_PERSONAL = 1 << 0;
-    public static final int TDI_USE_SAE_PK = 1 << 1;
-    public static final int TDI_USE_WPA3_ENTERPRISE = 1 << 2;
-    public static final int TDI_USE_ENHANCED_OPEN = 1 << 3;
-
-    @IntDef(flag = true, prefix = { "TDI_" }, value = {
-            TDI_USE_WPA3_PERSONAL,
-            TDI_USE_SAE_PK,
-            TDI_USE_WPA3_ENTERPRISE,
-            TDI_USE_ENHANCED_OPEN,
-    })
-    @Retention(RetentionPolicy.SOURCE)
-    @interface TransitionDisableIndication{}
-
-    /**
-     * Use this key to get the interface name of the message sent by WifiMonitor,
-     * or null if not available.
-     *
-     * <br />
-     * Sample code:
-     * <code>
-     * message.getData().getString(KEY_IFACE)
-     * </code>
-     */
-    public static final String KEY_IFACE = "com.android.server.wifi.WifiMonitor.KEY_IFACE";
-
+    private final WifiInjector mWifiInjector;
     private boolean mVerboseLoggingEnabled = false;
+    private boolean mConnected = false;
 
-    void enableVerboseLogging(boolean verbose) {
-        mVerboseLoggingEnabled = verbose;
+    public WifiMonitor(WifiInjector wifiInjector) {
+        mWifiInjector = wifiInjector;
+    }
+
+    void enableVerboseLogging(int verbose) {
+        if (verbose > 0) {
+            mVerboseLoggingEnabled = true;
+        } else {
+            mVerboseLoggingEnabled = false;
+        }
     }
 
     private final Map<String, SparseArray<Set<Handler>>> mHandlerMap = new HashMap<>();
@@ -200,6 +178,12 @@ public class WifiMonitor {
         mMonitoringMap.put(iface, enabled);
     }
 
+    private void setMonitoringNone() {
+        for (String iface : mMonitoringMap.keySet()) {
+            setMonitoring(iface, false);
+        }
+    }
+
     /**
      * Start Monitoring for wpa_supplicant events.
      *
@@ -208,6 +192,7 @@ public class WifiMonitor {
     public synchronized void startMonitoring(String iface) {
         if (mVerboseLoggingEnabled) Log.d(TAG, "startMonitoring(" + iface + ")");
         setMonitoring(iface, true);
+        broadcastSupplicantConnectionEvent(iface);
     }
 
     /**
@@ -218,7 +203,18 @@ public class WifiMonitor {
     public synchronized void stopMonitoring(String iface) {
         if (mVerboseLoggingEnabled) Log.d(TAG, "stopMonitoring(" + iface + ")");
         setMonitoring(iface, true);
+        broadcastSupplicantDisconnectionEvent(iface);
         setMonitoring(iface, false);
+    }
+
+    /**
+     * Stop Monitoring for wpa_supplicant events.
+     *
+     * TODO: Add unit tests for these once we remove the legacy code.
+     */
+    public synchronized void stopAllMonitoring() {
+        mConnected = false;
+        setMonitoringNone();
     }
 
 
@@ -255,7 +251,7 @@ public class WifiMonitor {
                 if (ifaceWhatHandlers != null) {
                     for (Handler handler : ifaceWhatHandlers) {
                         if (handler != null) {
-                            sendMessage(iface, handler, Message.obtain(message));
+                            sendMessage(handler, Message.obtain(message));
                         }
                     }
                 }
@@ -269,13 +265,11 @@ public class WifiMonitor {
                 Log.d(TAG, "Sending to all monitors because there's no matching iface");
             }
             for (Map.Entry<String, SparseArray<Set<Handler>>> entry : mHandlerMap.entrySet()) {
-                iface = entry.getKey();
-                if (isMonitoring(iface)) {
+                if (isMonitoring(entry.getKey())) {
                     Set<Handler> ifaceWhatHandlers = entry.getValue().get(message.what);
-                    if (ifaceWhatHandlers == null) continue;
                     for (Handler handler : ifaceWhatHandlers) {
                         if (handler != null) {
-                            sendMessage(iface, handler, Message.obtain(message));
+                            sendMessage(handler, Message.obtain(message));
                         }
                     }
                 }
@@ -285,11 +279,8 @@ public class WifiMonitor {
         message.recycle();
     }
 
-    private void sendMessage(String iface, Handler handler, Message message) {
+    private void sendMessage(Handler handler, Message message) {
         message.setTarget(handler);
-        // getData() will return the existing Bundle if it exists, or create a new one
-        // This prevents clearing the existing data.
-        message.getData().putString(KEY_IFACE, iface);
         message.sendToTarget();
     }
 
@@ -384,25 +375,7 @@ public class WifiMonitor {
      * @param wnmData Instance of WnmData containing the event data.
      */
     public void broadcastWnmEvent(String iface, WnmData wnmData) {
-        if (mVerboseLoggingEnabled) Log.d(TAG, "WNM-Notification " + wnmData.getEventType());
-        switch (wnmData.getEventType()) {
-            case WnmData.HS20_REMEDIATION_EVENT:
-                sendMessage(iface, HS20_REMEDIATION_EVENT, wnmData);
-                break;
-
-            case WnmData.HS20_DEAUTH_IMMINENT_EVENT:
-                sendMessage(iface, HS20_DEAUTH_IMMINENT_EVENT, wnmData);
-                break;
-
-            case WnmData.HS20_TERMS_AND_CONDITIONS_ACCEPTANCE_REQUIRED_EVENT:
-                sendMessage(iface, HS20_TERMS_AND_CONDITIONS_ACCEPTANCE_REQUIRED_EVENT, wnmData);
-                break;
-
-            default:
-                Log.e(TAG, "Broadcast request for an unknown WNM-notification "
-                        + wnmData.getEventType());
-                break;
-        }
+        sendMessage(iface, HS20_REMEDIATION_EVENT, wnmData);
     }
 
     /**
@@ -414,19 +387,6 @@ public class WifiMonitor {
      */
     public void broadcastNetworkIdentityRequestEvent(String iface, int networkId, String ssid) {
         sendMessage(iface, SUP_REQUEST_IDENTITY, 0, networkId, ssid);
-    }
-
-    /**
-     * Broadcast the transition disable event to all the handlers registered for this event.
-     *
-     * @param iface Name of iface on which this occurred.
-     * @param networkId ID of the network in wpa_supplicant.
-     * @param indicationBits bits of the disable indication.
-     */
-    public void broadcastTransitionDisableEvent(
-            String iface, int networkId,
-            @TransitionDisableIndication int indicationBits) {
-        sendMessage(iface, TRANSITION_DISABLE_INDICATION, networkId, indicationBits);
     }
 
     /**
@@ -503,12 +463,13 @@ public class WifiMonitor {
      * Broadcast the association rejection event to all the handlers registered for this event.
      *
      * @param iface Name of iface on which this occurred.
-     * @param assocRejectInfo Instance of AssocRejectEventInfo containing the association
-     *                        rejection info.
+     * @param status Status code for association rejection.
+     * @param timedOut Indicates if the association timed out.
+     * @param bssid BSSID of the access point from which we received the reject.
      */
-    public void broadcastAssociationRejectionEvent(String iface,
-            AssocRejectEventInfo assocRejectInfo) {
-        sendMessage(iface, ASSOCIATION_REJECTION_EVENT, assocRejectInfo);
+    public void broadcastAssociationRejectionEvent(String iface, int status, boolean timedOut,
+                                                   String bssid) {
+        sendMessage(iface, ASSOCIATION_REJECTION_EVENT, timedOut ? 1 : 0, status, bssid);
     }
 
     /**
@@ -540,24 +501,21 @@ public class WifiMonitor {
      * @param bssid BSSID of the access point.
      */
     public void broadcastNetworkConnectionEvent(String iface, int networkId, boolean filsHlpSent,
-            WifiSsid ssid, String bssid) {
-        sendMessage(iface, NETWORK_CONNECTION_EVENT,
-                new NetworkConnectionEventInfo(networkId, ssid, bssid, filsHlpSent));
+            String bssid) {
+        sendMessage(iface, NETWORK_CONNECTION_EVENT, networkId, filsHlpSent ? 1 : 0, bssid);
     }
 
     /**
      * Broadcast the network disconnection event to all the handlers registered for this event.
      *
      * @param iface Name of iface on which this occurred.
-     * @param locallyGenerated Whether the disconnect was locally triggered.
+     * @param local Whether the disconnect was locally triggered.
      * @param reason Disconnect reason code.
-     * @param ssid SSID of the access point.
      * @param bssid BSSID of the access point.
      */
-    public void broadcastNetworkDisconnectionEvent(String iface, boolean locallyGenerated,
-            int reason, String ssid, String bssid) {
-        sendMessage(iface, NETWORK_DISCONNECTION_EVENT,
-                new DisconnectEventInfo(ssid, bssid, reason, locallyGenerated));
+    public void broadcastNetworkDisconnectionEvent(String iface, int local, int reason,
+                                                   String bssid) {
+        sendMessage(iface, NETWORK_DISCONNECTION_EVENT, local, reason, bssid);
     }
 
     /**
@@ -576,6 +534,26 @@ public class WifiMonitor {
     }
 
     /**
+     * Broadcast the connection to wpa_supplicant event to all the handlers registered for
+     * this event.
+     *
+     * @param iface Name of iface on which this occurred.
+     */
+    public void broadcastSupplicantConnectionEvent(String iface) {
+        sendMessage(iface, SUP_CONNECTION_EVENT);
+    }
+
+    /**
+     * Broadcast the loss of connection to wpa_supplicant event to all the handlers registered for
+     * this event.
+     *
+     * @param iface Name of iface on which this occurred.
+     */
+    public void broadcastSupplicantDisconnectionEvent(String iface) {
+        sendMessage(iface, SUP_DISCONNECTION_EVENT);
+    }
+
+    /**
      * Broadcast the bss transition management frame handling event
      * to all the handlers registered for this event.
      *
@@ -583,15 +561,5 @@ public class WifiMonitor {
      */
     public void broadcastBssTmHandlingDoneEvent(String iface, BtmFrameData btmFrmData) {
         sendMessage(iface, MBO_OCE_BSS_TM_HANDLING_DONE, btmFrmData);
-    }
-
-    /**
-     * Broadcast network not found event
-     * to all the handlers registered for this event.
-     *
-     * @param iface Name of iface on which this occurred.
-     */
-    public void broadcastNetworkNotFoundEvent(String iface, String ssid) {
-        sendMessage(iface, NETWORK_NOT_FOUND_EVENT, ssid);
     }
 }

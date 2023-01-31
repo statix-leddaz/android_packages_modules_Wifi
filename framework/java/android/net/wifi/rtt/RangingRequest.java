@@ -32,7 +32,6 @@ import android.os.Parcelable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.StringJoiner;
 
 /**
@@ -47,9 +46,6 @@ import java.util.StringJoiner;
  */
 public final class RangingRequest implements Parcelable {
     private static final int MAX_PEERS = 10;
-    private static final int DEFAULT_RTT_BURST_SIZE = 8;
-    private static final int MIN_RTT_BURST_SIZE = 2;
-    private static final int MAX_RTT_BURST_SIZE = 31;
 
     /**
      * Returns the maximum number of peers to range which can be specified in a single {@code
@@ -63,65 +59,12 @@ public final class RangingRequest implements Parcelable {
         return MAX_PEERS;
     }
 
-    /**
-     * Returns the default RTT burst size used to determine the average range.
-     *
-     * @return the RTT burst size used by default
-     */
-    public static int getDefaultRttBurstSize() {
-        return DEFAULT_RTT_BURST_SIZE;
-    }
-
-    /**
-     * Returns the minimum RTT burst size that can be used to determine a average range.
-     *
-     * @return the minimum RTT burst size that can be used
-     */
-    public static int getMinRttBurstSize() {
-        return MIN_RTT_BURST_SIZE;
-    }
-
-    /**
-     * Returns the minimum RTT burst size that can be used to determine a average range.
-     *
-     * @return the maximum RTT burst size that can be used
-     */
-    public static int getMaxRttBurstSize() {
-        return MAX_RTT_BURST_SIZE;
-    }
-
     /** @hide */
     public final List<ResponderConfig> mRttPeers;
 
     /** @hide */
-    public final int mRttBurstSize;
-
-    /** @hide */
-    private RangingRequest(List<ResponderConfig> rttPeers, int rttBurstSize) {
+    private RangingRequest(List<ResponderConfig> rttPeers) {
         mRttPeers = rttPeers;
-        mRttBurstSize = rttBurstSize;
-    }
-
-    /**
-     * Returns the list of RTT capable responding peers.
-     *
-     * @return the list of RTT capable responding peers in a common system representation
-     *
-     * @hide
-     */
-    @SystemApi
-    @NonNull
-    public List<ResponderConfig> getRttResponders() {
-        return mRttPeers;
-    }
-
-    /**
-     * Returns the RTT burst size used to determine the average range.
-     *
-     * @return the RTT burst size used
-     */
-    public int getRttBurstSize() {
-        return mRttBurstSize;
     }
 
     @Override
@@ -132,7 +75,6 @@ public final class RangingRequest implements Parcelable {
     @Override
     public void writeToParcel(Parcel dest, int flags) {
         dest.writeList(mRttPeers);
-        dest.writeInt(mRttBurstSize);
     }
 
     public static final @android.annotation.NonNull Creator<RangingRequest> CREATOR = new Creator<RangingRequest>() {
@@ -143,7 +85,7 @@ public final class RangingRequest implements Parcelable {
 
         @Override
         public RangingRequest createFromParcel(Parcel in) {
-            return new RangingRequest(in.readArrayList(null), in.readInt());
+            return new RangingRequest(in.readArrayList(null));
         }
     };
 
@@ -163,13 +105,11 @@ public final class RangingRequest implements Parcelable {
             throw new IllegalArgumentException(
                     "Ranging to too many peers requested. Use getMaxPeers() API to get limit.");
         }
+
         for (ResponderConfig peer: mRttPeers) {
             if (!peer.isValid(awareSupported)) {
                 throw new IllegalArgumentException("Invalid Responder specification");
             }
-        }
-        if (mRttBurstSize < getMinRttBurstSize() || mRttBurstSize > getMaxRttBurstSize()) {
-            throw new IllegalArgumentException("RTT burst size is out of range");
         }
     }
 
@@ -178,38 +118,15 @@ public final class RangingRequest implements Parcelable {
      */
     public static final class Builder {
         private List<ResponderConfig> mRttPeers = new ArrayList<>();
-        private int mRttBurstSize = DEFAULT_RTT_BURST_SIZE;
-
-        /**
-         * Set the RTT Burst size for the ranging request.
-         * <p>
-         * If not set, the default RTT burst size given by
-         * {@link #getDefaultRttBurstSize()} is used to determine the default value.
-         * If set, the value must be in the range {@link #getMinRttBurstSize()} and
-         * {@link #getMaxRttBurstSize()} inclusively, or a
-         * {@link java.lang.IllegalArgumentException} will be thrown.
-         *
-         * @param rttBurstSize The number of FTM packets used to estimate a range.
-         * @return The builder to facilitate chaining
-         * {@code builder.setXXX(..).setXXX(..)}.
-         */
-        @NonNull
-        public Builder setRttBurstSize(int rttBurstSize) {
-            if (rttBurstSize < MIN_RTT_BURST_SIZE || rttBurstSize > MAX_RTT_BURST_SIZE) {
-                throw new IllegalArgumentException("RTT burst size out of range.");
-            }
-            mRttBurstSize = rttBurstSize;
-            return this;
-        }
 
         /**
          * Add the device specified by the {@link ScanResult} to the list of devices with
          * which to measure range. The total number of peers added to a request cannot exceed the
          * limit specified by {@link #getMaxPeers()}.
          * <p>
-         * Ranging will only be supported if the Access Point supports IEEE 802.11mc, also known as
-         * two-sided RTT. Use {@link ScanResult#is80211mcResponder()} to verify the Access Point's
-         * capabilities. If not supported the result status will be
+         * Ranging may not be supported if the Access Point does not support IEEE 802.11mc. Use
+         * {@link ScanResult#is80211mcResponder()} to verify the Access Point's capabilities. If
+         * not supported the result status will be
          * {@link RangingResult#STATUS_RESPONDER_DOES_NOT_SUPPORT_IEEE80211MC}.
          *
          * @param apInfo Information of an Access Point (AP) obtained in a Scan Result.
@@ -228,9 +145,9 @@ public final class RangingRequest implements Parcelable {
          * which to measure range. The total number of peers added to a request cannot exceed the
          * limit specified by {@link #getMaxPeers()}.
          * <p>
-         * Ranging will only be supported if the Access Point supports IEEE 802.11mc, also known as
-         * two-sided RTT. Use {@link ScanResult#is80211mcResponder()} to verify the Access Point's
-         * capabilities. If not supported, the result status will be
+         * Ranging may not be supported if the Access Point does not support IEEE 802.11mc. Use
+         * {@link ScanResult#is80211mcResponder()} to verify the Access Point's capabilities. If
+         * not supported the result status will be
          * {@link RangingResult#STATUS_RESPONDER_DOES_NOT_SUPPORT_IEEE80211MC}.
          *
          * @param apInfos Information of an Access Points (APs) obtained in a Scan Result.
@@ -242,80 +159,6 @@ public final class RangingRequest implements Parcelable {
                 throw new IllegalArgumentException("Null list of ScanResults!");
             }
             for (ScanResult scanResult : apInfos) {
-                addAccessPoint(scanResult);
-            }
-            return this;
-        }
-
-        /**
-         * Add the non-802.11mc capable device specified by the {@link ScanResult} to the list of
-         * devices with which to measure range. The total number of peers added to a request cannot
-         * exceed the limit specified by {@link #getMaxPeers()}.
-         * <p>
-         * Accurate ranging cannot be supported if the Access Point does not support IEEE 802.11mc,
-         * and instead an alternate protocol called one-sided RTT will be used with lower
-         * accuracy. Use {@link ScanResult#is80211mcResponder()} to verify the Access Point)s) are
-         * not 802.11mc capable.
-         * <p>
-         * One-sided RTT does not subtract the RTT turnaround time at the Access Point, which can
-         * add hundreds of meters to the estimate. With experimentation it is possible to use this
-         * information to make a statistical estimate of the range by taking multiple measurements
-         * to several Access Points and normalizing the result. For some applications this can be
-         * used to improve range estimates based on Receive Signal Strength Indication (RSSI), but
-         * will not be as accurate as IEEE 802.11mc (two-sided RTT).
-         * <p>
-         * Note: one-sided RTT should only be used if you are very familiar with statistical
-         * estimation techniques.
-         *
-         * @param apInfo Information of an Access Point (AP) obtained in a Scan Result.
-         * @return The builder to facilitate chaining
-         *         {@code builder.setXXX(..).setXXX(..)}.
-         */
-        @NonNull
-        public Builder addNon80211mcCapableAccessPoint(@NonNull ScanResult apInfo) {
-            if (apInfo == null) {
-                throw new IllegalArgumentException("Null ScanResult!");
-            }
-            if (apInfo.is80211mcResponder()) {
-                throw new IllegalArgumentException("AP supports the 802.11mc protocol.");
-            }
-            return addResponder(ResponderConfig.fromScanResult(apInfo));
-        }
-
-        /**
-         * Add the non-802.11mc capable devices specified by the {@link ScanResult} to the list of
-         * devices with which to measure range. The total number of peers added to a request cannot
-         * exceed the limit specified by {@link #getMaxPeers()}.
-         * <p>
-         * Accurate ranging cannot be supported if the Access Point does not support IEEE 802.11mc,
-         * and instead an alternate protocol called one-sided RTT will be used with lower
-         * accuracy. Use {@link ScanResult#is80211mcResponder()} to verify the Access Point)s) are
-         * not 802.11mc capable.
-         * <p>
-         * One-sided RTT does not subtract the RTT turnaround time at the Access Point, which can
-         * add hundreds of meters to the estimate. With experimentation it is possible to use this
-         * information to make a statistical estimate of the range by taking multiple measurements
-         * to several Access Points and normalizing the result. For some applications this can be
-         * used to improve range estimates based on Receive Signal Strength Indication (RSSI), but
-         * will not be as accurate as IEEE 802.11mc (two-sided RTT).
-         * <p>
-         * Note: one-sided RTT should only be used if you are very familiar with statistical
-         * estimation techniques.
-         *
-         * @param apInfos Information of an Access Points (APs) obtained in a Scan Result.
-         * @return The builder to facilitate chaining
-         *         {@code builder.setXXX(..).setXXX(..)}.
-         */
-        @NonNull
-        public Builder addNon80211mcCapableAccessPoints(@NonNull List<ScanResult> apInfos) {
-            if (apInfos == null) {
-                throw new IllegalArgumentException("Null list of ScanResults!");
-            }
-            for (ScanResult scanResult : apInfos) {
-                if (scanResult.is80211mcResponder()) {
-                    throw new IllegalArgumentException(
-                            "At least one AP supports the 802.11mc protocol.");
-                }
                 addAccessPoint(scanResult);
             }
             return this;
@@ -356,14 +199,11 @@ public final class RangingRequest implements Parcelable {
          * using {@link DiscoverySessionCallback#onServiceDiscovered(PeerHandle, byte[], List)}.
          * <p>
          * Note: in order to use this API the device must support Wi-Fi Aware
-         * {@link android.net.wifi.aware}. The requesting device can be either publisher or
-         * subscriber in a discovery session. For both requesting device and peer device ranging
-         * must be enabled on the discovery session:
-         * <li>{@link android.net.wifi.aware.PublishConfig.Builder#setRangingEnabled(boolean)} for
-         * publisher.</li>
-         * <li>Either {@link android.net.wifi.aware.SubscribeConfig.Builder#setMinDistanceMm(int)}
-         * or {@link android.net.wifi.aware.SubscribeConfig.Builder#setMaxDistanceMm(int)} must be
-         * set to enable ranging on subscriber </li>
+         * {@link android.net.wifi.aware}. The peer device which is being ranged to must be
+         * configured to publish a service (with any name) with:
+         * <li>Type {@link android.net.wifi.aware.PublishConfig#PUBLISH_TYPE_UNSOLICITED}.
+         * <li>Ranging enabled
+         * {@link android.net.wifi.aware.PublishConfig.Builder#setRangingEnabled(boolean)}.
          *
          * @param peerHandle The peer handler of the peer Wi-Fi Aware device.
          * @return The builder, to facilitate chaining {@code builder.setXXX(..).setXXX(..)}.
@@ -401,7 +241,7 @@ public final class RangingRequest implements Parcelable {
          * builder.
          */
         public RangingRequest build() {
-            return new RangingRequest(mRttPeers, mRttBurstSize);
+            return new RangingRequest(mRttPeers);
         }
     }
 
@@ -417,13 +257,11 @@ public final class RangingRequest implements Parcelable {
 
         RangingRequest lhs = (RangingRequest) o;
 
-        return mRttPeers.size() == lhs.mRttPeers.size()
-                && mRttPeers.containsAll(lhs.mRttPeers)
-                && mRttBurstSize == lhs.mRttBurstSize;
+        return mRttPeers.size() == lhs.mRttPeers.size() && mRttPeers.containsAll(lhs.mRttPeers);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(mRttPeers, mRttBurstSize);
+        return mRttPeers.hashCode();
     }
 }

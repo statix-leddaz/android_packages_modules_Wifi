@@ -31,7 +31,6 @@ import android.content.Context;
 import android.content.pm.ModuleInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.content.res.Resources;
 import android.net.MacAddress;
 import android.net.wifi.ScanResult.InformationElement;
 import android.net.wifi.WifiConfiguration;
@@ -47,7 +46,6 @@ import android.os.test.TestLooper;
 import androidx.test.filters.SmallTest;
 
 import com.android.dx.mockito.inline.extended.ExtendedMockito;
-import com.android.server.wifi.ActiveModeWarden.ModeChangeCallback;
 import com.android.server.wifi.WifiConfigManager.OnNetworkUpdateListener;
 import com.android.server.wifi.WifiHealthMonitor.ScanStats;
 import com.android.server.wifi.WifiHealthMonitor.WifiSoftwareBuildInfo;
@@ -56,11 +54,10 @@ import com.android.server.wifi.WifiScoreCard.PerNetwork;
 import com.android.server.wifi.proto.WifiScoreCardProto.SystemInfoStats;
 import com.android.server.wifi.proto.WifiStatsLog;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.HealthMonitorMetrics;
-import com.android.wifi.resources.R;
+
 
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.MockitoSession;
@@ -81,7 +78,6 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
     static final WifiSsid TEST_SSID_2 = WifiSsid.createFromAsciiEncoded("Poe's Place");
     static final MacAddress TEST_BSSID_1 = MacAddress.fromString("aa:bb:cc:dd:ee:ff");
     private static final long CURRENT_ELAPSED_TIME_MS = 1000;
-    private static final String WIFI_IFACE_NAME = "wlanTest";
 
     private WifiScoreCard mWifiScoreCard;
     private WifiHealthMonitor mWifiHealthMonitor;
@@ -105,12 +101,6 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
     PackageInfo mPackageInfo;
     @Mock
     ModuleInfo mModuleInfo;
-    @Mock
-    FrameworkFacade mFrameworkFacade;
-    @Mock
-    Resources mResources;
-    @Mock
-    ActiveModeWarden mActiveModeWarden;
 
     private final ArrayList<String> mKeys = new ArrayList<>();
     private final ArrayList<WifiScoreCard.BlobListener> mBlobListeners = new ArrayList<>();
@@ -131,7 +121,6 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
     private ScanData mScanData;
     private ScanListener mScanListener;
     private OnNetworkUpdateListener mOnNetworkUpdateListener;
-    private ModeChangeCallback mModeChangeCallback;
 
     private void millisecondsPass(long ms) {
         mMilliSecondsSinceBoot += ms;
@@ -150,7 +139,7 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
         mBlobs.clear();
         mConfiguredNetworks = new ArrayList<>();
         mMilliSecondsSinceBoot = 0;
-        mWifiInfo = new ExtendedWifiInfo(mock(WifiGlobals.class), WIFI_IFACE_NAME);
+        mWifiInfo = new ExtendedWifiInfo(mock(Context.class));
         mWifiInfo.setBSSID(TEST_BSSID_1.toString());
         mWifiInfo.setSSID(TEST_SSID_1);
         // Add 1st configuration
@@ -175,8 +164,7 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
 
         mWifiConfigManager = mockConfigManager();
 
-        mWifiScoreCard = new WifiScoreCard(mClock, "some seed", mDeviceConfigFacade,
-                mFrameworkFacade, mContext);
+        mWifiScoreCard = new WifiScoreCard(mClock, "some seed", mDeviceConfigFacade);
         mAlarmManager = new TestAlarmManager();
         when(mContext.getSystemService(Context.ALARM_SERVICE))
                 .thenReturn(mAlarmManager.getAlarmManager());
@@ -190,10 +178,6 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
                 DeviceConfigFacade.DEFAULT_CONNECTION_FAILURE_HIGH_THR_PERCENT);
         when(mDeviceConfigFacade.getConnectionFailureCountMin()).thenReturn(
                 DeviceConfigFacade.DEFAULT_CONNECTION_FAILURE_COUNT_MIN);
-        when(mDeviceConfigFacade.getConnectionFailureDisconnectionHighThrPercent()).thenReturn(
-                DeviceConfigFacade.DEFAULT_CONNECTION_FAILURE_DISCONNECTION_HIGH_THR_PERCENT);
-        when(mDeviceConfigFacade.getConnectionFailureDisconnectionCountMin()).thenReturn(
-                DeviceConfigFacade.DEFAULT_CONNECTION_FAILURE_DISCONNECTION_COUNT_MIN);
         when(mDeviceConfigFacade.getAssocRejectionHighThrPercent()).thenReturn(
                 DeviceConfigFacade.DEFAULT_ASSOC_REJECTION_HIGH_THR_PERCENT);
         when(mDeviceConfigFacade.getAssocRejectionCountMin()).thenReturn(
@@ -232,18 +216,9 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
                 DeviceConfigFacade.DEFAULT_NONSTATIONARY_SCAN_RSSI_VALID_TIME_MS);
         when(mDeviceConfigFacade.getStationaryScanRssiValidTimeMs()).thenReturn(
                 DeviceConfigFacade.DEFAULT_STATIONARY_SCAN_RSSI_VALID_TIME_MS);
-        when(mContext.getResources()).thenReturn(mResources);
-        when(mResources.getIntArray(R.array.config_wifiRssiLevelThresholds))
-                .thenReturn(new int[]{-88, -77, -66, -55});
         mWifiHealthMonitor = new WifiHealthMonitor(mContext, mWifiInjector, mClock,
                 mWifiConfigManager, mWifiScoreCard, new Handler(mLooper.getLooper()), mWifiNative,
-                "some seed", mDeviceConfigFacade, mActiveModeWarden);
-
-        ArgumentCaptor<ModeChangeCallback> modeChangeCallbackArgumentCaptor =
-                ArgumentCaptor.forClass(ModeChangeCallback.class);
-        verify(mActiveModeWarden).registerModeChangeCallback(
-                modeChangeCallbackArgumentCaptor.capture());
-        mModeChangeCallback = modeChangeCallbackArgumentCaptor.getValue();
+                "some seed", mDeviceConfigFacade);
     }
 
     private WifiConfigManager mockConfigManager() {
@@ -310,7 +285,7 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
 
         ScanData[] scanDatas = new ScanData[1];
         scanDatas[0] = mock(ScanData.class);
-        when(scanDatas[0].getScannedBandsInternal()).thenReturn(wifiBand);
+        when(scanDatas[0].getBandScanned()).thenReturn(wifiBand);
         doAnswer(new AnswerWithArguments() {
             public void answer(ScanSettings settings, ScanListener listener) throws Exception {
                 if (mScanData != null && mScanData.getResults() != null) {
@@ -331,15 +306,14 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
         mWifiScoreCard.noteConnectionAttempt(mWifiInfo, -53, mWifiInfo.getSSID());
         millisecondsPass(5000);
         mWifiInfo.setRssi(-55);
-        mWifiScoreCard.noteIpConfiguration(mWifiInfo);
         mWifiScoreCard.noteValidationSuccess(mWifiInfo);
         millisecondsPass(1000);
         mWifiScoreCard.noteSignalPoll(mWifiInfo);
         millisecondsPass(2000);
         int disconnectionReason = 0;
-        mWifiScoreCard.noteNonlocalDisconnect(WIFI_IFACE_NAME, disconnectionReason);
+        mWifiScoreCard.noteNonlocalDisconnect(disconnectionReason);
         millisecondsPass(10);
-        mWifiScoreCard.resetAllConnectionStates();
+        mWifiScoreCard.resetConnectionState();
     }
 
     private void makeRecentStatsWithSufficientConnectionAttempt() {
@@ -348,23 +322,11 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
         }
     }
 
-    private void setWifiEnabled(boolean enabled) {
-        if (enabled) {
-            when(mActiveModeWarden.getPrimaryClientModeManagerNullable())
-                    .thenReturn(mock(ConcreteClientModeManager.class));
-            mModeChangeCallback.onActiveModeManagerAdded(mock(ConcreteClientModeManager.class));
-        } else {
-            when(mActiveModeWarden.getPrimaryClientModeManagerNullable()).thenReturn(null);
-            mModeChangeCallback.onActiveModeManagerRemoved(mock(ConcreteClientModeManager.class));
-        }
-    }
-
     private byte[] makeSerializedExample() {
-        // Install a placeholder memoryStore
+        // Install a dummy memoryStore
         // trigger extractCurrentSoftwareBuildInfo() call to update currSoftwareBuildInfo
         mWifiHealthMonitor.installMemoryStoreSetUpDetectionAlarm(mMemoryStore);
-        setWifiEnabled(true);
-
+        mWifiHealthMonitor.setWifiEnabled(true);
         assertEquals(MODULE_VERSION, mWifiHealthMonitor.getWifiStackVersion());
         millisecondsPass(5000);
         mWifiScanner.startScan(mScanSettings, mScanListener);
@@ -413,7 +375,7 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
         mAlarmManager.dispatch(WifiHealthMonitor.POST_BOOT_DETECTION_TIMER_TAG);
         mLooper.dispatchAll();
         // Now it should detect SW change, disable WiFi to trigger write
-        setWifiEnabled(false);
+        mWifiHealthMonitor.setWifiEnabled(false);
 
         // Check current and previous FW version of WifiSystemInfoStats
         WifiSystemInfoStats wifiSystemInfoStats = mWifiHealthMonitor.getWifiSystemInfoStats();
@@ -438,10 +400,10 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
      */
     @Test
     public void testSerializationDeserialization() throws Exception  {
-        // Install a placeholder memoryStore
+        // Install a dummy memoryStore
         // trigger extractCurrentSoftwareBuildInfo() call to update currSoftwareBuildInfo
         mWifiHealthMonitor.installMemoryStoreSetUpDetectionAlarm(mMemoryStore);
-        setWifiEnabled(true);
+        mWifiHealthMonitor.setWifiEnabled(true);
         millisecondsPass(5000);
         mWifiScanner.startScan(mScanSettings, mScanListener);
         mAlarmManager.dispatch(WifiHealthMonitor.POST_BOOT_DETECTION_TIMER_TAG);
@@ -560,7 +522,6 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
         assertEquals(0, healthMetrics.failureStatsIncrease.cntAssocTimeout);
         assertEquals(0, healthMetrics.failureStatsIncrease.cntAuthFailure);
         assertEquals(0, healthMetrics.failureStatsIncrease.cntConnectionFailure);
-        assertEquals(0, healthMetrics.failureStatsIncrease.cntDisconnectionNonlocalConnecting);
         assertEquals(0, healthMetrics.failureStatsIncrease.cntDisconnectionNonlocal);
         assertEquals(0, healthMetrics.failureStatsIncrease.cntShortConnectionNonlocal);
         assertEquals(0, healthMetrics.failureStatsHigh.cntAssocRejection);
@@ -640,8 +601,7 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
         String firmwareVersion = "HW 1.2";
         makeSwBuildChangeExample(firmwareVersion);
         // Disable WiFi before post-boot-detection
-        setWifiEnabled(false);
-
+        mWifiHealthMonitor.setWifiEnabled(false);
         mAlarmManager.dispatch(WifiHealthMonitor.POST_BOOT_DETECTION_TIMER_TAG);
         mLooper.dispatchAll();
         // Skip SW build change detection
@@ -652,7 +612,7 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
                 perNetwork.getStatsPrevBuild().getCount(WifiScoreCard.CNT_CONNECTION_ATTEMPT));
 
         // Day 3
-        setWifiEnabled(true);
+        mWifiHealthMonitor.setWifiEnabled(true);
         mAlarmManager.dispatch(WifiHealthMonitor.POST_BOOT_DETECTION_TIMER_TAG);
         mLooper.dispatchAll();
         // Finally detect SW build change
@@ -706,7 +666,7 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
     @Test
     public void testFullBandScan() throws Exception {
         millisecondsPass(5000);
-        setWifiEnabled(true);
+        mWifiHealthMonitor.setWifiEnabled(true);
         mWifiScanner.startScan(mScanSettings, mScanListener);
         ScanStats scanStats = mWifiHealthMonitor.getWifiSystemInfoStats().getCurrScanStats();
         assertEquals(1_500_000_005_000L, scanStats.getLastScanTimeMs());
@@ -722,7 +682,7 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
         mWifiScanner = mockWifiScanner(WifiScanner.WIFI_BAND_24_GHZ);
         when(mWifiInjector.getWifiScanner()).thenReturn(mWifiScanner);
         millisecondsPass(5000);
-        setWifiEnabled(true);
+        mWifiHealthMonitor.setWifiEnabled(true);
         mWifiScanner.startScan(mScanSettings, mScanListener);
         ScanStats scanStats = mWifiHealthMonitor.getWifiSystemInfoStats().getCurrScanStats();
         assertEquals(TS_NONE, scanStats.getLastScanTimeMs());
@@ -781,7 +741,7 @@ public class WifiHealthMonitorTest extends WifiBaseTest {
         mWifiScanner = mockWifiScanner(WifiScanner.WIFI_BAND_ALL);
         when(mWifiInjector.getWifiScanner()).thenReturn(mWifiScanner);
         millisecondsPass(5000);
-        setWifiEnabled(true);
+        mWifiHealthMonitor.setWifiEnabled(true);
         mWifiScanner.startScan(mScanSettings, mScanListener);
 
         mAlarmManager.dispatch(WifiHealthMonitor.POST_BOOT_DETECTION_TIMER_TAG);

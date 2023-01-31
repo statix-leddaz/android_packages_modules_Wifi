@@ -77,8 +77,7 @@ public class WifiScanAlwaysAvailableSettingsCompatibility {
                                 mContentResolver, SETTINGS_GLOBAL_WIFI_SCAN_ALWAYS_AVAILABLE, 0)
                                 == 1;
                 // Check if the new state is different from our current state.
-                if (mWifiSettingsStore.isScanAlwaysAvailableToggleEnabled()
-                        != settingsIsAvailable) {
+                if (mWifiSettingsStore.isScanAlwaysAvailable() != settingsIsAvailable) {
                     Log.i(TAG, "settings changed, new value: " + settingsIsAvailable
                             + ", triggering update");
                     mWifiSettingsStore.handleWifiScanAlwaysAvailableToggled(settingsIsAvailable);

@@ -115,8 +115,6 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
     @Override
     public void cleanup() {
         synchronized (mSettingsLock) {
-            cancelScanTimeout();
-            reportScanFailure();
             stopHwPnoScan();
             mLastScanSettings = null; // finally clear any active scan
             mLastPnoScanSettings = null; // finally clear any active scan
@@ -179,16 +177,15 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
                 }
             }
             mLastScanSettings = new LastScanSettings(
-                    mClock.getElapsedSinceBootNanos(),
-                    reportFullResults, allFreqs, eventHandler);
+                        mClock.getElapsedSinceBootMillis(),
+                        reportFullResults, allFreqs, eventHandler);
 
             boolean success = false;
-            Set<Integer> freqs = Collections.emptySet();
+            Set<Integer> freqs;
             if (!allFreqs.isEmpty()) {
                 freqs = allFreqs.getScanFreqs();
                 success = mWifiNative.scan(
-                        getIfaceName(), settings.scanType, freqs, hiddenNetworkSSIDSet,
-                        settings.enable6GhzRnr);
+                        getIfaceName(), settings.scanType, freqs, hiddenNetworkSSIDSet);
                 if (!success) {
                     Log.e(TAG, "Failed to start scan, freqs=" + freqs);
                 }
@@ -199,8 +196,7 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
             }
             if (success) {
                 if (DBG) {
-                    Log.d(TAG, "Starting wifi scan for freqs=" + freqs
-                            + " on iface " + getIfaceName());
+                    Log.d(TAG, "Starting wifi scan for freqs=" + freqs);
                 }
 
                 mScanTimeoutListener = new AlarmManager.OnAlarmListener() {
@@ -214,7 +210,11 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
                         TIMEOUT_ALARM_TAG, mScanTimeoutListener, mEventHandler);
             } else {
                 // indicate scan failure async
-                mEventHandler.post(() -> reportScanFailure());
+                mEventHandler.post(new Runnable() {
+                        @Override public void run() {
+                            reportScanFailure();
+                        }
+                    });
             }
 
             return true;
@@ -321,8 +321,8 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
             int numFilteredScanResults = 0;
             for (int i = 0; i < mNativePnoScanResults.size(); ++i) {
                 ScanResult result = mNativePnoScanResults.get(i).getScanResult();
-                // nanoseconds -> microseconds
-                if (result.timestamp >= mLastPnoScanSettings.startTimeNanos / 1_000) {
+                long timestamp_ms = result.timestamp / 1000; // convert us -> ms
+                if (timestamp_ms > mLastPnoScanSettings.startTime) {
                     hwPnoScanResults.add(result);
                 } else {
                     numFilteredScanResults++;
@@ -344,15 +344,15 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
     /**
      * Return one of the WIFI_BAND_# values that was scanned for in this scan.
      */
-    private static int getScannedBandsInternal(ChannelCollection channelCollection) {
-        int bandsScanned = WifiScanner.WIFI_BAND_UNSPECIFIED;
+    private static int getBandScanned(ChannelCollection channelCollection) {
+        int bandScanned = WifiScanner.WIFI_BAND_UNSPECIFIED;
 
         for (@WifiBandIndex int i = 0; i < WifiScanner.WIFI_BAND_COUNT; i++) {
             if (channelCollection.containsBand(1 << i)) {
-                bandsScanned |= 1 << i;
+                bandScanned |= 1 << i;
             }
         }
-        return bandsScanned;
+        return bandScanned;
     }
 
     private void pollLatestScanData() {
@@ -367,8 +367,8 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
             int numFilteredScanResults = 0;
             for (int i = 0; i < mNativeScanResults.size(); ++i) {
                 ScanResult result = mNativeScanResults.get(i).getScanResult();
-                // nanoseconds -> microseconds
-                if (result.timestamp >= mLastScanSettings.startTimeNanos / 1_000) {
+                long timestamp_ms = result.timestamp / 1000; // convert us -> ms
+                if (timestamp_ms > mLastScanSettings.startTime) {
                     if (mLastScanSettings.singleScanFreqs.containsChannel(
                                     result.frequency)) {
                         singleScanResults.add(result);
@@ -391,7 +391,7 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
                 }
                 Collections.sort(singleScanResults, SCAN_RESULT_SORT_COMPARATOR);
                 mLatestSingleScanResult = new WifiScanner.ScanData(0, 0, 0,
-                        getScannedBandsInternal(mLastScanSettings.singleScanFreqs),
+                        getBandScanned(mLastScanSettings.singleScanFreqs),
                         singleScanResults.toArray(new ScanResult[singleScanResults.size()]));
                 mLastScanSettings.singleScanEventHandler
                         .onScanStatus(WifiNative.WIFI_SCAN_RESULTS_AVAILABLE);
@@ -438,8 +438,8 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
             }
 
             mLastPnoScanSettings = new LastPnoScanSettings(
-                    mClock.getElapsedSinceBootNanos(),
-                    settings.networkList, eventHandler);
+                        mClock.getElapsedSinceBootMillis(),
+                        settings.networkList, eventHandler);
 
             if (!startHwPnoScan(settings)) {
                 Log.e(TAG, "Failed to start PNO scan");
@@ -473,7 +473,6 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
     protected void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         synchronized (mSettingsLock) {
             long nowMs = mClock.getElapsedSinceBootMillis();
-            Log.d(TAG, "Latest native scan results nowMs = " + nowMs);
             pw.println("Latest native scan results:");
             if (mNativeScanResults != null) {
                 List<ScanResult> scanResults = mNativeScanResults.stream().map(r -> {
@@ -502,17 +501,17 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
     }
 
     private static class LastScanSettings {
-        LastScanSettings(long startTimeNanos,
+        LastScanSettings(long startTime,
                 boolean reportSingleScanFullResults,
                 ChannelCollection singleScanFreqs,
                 WifiNative.ScanEventHandler singleScanEventHandler) {
-            this.startTimeNanos = startTimeNanos;
+            this.startTime = startTime;
             this.reportSingleScanFullResults = reportSingleScanFullResults;
             this.singleScanFreqs = singleScanFreqs;
             this.singleScanEventHandler = singleScanEventHandler;
         }
 
-        public long startTimeNanos;
+        public long startTime;
         public boolean reportSingleScanFullResults;
         public ChannelCollection singleScanFreqs;
         public WifiNative.ScanEventHandler singleScanEventHandler;
@@ -520,15 +519,15 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
     }
 
     private static class LastPnoScanSettings {
-        LastPnoScanSettings(long startTimeNanos,
+        LastPnoScanSettings(long startTime,
                 WifiNative.PnoNetwork[] pnoNetworkList,
                 WifiNative.PnoEventHandler pnoScanEventHandler) {
-            this.startTimeNanos = startTimeNanos;
+            this.startTime = startTime;
             this.pnoNetworkList = pnoNetworkList;
             this.pnoScanEventHandler = pnoScanEventHandler;
         }
 
-        public long startTimeNanos;
+        public long startTime;
         public WifiNative.PnoNetwork[] pnoNetworkList;
         public WifiNative.PnoEventHandler pnoScanEventHandler;
 

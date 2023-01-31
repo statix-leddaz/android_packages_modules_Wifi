@@ -23,7 +23,6 @@ import android.net.wifi.aware.ConfigRequest;
 import android.net.wifi.aware.IWifiAwareEventCallback;
 import android.net.wifi.util.HexEncoding;
 import android.os.RemoteException;
-import android.os.WorkSource;
 import android.util.Log;
 import android.util.SparseArray;
 

@@ -19,7 +19,7 @@ package {
 java_defaults {
     name: "wifi-module-sdk-version-defaults",
     min_sdk_version: "30",
-    target_sdk_version: "31",
+    target_sdk_version: "30",
 }
 
 filegroup {
@@ -44,7 +44,6 @@ filegroup {
     srcs: [
         ":framework-wifi-updatable-java-sources",
         ":framework-wifi-updatable-exported-aidl-sources",
-        ":module-utils-os-aidls",
     ],
 }
 
@@ -65,18 +64,16 @@ test_access_hidden_api_whitelist = [
     "//external/robolectric-shadows:__subpackages__",
     "//frameworks/base/packages/SettingsLib/tests/integ",
     "//external/sl4a:__subpackages__",
+    "//packages/apps/Settings/tests/robotests", // TODO(b/161767237): remove
 ]
 
 java_library {
     name: "wifi-modules-utils",
     sdk_version: "module_current",
-    min_sdk_version: "30",
     static_libs: [
         "modules-utils-build",
         "modules-utils-handlerexecutor",
-        "modules-utils-list-slice",
         "modules-utils-preconditions",
-        "modules-utils-shell-command-handler",
         "modules-utils-statemachine",
     ],
     apex_available: [
@@ -94,7 +91,6 @@ java_defaults {
     static_libs: [
         "framework-wifi-util-lib",
         "android.hardware.wifi-V1.0-java-constants",
-        "androidx.annotation_annotation",
         "wifi-modules-utils",
     ],
     libs: [
@@ -108,7 +104,7 @@ java_defaults {
     },
     srcs: [
         ":framework-wifi-updatable-sources",
-        ":module-utils-os-aidls",
+        ":framework-wifi-util-lib-aidls",
     ],
 }
 
@@ -164,15 +160,12 @@ java_sdk_library {
         // Created by jarjar rules.
         "com.android.wifi.x",
     ],
-    lint: {
-        strict_updatability_linting: true,
-    },
 }
 
 // defaults for tests that need to build against framework-wifi's @hide APIs
 java_defaults {
     name: "framework-wifi-test-defaults",
-    sdk_version: "core_current",
+    sdk_version: "core_platform", // tests can use @CorePlatformApi's
     libs: [
         // order matters: classes in framework-wifi are resolved before framework, meaning
         // @hide APIs in framework-wifi are resolved before @SystemApi stubs in framework

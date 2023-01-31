@@ -24,9 +24,6 @@ android_test {
 
     defaults: ["framework-wifi-test-defaults"],
 
-    min_sdk_version: "30",
-    target_sdk_version: "30",
-
     srcs: ["**/*.java"],
 
     jacoco: {
@@ -53,8 +50,8 @@ android_test {
     ],
 
     test_suites: [
-        "general-tests",
-        "mts-wifi",
+        "device-tests",
+        "mts",
     ],
 
     // static libs used by both framework-wifi & FrameworksWifiApiTests. Need to rename test usage

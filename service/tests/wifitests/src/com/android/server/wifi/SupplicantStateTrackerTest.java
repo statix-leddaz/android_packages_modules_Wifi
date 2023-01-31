@@ -15,29 +15,26 @@
  */
 package com.android.server.wifi;
 
-import static com.google.common.truth.Truth.assertThat;
-
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.*;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiSsid;
 import android.os.BatteryStatsManager;
+import android.os.Handler;
 import android.os.Message;
-import android.os.UserHandle;
 import android.os.test.TestLooper;
 
 import androidx.test.filters.SmallTest;
 
-import com.android.server.wifi.ClientModeManagerBroadcastQueue.QueuedBroadcast;
-
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
@@ -48,43 +45,31 @@ import org.mockito.MockitoAnnotations;
 public class SupplicantStateTrackerTest extends WifiBaseTest {
 
     private static final String TAG = "SupplicantStateTrackerTest";
-    private static final String SSID = "\"GoogleGuest\"";
-    private static final WifiSsid WIFI_SSID = WifiSsid.createFromAsciiEncoded(SSID);
-    private static final String BSSID = "01:02:03:04:05:06";
-    private static final String TEST_IFACE = "wlan_test";
+    private static final String   sSSID = "\"GoogleGuest\"";
+    private static final WifiSsid sWifiSsid = WifiSsid.createFromAsciiEncoded(sSSID);
+    private static final String   sBSSID = "01:02:03:04:05:06";
 
     private @Mock WifiConfigManager mWcm;
     private @Mock Context mContext;
     private @Mock BatteryStatsManager mBatteryStats;
-    private @Mock WifiMonitor mWifiMonitor;
-    private @Mock ClientModeManager mClientModeManager;
-    private @Mock ClientModeManagerBroadcastQueue mBroadcastQueue;
+    private Handler mHandler;
     private SupplicantStateTracker mSupplicantStateTracker;
     private TestLooper mLooper;
-
-    private @Captor ArgumentCaptor<Intent> mIntentCaptor;
-    private @Captor ArgumentCaptor<QueuedBroadcast> mQueuedBroadcastCaptor;
 
     private Message getSupplicantStateChangeMessage(int networkId, WifiSsid wifiSsid,
             String bssid, SupplicantState newSupplicantState) {
         return Message.obtain(null, WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0,
                 new StateChangeResult(networkId, wifiSsid, bssid, newSupplicantState));
+
     }
 
     @Before
     public void setUp() {
         mLooper = new TestLooper();
+        mHandler = new Handler(mLooper.getLooper());
         MockitoAnnotations.initMocks(this);
         mSupplicantStateTracker = new SupplicantStateTracker(mContext, mWcm, mBatteryStats,
-                mLooper.getLooper(), mWifiMonitor, TEST_IFACE, mClientModeManager, mBroadcastQueue);
-
-        verify(mWifiMonitor, atLeastOnce()).registerHandler(eq(TEST_IFACE), anyInt(), any());
-    }
-
-    @After
-    public void tearDown() {
-        mSupplicantStateTracker.stop();
-        verify(mWifiMonitor, atLeastOnce()).deregisterHandler(eq(TEST_IFACE), anyInt(), any());
+                mHandler);
     }
 
     /**
@@ -93,19 +78,21 @@ public class SupplicantStateTrackerTest extends WifiBaseTest {
      */
     @Test
     public void testSupplicantStateChangeIntent() {
-        mSupplicantStateTracker.sendMessage(getSupplicantStateChangeMessage(0, WIFI_SSID,
-                BSSID, SupplicantState.SCANNING));
-        mLooper.dispatchAll();
-
-        verify(mBroadcastQueue).queueOrSendBroadcast(
-                eq(mClientModeManager), mQueuedBroadcastCaptor.capture());
-        mQueuedBroadcastCaptor.getValue().send();
-
-        verify(mContext).sendStickyBroadcastAsUser(mIntentCaptor.capture(), eq(UserHandle.ALL));
-        Intent intent = mIntentCaptor.getValue();
-        assertThat(intent.getAction()).isEqualTo(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION);
-        assertThat(intent.<SupplicantState>getParcelableExtra(WifiManager.EXTRA_NEW_STATE))
-                .isEqualTo(SupplicantState.SCANNING);
+        BroadcastReceiver wifiBroadcastReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                assertTrue(action.equals(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION));
+                SupplicantState recvdState =
+                        (SupplicantState) intent.getExtra(WifiManager.EXTRA_NEW_STATE, -1);
+                assertEquals(SupplicantState.SCANNING, recvdState);
+            }
+        };
+        IntentFilter mIntentFilter = new IntentFilter();
+        mIntentFilter.addAction(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION);
+        mContext.registerReceiver(wifiBroadcastReceiver, mIntentFilter);
+        mSupplicantStateTracker.sendMessage(getSupplicantStateChangeMessage(0, sWifiSsid,
+                sBSSID, SupplicantState.SCANNING));
     }
 
     /**
@@ -113,21 +100,25 @@ public class SupplicantStateTrackerTest extends WifiBaseTest {
      */
     @Test
     public void testAuthPassInSupplicantStateChangeIntent() {
-        mSupplicantStateTracker.sendMessage(getSupplicantStateChangeMessage(0, WIFI_SSID,
-                BSSID, SupplicantState.AUTHENTICATING));
+        BroadcastReceiver wifiBroadcastReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                assertTrue(action.equals(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION));
+                SupplicantState recvdState =
+                        (SupplicantState) intent.getExtra(WifiManager.EXTRA_NEW_STATE, -1);
+                assertEquals(SupplicantState.AUTHENTICATING, recvdState);
+                boolean authStatus =
+                        (boolean) intent.getExtra(WifiManager.EXTRA_SUPPLICANT_ERROR, -1);
+                assertEquals(authStatus, true);
+            }
+        };
+        IntentFilter mIntentFilter = new IntentFilter();
+        mIntentFilter.addAction(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION);
+        mContext.registerReceiver(wifiBroadcastReceiver, mIntentFilter);
+        mSupplicantStateTracker.sendMessage(getSupplicantStateChangeMessage(0, sWifiSsid,
+                sBSSID, SupplicantState.AUTHENTICATING));
         mSupplicantStateTracker.sendMessage(WifiMonitor.AUTHENTICATION_FAILURE_EVENT);
-        mLooper.dispatchAll();
-
-        verify(mBroadcastQueue).queueOrSendBroadcast(
-                eq(mClientModeManager), mQueuedBroadcastCaptor.capture());
-        mQueuedBroadcastCaptor.getValue().send();
-
-        verify(mContext).sendStickyBroadcastAsUser(mIntentCaptor.capture(), eq(UserHandle.ALL));
-        Intent intent = mIntentCaptor.getValue();
-        assertThat(intent.getAction()).isEqualTo(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION);
-        assertThat(intent.<SupplicantState>getParcelableExtra(WifiManager.EXTRA_NEW_STATE))
-                .isEqualTo(SupplicantState.AUTHENTICATING);
-        assertThat(intent.getIntExtra(WifiManager.EXTRA_SUPPLICANT_ERROR, 0)).isEqualTo(0);
     }
 
     /**
@@ -135,22 +126,25 @@ public class SupplicantStateTrackerTest extends WifiBaseTest {
      */
     @Test
     public void testAuthFailedInSupplicantStateChangeIntent() {
+        BroadcastReceiver wifiBroadcastReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                assertTrue(action.equals(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION));
+                SupplicantState recvdState =
+                        (SupplicantState) intent.getExtra(WifiManager.EXTRA_NEW_STATE, -1);
+                assertEquals(SupplicantState.AUTHENTICATING, recvdState);
+                boolean authStatus =
+                        (boolean) intent.getExtra(WifiManager.EXTRA_SUPPLICANT_ERROR, -1);
+                assertEquals(authStatus, false);
+            }
+        };
+        IntentFilter mIntentFilter = new IntentFilter();
+        mIntentFilter.addAction(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION);
+        mContext.registerReceiver(wifiBroadcastReceiver, mIntentFilter);
         mSupplicantStateTracker.sendMessage(WifiMonitor.AUTHENTICATION_FAILURE_EVENT);
-        mSupplicantStateTracker.sendMessage(getSupplicantStateChangeMessage(0, WIFI_SSID,
-                BSSID, SupplicantState.AUTHENTICATING));
-        mLooper.dispatchAll();
-
-        verify(mBroadcastQueue).queueOrSendBroadcast(
-                eq(mClientModeManager), mQueuedBroadcastCaptor.capture());
-        mQueuedBroadcastCaptor.getValue().send();
-
-        verify(mContext).sendStickyBroadcastAsUser(mIntentCaptor.capture(), eq(UserHandle.ALL));
-        Intent intent = mIntentCaptor.getValue();
-        assertThat(intent.getAction()).isEqualTo(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION);
-        assertThat(intent.<SupplicantState>getParcelableExtra(WifiManager.EXTRA_NEW_STATE))
-                .isEqualTo(SupplicantState.AUTHENTICATING);
-        assertThat(intent.getIntExtra(WifiManager.EXTRA_SUPPLICANT_ERROR, 0))
-                .isEqualTo(WifiManager.ERROR_AUTHENTICATING);
+        mSupplicantStateTracker.sendMessage(getSupplicantStateChangeMessage(0, sWifiSsid,
+                sBSSID, SupplicantState.AUTHENTICATING));
     }
 
     /**
@@ -159,24 +153,28 @@ public class SupplicantStateTrackerTest extends WifiBaseTest {
      */
     @Test
     public void testReasonCodeInSupplicantStateChangeIntent() {
+        BroadcastReceiver wifiBroadcastReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                assertTrue(action.equals(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION));
+                SupplicantState recvdState =
+                        (SupplicantState) intent.getExtra(WifiManager.EXTRA_NEW_STATE, -1);
+                assertEquals(SupplicantState.AUTHENTICATING, recvdState);
+                boolean authStatus =
+                        (boolean) intent.getExtra(WifiManager.EXTRA_SUPPLICANT_ERROR, -1);
+                assertEquals(authStatus, false);
+                int reasonCode = (int)
+                        intent.getExtra(WifiManager.EXTRA_SUPPLICANT_ERROR_REASON, -1);
+                assertEquals(reasonCode, WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD);
+            }
+        };
+        IntentFilter mIntentFilter = new IntentFilter();
+        mIntentFilter.addAction(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION);
+        mContext.registerReceiver(wifiBroadcastReceiver, mIntentFilter);
         mSupplicantStateTracker.sendMessage(WifiMonitor.AUTHENTICATION_FAILURE_EVENT,
                 WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD, -1);
-        mSupplicantStateTracker.sendMessage(getSupplicantStateChangeMessage(0, WIFI_SSID,
-                BSSID, SupplicantState.AUTHENTICATING));
-        mLooper.dispatchAll();
-
-        verify(mBroadcastQueue).queueOrSendBroadcast(
-                eq(mClientModeManager), mQueuedBroadcastCaptor.capture());
-        mQueuedBroadcastCaptor.getValue().send();
-
-        verify(mContext).sendStickyBroadcastAsUser(mIntentCaptor.capture(), eq(UserHandle.ALL));
-        Intent intent = mIntentCaptor.getValue();
-        assertThat(intent.getAction()).isEqualTo(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION);
-        assertThat(intent.<SupplicantState>getParcelableExtra(WifiManager.EXTRA_NEW_STATE))
-                .isEqualTo(SupplicantState.AUTHENTICATING);
-        assertThat(intent.getIntExtra(WifiManager.EXTRA_SUPPLICANT_ERROR, 0))
-                .isEqualTo(WifiManager.ERROR_AUTHENTICATING);
-        assertThat(intent.getIntExtra(WifiManager.EXTRA_SUPPLICANT_ERROR_REASON, -1))
-                .isEqualTo(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD);
+        mSupplicantStateTracker.sendMessage(getSupplicantStateChangeMessage(0, sWifiSsid,
+                sBSSID, SupplicantState.AUTHENTICATING));
     }
 }

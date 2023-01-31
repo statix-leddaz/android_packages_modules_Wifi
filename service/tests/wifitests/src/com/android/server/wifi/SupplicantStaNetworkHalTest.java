@@ -21,9 +21,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyByte;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
@@ -43,13 +41,11 @@ import android.hardware.wifi.supplicant.V1_0.SupplicantStatus;
 import android.hardware.wifi.supplicant.V1_0.SupplicantStatusCode;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiEnterpriseConfig;
-import android.net.wifi.WifiManager;
 import android.os.RemoteException;
 import android.text.TextUtils;
 
 import androidx.test.filters.SmallTest;
 
-import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.util.NativeUtil;
 import com.android.wifi.resources.R;
 
@@ -59,7 +55,6 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.util.ArrayList;
-import java.util.BitSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -82,33 +77,22 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
     private SupplicantStaNetworkHal mSupplicantNetwork;
     private SupplicantStatus mStatusSuccess;
     private SupplicantStatus mStatusFailure;
-    private android.hardware.wifi.supplicant.V1_4.SupplicantStatus mStatusSuccessV14;
-    private android.hardware.wifi.supplicant.V1_4.SupplicantStatus mStatusFailureV14;
     @Mock private ISupplicantStaNetwork mISupplicantStaNetworkMock;
     @Mock
     private android.hardware.wifi.supplicant.V1_2.ISupplicantStaNetwork mISupplicantStaNetworkV12;
     @Mock
     private android.hardware.wifi.supplicant.V1_3.ISupplicantStaNetwork mISupplicantStaNetworkV13;
-    @Mock
-    private android.hardware.wifi.supplicant.V1_4.ISupplicantStaNetwork mISupplicantStaNetworkV14;
     @Mock private Context mContext;
     @Mock private WifiMonitor mWifiMonitor;
-    @Mock private WifiGlobals mWifiGlobals;
-    private long mAdvanceKeyMgmtFeatures = 0;
 
     private SupplicantNetworkVariables mSupplicantVariables;
     private MockResources mResources;
     private ISupplicantStaNetworkCallback mISupplicantStaNetworkCallback;
-    private android.hardware.wifi.supplicant.V1_4.ISupplicantStaNetworkCallback
-            mISupplicantStaNetworkCallbackV14;
-    private static final String TEST_DECORATED_IDENTITY_PREFIX = "androidwifi.dev!";
 
     enum SupplicantStaNetworkVersion {
         V1_0,
-        V1_1,
         V1_2,
         V1_3,
-        V1_4,
     }
 
     /**
@@ -118,10 +102,8 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
     private class SupplicantStaNetworkHalSpyV1_2 extends SupplicantStaNetworkHal {
         SupplicantStaNetworkHalSpyV1_2(ISupplicantStaNetwork iSupplicantStaNetwork,
                 String ifaceName,
-                Context context, WifiMonitor monitor, WifiGlobals wifiGlobals,
-                long advanceKeyMgmtFeatures) {
-            super(iSupplicantStaNetwork, ifaceName, context, monitor, wifiGlobals,
-                    advanceKeyMgmtFeatures);
+                Context context, WifiMonitor monitor) {
+            super(iSupplicantStaNetwork, ifaceName, context, monitor);
         }
 
         @Override
@@ -138,10 +120,8 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
     private class SupplicantStaNetworkHalSpyV1_3 extends SupplicantStaNetworkHalSpyV1_2 {
         SupplicantStaNetworkHalSpyV1_3(ISupplicantStaNetwork iSupplicantStaNetwork,
                 String ifaceName,
-                Context context, WifiMonitor monitor, WifiGlobals wifiGlobals,
-                long advanceKeyMgmtFeatures) {
-            super(iSupplicantStaNetwork, ifaceName, context, monitor, wifiGlobals,
-                    advanceKeyMgmtFeatures);
+                Context context, WifiMonitor monitor) {
+            super(iSupplicantStaNetwork, ifaceName, context, monitor);
         }
 
         @Override
@@ -151,43 +131,16 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         }
     }
 
-    /**
-     * Spy used to return the V1_4 ISupplicantStaNetwork mock object to simulate the 1.4 HAL running
-     * on the device.
-     */
-    private class SupplicantStaNetworkHalSpyV1_4 extends SupplicantStaNetworkHalSpyV1_3 {
-        SupplicantStaNetworkHalSpyV1_4(ISupplicantStaNetwork iSupplicantStaNetwork,
-                String ifaceName,
-                Context context, WifiMonitor monitor, WifiGlobals wifiGlobals,
-                long advanceKeyMgmtFeatures) {
-            super(iSupplicantStaNetwork, ifaceName, context, monitor, wifiGlobals,
-                    advanceKeyMgmtFeatures);
-        }
-
-        @Override
-        protected android.hardware.wifi.supplicant.V1_4.ISupplicantStaNetwork
-                getSupplicantStaNetworkForV1_4Mockable() {
-            return mISupplicantStaNetworkV14;
-        }
-    }
-
     @Before
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
         mStatusSuccess = createSupplicantStatus(SupplicantStatusCode.SUCCESS);
         mStatusFailure = createSupplicantStatus(SupplicantStatusCode.FAILURE_UNKNOWN);
-        mStatusSuccessV14 = createSupplicantStatusV1_4(
-                android.hardware.wifi.supplicant.V1_4.SupplicantStatusCode.SUCCESS);
-        mStatusFailureV14 = createSupplicantStatusV1_4(
-                android.hardware.wifi.supplicant.V1_4.SupplicantStatusCode.FAILURE_UNKNOWN);
         mSupplicantVariables = new SupplicantNetworkVariables();
         setupISupplicantNetworkMock();
 
         mResources = new MockResources();
         when(mContext.getResources()).thenReturn(mResources);
-        when(mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()).thenReturn(true);
-
-        mAdvanceKeyMgmtFeatures |= WifiManager.WIFI_FEATURE_WPA3_SUITE_B;
         createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_0);
     }
 
@@ -241,8 +194,15 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
     @Test
     public void testPskPassphraseNetworkWifiConfigurationSaveLoad() throws Exception {
         WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
+        config.requirePmf = true;
 
         // Set the new defaults
+        config.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.GCMP_256);
+        config.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
+        config.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.GCMP_256);
+        config.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
+        config.allowedGroupManagementCiphers
+                .set(WifiConfiguration.GroupMgmtCipher.BIP_GMAC_256);
         testWifiConfigurationSaveLoad(config);
         verify(mISupplicantStaNetworkMock).setPskPassphrase(anyString());
         verify(mISupplicantStaNetworkMock)
@@ -251,13 +211,9 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         verify(mISupplicantStaNetworkMock, never())
                 .getPsk(any(ISupplicantStaNetwork.getPskCallback.class));
         verify(mISupplicantStaNetworkMock)
-                .setPairwiseCipher(ISupplicantStaNetwork.PairwiseCipherMask.TKIP
-                        | ISupplicantStaNetwork.PairwiseCipherMask.CCMP);
+                .setPairwiseCipher(ISupplicantStaNetwork.PairwiseCipherMask.CCMP);
         verify(mISupplicantStaNetworkMock)
-                .setGroupCipher(ISupplicantStaNetwork.GroupCipherMask.WEP40
-                        | ISupplicantStaNetwork.GroupCipherMask.WEP104
-                        | ISupplicantStaNetwork.GroupCipherMask.TKIP
-                        | ISupplicantStaNetwork.GroupCipherMask.CCMP);
+                .setGroupCipher(ISupplicantStaNetwork.GroupCipherMask.CCMP);
     }
 
     /**
@@ -284,9 +240,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
     public void testPskNetworkWifiConfigurationSaveRemovesPskQuotes() throws Exception {
         WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
         config.preSharedKey = "\"quoted_psd\"";
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
         assertEquals(mSupplicantVariables.pskPassphrase,
                 NativeUtil.removeEnclosingQuotes(config.preSharedKey));
@@ -374,7 +327,7 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_2);
 
         WifiConfiguration config = WifiConfigurationTestUtil.createEapSuiteBNetwork();
-        config.enableSuiteBCiphers(false, true);
+        config.allowedSuiteBCiphers.set(WifiConfiguration.SuiteBCipher.ECDHE_RSA);
 
         testWifiConfigurationSaveLoad(config);
         verify(mISupplicantStaNetworkV12, never()).enableSuiteBEapOpenSslCiphers();
@@ -400,7 +353,7 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_2);
 
         WifiConfiguration config = WifiConfigurationTestUtil.createEapSuiteBNetwork();
-        config.enableSuiteBCiphers(true, false);
+        config.allowedSuiteBCiphers.set(WifiConfiguration.SuiteBCipher.ECDHE_ECDSA);
 
         testWifiConfigurationSaveLoad(config);
         verify(mISupplicantStaNetworkV12).enableSuiteBEapOpenSslCiphers();
@@ -430,7 +383,7 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
         config.enterpriseConfig =
                 WifiConfigurationTestUtil.createTLSWifiEnterpriseConfigWithNonePhase2();
-        config.enableFils(true, false);
+        config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.FILS_SHA256);
         config.enterpriseConfig.setFieldValue(WifiEnterpriseConfig.EAP_ERP, "1");
         testWifiConfigurationSaveLoad(config);
         // Check the supplicant variables to ensure that we have added the FILS AKM.
@@ -495,10 +448,23 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
             }
         }).when(mISupplicantStaNetworkMock).setSsid(any(ArrayList.class));
 
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertFalse(mSupplicantNetwork.saveWifiConfiguration(config));
+    }
+
+    /**
+     * Tests the failure to save invalid key mgmt (unknown bit set in the
+     * {@link WifiConfiguration#allowedKeyManagement} being saved).
+     */
+    @Test
+    public void testInvalidKeyMgmtSaveFailure() throws Exception {
+        WifiConfiguration config = WifiConfigurationTestUtil.createWepHiddenNetwork();
+        config.allowedKeyManagement.set(20);
+        try {
+            assertFalse(mSupplicantNetwork.saveWifiConfiguration(config));
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        assertTrue(false);
     }
 
     /**
@@ -509,9 +475,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
     public void testInvalidBssidSaveFailure() throws Exception {
         WifiConfiguration config = WifiConfigurationTestUtil.createWepHiddenNetwork();
         config.getNetworkSelectionStatus().setNetworkSelectionBSSID("45:34:23:12");
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         try {
             assertFalse(mSupplicantNetwork.saveWifiConfiguration(config));
         } catch (IllegalArgumentException e) {
@@ -778,9 +741,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_0);
 
         WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
 
         // Check the supplicant variables to ensure that we have added the FT flags.
@@ -803,9 +763,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_0);
 
         WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
 
         // Check the supplicant variables to ensure that we have added the FT flags.
@@ -827,9 +784,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
         // Now expose the V1.2 ISupplicantStaNetwork
         createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_2);
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
 
         // Check the supplicant variables to ensure that we have added the SHA256 flags.
@@ -853,9 +807,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
         // Now expose the V1.2 ISupplicantStaNetwork
         createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_2);
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
 
         // Check the supplicant variables to ensure that we have added the SHA256 flags.
@@ -877,9 +828,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
     @Test
     public void testAddPskSha256FlagsHal1_1OrLower() throws Exception {
         WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
 
         // Check the supplicant variables to ensure that we have NOT added the SHA256 flags.
@@ -895,9 +843,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
     @Test
     public void testAddEapSha256FlagsHal1_1OrLower() throws Exception {
         WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
 
         // Check the supplicant variables to ensure that we have NOT added the SHA256 flags.
@@ -918,65 +863,10 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         config.enterpriseConfig.setClientCertificateAlias("test_alias");
         config.enterpriseConfig.setOcsp(WifiEnterpriseConfig.OCSP_REQUIRE_CERT_STATUS);
 
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
 
         // Check the supplicant variables to ensure that we have NOT change the OCSP status.
         assertEquals(WifiEnterpriseConfig.OCSP_NONE, mSupplicantVariables.ocsp);
-    }
-
-    /**
-     * Tests the addition of multiple AKM when the device supports it.
-     */
-    @Test
-    public void testAddPskSaeAkmWhenAutoUpgradeOffloadIsSupported() throws Exception {
-        createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_2);
-
-        WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
-        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
-
-        // Check the supplicant variables to ensure that we have added the FT flags.
-        assertEquals(ISupplicantStaNetwork.KeyMgmtMask.WPA_PSK,
-                (mSupplicantVariables.keyMgmtMask & ISupplicantStaNetwork.KeyMgmtMask.WPA_PSK));
-        assertEquals(android.hardware.wifi.supplicant.V1_2.ISupplicantStaNetwork.KeyMgmtMask.SAE,
-                (mSupplicantVariables.keyMgmtMask & android.hardware.wifi.supplicant.V1_2
-                .ISupplicantStaNetwork.KeyMgmtMask.SAE));
-
-        WifiConfiguration loadConfig = new WifiConfiguration();
-        Map<String, String> networkExtras = new HashMap<>();
-        assertTrue(mSupplicantNetwork.loadWifiConfiguration(loadConfig, networkExtras));
-        // The additional SAE AMK should be stripped out when reading it back.
-        WifiConfigurationTestUtil.assertConfigurationEqualForSupplicant(config, loadConfig);
-    }
-
-    /**
-     * Tests the addition of multiple AKM when the device does not support it.
-     */
-    @Test
-    public void testAddPskSaeAkmWhenAutoUpgradeOffloadIsNotSupported() throws Exception {
-        when(mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()).thenReturn(false);
-        createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_2);
-
-        WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
-        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
-
-        // Check the supplicant variables to ensure that we have added the FT flags.
-        assertEquals(ISupplicantStaNetwork.KeyMgmtMask.WPA_PSK,
-                (mSupplicantVariables.keyMgmtMask & ISupplicantStaNetwork.KeyMgmtMask.WPA_PSK));
-        assertEquals(0,
-                (mSupplicantVariables.keyMgmtMask & android.hardware.wifi.supplicant.V1_2
-                .ISupplicantStaNetwork.KeyMgmtMask.SAE));
-
-        WifiConfiguration loadConfig = new WifiConfiguration();
-        Map<String, String> networkExtras = new HashMap<>();
-        assertTrue(mSupplicantNetwork.loadWifiConfiguration(loadConfig, networkExtras));
-        WifiConfigurationTestUtil.assertConfigurationEqualForSupplicant(config, loadConfig);
     }
 
     /**
@@ -1008,26 +898,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         when(mISupplicantStaNetworkMock.registerCallback(any(ISupplicantStaNetworkCallback.class)))
                 .thenReturn(mStatusFailure);
         WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
-        assertFalse(mSupplicantNetwork.saveWifiConfiguration(config));
-    }
-
-    /**
-     * Tests that callback registration failure triggers a failure in saving network config.
-     */
-    @Test
-    public void testSaveFailureDueToCallbackRegV1_4() throws Exception {
-        createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_4);
-        when(mISupplicantStaNetworkV14.registerCallback_1_4(any(
-                        android.hardware.wifi.supplicant.V1_4
-                        .ISupplicantStaNetworkCallback.class)))
-                .thenReturn(mStatusFailureV14);
-        WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertFalse(mSupplicantNetwork.saveWifiConfiguration(config));
     }
 
@@ -1037,9 +907,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
     @Test
     public void testNetworkEapGsmAuthCallback() throws Exception {
         WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
         assertNotNull(mISupplicantStaNetworkCallback);
 
@@ -1072,9 +939,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
     @Test
     public void testNetworkEapUmtsAuthCallback() throws Exception {
         WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
         assertNotNull(mISupplicantStaNetworkCallback);
 
@@ -1100,9 +964,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
     @Test
     public void testNetworkIdentityCallback() throws Exception {
         WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
         assertNotNull(mISupplicantStaNetworkCallback);
 
@@ -1119,26 +980,13 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
             config.allowedPairwiseCiphers.clear(WifiConfiguration.PairwiseCipher.GCMP_256);
             config.allowedGroupCiphers.clear(WifiConfiguration.GroupCipher.GCMP_256);
         }
-        if (mSupplicantNetwork.getSupplicantStaNetworkForV1_3Mockable() == null) {
-            // Clear unsupported settings in HAL v1.0
-            config.allowedPairwiseCiphers.clear(WifiConfiguration.PairwiseCipher.SMS4);
-            config.allowedGroupCiphers.clear(WifiConfiguration.GroupCipher.SMS4);
-        }
-        if (mSupplicantNetwork.getSupplicantStaNetworkForV1_4Mockable() == null) {
-            // Clear unsupported settings in HAL v1.0
-            config.allowedPairwiseCiphers.clear(WifiConfiguration.PairwiseCipher.GCMP_128);
-            config.allowedGroupCiphers.clear(WifiConfiguration.GroupCipher.GCMP_128);
-        }
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         // Save the configuration using the default supplicant network HAL v1.0
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
         WifiConfiguration loadConfig = new WifiConfiguration();
         Map<String, String> networkExtras = new HashMap<>();
         assertTrue(mSupplicantNetwork.loadWifiConfiguration(loadConfig, networkExtras));
         WifiConfigurationTestUtil.assertConfigurationEqualForSupplicant(config, loadConfig);
-        assertEquals(config.getProfileKey(),
+        assertEquals(config.getKey(),
                 networkExtras.get(SupplicantStaNetworkHal.ID_STRING_KEY_CONFIG_KEY));
         assertEquals(
                 config.creatorUid,
@@ -1186,9 +1034,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
     public void testFetchEapAnonymousIdentity() {
         WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
         config.enterpriseConfig.setAnonymousIdentity(ANONYMOUS_IDENTITY);
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
         assertEquals(ANONYMOUS_IDENTITY, mSupplicantNetwork.fetchEapAnonymousIdentity());
     }
@@ -1204,9 +1049,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
         config.enterpriseConfig =
                 WifiConfigurationTestUtil.createTLSWifiEnterpriseConfigWithNonePhase2();
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
 
         ArrayList<Byte> serializedData = new ArrayList<>();
@@ -1222,9 +1064,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
         config.enterpriseConfig =
                 WifiConfigurationTestUtil.createTLSWifiEnterpriseConfigWithNonePhase2();
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
 
         ArrayList<Byte> serializedData = new ArrayList<>();
@@ -1232,308 +1071,36 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         assertNull(mSupplicantVariables.serializedPmkCache);
     }
 
-    /** Verifies that setSaeH2eMode works on HAL 1.4 or newer */
-    @Test
-    public void testEnableSaeH2eOnlyMode() throws Exception {
-        when(mWifiGlobals.isWpa3SaeH2eSupported()).thenReturn(true);
-        // Now expose the V1.4 ISupplicantStaNetwork
-        createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_4);
-
-        WifiConfiguration config = WifiConfigurationTestUtil.createSaeNetwork();
-        config.enableSaeH2eOnlyMode(true);
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
-        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
-        verify(mISupplicantStaNetworkV14).setSaeH2eMode(
-                eq(android.hardware.wifi.supplicant.V1_4
-                        .ISupplicantStaNetwork.SaeH2eMode.H2E_MANDATORY));
-    }
-
-    /** Verifies that setSaeH2eMode works on HAL 1.4 or newer */
-    @Test
-    public void testDisableSaeH2eOnlyMode() throws Exception {
-        when(mWifiGlobals.isWpa3SaeH2eSupported()).thenReturn(true);
-        // Now expose the V1.4 ISupplicantStaNetwork
-        createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_4);
-
-        WifiConfiguration config = WifiConfigurationTestUtil.createSaeNetwork();
-        config.enableSaeH2eOnlyMode(false);
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
-        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
-        verify(mISupplicantStaNetworkV14).setSaeH2eMode(
-                eq(android.hardware.wifi.supplicant.V1_4
-                        .ISupplicantStaNetwork.SaeH2eMode.H2E_OPTIONAL));
-    }
-
-    /** Verifies that setSaeH2eMode works on HAL 1.4 or newer */
-    @Test
-    public void testDisableSaeH2eOnlyModeWhenH2eNotSupported() throws Exception {
-        when(mWifiGlobals.isWpa3SaeH2eSupported()).thenReturn(false);
-        // Now expose the V1.4 ISupplicantStaNetwork
-        createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_4);
-
-        WifiConfiguration config = WifiConfigurationTestUtil.createSaeNetwork();
-        config.enableSaeH2eOnlyMode(false);
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
-        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
-        verify(mISupplicantStaNetworkV14).setSaeH2eMode(
-                eq(android.hardware.wifi.supplicant.V1_4
-                        .ISupplicantStaNetwork.SaeH2eMode.DISABLED));
-    }
-
-    /** Verifies that setSaeH2eMode won't break 1.3 or older HAL. */
-    @Test
-    public void testSaeH2eOnlyModeWithHal1_3OrLower() throws Exception {
-        when(mWifiGlobals.isWpa3SaeH2eSupported()).thenReturn(true);
-        // Now expose the V1.3 ISupplicantStaNetwork
-        createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_3);
-
-        WifiConfiguration config = WifiConfigurationTestUtil.createSaeNetwork();
-        config.enableSaeH2eOnlyMode(true);
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
-        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
-        verify(mISupplicantStaNetworkV14, never()).setSaeH2eMode(anyByte());
-    }
-
     /**
      * Tests the saving/loading of WifiConfiguration to wpa_supplicant with psk passphrase for
      * HAL v1.2 or higher
      */
     @Test
-    public void testSaeNetworkWifiConfigurationSaveLoad1_4OrHigher() throws Exception {
-        createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_4);
-        WifiConfiguration config = WifiConfigurationTestUtil.createSaeNetwork();
+    public void testPskPassphraseNetworkWifiConfigurationSaveLoad1_2OrHigher() throws Exception {
+        createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_2);
+        WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
+        config.requirePmf = true;
 
         // Set the new defaults
+        config.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.GCMP_256);
+        config.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
+        config.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.GCMP_256);
+        config.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
         testWifiConfigurationSaveLoad(config);
-        verify(mISupplicantStaNetworkV12).setSaePassword(anyString());
-        verify(mISupplicantStaNetworkV12, never())
-                .getSaePassword(any(android.hardware.wifi.supplicant.V1_2.ISupplicantStaNetwork
-                        .getSaePasswordCallback.class));
+        verify(mISupplicantStaNetworkMock).setPskPassphrase(anyString());
+        verify(mISupplicantStaNetworkMock)
+                .getPskPassphrase(any(ISupplicantStaNetwork.getPskPassphraseCallback.class));
         verify(mISupplicantStaNetworkMock, never()).setPsk(any(byte[].class));
         verify(mISupplicantStaNetworkMock, never())
                 .getPsk(any(ISupplicantStaNetwork.getPskCallback.class));
-
-        verify(mISupplicantStaNetworkV14)
-                .setPairwiseCipher_1_4(ISupplicantStaNetwork.PairwiseCipherMask.CCMP
-                        | android.hardware.wifi.supplicant.V1_4.ISupplicantStaNetwork
-                        .PairwiseCipherMask.GCMP_128
+        verify(mISupplicantStaNetworkV12)
+                .setPairwiseCipher_1_2(ISupplicantStaNetwork.PairwiseCipherMask.CCMP
                         | android.hardware.wifi.supplicant.V1_2.ISupplicantStaNetwork
                         .PairwiseCipherMask.GCMP_256);
-        verify(mISupplicantStaNetworkV14)
-                .setGroupCipher_1_4(ISupplicantStaNetwork.GroupCipherMask.CCMP
-                        | android.hardware.wifi.supplicant.V1_4.ISupplicantStaNetwork
-                        .GroupCipherMask.GCMP_128
+        verify(mISupplicantStaNetworkV12)
+                .setGroupCipher_1_2(ISupplicantStaNetwork.GroupCipherMask.CCMP
                         | android.hardware.wifi.supplicant.V1_2.ISupplicantStaNetwork
                         .GroupCipherMask.GCMP_256);
-    }
-
-    private int putAllSupportingPairwiseCiphersAndReturnExpectedHalCiphersValue(
-            WifiConfiguration config,
-            SupplicantStaNetworkVersion version) {
-        int halMaskValue = 0;
-
-        // The default security params is used in the test.
-        BitSet allowedPairwiseCiphers = config.getDefaultSecurityParams()
-                .getAllowedPairwiseCiphers();
-        // These are supported from v1.4
-        if (allowedPairwiseCiphers.get(WifiConfiguration.PairwiseCipher.GCMP_128)
-                && version.ordinal() >= SupplicantStaNetworkVersion.V1_4.ordinal()) {
-            halMaskValue |= android.hardware.wifi.supplicant
-                    .V1_4.ISupplicantStaNetwork
-                    .PairwiseCipherMask.GCMP_128;
-        }
-
-        // These are supported from v1.3
-        if (allowedPairwiseCiphers.get(WifiConfiguration.PairwiseCipher.SMS4)
-                && version.ordinal() >= SupplicantStaNetworkVersion.V1_3.ordinal()) {
-            halMaskValue |= android.hardware.wifi.supplicant
-                    .V1_3.ISupplicantStaNetwork
-                    .PairwiseCipherMask.SMS4;
-        }
-
-        // These are supported from v1.2
-        if (allowedPairwiseCiphers.get(WifiConfiguration.PairwiseCipher.GCMP_256)
-                && version.ordinal() >= SupplicantStaNetworkVersion.V1_2.ordinal()) {
-            halMaskValue |= android.hardware.wifi.supplicant
-                    .V1_2.ISupplicantStaNetwork
-                    .PairwiseCipherMask.GCMP_256;
-        }
-
-        // There are supported from v1.0
-        if (allowedPairwiseCiphers.get(WifiConfiguration.PairwiseCipher.CCMP)) {
-            halMaskValue |= ISupplicantStaNetwork.PairwiseCipherMask.CCMP;
-        }
-
-        return halMaskValue;
-    }
-
-    private int putAllSupportingGroupCiphersAndReturnExpectedHalCiphersValue(
-            WifiConfiguration config,
-            SupplicantStaNetworkVersion version) {
-        int halMaskValue = 0;
-        // The default security params is used in the test.
-        BitSet allowedGroupCiphers = config.getDefaultSecurityParams().getAllowedGroupCiphers();
-
-        // These are supported from v1.4
-        if (allowedGroupCiphers.get(WifiConfiguration.GroupCipher.GCMP_128)
-                && version.ordinal() >= SupplicantStaNetworkVersion.V1_4.ordinal()) {
-            halMaskValue |= android.hardware.wifi.supplicant
-                    .V1_4.ISupplicantStaNetwork
-                    .GroupCipherMask.GCMP_128;
-        }
-
-        // These are supported from v1.2
-        if (allowedGroupCiphers.get(WifiConfiguration.GroupCipher.GCMP_256)
-                && version.ordinal() >= SupplicantStaNetworkVersion.V1_2.ordinal()) {
-            halMaskValue |= android.hardware.wifi.supplicant
-                    .V1_2.ISupplicantStaNetwork
-                    .GroupCipherMask.GCMP_256;
-        }
-
-        // There are supported from v1.0
-        if (allowedGroupCiphers.get(WifiConfiguration.GroupCipher.CCMP)) {
-            halMaskValue |= ISupplicantStaNetwork.GroupCipherMask.CCMP;
-        }
-
-        return halMaskValue;
-    }
-
-    /**
-     * Tests the saving/loading of WifiConfiguration with
-     * unsupporting GCMP-256 ciphers for V1.2 HAL.
-     *
-     * GCMP-256 is supported only if WPA3 SUITE-B is supported.
-     */
-    @Test
-    public void testUnsupportingGcmp256Ciphers1_2OrHigher()
-            throws Exception {
-        mAdvanceKeyMgmtFeatures = 0;
-        createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_2);
-        WifiConfiguration config = WifiConfigurationTestUtil.createSaeNetwork();
-        int expectedHalPairwiseCiphers =
-                putAllSupportingPairwiseCiphersAndReturnExpectedHalCiphersValue(config,
-                        SupplicantStaNetworkVersion.V1_2);
-        expectedHalPairwiseCiphers &= ~android.hardware.wifi.supplicant.V1_2.ISupplicantStaNetwork
-                .PairwiseCipherMask.GCMP_256;
-        int expectedHalGroupCiphers =
-                putAllSupportingGroupCiphersAndReturnExpectedHalCiphersValue(config,
-                        SupplicantStaNetworkVersion.V1_2);
-        expectedHalGroupCiphers &= ~android.hardware.wifi.supplicant.V1_2.ISupplicantStaNetwork
-                .GroupCipherMask.GCMP_256;
-
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
-        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
-        WifiConfiguration loadConfig = new WifiConfiguration();
-        Map<String, String> networkExtras = new HashMap<>();
-        assertTrue(mSupplicantNetwork.loadWifiConfiguration(loadConfig, networkExtras));
-
-        verify(mISupplicantStaNetworkV12).setPairwiseCipher_1_2(expectedHalPairwiseCiphers);
-        verify(mISupplicantStaNetworkV12).setGroupCipher_1_2(expectedHalGroupCiphers);
-    }
-
-    private void testUnsupportingCiphers(SupplicantStaNetworkVersion version) throws Exception {
-        createSupplicantStaNetwork(version);
-        WifiConfiguration config = WifiConfigurationTestUtil.createSaeNetwork();
-        int expectedHalPairwiseCiphers =
-                putAllSupportingPairwiseCiphersAndReturnExpectedHalCiphersValue(config, version);
-        int expectedHalGroupCiphers =
-                putAllSupportingGroupCiphersAndReturnExpectedHalCiphersValue(config, version);
-
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
-        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
-        WifiConfiguration loadConfig = new WifiConfiguration();
-        Map<String, String> networkExtras = new HashMap<>();
-        assertTrue(mSupplicantNetwork.loadWifiConfiguration(loadConfig, networkExtras));
-
-        switch (version) {
-            case V1_0:
-            // No new cipher added in V1.1
-            case V1_1:
-                verify(mISupplicantStaNetworkMock)
-                        .setPairwiseCipher(expectedHalPairwiseCiphers);
-                verify(mISupplicantStaNetworkMock)
-                        .setGroupCipher(expectedHalGroupCiphers);
-                break;
-            case V1_2:
-                verify(mISupplicantStaNetworkV12)
-                        .setPairwiseCipher_1_2(expectedHalPairwiseCiphers);
-                verify(mISupplicantStaNetworkV12)
-                        .setGroupCipher_1_2(expectedHalGroupCiphers);
-                break;
-            case V1_3:
-                verify(mISupplicantStaNetworkV13)
-                        .setPairwiseCipher_1_3(expectedHalPairwiseCiphers);
-                verify(mISupplicantStaNetworkV13)
-                        .setGroupCipher_1_3(expectedHalGroupCiphers);
-                break;
-            case V1_4:
-                verify(mISupplicantStaNetworkV14)
-                        .setPairwiseCipher_1_4(expectedHalPairwiseCiphers);
-                verify(mISupplicantStaNetworkV14)
-                        .setGroupCipher_1_4(expectedHalGroupCiphers);
-                break;
-        }
-    }
-
-    /**
-     * Tests the saving/loading of WifiConfiguration with unsupporting ciphers for V1.2 HAL.
-     */
-    @Test
-    public void testUnsupportingCiphers1_2() throws Exception {
-        testUnsupportingCiphers(SupplicantStaNetworkVersion.V1_2);
-    }
-
-    /**
-     * Tests the saving/loading of WifiConfiguration with unsupporting ciphers for V1.3 HAL.
-     */
-    @Test
-    public void testUnsupportingCiphers1_3() throws Exception {
-        testUnsupportingCiphers(SupplicantStaNetworkVersion.V1_3);
-    }
-
-    /**
-     * Tests the saving/loading of WifiConfiguration with unsupporting ciphers for V1.4 HAL.
-     */
-    @Test
-    public void testUnsupportingCiphers1_4() throws Exception {
-        testUnsupportingCiphers(SupplicantStaNetworkVersion.V1_4);
-    }
-
-    /**
-     * Tests the appending decorated identity prefix to anonymous identity and saving to
-     * wpa_supplicant.
-     */
-    @Test
-    public void testEapNetworkSetsDecoratedIdentityPrefix() throws Exception {
-        assumeTrue(SdkLevel.isAtLeastS());
-        createSupplicantStaNetwork(SupplicantStaNetworkVersion.V1_4);
-        WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
-        config.enterpriseConfig.setAnonymousIdentity(ANONYMOUS_IDENTITY);
-        config.enterpriseConfig.setDecoratedIdentityPrefix(TEST_DECORATED_IDENTITY_PREFIX);
-        // Assume that the default params is used for this test.
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                config.getDefaultSecurityParams());
-        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
-        WifiConfiguration loadConfig = new WifiConfiguration();
-        Map<String, String> networkExtras = new HashMap<>();
-        assertTrue(mSupplicantNetwork.loadWifiConfiguration(loadConfig, networkExtras));
-        assertEquals(TEST_DECORATED_IDENTITY_PREFIX
-                + config.enterpriseConfig.getAnonymousIdentity(),
-                loadConfig.enterpriseConfig.getAnonymousIdentity());
-        assertEquals(TEST_DECORATED_IDENTITY_PREFIX + ANONYMOUS_IDENTITY,
-                mSupplicantNetwork.fetchEapAnonymousIdentity());
     }
 
     /**
@@ -1818,24 +1385,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
                 .getGroupCipher_1_3(any(android.hardware.wifi.supplicant.V1_3.ISupplicantStaNetwork
                         .getGroupCipher_1_3Callback.class));
 
-        /** allowedGroupCiphers v1.4 */
-        doAnswer(new AnswerWithArguments() {
-            public android.hardware.wifi.supplicant.V1_4.SupplicantStatus
-                    answer(int mask) throws RemoteException {
-                mSupplicantVariables.groupCipherMask = mask;
-                return mStatusSuccessV14;
-            }
-        }).when(mISupplicantStaNetworkV14).setGroupCipher_1_4(any(int.class));
-        doAnswer(new AnswerWithArguments() {
-            public void answer(android.hardware.wifi.supplicant.V1_4.ISupplicantStaNetwork
-                    .getGroupCipher_1_4Callback cb)
-                    throws RemoteException {
-                cb.onValues(mStatusSuccessV14, mSupplicantVariables.groupCipherMask);
-            }
-        }).when(mISupplicantStaNetworkV14)
-                .getGroupCipher_1_4(any(android.hardware.wifi.supplicant.V1_4.ISupplicantStaNetwork
-                        .getGroupCipher_1_4Callback.class));
-
         /** allowedPairwiseCiphers */
         doAnswer(new AnswerWithArguments() {
             public SupplicantStatus answer(int mask) throws RemoteException {
@@ -1883,41 +1432,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         }).when(mISupplicantStaNetworkV13)
                 .getPairwiseCipher_1_3(any(android.hardware.wifi.supplicant.V1_3
                         .ISupplicantStaNetwork.getPairwiseCipher_1_3Callback.class));
-
-        /** allowedPairwiseCiphers v1.4 */
-        doAnswer(new AnswerWithArguments() {
-            public android.hardware.wifi.supplicant.V1_4.SupplicantStatus
-                    answer(int mask) throws RemoteException {
-                mSupplicantVariables.pairwiseCipherMask = mask;
-                return mStatusSuccessV14;
-            }
-        }).when(mISupplicantStaNetworkV14).setPairwiseCipher_1_4(any(int.class));
-        doAnswer(new AnswerWithArguments() {
-            public void answer(android.hardware.wifi.supplicant.V1_4.ISupplicantStaNetwork
-                    .getPairwiseCipher_1_4Callback cb)
-                    throws RemoteException {
-                cb.onValues(mStatusSuccessV14, mSupplicantVariables.pairwiseCipherMask);
-            }
-        }).when(mISupplicantStaNetworkV14)
-                .getPairwiseCipher_1_4(any(android.hardware.wifi.supplicant.V1_4
-                        .ISupplicantStaNetwork.getPairwiseCipher_1_4Callback.class));
-
-        /** allowedGroupManagementCiphers v1.2 */
-        doAnswer(new AnswerWithArguments() {
-            public SupplicantStatus answer(int mask) throws RemoteException {
-                mSupplicantVariables.groupManagementCipherMask = mask;
-                return mStatusSuccess;
-            }
-        }).when(mISupplicantStaNetworkV12).setGroupMgmtCipher(any(int.class));
-        doAnswer(new AnswerWithArguments() {
-            public void answer(android.hardware.wifi.supplicant.V1_2
-                    .ISupplicantStaNetwork.getGroupMgmtCipherCallback cb)
-                    throws RemoteException {
-                cb.onValues(mStatusSuccess, mSupplicantVariables.groupManagementCipherMask);
-            }
-        }).when(mISupplicantStaNetworkV12)
-                .getGroupMgmtCipher(any(android.hardware.wifi.supplicant.V1_2
-                        .ISupplicantStaNetwork.getGroupMgmtCipherCallback.class));
 
         /** metadata: idstr */
         doAnswer(new AnswerWithArguments() {
@@ -2182,20 +1696,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         }).when(mISupplicantStaNetworkMock)
                 .registerCallback(any(ISupplicantStaNetworkCallback.class));
 
-        /** Callback registration */
-        doAnswer(new AnswerWithArguments() {
-            public android.hardware.wifi.supplicant.V1_4.SupplicantStatus answer(
-                    android.hardware.wifi.supplicant.V1_4
-                    .ISupplicantStaNetworkCallback cb)
-                    throws RemoteException {
-                mISupplicantStaNetworkCallbackV14 = cb;
-                return mStatusSuccessV14;
-            }
-        }).when(mISupplicantStaNetworkV14)
-                .registerCallback_1_4(any(
-                            android.hardware.wifi.supplicant.V1_4
-                            .ISupplicantStaNetworkCallback.class));
-
         /** Suite-B*/
         doAnswer(new AnswerWithArguments() {
             public SupplicantStatus answer(boolean enable) throws RemoteException {
@@ -2258,27 +1758,10 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
                 return mStatusSuccess;
             }
         }).when(mISupplicantStaNetworkV13).setEapErp(any(boolean.class));
-
-        /** setSaeH2eMode */
-        doAnswer(new AnswerWithArguments() {
-            public android.hardware.wifi.supplicant.V1_4.SupplicantStatus
-                    answer(byte mode) throws RemoteException {
-                mSupplicantVariables.saeH2eMode = mode;
-                return mStatusSuccessV14;
-            }
-        }).when(mISupplicantStaNetworkV14).setSaeH2eMode(any(byte.class));
     }
 
     private SupplicantStatus createSupplicantStatus(int code) {
         SupplicantStatus status = new SupplicantStatus();
-        status.code = code;
-        return status;
-    }
-
-    private android.hardware.wifi.supplicant.V1_4.SupplicantStatus
-            createSupplicantStatusV1_4(int code) {
-        android.hardware.wifi.supplicant.V1_4.SupplicantStatus status =
-                new android.hardware.wifi.supplicant.V1_4.SupplicantStatus();
         status.code = code;
         return status;
     }
@@ -2290,23 +1773,15 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         switch (version) {
             case V1_0:
                 mSupplicantNetwork = new SupplicantStaNetworkHal(
-                        mISupplicantStaNetworkMock, IFACE_NAME, mContext, mWifiMonitor,
-                        mWifiGlobals, mAdvanceKeyMgmtFeatures);
+                        mISupplicantStaNetworkMock, IFACE_NAME, mContext, mWifiMonitor);
                 break;
             case V1_2:
                 mSupplicantNetwork = new SupplicantStaNetworkHalSpyV1_2(
-                        mISupplicantStaNetworkMock, IFACE_NAME, mContext, mWifiMonitor,
-                        mWifiGlobals, mAdvanceKeyMgmtFeatures);
+                        mISupplicantStaNetworkMock, IFACE_NAME, mContext, mWifiMonitor);
                 break;
             case V1_3:
                 mSupplicantNetwork = new SupplicantStaNetworkHalSpyV1_3(
-                        mISupplicantStaNetworkMock, IFACE_NAME, mContext, mWifiMonitor,
-                        mWifiGlobals, mAdvanceKeyMgmtFeatures);
-                break;
-            case V1_4:
-                mSupplicantNetwork = new SupplicantStaNetworkHalSpyV1_4(
-                        mISupplicantStaNetworkMock, IFACE_NAME, mContext, mWifiMonitor,
-                        mWifiGlobals, mAdvanceKeyMgmtFeatures);
+                        mISupplicantStaNetworkMock, IFACE_NAME, mContext, mWifiMonitor);
                 break;
         }
         mSupplicantNetwork.enableVerboseLogging(true);
@@ -2322,7 +1797,6 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         public int authAlgMask;
         public int groupCipherMask;
         public int pairwiseCipherMask;
-        public int groupManagementCipherMask;
         public boolean scanSsid;
         public boolean requirePmf;
         public String idStr;
@@ -2350,6 +1824,5 @@ public class SupplicantStaNetworkHalTest extends WifiBaseTest {
         public ArrayList<Byte> serializedPmkCache;
         public String wapiCertSuite;
         public boolean eapErp;
-        public byte saeH2eMode;
     }
 }

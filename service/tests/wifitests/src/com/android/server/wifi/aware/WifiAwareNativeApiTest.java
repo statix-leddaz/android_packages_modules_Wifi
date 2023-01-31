@@ -20,7 +20,6 @@ import static android.hardware.wifi.V1_0.NanCipherSuiteType.SHARED_KEY_128_MASK;
 import static android.hardware.wifi.V1_0.NanCipherSuiteType.SHARED_KEY_256_MASK;
 
 import static org.hamcrest.core.IsEqual.equalTo;
-import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.eq;
@@ -554,20 +553,6 @@ public class WifiAwareNativeApiTest extends WifiBaseTest {
                 /* expectedCipherSuite */ 0);
     }
 
-    /**
-     * Validate disable Aware will pass to the NAN interface, and trigger releaseAware.
-     * @throws Exception
-     */
-    @Test
-    public void testDisableConfigRequest() throws Exception {
-        WifiStatus status = new WifiStatus();
-        status.code = WifiStatusCode.SUCCESS;
-        when(mIWifiNanIfaceMock.disableRequest(anyShort())).thenReturn(status);
-        assertTrue(mDut.disable((short) 10));
-        verify(mIWifiNanIfaceMock).disableRequest((short) 10);
-        verify(mWifiAwareNativeManagerMock).releaseAware();
-    }
-
     // utilities
 
     private void setPowerConfigurationParams(byte interactive5, byte interactive24, byte idle5,
@@ -610,7 +595,7 @@ public class WifiAwareNativeApiTest extends WifiBaseTest {
         mIsInterface12 = isHal12;
 
         mDut.enableAndConfigure(transactionId, configRequest, notifyIdentityChange,
-                initialConfiguration, isInteractive, isIdle, false, false);
+                initialConfiguration, isInteractive, isIdle, false);
 
         ArgumentCaptor<NanEnableRequest> enableReqCaptor = ArgumentCaptor.forClass(
                 NanEnableRequest.class);
