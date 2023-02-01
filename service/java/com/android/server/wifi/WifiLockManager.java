@@ -37,8 +37,11 @@ import android.util.Pair;
 import android.util.SparseArray;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.proto.WifiStatsLog;
+import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.server.wifi.util.WorkSourceUtil;
+import com.android.wifi.resources.R;
 
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -90,10 +93,13 @@ public class WifiLockManager {
     private int mFullLowLatencyLocksAcquired;
     private int mFullLowLatencyLocksReleased;
     private long mCurrentSessionStartTimeMs;
+    private final DeviceConfigFacade mDeviceConfigFacade;
+    private final WifiPermissionsUtil mWifiPermissionsUtil;
 
     WifiLockManager(Context context, BatteryStatsManager batteryStats,
             ActiveModeWarden activeModeWarden, FrameworkFacade frameworkFacade,
-            Handler handler, Clock clock, WifiMetrics wifiMetrics) {
+            Handler handler, Clock clock, WifiMetrics wifiMetrics,
+            DeviceConfigFacade deviceConfigFacade, WifiPermissionsUtil wifiPermissionsUtil) {
         mContext = context;
         mBatteryStats = batteryStats;
         mActiveModeWarden = activeModeWarden;
@@ -102,6 +108,8 @@ public class WifiLockManager {
         mHandler = handler;
         mClock = clock;
         mWifiMetrics = wifiMetrics;
+        mDeviceConfigFacade = deviceConfigFacade;
+        mWifiPermissionsUtil = wifiPermissionsUtil;
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_SCREEN_ON);
@@ -165,34 +173,46 @@ public class WifiLockManager {
         return canActivateLowLatencyLock(0, null);
     }
 
-    // Detect UIDs going foreground/background
+    private void onAppForeground(final int uid, final int importance) {
+        mHandler.post(() -> {
+            UidRec uidRec = mLowLatencyUidWatchList.get(uid);
+            if (uidRec == null) {
+                // Not a uid in the watch list
+                return;
+            }
+
+            boolean newModeIsFg = isAppForeground(uid, importance);
+            if (uidRec.mIsFg == newModeIsFg) {
+                return; // already at correct state
+            }
+
+            uidRec.mIsFg = newModeIsFg;
+            updateOpMode();
+
+            // If conditions for lock activation are met,
+            // then UID either share the blame, or removed from sharing
+            // whether to start or stop the blame based on UID fg/bg state
+            if (canActivateLowLatencyLock(
+                    isAppScreenOnExempted(uid) ? IGNORE_SCREEN_STATE_MASK : 0)) {
+                setBlameLowLatencyUid(uid, uidRec.mIsFg);
+            }
+        });
+    }
+
+    // Detect UIDs going,
+    //          - Foreground <-> Background
+    //          - Foreground service <-> Background
     private void registerUidImportanceTransitions() {
         mActivityManager.addOnUidImportanceListener(new ActivityManager.OnUidImportanceListener() {
             @Override
             public void onUidImportance(final int uid, final int importance) {
-                mHandler.post(() -> {
-                    UidRec uidRec = mLowLatencyUidWatchList.get(uid);
-                    if (uidRec == null) {
-                        // Not a uid in the watch list
-                        return;
-                    }
-
-                    boolean newModeIsFg = (importance
-                            == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND);
-                    if (uidRec.mIsFg == newModeIsFg) {
-                        return; // already at correct state
-                    }
-
-                    uidRec.mIsFg = newModeIsFg;
-                    updateOpMode();
-
-                    // If conditions for lock activation are met,
-                    // then UID either share the blame, or removed from sharing
-                    // whether to start or stop the blame based on UID fg/bg state
-                    if (canActivateLowLatencyLock()) {
-                        setBlameLowLatencyUid(uid, uidRec.mIsFg);
-                    }
-                });
+                onAppForeground(uid, importance);
+            }
+        }, ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND);
+        mActivityManager.addOnUidImportanceListener(new ActivityManager.OnUidImportanceListener() {
+            @Override
+            public void onUidImportance(final int uid, final int importance) {
+                onAppForeground(uid, importance);
             }
         }, ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE);
     }
@@ -213,6 +233,12 @@ public class WifiLockManager {
         // This is to make sure worksource value can not be changed by caller
         // after function returns.
         WorkSource newWorkSource = new WorkSource(ws);
+        // High perf lock is deprecated from Android U onwards. Acquisition of  High perf lock
+        // will be treated as a call to Low Latency Lock.
+        if (mDeviceConfigFacade.isHighPerfLockDeprecated() && SdkLevel.isAtLeastU()
+                && lockMode == WifiManager.WIFI_MODE_FULL_HIGH_PERF) {
+            lockMode = WifiManager.WIFI_MODE_FULL_LOW_LATENCY;
+        }
         return addLock(new WifiLock(lockMode, tag, binder, newWorkSource));
     }
 
@@ -250,7 +276,11 @@ public class WifiLockManager {
             return WifiManager.WIFI_MODE_FULL_LOW_LATENCY;
         }
 
-        if (mScreenOn && countFgLowLatencyUids() > 0) {
+        if (mScreenOn && countFgLowLatencyUids(false) > 0) {
+            return WifiManager.WIFI_MODE_FULL_LOW_LATENCY;
+        }
+
+        if (!mScreenOn && countFgLowLatencyUids(true) > 0) {
             return WifiManager.WIFI_MODE_FULL_LOW_LATENCY;
         }
 
@@ -430,6 +460,30 @@ public class WifiLockManager {
         return true;
     }
 
+    private boolean isAppForeground(final int uid, final int importance) {
+        if ((importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND)) {
+            return true;
+        }
+        // Exemption for applications running with CAR Mode permissions.
+        if (mWifiPermissionsUtil.checkRequestCompanionProfileAutomotiveProjectionPermission(uid)
+                && (importance
+                <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE)) {
+            return true;
+        }
+        // Add any exemption cases for applications regarding restricting Low latency locks to
+        // running in the foreground.
+        return false;
+    }
+
+    private boolean isAppScreenOnExempted(int uid) {
+        // Exemption for applications running with CAR Mode permissions.
+        if (mWifiPermissionsUtil.checkRequestCompanionProfileAutomotiveProjectionPermission(uid)) {
+            return true;
+        }
+        // Add more exemptions here
+        return false;
+    }
+
     private void addUidToLlWatchList(int uid) {
         UidRec uidRec = mLowLatencyUidWatchList.get(uid);
         if (uidRec != null) {
@@ -440,11 +494,13 @@ public class WifiLockManager {
             mLowLatencyUidWatchList.put(uid, uidRec);
 
             // Now check if the uid is running in foreground
-            if (mFrameworkFacade.isAppForeground(mContext, uid)) {
+            if (isAppForeground(uid,
+                    mContext.getSystemService(ActivityManager.class).getUidImportance(uid))) {
                 uidRec.mIsFg = true;
             }
 
-            if (canActivateLowLatencyLock(0, uidRec)) {
+            if (canActivateLowLatencyLock(isAppScreenOnExempted(uid) ? IGNORE_SCREEN_STATE_MASK : 0,
+                    uidRec)) {
                 // Share the blame for this uid
                 setBlameLowLatencyUid(uid, true);
             }
@@ -603,7 +659,7 @@ public class WifiLockManager {
     private boolean resetCurrentMode(@NonNull ClientModeManager clientModeManager) {
         switch (mCurrentOpMode) {
             case WifiManager.WIFI_MODE_FULL_HIGH_PERF:
-                if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+                if (!setPowerSave(clientModeManager, ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
                         true)) {
                     Log.e(TAG, "Failed to reset the OpMode from hi-perf to Normal");
                     return false;
@@ -633,13 +689,28 @@ public class WifiLockManager {
     }
 
     /**
+     * Set power save mode with an overlay check. It's a wrapper for
+     * {@link ClientModeImpl#setPowerSave(int, boolean)}.
+     */
+    private boolean setPowerSave(@NonNull ClientModeManager clientModeManager,
+            @ClientMode.PowerSaveClientType int client, boolean ps) {
+        // Check the overlay allows lock to control chip power save.
+        if (mContext.getResources().getBoolean(
+                R.bool.config_wifiLowLatencyLockDisableChipPowerSave)) {
+            return clientModeManager.setPowerSave(client, ps);
+        }
+        // Otherwise, pretend the call is a success.
+        return true;
+    }
+
+    /**
      * Set the new lock mode on the given ClientModeManager
      * @return true if the operation succeeded, false otherwise
      */
     private boolean setNewMode(@NonNull ClientModeManager clientModeManager, int newLockMode) {
         switch (newLockMode) {
             case WifiManager.WIFI_MODE_FULL_HIGH_PERF:
-                if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+                if (!setPowerSave(clientModeManager, ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
                         false)) {
                     Log.e(TAG, "Failed to set the OpMode to hi-perf");
                     return false;
@@ -728,7 +799,7 @@ public class WifiLockManager {
                 return false;
             }
 
-            if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+            if (!setPowerSave(clientModeManager, ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
                     !enabled)) {
                 Log.e(TAG, "Failed to set power save mode");
                 // Revert the low latency mode
@@ -737,7 +808,7 @@ public class WifiLockManager {
             }
         } else if (lowLatencySupport == LOW_LATENCY_NOT_SUPPORTED) {
             // Only set power save mode
-            if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+            if (!setPowerSave(clientModeManager, ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
                     !enabled)) {
                 Log.e(TAG, "Failed to set power save mode");
                 return false;
@@ -756,13 +827,17 @@ public class WifiLockManager {
         return null;
     }
 
-    private int countFgLowLatencyUids() {
+    private int countFgLowLatencyUids(boolean isScreenOnExempted) {
         int uidCount = 0;
         int listSize = mLowLatencyUidWatchList.size();
         for (int idx = 0; idx < listSize; idx++) {
             UidRec uidRec = mLowLatencyUidWatchList.valueAt(idx);
             if (uidRec.mIsFg) {
-                uidCount++;
+                if (isScreenOnExempted) {
+                    if (isAppScreenOnExempted(uidRec.mUid)) uidCount++;
+                } else {
+                    uidCount++;
+                }
             }
         }
         return uidCount;

@@ -54,6 +54,10 @@ public final class Characteristics implements Parcelable {
     public static final String KEY_MAX_SUBSCRIBE_NUMBER = "key_max_subscribe_number";
     /** @hide */
     public static final String KEY_MAX_NDI_NUMBER = "key_max_ndi_number";
+    /** @hide */
+    public static final String KEY_SUPPORT_NAN_PAIRING = "key_support_nan_pairing";
+    /** @hide */
+    public static final String KEY_SUPPORT_SUSPENSION = "key_support_suspension";
 
     private final Bundle mCharacteristics;
 
@@ -158,6 +162,25 @@ public final class Characteristics implements Parcelable {
             throw new UnsupportedOperationException();
         }
         return mCharacteristics.getBoolean(KEY_IS_INSTANT_COMMUNICATION_MODE_SUPPORTED);
+    }
+
+    /**
+     * Check if the Aware Pairing is supported. The Aware Pairing is defined as per Wi-Fi Alliance
+     * (WFA) Wi-Fi Aware specifications version 4.0 Section 7.6.
+     * @return True if supported, false otherwise.
+     */
+    public boolean isAwarePairingSupported() {
+        return mCharacteristics.getBoolean(KEY_SUPPORT_NAN_PAIRING);
+    }
+
+    /**
+     * Check if Aware Suspension is supported. Aware Suspension is a mechanism of putting an Aware
+     * connection in and out of a low-power mode while preserving the discovery sessions and data
+     * paths.
+     * @return True if supported, false otherwise.
+     */
+    public boolean isSuspensionSupported() {
+        return mCharacteristics.getBoolean(KEY_SUPPORT_SUSPENSION);
     }
 
     /** @hide */

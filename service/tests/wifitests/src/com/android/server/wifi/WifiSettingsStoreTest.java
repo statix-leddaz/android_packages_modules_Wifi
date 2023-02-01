@@ -38,6 +38,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -52,6 +53,7 @@ import android.provider.Settings;
 
 import androidx.test.filters.SmallTest;
 
+import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
 import com.android.wifi.resources.R;
 
 import org.junit.Before;
@@ -139,7 +141,8 @@ public class WifiSettingsStoreTest extends WifiBaseTest {
                 Settings.Global.WIFI_ON, WIFI_ENABLED_APM_OVERRIDE);
         verify(mFrameworkFacade).setSecureIntegerSetting(
                 mContext, WIFI_APM_STATE, WIFI_REMAINS_ON_IN_APM);
-        verify(mNotificationManager).notify(anyInt(), any(Notification.class));
+        verify(mNotificationManager).notify(eq(SystemMessage.NOTE_WIFI_APM_NOTIFICATION),
+                any(Notification.class));
         verify(mFrameworkFacade).setSecureIntegerSetting(
                 mContext, APM_WIFI_ENABLED_NOTIFICATION, NOTIFICATION_SHOWN);
 
@@ -176,7 +179,8 @@ public class WifiSettingsStoreTest extends WifiBaseTest {
         mLooper.dispatchAll();
         verify(mFrameworkFacade).setIntegerSetting(mContentResolver,
                 Settings.Global.WIFI_ON, WIFI_ENABLED_APM_OVERRIDE);
-        verify(mNotificationManager, never()).notify(anyInt(), any(Notification.class));
+        verify(mNotificationManager, never()).notify(eq(SystemMessage.NOTE_WIFI_APM_NOTIFICATION),
+                any(Notification.class));
         verify(mFrameworkFacade, never()).setSecureIntegerSetting(
                 mContext, APM_WIFI_NOTIFICATION, NOTIFICATION_SHOWN);
 
@@ -187,7 +191,8 @@ public class WifiSettingsStoreTest extends WifiBaseTest {
 
         mWifiSettingsStore.handleAirplaneModeToggled();
         mLooper.dispatchAll();
-        verify(mNotificationManager).notify(anyInt(), any(Notification.class));
+        verify(mNotificationManager).notify(eq(SystemMessage.NOTE_WIFI_APM_NOTIFICATION),
+                any(Notification.class));
         verify(mFrameworkFacade).setSecureIntegerSetting(
                 mContext, APM_WIFI_NOTIFICATION, NOTIFICATION_SHOWN);
 

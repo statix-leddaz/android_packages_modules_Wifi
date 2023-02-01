@@ -38,10 +38,12 @@ import android.net.wifi.WifiScanner.WifiBand;
 import android.net.wifi.util.ScanResultUtil;
 import android.os.BatteryStatsManager;
 import android.os.Binder;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.os.Process;
 import android.os.RemoteException;
 import android.os.WorkSource;
 import android.util.ArrayMap;
@@ -58,6 +60,7 @@ import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.ClientModeImpl;
 import com.android.server.wifi.Clock;
 import com.android.server.wifi.WifiInjector;
+import com.android.server.wifi.WifiLocalServices;
 import com.android.server.wifi.WifiLog;
 import com.android.server.wifi.WifiMetrics;
 import com.android.server.wifi.WifiNative;
@@ -114,17 +117,30 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
         }
     }
 
+    private boolean isPlatformOrTargetSdkLessThanU(String packageName, int uid) {
+        if (!SdkLevel.isAtLeastU()) {
+            return true;
+        }
+        return mWifiPermissionsUtil.isTargetSdkLessThan(packageName,
+                Build.VERSION_CODES.UPSIDE_DOWN_CAKE, uid);
+    }
+
     @Override
     public Bundle getAvailableChannels(@WifiBand int band, String packageName,
-            @Nullable String attributionTag) {
+            @Nullable String attributionTag, Bundle extras) {
         int uid = Binder.getCallingUid();
-        long ident = Binder.clearCallingIdentity();
-        try {
-            enforcePermission(uid, packageName, attributionTag, false, false, false);
-        } finally {
-            Binder.restoreCallingIdentity(ident);
+        if (isPlatformOrTargetSdkLessThanU(packageName, uid)) {
+            long ident = Binder.clearCallingIdentity();
+            try {
+                enforcePermission(uid, packageName, attributionTag, false, false, false);
+            } finally {
+                Binder.restoreCallingIdentity(ident);
+            }
+        } else {
+            mWifiPermissionsUtil.enforceNearbyDevicesPermission(
+                    extras.getParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE),
+                    true, TAG + " getAvailableChannels");
         }
-
         ChannelSpec[][] channelSpecs = mWifiThreadRunner.call(() -> {
             if (mChannelHelper == null) return new ChannelSpec[0][0];
             mChannelHelper.updateChannels();
@@ -360,6 +376,8 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
             notifyFailure(listener, WifiScanner.REASON_NOT_AUTHORIZED, "Not authorized");
             return;
         }
+        mLastCallerInfoManager.put(WifiManager.API_WIFI_SCANNER_START_SCAN, Process.myTid(),
+                uid, Binder.getCallingPid(), packageName, true);
         mWifiThreadRunner.post(() -> {
             ExternalClientInfo client = (ExternalClientInfo) mClients.get(listener);
             if (client == null) {
@@ -601,6 +619,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
 
     public void startService() {
         mWifiThreadRunner.post(() -> {
+            WifiLocalServices.addService(WifiScannerInternal.class, new LocalService());
             mBackgroundScanStateMachine = new WifiBackgroundScanStateMachine(mLooper);
             mSingleScanStateMachine = new WifiSingleScanStateMachine(mLooper);
             mPnoScanStateMachine = new WifiPnoScanStateMachine(mLooper);
@@ -868,10 +887,12 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
                         case WifiNative.WIFI_SCAN_RESULTS_AVAILABLE:
                         case WifiNative.WIFI_SCAN_THRESHOLD_NUM_SCANS:
                         case WifiNative.WIFI_SCAN_THRESHOLD_PERCENT:
-                            reportScanStatusForImpl(mImplIfaceName, STATUS_SUCCEEDED);
+                            reportScanStatusForImpl(mImplIfaceName, STATUS_SUCCEEDED,
+                                    WifiScanner.REASON_SUCCEEDED);
                             break;
                         case WifiNative.WIFI_SCAN_FAILED:
-                            reportScanStatusForImpl(mImplIfaceName, STATUS_FAILED);
+                            reportScanStatusForImpl(mImplIfaceName, STATUS_FAILED,
+                                    WifiScanner.REASON_UNSPECIFIED);
                             break;
                         default:
                             Log.e(TAG, "Unknown scan status event: " + event);
@@ -898,6 +919,14 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
                 public void onScanRestarted() {
                     // should not happen for single scan
                     Log.e(TAG, "Got scan restarted for single scan");
+                }
+
+                /**
+                 * Called to indicate a scan failure
+                 */
+                @Override
+                public void onScanRequestFailed(int errorCode) {
+                    reportScanStatusForImpl(mImplIfaceName, STATUS_FAILED, errorCode);
                 }
             }
 
@@ -977,7 +1006,8 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
                 }
             }
 
-            private void reportScanStatusForImpl(@NonNull String implIfaceName, int newStatus) {
+            private void reportScanStatusForImpl(@NonNull String implIfaceName, int newStatus,
+                    int statusCode) {
                 Integer currentStatus = mStatusPerImpl.get(implIfaceName);
                 if (currentStatus != null && currentStatus == STATUS_PENDING) {
                     mStatusPerImpl.put(implIfaceName, newStatus);
@@ -987,7 +1017,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
                 if (consolidatedStatus == STATUS_SUCCEEDED) {
                     sendMessage(CMD_SCAN_RESULTS_AVAILABLE);
                 } else if (consolidatedStatus == STATUS_FAILED) {
-                    sendMessage(CMD_SCAN_FAILED);
+                    sendMessage(CMD_SCAN_FAILED, statusCode);
                 }
             }
         }
@@ -1199,8 +1229,8 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
                                 WifiMetricsProto.WifiLog.SCAN_UNKNOWN, mActiveScans.size());
                         mWifiMetrics.getScanMetrics().logScanFailed(
                                 WifiMetrics.ScanMetrics.SCAN_TYPE_SINGLE);
-                        sendOpFailedToAllAndClear(mActiveScans, WifiScanner.REASON_UNSPECIFIED,
-                                "Scan failed");
+                        sendOpFailedToAllAndClear(mActiveScans, msg.arg1,
+                                scanErrorCodeToDescriptionString(msg.arg1));
                         transitionTo(mIdleState);
                         return HANDLED;
                     default:
@@ -1612,7 +1642,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
                         sendMessage(CMD_SCAN_RESULTS_AVAILABLE);
                         break;
                     case WifiNative.WIFI_SCAN_FAILED:
-                        sendMessage(CMD_SCAN_FAILED);
+                        sendMessage(CMD_SCAN_FAILED, WifiScanner.REASON_UNSPECIFIED);
                         break;
                     default:
                         Log.e(TAG, "Unknown scan status event: " + event);
@@ -1636,6 +1666,14 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
             public void onScanRestarted() {
                 if (DBG) localLog("onScanRestarted received");
                 sendMessage(CMD_SCAN_RESTARTED);
+            }
+
+            /**
+             * Called to indicate a scan failure
+             */
+            @Override
+            public void onScanRequestFailed(int errorCode) {
+                sendMessage(CMD_SCAN_FAILED, errorCode);
             }
         }
 
@@ -2770,6 +2808,54 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
         }
     }
 
+    private class LocalService extends WifiScannerInternal {
+        @Override
+        public void setScanningEnabled(boolean enable) {
+            WifiScanningServiceImpl.this.setScanningEnabled(enable, Process.myTid(),
+                    mContext.getOpPackageName());
+        }
+
+        @Override
+        public void registerScanListener(@NonNull WifiScannerInternal.ScanListener listener) {
+            WifiScanningServiceImpl.this.registerScanListener(listener,
+                    mContext.getOpPackageName(), mContext.getAttributionTag());
+        }
+
+        @Override
+        public void startScan(WifiScanner.ScanSettings settings,
+                WifiScannerInternal.ScanListener listener,
+                @Nullable WorkSource workSource) {
+            WifiScanningServiceImpl.this.startScan(listener, settings, workSource,
+                    workSource.getPackageName(0), mContext.getAttributionTag());
+        }
+
+        @Override
+        public void stopScan(WifiScannerInternal.ScanListener listener) {
+            WifiScanningServiceImpl.this.stopScan(listener,
+                    mContext.getOpPackageName(), mContext.getAttributionTag());
+        }
+
+        @Override
+        public void startPnoScan(WifiScanner.ScanSettings scanSettings,
+                WifiScanner.PnoSettings pnoSettings,
+                WifiScannerInternal.ScanListener listener) {
+            WifiScanningServiceImpl.this.startPnoScan(listener,
+                    scanSettings, pnoSettings, mContext.getOpPackageName(),
+                    mContext.getAttributionTag());
+        }
+
+        @Override
+        public void stopPnoScan(WifiScannerInternal.ScanListener listener) {
+            WifiScanningServiceImpl.this.stopPnoScan(listener, mContext.getOpPackageName(),
+                    mContext.getAttributionTag());
+        }
+
+        @Override
+        public List<ScanResult> getSingleScanResults() {
+            return mSingleScanStateMachine.filterCachedScanResultsByAge();
+        }
+    }
+
     private static String toString(int uid, ScanSettings settings) {
         StringBuilder sb = new StringBuilder();
         sb.append("ScanSettings[uid=").append(uid);
@@ -2907,6 +2993,27 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
                 // This should never happen because we've validated the incoming type in
                 // |validateScanType|.
                 throw new IllegalArgumentException("Invalid scan type " + type);
+        }
+    }
+
+    /**
+     * Convert Wi-Fi standard error to string
+     */
+    private static String scanErrorCodeToDescriptionString(int errorCode) {
+        switch(errorCode) {
+            case WifiScanner.REASON_BUSY:
+                return "Scan failed - Device or resource busy";
+            case WifiScanner.REASON_ABORT:
+                return "Scan aborted";
+            case WifiScanner.REASON_NO_DEVICE:
+                return "Scan failed - No such device";
+            case WifiScanner.REASON_INVALID_ARGS:
+                return "Scan failed - invalid argument";
+            case WifiScanner.REASON_TIMEOUT:
+                return "Scan failed - Timeout";
+            case WifiScanner.REASON_UNSPECIFIED:
+            default:
+                return "Scan failed - unspecified reason";
         }
     }
 

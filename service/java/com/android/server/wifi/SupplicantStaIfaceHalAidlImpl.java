@@ -26,6 +26,8 @@ import static android.net.wifi.WifiManager.WIFI_FEATURE_OCE;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_OWE;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_PASSPOINT_TERMS_AND_CONDITIONS;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_SAE_PK;
+import static android.net.wifi.WifiManager.WIFI_FEATURE_SET_TLS_MINIMUM_VERSION;
+import static android.net.wifi.WifiManager.WIFI_FEATURE_TLS_V1_3;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_WAPI;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_WFD_R2;
@@ -42,6 +44,7 @@ import android.hardware.wifi.supplicant.DppAkm;
 import android.hardware.wifi.supplicant.DppCurve;
 import android.hardware.wifi.supplicant.DppNetRole;
 import android.hardware.wifi.supplicant.DppResponderBootstrapInfo;
+import android.hardware.wifi.supplicant.INonStandardCertCallback;
 import android.hardware.wifi.supplicant.ISupplicant;
 import android.hardware.wifi.supplicant.ISupplicantStaIface;
 import android.hardware.wifi.supplicant.ISupplicantStaIfaceCallback;
@@ -58,6 +61,8 @@ import android.hardware.wifi.supplicant.QosPolicyRequestType;
 import android.hardware.wifi.supplicant.QosPolicyStatus;
 import android.hardware.wifi.supplicant.QosPolicyStatusCode;
 import android.hardware.wifi.supplicant.RxFilterType;
+import android.hardware.wifi.supplicant.SignalPollResult;
+import android.hardware.wifi.supplicant.SupplicantStatusCode;
 import android.hardware.wifi.supplicant.WifiTechnology;
 import android.hardware.wifi.supplicant.WpaDriverCapabilitiesMask;
 import android.hardware.wifi.supplicant.WpsConfigMethods;
@@ -68,6 +73,7 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiAnnotations;
 import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiKeystore;
 import android.net.wifi.WifiSsid;
 import android.os.Handler;
 import android.os.IBinder;
@@ -120,6 +126,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     private boolean mVerboseLoggingEnabled = false;
     private boolean mVerboseHalLoggingEnabled = false;
     private boolean mServiceDeclared = false;
+    private int mServiceVersion;
 
     // Supplicant HAL interface objects
     private ISupplicant mISupplicant = null;
@@ -135,6 +142,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     @VisibleForTesting
     PmkCacheManager mPmkCacheManager;
     private WifiNative.SupplicantDeathEventHandler mDeathEventHandler;
+    private SupplicantDeathRecipient mSupplicantDeathRecipient;
     private final Context mContext;
     private final WifiMonitor mWifiMonitor;
     private final Handler mEventHandler;
@@ -144,26 +152,26 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     private final WifiGlobals mWifiGlobals;
     private final SsidTranslator mSsidTranslator;
     private CountDownLatch mWaitForDeathLatch;
+    private INonStandardCertCallback mNonStandardCertCallback;
 
     private class SupplicantDeathRecipient implements DeathRecipient {
-        private final IBinder mWho;
         @Override
         public void binderDied() {
+        }
+
+        @Override
+        public void binderDied(@NonNull IBinder who) {
             synchronized (mLock) {
-                Log.w(TAG, "ISupplicant binder died. who=" + mWho + ", service="
+                Log.w(TAG, "ISupplicant binder died. who=" + who + ", service="
                         + getServiceBinderMockable());
-                if (mWho == getServiceBinderMockable()) {
+                if (who == getServiceBinderMockable()) {
                     if (mWaitForDeathLatch != null) {
                         mWaitForDeathLatch.countDown();
                     }
                     Log.w(TAG, "Handle supplicant death");
-                    supplicantServiceDiedHandler(mWho);
+                    supplicantServiceDiedHandler(who);
                 }
             }
-        }
-
-        SupplicantDeathRecipient(IBinder who) {
-            mWho = who;
         }
     }
 
@@ -177,6 +185,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         mWifiMetrics = wifiMetrics;
         mWifiGlobals = wifiGlobals;
         mSsidTranslator = ssidTranslator;
+        mSupplicantDeathRecipient = new SupplicantDeathRecipient();
         mPmkCacheManager = new PmkCacheManager(mClock, mEventHandler);
     }
 
@@ -379,6 +388,15 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         return ServiceManager.isDeclared(HAL_INSTANCE_NAME);
     }
 
+    /**
+     * Check that the service is running at least the expected version.
+     * Use to avoid the case where the framework is using a newer
+     * interface version than the service.
+     */
+    private boolean isServiceVersionIsAtLeast(int expectedVersion) {
+        return expectedVersion <= mServiceVersion;
+    }
+
     private void clearState() {
         synchronized (mLock) {
             Log.i(TAG, "Clearing internal state");
@@ -387,6 +405,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
             mCurrentNetworkLocalConfigs.clear();
             mCurrentNetworkRemoteHandles.clear();
             mLinkedNetworkLocalAndRemoteConfigs.clear();
+            mNonStandardCertCallback = null;
         }
     }
 
@@ -426,15 +445,16 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
             Log.i(TAG, "Local Version: " + ISupplicant.VERSION);
 
             try {
-                Log.i(TAG, "Remote Version: " + mISupplicant.getInterfaceVersion());
+                mServiceVersion = mISupplicant.getInterfaceVersion();
+                Log.i(TAG, "Remote Version: " + mServiceVersion);
                 IBinder serviceBinder = getServiceBinderMockable();
                 if (serviceBinder == null) {
                     return false;
                 }
                 mWaitForDeathLatch = null;
-                serviceBinder.linkToDeath(
-                        new SupplicantDeathRecipient(serviceBinder), /* flags= */  0);
+                serviceBinder.linkToDeath(mSupplicantDeathRecipient, /* flags= */  0);
                 setLogLevel(mVerboseHalLoggingEnabled);
+                registerNonStandardCertCallback();
                 return true;
             } catch (RemoteException e) {
                 handleRemoteException(e, methodStr);
@@ -1056,9 +1076,11 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
             @NonNull String ifaceName, ISupplicantStaNetwork network) {
         synchronized (mLock) {
             SupplicantStaNetworkHalAidlImpl networkWrapper =
-                    new SupplicantStaNetworkHalAidlImpl(network, ifaceName, mContext,
+                    new SupplicantStaNetworkHalAidlImpl(mServiceVersion,
+                            network, ifaceName, mContext,
                             mWifiMonitor, mWifiGlobals,
-                            getAdvancedCapabilities(ifaceName));
+                            getAdvancedCapabilities(ifaceName),
+                            getWpaDriverCapabilities(ifaceName));
             if (networkWrapper != null) {
                 networkWrapper.enableVerboseLogging(
                         mVerboseLoggingEnabled, mVerboseHalLoggingEnabled);
@@ -2572,6 +2594,28 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         }
     }
 
+    private long aidlWpaDrvFeatureSetToFrameworkV2(int drvCapabilitiesMask) {
+        if (!isServiceVersionIsAtLeast(2)) return 0;
+
+        final String methodStr = "getWpaDriverFeatureSetV2";
+        long featureSet = 0;
+
+        if ((drvCapabilitiesMask & WpaDriverCapabilitiesMask.SET_TLS_MINIMUM_VERSION) != 0) {
+            featureSet |= WIFI_FEATURE_SET_TLS_MINIMUM_VERSION;
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, methodStr + ": EAP-TLS minimum version supported");
+            }
+        }
+
+        if ((drvCapabilitiesMask & WpaDriverCapabilitiesMask.TLS_V1_3) != 0) {
+            featureSet |= WIFI_FEATURE_TLS_V1_3;
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, methodStr + ": EAP-TLS v1.3 supported");
+            }
+        }
+        return featureSet;
+    }
+
     /**
      * Get the driver supported features through supplicant.
      *
@@ -2618,6 +2662,8 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                     Log.v(TAG, methodStr + ": Trust-On-First-Use supported");
                 }
             }
+
+            featureSet |= aidlWpaDrvFeatureSetToFrameworkV2(drvCapabilitiesMask);
 
             return featureSet;
         }
@@ -2835,6 +2881,42 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     }
 
     /**
+     * Returns signal poll results for all Wi-Fi links of the interface. Need service version at
+     * least 2 or higher.
+     *
+     * @param ifaceName Name of the interface.
+     * @return Signal poll results or null if error.
+     */
+    public WifiSignalPollResults getSignalPollResults(@NonNull String ifaceName) {
+        if (!isServiceVersionIsAtLeast(2)) return null;
+        synchronized (mLock) {
+            final String methodStr = "getSignalPollResult";
+            ISupplicantStaIface iface = checkStaIfaceAndLogFailure(ifaceName, methodStr);
+            if (iface == null) {
+                return null;
+            }
+            try {
+                SignalPollResult[] halSignalPollResults = iface.getSignalPollResults();
+                if (halSignalPollResults == null) {
+                    return null;
+                }
+                WifiSignalPollResults nativeSignalPollResults =
+                        new WifiSignalPollResults();
+                for (SignalPollResult r : halSignalPollResults) {
+                    nativeSignalPollResults.addEntry(r.linkId, r.currentRssiDbm, r.txBitrateMbps,
+                            r.rxBitrateMbps, r.frequencyMhz);
+                }
+                return nativeSignalPollResults;
+            } catch (RemoteException e) {
+                handleRemoteException(e, methodStr);
+            } catch (ServiceSpecificException e) {
+                handleServiceSpecificException(e, methodStr);
+            }
+            return null;
+        }
+    }
+
+    /**
      * Returns connection MLO links info
      *
      * @param ifaceName Name of the interface.
@@ -2859,10 +2941,10 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                 nativeInfo.links = new WifiNative.ConnectionMloLink[halInfo.links.length];
 
                 for (int i = 0; i < halInfo.links.length; i++) {
-                    nativeInfo.links[i] = new WifiNative.ConnectionMloLink();
-                    nativeInfo.links[i].linkId = halInfo.links[i].linkId;
-                    nativeInfo.links[i].staMacAddress = MacAddress.fromBytes(
-                            halInfo.links[i].staLinkMacAddress);
+                    nativeInfo.links[i] = new WifiNative.ConnectionMloLink(
+                            halInfo.links[i].linkId,
+                            MacAddress.fromBytes(halInfo.links[i].staLinkMacAddress),
+                            halInfo.links[i].tidsUplinkMap, halInfo.links[i].tidsDownlinkMap);
                 }
                 return nativeInfo;
             } catch (RemoteException e) {
@@ -3438,6 +3520,53 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
             // Update cached config after setting native data successfully.
             currentConfig.enterpriseConfig.setAnonymousIdentity(anonymousIdentity);
             return true;
+        }
+    }
+
+    private class NonStandardCertCallback extends INonStandardCertCallback.Stub {
+        @Override
+        public byte[] getBlob(String alias) {
+            Log.i(TAG, "Non-standard certificate requested");
+            byte[] blob = WifiKeystore.get(alias);
+            if (blob != null) {
+                return blob;
+            } else {
+                Log.e(TAG, "Unable to retrieve the blob");
+                throw new ServiceSpecificException(SupplicantStatusCode.FAILURE_UNKNOWN);
+            }
+        }
+
+        @Override
+        public String getInterfaceHash() {
+            return INonStandardCertCallback.HASH;
+        }
+
+        @Override
+        public int getInterfaceVersion() {
+            return INonStandardCertCallback.VERSION;
+        }
+    }
+
+    private void registerNonStandardCertCallback() {
+        synchronized (mLock) {
+            final String methodStr = "registerNonStandardCertCallback";
+            if (!checkSupplicantAndLogFailure(methodStr) || !isServiceVersionIsAtLeast(2)) {
+                return;
+            } else if (mNonStandardCertCallback != null) {
+                Log.i(TAG, "Non-standard cert callback has already been registered");
+                return;
+            }
+
+            try {
+                INonStandardCertCallback tempCallback = new NonStandardCertCallback();
+                mISupplicant.registerNonStandardCertCallback(tempCallback);
+                mNonStandardCertCallback = tempCallback;
+                Log.i(TAG, "Non-standard cert callback was registered");
+            } catch (RemoteException e) {
+                handleRemoteException(e, methodStr);
+            } catch (ServiceSpecificException e) {
+                handleServiceSpecificException(e, methodStr);
+            }
         }
     }
 }

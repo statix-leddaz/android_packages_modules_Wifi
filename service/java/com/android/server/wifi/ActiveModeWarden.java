@@ -46,7 +46,9 @@ import android.net.wifi.IWifiConnectedNetworkScorer;
 import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiManager.DeviceMobilityState;
 import android.net.wifi.WifiScanner;
 import android.os.BatteryStatsManager;
 import android.os.Build;
@@ -63,6 +65,7 @@ import android.os.WorkSource;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.ArraySet;
+import android.util.LocalLog;
 import android.util.Log;
 import android.util.Pair;
 
@@ -71,7 +74,6 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.IState;
 import com.android.internal.util.Preconditions;
 import com.android.internal.util.Protocol;
-import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.ActiveModeManager.ClientConnectivityRole;
@@ -79,6 +81,7 @@ import com.android.server.wifi.ActiveModeManager.ClientInternetConnectivityRole;
 import com.android.server.wifi.ActiveModeManager.ClientRole;
 import com.android.server.wifi.ActiveModeManager.SoftApRole;
 import com.android.server.wifi.util.ApConfigUtil;
+import com.android.server.wifi.util.NativeUtil;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.wifi.resources.R;
 
@@ -142,6 +145,8 @@ public class ActiveModeWarden {
     private boolean mIsShuttingdown = false;
     private boolean mVerboseLoggingEnabled = false;
     private boolean mAllowRootToGetLocalOnlyCmm = true;
+    private @DeviceMobilityState int mDeviceMobilityState =
+            WifiManager.DEVICE_MOBILITY_STATE_UNKNOWN;
     /** Cache to store the external scorer for primary and secondary (MBB) client mode manager. */
     @Nullable private Pair<IBinder, IWifiConnectedNetworkScorer> mClientModeManagerScorer;
 
@@ -158,6 +163,8 @@ public class ActiveModeWarden {
     private final Object mServiceApiLock = new Object();
     @GuardedBy("mServiceApiLock")
     private Network mCurrentNetwork;
+    @GuardedBy("mServiceApiLock")
+    private WifiInfo mCurrentConnectionInfo;
 
     /**
      * One of  {@link WifiManager#WIFI_STATE_DISABLED},
@@ -1327,6 +1334,8 @@ public class ActiveModeWarden {
         }
         pw.println("STA + AP Concurrency Supported: " + mWifiNative.isStaApConcurrencySupported());
         mWifiInjector.getHalDeviceManager().dump(fd, pw, args);
+        pw.println("Wifi handler thread overruns");
+        mWifiInjector.getWifiHandlerLocalLog().dump(fd, pw, args);
     }
 
     @VisibleForTesting
@@ -1649,8 +1658,8 @@ public class ActiveModeWarden {
         static final int CMD_REQUEST_ADDITIONAL_CLIENT_MODE_MANAGER  = BASE + 26;
         static final int CMD_REMOVE_ADDITIONAL_CLIENT_MODE_MANAGER   = BASE + 27;
 
-        private final EnabledState mEnabledState = new EnabledState();
-        private final DisabledState mDisabledState = new DisabledState();
+        private final EnabledState mEnabledState;
+        private final DisabledState mDisabledState;
 
         private boolean mIsInEmergencyCall = false;
         private boolean mIsInEmergencyCallbackMode = false;
@@ -1658,8 +1667,11 @@ public class ActiveModeWarden {
 
         WifiController() {
             super(TAG, mLooper);
-
-            DefaultState defaultState = new DefaultState();
+            final int threshold = mContext.getResources().getInteger(
+                    R.integer.config_wifiConfigurationWifiRunnerThresholdInMs);
+            DefaultState defaultState = new DefaultState(threshold);
+            mEnabledState = new EnabledState(threshold);
+            mDisabledState = new DisabledState(threshold);
             addState(defaultState); {
                 addState(mDisabledState, defaultState);
                 addState(mEnabledState, defaultState);
@@ -1730,6 +1742,10 @@ public class ActiveModeWarden {
                     return "CMD_UPDATE_AP_CONFIG";
                 case CMD_WIFI_TOGGLED:
                     return "CMD_WIFI_TOGGLED";
+                case RunnerState.STATE_ENTER_CMD:
+                    return "Enter";
+                case RunnerState.STATE_EXIT_CMD:
+                    return "Exit";
                 default:
                     return "what:" + what;
             }
@@ -1778,7 +1794,11 @@ public class ActiveModeWarden {
             return recoveryDelayMillis;
         }
 
-        abstract class BaseState extends State {
+        abstract class BaseState extends RunnerState {
+            BaseState(int threshold, @NonNull LocalLog localLog) {
+                super(threshold, localLog);
+            }
+
             @VisibleForTesting
             boolean isInEmergencyMode() {
                 return mIsInEmergencyCall || mIsInEmergencyCallbackMode;
@@ -1903,7 +1923,21 @@ public class ActiveModeWarden {
             }
 
             @Override
-            public final boolean processMessage(Message msg) {
+            public void enterImpl() {
+            }
+
+            @Override
+            public void exitImpl() {
+            }
+
+            @Override
+            String getMessageLogRec(int what) {
+                return ActiveModeWarden.class.getSimpleName() + "."
+                        + DefaultState.class.getSimpleName() + "." + getWhatToString(what);
+            }
+
+            @Override
+            public final boolean processMessageImpl(Message msg) {
                 // potentially enter emergency mode
                 if (msg.what == CMD_EMERGENCY_CALL_STATE_CHANGED
                         || msg.what == CMD_EMERGENCY_MODE_CHANGED) {
@@ -1924,9 +1958,27 @@ public class ActiveModeWarden {
             protected abstract boolean processMessageFiltered(Message msg);
         }
 
-        class DefaultState extends State {
+        class DefaultState extends RunnerState {
+            DefaultState(int threshold) {
+                super(threshold, mWifiInjector.getWifiHandlerLocalLog());
+            }
+
             @Override
-            public boolean processMessage(Message msg) {
+            String getMessageLogRec(int what) {
+                return ActiveModeWarden.class.getSimpleName() + "."
+                        + DefaultState.class.getSimpleName() + "." + getWhatToString(what);
+            }
+
+            @Override
+            void enterImpl() {
+            }
+
+            @Override
+            void exitImpl() {
+            }
+
+            @Override
+            public boolean processMessageImpl(Message msg) {
                 switch (msg.what) {
                     case CMD_SCAN_ALWAYS_MODE_CHANGED:
                     case CMD_EMERGENCY_SCAN_STATE_CHANGED:
@@ -2020,19 +2072,23 @@ public class ActiveModeWarden {
         }
 
         class DisabledState extends BaseState {
+            DisabledState(int threshold) {
+                super(threshold, mWifiInjector.getWifiHandlerLocalLog());
+            }
+
             @Override
-            public void enter() {
+            public void enterImpl() {
                 log("DisabledState.enter()");
-                super.enter();
+                super.enterImpl();
                 if (hasAnyModeManager()) {
                     Log.e(TAG, "Entered DisabledState, but has active mode managers");
                 }
             }
 
             @Override
-            public void exit() {
+            public void exitImpl() {
                 log("DisabledState.exit()");
-                super.exit();
+                super.exitImpl();
             }
 
             @Override
@@ -2110,10 +2166,14 @@ public class ActiveModeWarden {
 
             private boolean mIsDisablingDueToAirplaneMode;
 
+            EnabledState(int threshold) {
+                super(threshold, mWifiInjector.getWifiHandlerLocalLog());
+            }
+
             @Override
-            public void enter() {
+            public void enterImpl() {
                 log("EnabledState.enter()");
-                super.enter();
+                super.enterImpl();
                 if (!hasAnyModeManager()) {
                     Log.e(TAG, "Entered EnabledState, but no active mode managers");
                 }
@@ -2121,12 +2181,12 @@ public class ActiveModeWarden {
             }
 
             @Override
-            public void exit() {
+            public void exitImpl() {
                 log("EnabledState.exit()");
                 if (hasAnyModeManager()) {
                     Log.e(TAG, "Exiting EnabledState, but has active mode managers");
                 }
-                super.exit();
+                super.exitImpl();
             }
 
             @Nullable
@@ -2417,7 +2477,8 @@ public class ActiveModeWarden {
                         ? null : connectedOrConnectingWifiConfiguration.SSID;
         Log.v(TAG, connectedOrConnectingBssid + "   " + connectedOrConnectingSsid);
         return Objects.equals(ssid, connectedOrConnectingSsid)
-                && Objects.equals(bssid, connectedOrConnectingBssid);
+                && (Objects.equals(bssid, connectedOrConnectingBssid)
+                || clientModeManager.isAffiliatedLinkBssid(NativeUtil.getMacAddressOrNull(bssid)));
     }
 
     /**
@@ -2540,6 +2601,25 @@ public class ActiveModeWarden {
     }
 
     /**
+     * Get the current Wifi network connection info.
+     * @return the default Wifi network connection info
+     */
+    public WifiInfo getConnectionInfo() {
+        synchronized (mServiceApiLock) {
+            return mCurrentConnectionInfo;
+        }
+    }
+
+    /**
+     * Update the current connection information.
+     */
+    public void updateCurrentConnectionInfo() {
+        synchronized (mServiceApiLock) {
+            mCurrentConnectionInfo = getPrimaryClientModeManager().getConnectionInfo();
+        }
+    }
+
+    /**
      * Save the supported bands for STA from WiFi HAL to config store.
      * @param bands bands supported
      */
@@ -2557,4 +2637,25 @@ public class ActiveModeWarden {
     private int getStaBandsFromConfigStore() {
         return mWifiInjector.getSettingsConfigStore().get(WIFI_NATIVE_SUPPORTED_STA_BANDS);
     }
+
+    /**
+     * Save the device mobility state when it updates. If the primary client mode manager is
+     * non-null, pass the mobility state to clientModeImpl and update the RSSI polling
+     * interval accordingly.
+     */
+    public void setDeviceMobilityState(@DeviceMobilityState int newState) {
+        mDeviceMobilityState = newState;
+        ClientModeManager cm = getPrimaryClientModeManagerNullable();
+        if (cm != null) {
+            cm.onDeviceMobilityStateUpdated(newState);
+        }
+    }
+
+    /**
+     * Get the current device mobility state
+     */
+    public int getDeviceMobilityState() {
+        return mDeviceMobilityState;
+    }
+
 }

@@ -16,6 +16,8 @@
 
 package com.android.server.wifi;
 
+import static android.net.wifi.WifiManager.AddNetworkResult.STATUS_INVALID_CONFIGURATION_ENTERPRISE;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -45,6 +47,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
 
+import android.Manifest;
 import android.annotation.Nullable;
 import android.app.ActivityManager;
 import android.app.test.MockAnswerUtil.AnswerWithArguments;
@@ -243,6 +246,10 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         mResources.setInteger(
                 R.integer.config_wifiMaxNumWifiConfigurationsAddedByAllApps, 200);
         when(mContext.getResources()).thenReturn(mResources);
+        when(mContext.checkPermission(eq(android.Manifest.permission.NETWORK_SETTINGS),
+                anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_DENIED);
+        when(mContext.checkPermission(eq(Manifest.permission.NETWORK_SETUP_WIZARD),
+                anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_DENIED);
 
         // Setup UserManager profiles for the default user.
         setupUserProfiles(TEST_DEFAULT_USER);
@@ -829,6 +836,49 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                 openNetwork.SSID));
     }
 
+    @Test
+    public void testOverrideWifiConfigModifyAllNetworks() {
+        ArgumentCaptor<WifiConfiguration> wifiConfigCaptor =
+                ArgumentCaptor.forClass(WifiConfiguration.class);
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.checkNetworkSetupWizardPermission(anyInt())).thenReturn(false);
+        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
+        openNetwork.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_AUTO;
+
+        verifyAddNetworkToWifiConfigManager(openNetwork);
+        verify(mWcmListener).onNetworkAdded(wifiConfigCaptor.capture());
+        assertEquals(openNetwork.networkId, wifiConfigCaptor.getValue().networkId);
+        assertNotEquals(WifiConfiguration.INVALID_NETWORK_ID, openNetwork.networkId);
+        reset(mWcmListener);
+
+        // try to modify the network with another UID and assert failure
+        WifiConfiguration configToUpdate = wifiConfigCaptor.getValue();
+        configToUpdate.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_NONE;
+        NetworkUpdateResult result =
+                mWifiConfigManager.addOrUpdateNetwork(configToUpdate, TEST_OTHER_USER_UID);
+        assertEquals(WifiConfiguration.INVALID_NETWORK_ID, result.getNetworkId());
+
+        // give the override wifi config permission and verify success
+        when(mWifiPermissionsUtil.checkConfigOverridePermission(anyInt())).thenReturn(true);
+        result = mWifiConfigManager.addOrUpdateNetwork(configToUpdate, TEST_OTHER_USER_UID);
+        assertEquals(configToUpdate.networkId, result.getNetworkId());
+    }
+
+    @Test
+    public void testAddNetworkDoNotOverrideExistingNetwork() {
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.checkConfigOverridePermission(anyInt())).thenReturn(true);
+        WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
+
+        triggerStoreReadIfNeeded();
+        // Verify add network success for the first time
+        assertNotEquals(WifiConfiguration.INVALID_NETWORK_ID, mWifiConfigManager.addNetwork(
+                config, TEST_CREATOR_UID).getNetworkId());
+        // add the network again and verify it fails due to the same network already existing
+        assertEquals(WifiConfiguration.INVALID_NETWORK_ID, mWifiConfigManager.addNetwork(
+                config, TEST_CREATOR_UID).getNetworkId());
+    }
+
     /**
      * Verifies that the organization owned device admin could modify other other fields in the
      * Wificonfiguration but not the macRandomizationSetting field for networks they do not own.
@@ -857,21 +907,6 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         openNetwork.macRandomizationSetting = WifiConfiguration.RANDOMIZATION_NONE;
         networkUpdateResult = updateNetworkToWifiConfigManager(openNetwork);
         assertEquals(WifiConfiguration.INVALID_NETWORK_ID, networkUpdateResult.getNetworkId());
-    }
-
-    @Test
-    public void testAddNetworkDoNotOverrideExistingNetwork() {
-        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
-        when(mWifiPermissionsUtil.checkConfigOverridePermission(anyInt())).thenReturn(true);
-        WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
-
-        triggerStoreReadIfNeeded();
-        // Verify add network success for the first time
-        assertNotEquals(WifiConfiguration.INVALID_NETWORK_ID, mWifiConfigManager.addNetwork(
-                config, TEST_CREATOR_UID).getNetworkId());
-        // add the network again and verify it fails due to the same network already existing
-        assertEquals(WifiConfiguration.INVALID_NETWORK_ID, mWifiConfigManager.addNetwork(
-                config, TEST_CREATOR_UID).getNetworkId());
     }
 
     /**
@@ -1892,9 +1927,9 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         WifiConfiguration originalNetwork = new WifiConfiguration(network);
 
         // Now set all the public fields to null and try updating the network.
+        // except for allowedKeyManagement which is not allowed to be empty.
         network.allowedAuthAlgorithms.clear();
         network.allowedProtocols.clear();
-        network.allowedKeyManagement.clear();
         network.allowedPairwiseCiphers.clear();
         network.allowedGroupCiphers.clear();
 
@@ -2600,7 +2635,6 @@ public class WifiConfigManagerTest extends WifiBaseTest {
     public void testNonPersistentRandomizationDbsMacAddress() {
         setUpWifiConfigurationForNonPersistentRandomization();
         WifiConfiguration config = getFirstInternalWifiConfiguration();
-        config.dbsSecondaryInternet = true;
         MacAddress randomMac = config.getRandomizedMacAddress();
         MacAddress newMac = mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config,
                 true);
@@ -7586,18 +7620,18 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         mWifiConfigManager.addCustomDhcpOptions(WifiSsid.fromString(TEST_SSID), oui3, option3);
         mLooper.dispatchAll();
         assertEquals(1, mWifiConfigManager.getCustomDhcpOptions(
-                WifiSsid.fromString(TEST_SSID), Arrays.asList(oui1)).size());
+                WifiSsid.fromString(TEST_SSID), Collections.singletonList(oui1)).size());
         assertEquals(1, mWifiConfigManager.getCustomDhcpOptions(
-                WifiSsid.fromString(TEST_SSID), Arrays.asList(oui2)).size());
+                WifiSsid.fromString(TEST_SSID), Collections.singletonList(oui2)).size());
         assertEquals(2, mWifiConfigManager.getCustomDhcpOptions(
                 WifiSsid.fromString(TEST_SSID), Arrays.asList(oui2, oui3)).size());
 
         mWifiConfigManager.removeCustomDhcpOptions(WifiSsid.fromString(TEST_SSID), oui1);
         mLooper.dispatchAll();
         assertEquals(0, mWifiConfigManager.getCustomDhcpOptions(
-                WifiSsid.fromString(TEST_SSID), Arrays.asList(oui1)).size());
-        List<DhcpOption> actual2 = mWifiConfigManager
-                .getCustomDhcpOptions(WifiSsid.fromString(TEST_SSID), Arrays.asList(oui2));
+                WifiSsid.fromString(TEST_SSID), Collections.singletonList(oui1)).size());
+        List<DhcpOption> actual2 = mWifiConfigManager.getCustomDhcpOptions(
+                WifiSsid.fromString(TEST_SSID), Collections.singletonList(oui2));
         assertEquals(option2, actual2);
         List<DhcpOption> actual23 = mWifiConfigManager
                 .getCustomDhcpOptions(WifiSsid.fromString(TEST_SSID), Arrays.asList(oui2, oui3));
@@ -7875,5 +7909,64 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         NetworkUpdateResult result = addNetworkToWifiConfigManager(openNetwork);
 
         assertFalse(result.isSuccess());
+    }
+
+    /**
+     * Verify that if the caller has NETWORK_SETTINGS permission, and the overlay
+     * config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW is set, then it can add an
+     * insecure Enterprise network, with Root CA certificate not set and/or domain name not set.
+     */
+    @Test
+    public void testAddInsecureEnterpriseNetworkWithNetworkSettingsPerm() throws Exception {
+        when(mContext.checkPermission(eq(android.Manifest.permission.NETWORK_SETTINGS),
+                anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_GRANTED);
+
+        // First set flag to not allow
+        when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(false);
+
+        // Create an insecure Enterprise network
+        WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
+        config.enterpriseConfig.setCaPath(null);
+        config.enterpriseConfig.setDomainSuffixMatch(null);
+
+        // Verify operation fails
+        NetworkUpdateResult result = addNetworkToWifiConfigManager(config);
+        assertFalse(result.isSuccess());
+        assertEquals(STATUS_INVALID_CONFIGURATION_ENTERPRISE, result.getStatusCode());
+
+        // Set flag to allow
+        when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(true);
+
+        // Verify operation succeeds
+        assertTrue(addNetworkToWifiConfigManager(config).isSuccess());
+    }
+
+    /**
+     * Verify that if the caller does NOT have NETWORK_SETTINGS permission, then it cannot add an
+     * insecure Enterprise network, with Root CA certificate not set and/or domain name not set,
+     * regardless of the overlay config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW
+     * value.
+     */
+    @Test
+    public void testAddInsecureEnterpriseNetworkWithNoNetworkSettingsPerm() throws Exception {
+
+        // First set flag to not allow
+        when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(false);
+
+        // Create an insecure Enterprise network
+        WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
+        config.enterpriseConfig.setCaPath(null);
+        config.enterpriseConfig.setDomainSuffixMatch(null);
+
+        // Verify operation fails
+        NetworkUpdateResult result = addNetworkToWifiConfigManager(config);
+        assertFalse(result.isSuccess());
+        assertEquals(STATUS_INVALID_CONFIGURATION_ENTERPRISE, result.getStatusCode());
+
+        // Set flag to allow
+        when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(true);
+
+        // Verify operation still fails
+        assertFalse(addNetworkToWifiConfigManager(config).isSuccess());
     }
 }

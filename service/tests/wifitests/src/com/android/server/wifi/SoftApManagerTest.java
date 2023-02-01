@@ -78,6 +78,7 @@ import android.os.UserHandle;
 import android.os.WorkSource;
 import android.os.test.TestLooper;
 import android.provider.Settings;
+import android.util.LocalLog;
 import android.util.SparseIntArray;
 
 import androidx.test.filters.SmallTest;
@@ -166,10 +167,10 @@ public class SoftApManagerTest extends WifiBaseTest {
     private SoftApInfo mTestSoftApInfoOnSecondInstance; // Use for briged Ap mode test case
     private Map<String, SoftApInfo> mTestSoftApInfoMap = new HashMap<>();
     private Map<String, List<WifiClient>> mTestWifiClientsMap = new HashMap<>();
-    private Map<String, List<WifiClient>> mTempConnectedClientListMap = new HashMap<>() {{
-            put(TEST_INTERFACE_NAME, new ArrayList());
-            put(TEST_FIRST_INSTANCE_NAME, new ArrayList());
-            put(TEST_SECOND_INSTANCE_NAME, new ArrayList()); }};
+    private Map<String, List<WifiClient>> mTempConnectedClientListMap = Map.of(
+            TEST_INTERFACE_NAME, new ArrayList(),
+            TEST_FIRST_INSTANCE_NAME, new ArrayList(),
+            TEST_SECOND_INSTANCE_NAME, new ArrayList());
     private SoftApCapability mTestSoftApCapability;
     private List<ClientModeManager> mTestClientModeManagers = new ArrayList<>();
 
@@ -195,6 +196,8 @@ public class SoftApManagerTest extends WifiBaseTest {
     @Mock WifiInfo mSecondWifiInfo;
     @Mock BatteryManager mBatteryManager;
     @Mock InterfaceConflictManager mInterfaceConflictManager;
+    @Mock WifiInjector mWifiInjector;
+    @Mock LocalLog mLocalLog;
 
     final ArgumentCaptor<WifiNative.InterfaceCallback> mWifiNativeInterfaceCallbackCaptor =
             ArgumentCaptor.forClass(WifiNative.InterfaceCallback.class);
@@ -344,11 +347,13 @@ public class SoftApManagerTest extends WifiBaseTest {
         when(mActiveModeWarden.getClientModeManagers())
                 .thenReturn(mTestClientModeManagers);
         mTestClientModeManagers.add(mPrimaryConcreteClientModeManager);
-        when(mPrimaryConcreteClientModeManager.syncRequestConnectionInfo())
+        when(mPrimaryConcreteClientModeManager.getConnectionInfo())
                 .thenReturn(mPrimaryWifiInfo);
-        when(mConcreteClientModeManager.syncRequestConnectionInfo())
+        when(mConcreteClientModeManager.getConnectionInfo())
                 .thenReturn(mPrimaryWifiInfo);
         when(mWifiNative.forceClientDisconnect(any(), any(), anyInt())).thenReturn(true);
+        when(mWifiInjector.getWifiHandlerLocalLog()).thenReturn(mLocalLog);
+        when(mContext.getResources()).thenReturn(mResources);
 
         // Init Test SoftAp infos
         mTestSoftApInfo = new SoftApInfo();
@@ -395,10 +400,7 @@ public class SoftApManagerTest extends WifiBaseTest {
     private SoftApManager createSoftApManager(SoftApModeConfiguration config,
             ActiveModeManager.SoftApRole role) {
         SoftApManager newSoftApManager = new SoftApManager(
-                mContext,
-                mLooper.getLooper(),
-                mFrameworkFacade,
-                mWifiNative,
+                mContext, mLooper.getLooper(), mFrameworkFacade, mWifiNative, mWifiInjector,
                 mCoexManager,
                 mBatteryManager,
                 mInterfaceConflictManager,
@@ -1002,7 +1004,7 @@ public class SoftApManagerTest extends WifiBaseTest {
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
                 mTestSoftApCapability, TEST_COUNTRY_CODE);
         startSoftApAndVerifyEnabled(softApModeConfig);
-
+        verify(mListener, never()).onStopped(mSoftApManager);
         mSoftApManager.stop();
         mLooper.dispatchAll();
         verify(mListener).onStopped(mSoftApManager);
@@ -3155,7 +3157,7 @@ public class SoftApManagerTest extends WifiBaseTest {
         // Prepare second ClientModeManager
         List<ClientModeManager> testClientModeManagers = new ArrayList<>(mTestClientModeManagers);
         testClientModeManagers.add(mSecondConcreteClientModeManager);
-        when(mSecondConcreteClientModeManager.syncRequestConnectionInfo())
+        when(mSecondConcreteClientModeManager.getConnectionInfo())
                 .thenReturn(mSecondWifiInfo);
         when(mActiveModeWarden.getClientModeManagers()).thenReturn(testClientModeManagers);
         // TEST_SUPPORTED_5G_CHANNELS = 36, 149, mark to unsafe. Let Wifi connect to 5200 (CH40)

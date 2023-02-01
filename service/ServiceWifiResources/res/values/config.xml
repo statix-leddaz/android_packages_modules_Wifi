@@ -134,8 +134,10 @@
          config_wifiFrameworkUnmeteredNetworkBonus. -->
     <integer translatable="false" name="config_wifiScoringBucketStepSize">500</integer>
 
-    <!-- The duration in minutes to strongly favor the last-selected network over other options. -->
+    <!-- The duration in minutes to strongly favor the last-selected non-metered network over other options. -->
     <integer translatable="false" name="config_wifiFrameworkLastSelectionMinutes">480</integer>
+    <!-- The duration in minutes to strongly favor the last-selected metered network over other options. -->
+    <integer translatable="false" name="config_wifiFrameworkLastMeteredSelectionMinutes">120</integer>
 
     <!-- Integer specifying the min packet Tx/Rx rates in packets per second to be considered
          active traffic so that network selection and scan could be skipped-->
@@ -550,6 +552,24 @@
     <integer translatable="false" name="config_wifiDisableReasonAuthenticationFailureThreshold"> 3 </integer>
     <integer translatable="false" name="config_wifiDisableReasonDhcpFailureThreshold"> 2 </integer>
     <integer translatable="false" name="config_wifiDisableReasonNetworkNotFoundThreshold"> 2 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonNoInternetTemporaryThreshold"> 1 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonAuthenticationNoCredentialsThreshold"> 3 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonNoInternetPermanentThreshold"> 1 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonByWrongPasswordThreshold"> 1 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonAuthenticationNoSubscriptionThreshold"> 1 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonConsecutiveFailuresThreshold"> 1 </integer>
+
+    <!-- Base duration to set a network disabled after validation failure happen-->
+    <integer translatable="false" name="config_wifiDisableReasonAssociationRejectionDurationMs"> 300000 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonAuthenticationFailureDurationMs"> 300000 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonDhcpFailureDurationMs"> 300000 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonNetworkNotFoundDurationMs"> 300000 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonNoInternetTemporaryDurationMs"> 600000 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonAuthenticationNoCredentialsDurationMs"> -1 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonNoInternetPermanentDurationMs"> -1 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonByWrongPasswordDurationMs"> -1 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonAuthenticationNoSubscriptionDurationMs"> -1 </integer>
+    <integer translatable="false" name="config_wifiDisableReasonConsecutiveFailuresDurationMs"> 300000 </integer>
 
     <!-- List of constants that indicate the number of consecutive failures per type needed to block a BSSID.
     A blocked BSSID will not be considered in network selection and firmware roaming.-->
@@ -570,6 +590,9 @@
     ie. 5/10/20/40/80/160/320/640 minutes - capped at 640 minutes because the default for
     config_wifiBssidBlocklistMonitorFailureStreakCap is set to 7-->
     <integer translatable="false" name="config_wifiBssidBlocklistMonitorBaseBlockDurationMs"> 300000 </integer>
+
+    <!-- Base duration to block a bssid after validation failure happen-->
+    <integer translatable="false" name="config_wifiBssidBlocklistMonitorValidationFailureBaseBlockDurationMs"> 300000 </integer>
 
     <!-- Base duration to block a BSSID after the external connected scorer sets wifi as unusable.
     The block duration is increased exponentially if the same BSSID is repeated marked as unusable.
@@ -645,8 +668,32 @@
          they are coming from the background apps (default = 30 mins). -->
     <integer translatable="false" name="config_wifiRttBackgroundExecGapMs">1800000</integer>
 
-    <!-- Integer indicating the RSSI and link layer stats polling interval in milliseconds when device is connected and screen is on -->
+    <!-- Integer indicating the RSSI and link layer stats polling interval (regular interval) in
+    milliseconds when device is connected and screen is on -->
     <integer translatable="false" name="config_wifiPollRssiIntervalMilliseconds">3000</integer>
+
+    <!-- Integer indicating the RSSI and link layer stats polling interval (long interval) in
+    milliseconds when device is connected and screen is on. The long interval is to reduce
+    power consumption of link layer stats polling. This value should be greater than the regular
+    interval -->
+    <integer translatable="false" name="config_wifiPollRssiLongIntervalMilliseconds">9000</integer>
+
+    <!-- RSSI threshold in dBm to decide the RSSI and link layer stats polling interval, and also
+    for the client mode RSSI monitor. When the polling is enabled, if the device is stationary
+    and current RSSI >= Threshold + Hysteresis value, set long interval and enable RSSI monitoring
+    using the RSSI threshold. If device is non-stationary or current RSSI <= Threshold, set regular
+    interval and disable RSSI monitoring. -->
+    <integer translatable="false" name="config_wifiClientRssiMonitorThresholdDbm">-73</integer>
+
+    <!-- Hysteresis value in dB for the client mode RSSI monitor threshold. After the monitor is
+    enabled with RSSI >= Threshold + Hysteresis value, the RSSI threshold breach only happens
+    when the current RSSI <= Threshold, in order to avoid frequent switch between regular and
+    long polling intervals -->
+    <integer translatable="false" name="config_wifiClientRssiMonitorHysteresisDb">5</integer>
+
+    <!-- Enable the feature of adjusting link layer stats polling interval based on
+    device mobility state and client mode RSSI monitoring. -->
+    <bool translatable="false" name="config_wifiAdjustPollRssiIntervalEnabled">false</bool>
 
     <!-- Override channel utilization estimation with fixed value -->
     <bool translatable="false" name="config_wifiChannelUtilizationOverrideEnabled">true</bool>
@@ -670,6 +717,13 @@
          cause the wifi stack to turn wifi off and wait for user input.
          Set to 0 to turn off recovery attempts and always turn off wifi on failures -->
     <integer translatable="false" name="config_wifiMaxNativeFailureSelfRecoveryPerHour">2</integer>
+
+    <!-- Enable self recovery when an interface is added. -->
+    <bool translatable="false" name="config_wifiInterfaceAddedSelfRecoveryEnabled">false</bool>
+
+    <!-- For which interface to enable self recovery. -->
+    <string translatable="false" name="config_wifiSelfRecoveryInterfaceName">wlan0</string>
+
     <!-- Ignore the open saved network if from carrier provisioning app, there is a same open suggestion and a secure suggestion from same carrier available -->
     <bool translatable="false" name="config_wifiIgnoreOpenSavedNetworkWhenSecureSuggestionAvailable">true</bool>
 
@@ -838,6 +892,9 @@
     <!-- Indicate the number of networks to restore in a batch. 0 : all networks in a batch -->
     <integer translatable="false" name="config_wifiConfigurationRestoreNetworksBatchNum">50</integer>
 
+    <!-- Enables logging for any tasks running on the Wi-Fi thread which take longer than this threshold (in milliseconds) -->
+    <integer translatable="false" name="config_wifiConfigurationWifiRunnerThresholdInMs">100</integer>
+
     <!-- OEM privileged WiFi admin package names. Empty by default-->
     <string-array translatable="false" name="config_oemPrivilegedWifiAdminPackages">
         <!-- Add package names here, example: -->
@@ -915,6 +972,25 @@
     <!-- The world mode country code value definition in the wifi driver -->
     <string translatable="false" name="config_wifiDriverWorldModeCountryCode">00</string>
 
+    <!-- The value indicates if the OOB Pseudonym is Enabled, not override,
+         see config_wifiOobPseudonymEnabled_carrier_overrides. -->
+    <bool translatable="false" name="config_wifiOobPseudonymEnabled">false</bool>
+    <!-- Carrier specific override for enabling the OOB pseudonym feature, only boolean
+         values - true and false are valid input, see examples -->
+    <string-array translatable="false" name="config_wifiOobPseudonymEnabled_carrier_overrides">
+        <!-- example -->
+        <!-- <item><xliff:g id="carrier_id_prefix">:::1234:::</xliff:g>true</item> -->
+        <!-- <item><xliff:g id="carrier_id_prefix">:::5678:::</xliff:g>false</item> -->
+    </string-array>
+    <!-- The URL of entitlement server which is used to get the OOB pseudonym, not
+         override, see config_wifiOobPseudonymEntitlementServerUrl_carrier_overrides -->
+    <string translatable="false" name="config_wifiOobPseudonymEntitlementServerUrl"/>
+    <!-- Carrier specific override for the URL of entitlement server retrieving OOB pseudonym. -->
+    <string-array translatable="false" name="config_wifiOobPseudonymEntitlementServerUrl_carrier_overrides">
+        <!-- example -->
+        <!-- <item><xliff:g id="carrier_id_prefix">:::1234:::</xliff:g>https://example.com/oob</item> -->
+    </string-array>
+
     <!-- Indicates whether or not the AP WAN Link Status ANQP element is used to filter candidate
          networks. Note that even if enabled (overlay = true) that invalid elements (all zeros
          are still ignored).
@@ -962,7 +1038,40 @@
     <!-- boolean indicating whether the caller thread needs to wait for destroyed listeners -->
     <bool translatable="false" name ="config_wifiWaitForDestroyedListeners">false</bool>
 
+    <!-- Indicates the number of channels is allowed to set in a WifiNetworkSpecifier  -->
+    <integer translatable="false" name ="config_wifiNetworkSpecifierMaxPreferredChannels">5</integer>
+
+    <!-- Boolean indicating whether we should enable the STA current connected indoor channel
+     for SAP, WFD GO, Wi-Fi Aware -->
+    <bool translatable="false" name="config_wifiEnableStaIndoorChannelForPeerNetwork">false</bool>
+
+    <!-- Boolean indicating whether we should enable the STA current connected DFS channel
+         for SAP, WFD GO, Wi-Fi Aware -->
+    <bool translatable="false" name="config_wifiEnableStaDfsChannelForPeerNetwork">false</bool>
     <!-- Indicates the number of seconds to delay the next IMSI protection notification after user
          dismiss the current one-->
     <integer translatable="false" name="config_wifiImsiProtectionNotificationDelaySeconds">300</integer>
+    <!-- Boolean indicating whether DTIM multiplier configuration is enabled. DTIM multiplier value
+        is when the system is in the suspended mode. Enabling this feature with the low multiplier
+        in IPv6 mode and the high multiplier in IPv4 only mode ensures the IPv6 address
+        doesn't expire due to missing RA while reducing the power consumption in IPv4 only mode.
+        -->
+    <bool translatable="false" name="config_wifiDtimMultiplierConfigEnabled">false</bool>
+    <!-- Indicates the DTIM multiple value used when the multicast lock is enabled regardless of
+        IP address type -->
+    <integer translatable="false" name="config_wifiDtimMultiplierMulticastLockEnabled">1</integer>
+    <!-- Indicates the DTIM multiple value used when it has only IPv6 address -->
+    <integer translatable="false" name="config_wifiDtimMultiplierIpv6Only">2</integer>
+    <!-- Indicates the DTIM multiple value used when it has only IPv4 address -->
+    <integer translatable="false" name="config_wifiDtimMultiplierIpv4Only">9</integer>
+    <!-- Indicates the DTIM multiple value used when it has both IPv4 and IPv6 addresses -->
+    <integer translatable="false" name="config_wifiDtimMultiplierIpv6Ipv4">2</integer>
+    <!-- Boolean indicating whether the firmware can handle the Wifi Aware request priority between
+    the offloading and framework-->
+    <bool translatable="false" name="config_wifiAwareOffloadingFirmwareHandlePriority">false</bool>
+    <!-- Boolean indicating whether the framework can disable Wi-Fi chip power save while acquiring
+         a low latency lock. If the flag is set to false, chipset should make changes to replace
+         disable of power save to avoid the high latency when chip is in power save mode as part of
+         handling the HAL API setLatencyMode(). -->
+    <bool translatable="false" name ="config_wifiLowLatencyLockDisableChipPowerSave">true</bool>
 </resources>

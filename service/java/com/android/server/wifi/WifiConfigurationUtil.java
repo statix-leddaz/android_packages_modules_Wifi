@@ -616,9 +616,8 @@ public class WifiConfigurationUtil {
                 Log.e(TAG, "validateKeyMgmt failed: not WPA_EAP");
                 return false;
             }
-            if (!keyMgmnt.get(WifiConfiguration.KeyMgmt.IEEE8021X)
-                    && !keyMgmnt.get(WifiConfiguration.KeyMgmt.WPA_PSK)) {
-                Log.e(TAG, "validateKeyMgmt failed: not PSK or 8021X");
+            if (!keyMgmnt.get(WifiConfiguration.KeyMgmt.IEEE8021X)) {
+                Log.e(TAG, "validateKeyMgmt failed: not 8021X");
                 return false;
             }
             // SUITE-B keymgmt must be WPA_EAP + IEEE8021X + SUITE_B_192.
@@ -629,6 +628,11 @@ public class WifiConfigurationUtil {
                 Log.e(TAG, "validateKeyMgmt failed: not SUITE_B_192");
                 return false;
             }
+        }
+        // There should be at least one keymgmt.
+        if (keyMgmnt.cardinality() == 0) {
+            Log.e(TAG, "validateKeyMgmt failed: cardinality = 0");
+            return false;
         }
         return true;
     }
@@ -814,9 +818,11 @@ public class WifiConfigurationUtil {
      * 12. {@link WifiConfiguration#getIpConfiguration()}
      *
      * @param specifier Instance of {@link WifiNetworkSpecifier}.
+     * @param maxChannelsAllowed The max number allowed to set in a WifiNetworkSpecifier
      * @return true if the parameters are valid, false otherwise.
      */
-    public static boolean validateNetworkSpecifier(WifiNetworkSpecifier specifier) {
+    public static boolean validateNetworkSpecifier(WifiNetworkSpecifier specifier,
+            int maxChannelsAllowed) {
         if (!isValidNetworkSpecifier(specifier)) {
             Log.e(TAG, "validateNetworkSpecifier failed : invalid network specifier");
             return false;
@@ -830,6 +836,9 @@ public class WifiConfigurationUtil {
             return false;
         }
         if (!WifiNetworkSpecifier.validateBand(getBand(specifier))) {
+            return false;
+        }
+        if (specifier.getPreferredChannelFrequenciesMhz().length > maxChannelsAllowed) {
             return false;
         }
         WifiConfiguration config = specifier.wifiConfiguration;

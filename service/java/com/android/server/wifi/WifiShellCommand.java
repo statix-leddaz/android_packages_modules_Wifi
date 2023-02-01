@@ -580,7 +580,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 }
                 case "network-requests-remove-user-approved-access-points": {
                     String packageName = getNextArgRequired();
-                    mWifiNetworkFactory.removeUserApprovedAccessPointsForApp(packageName);
+                    mWifiNetworkFactory.removeApp(packageName);
                     return 0;
                 }
                 case "clear-user-disabled-networks": {
@@ -1250,6 +1250,11 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     mActiveModeWarden.emergencyCallStateChanged(enabled);
                     return 0;
                 }
+                case "set-emergency-scan-request": {
+                    boolean enabled = getNextArgRequiredTrueOrFalse("enabled", "disabled");
+                    mWifiService.setEmergencyScanRequestInProgress(enabled);
+                    return 0;
+                }
                 case "trigger-recovery": {
                     mSelfRecovery.trigger(REASON_API_CALL);
                     return 0;
@@ -1769,6 +1774,36 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     }
                     return 0;
                 }
+                case "set-mock-wifimodem-service":
+                    String opt = null;
+                    String serviceName = null;
+                    while ((opt = getNextOption()) != null) {
+                        switch (opt) {
+                            case "-s": {
+                                serviceName = getNextArgRequired();
+                                break;
+                            }
+                            default:
+                                pw.println("set-mock-wifimodem-service requires '-s' option");
+                                return -1;
+                        }
+                    }
+                    mWifiNative.setMockWifiService(serviceName);
+                    // The result will be checked, must print result "true"
+                    pw.print("true");
+                    return 0;
+                case "get-mock-wifimodem-service":
+                    pw.print(mWifiNative.getMockWifiServiceName());
+                    return 0;
+                case "set-mock-wifimodem-methods":
+                    String methods = getNextArgRequired();
+                    if (mWifiNative.setMockWifiMethods(methods)) {
+                        pw.print("true");
+                    } else {
+                        pw.print("fail to set mock method: " + methods);
+                        return -1;
+                    }
+                    return 0;
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -2335,7 +2370,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             // privileged, dump out all the client mode manager manager statuses
             for (ClientModeManager cm : mActiveModeWarden.getClientModeManagers()) {
                 pw.println("==== ClientModeManager instance: " + cm + " ====");
-                WifiInfo info = cm.syncRequestConnectionInfo();
+                WifiInfo info = cm.getConnectionInfo();
                 printWifiInfo(pw, info);
                 if (info.getSupplicantState() != SupplicantState.COMPLETED) {
                     continue;
@@ -2673,6 +2708,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    Sets whether we are in the middle of an emergency call.");
         pw.println("Equivalent to receiving the "
                 + "TelephonyManager.ACTION_EMERGENCY_CALL_STATE_CHANGED broadcast.");
+        pw.println("  set-emergency-scan-request enabled|disabled");
+        pw.println("    Sets whether there is a emergency scan request in progress.");
         pw.println("  network-suggestions-set-as-carrier-provider <packageName> yes|no");
         pw.println("    Set the <packageName> work as carrier provider or not.");
         pw.println("  is-network-suggestions-set-as-carrier-provider <packageName>");

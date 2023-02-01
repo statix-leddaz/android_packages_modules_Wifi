@@ -36,6 +36,7 @@ import static com.android.server.wifi.scanner.WifiScanningServiceImpl.WifiSingle
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.Mockito.any;
@@ -69,6 +70,7 @@ import android.net.wifi.WifiManager;
 import android.net.wifi.WifiScanner;
 import android.os.BatteryStatsManager;
 import android.os.Binder;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.WorkSource;
@@ -86,6 +88,7 @@ import com.android.server.wifi.MockResources;
 import com.android.server.wifi.ScanResults;
 import com.android.server.wifi.WifiBaseTest;
 import com.android.server.wifi.WifiInjector;
+import com.android.server.wifi.WifiLocalServices;
 import com.android.server.wifi.WifiMetrics;
 import com.android.server.wifi.WifiNative;
 import com.android.server.wifi.proto.nano.WifiMetricsProto;
@@ -104,7 +107,6 @@ import org.mockito.Spy;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -147,6 +149,7 @@ public class WifiScanningServiceTest extends WifiBaseTest {
     PresetKnownBandsChannelHelper mChannelHelper1;
     TestLooper mLooper;
     WifiScanningServiceImpl mWifiScanningServiceImpl;
+    private Bundle mExtras = new Bundle();
 
     @Before
     public void setUp() throws Exception {
@@ -195,6 +198,12 @@ public class WifiScanningServiceTest extends WifiBaseTest {
                 anyInt(), eq(Binder.getCallingUid())))
                 .thenReturn(PERMISSION_GRANTED);
         when(mWifiInjector.getLastCallerInfoManager()).thenReturn(mLastCallerInfoManager);
+        // Defaulting apps to target SDK level that's prior to U. This is needed to test for
+        // backward compatibility of API changes.
+        when(mWifiPermissionsUtil.isTargetSdkLessThan(any(),
+                eq(Build.VERSION_CODES.UPSIDE_DOWN_CAKE),
+                anyInt())).thenReturn(true);
+        WifiLocalServices.removeServiceForTest(WifiScannerInternal.class);
         mWifiScanningServiceImpl = new WifiScanningServiceImpl(mContext, mLooper.getLooper(),
                 mWifiScannerImplFactory, mBatteryStats, mWifiInjector);
     }
@@ -593,6 +602,8 @@ public class WifiScanningServiceTest extends WifiBaseTest {
                 0, 20, WifiScanner.REPORT_EVENT_AFTER_EACH_SCAN);
         doSuccessfulSingleScan(requestSettings, computeSingleScanNativeSettings(requestSettings),
                 ScanResults.create(0, WifiScanner.WIFI_BAND_BOTH, new int[0]));
+        verify(mLastCallerInfoManager).put(eq(WifiManager.API_WIFI_SCANNER_START_SCAN), anyInt(),
+                anyInt(), anyInt(), anyString(), eq(true));
     }
 
     /**
@@ -995,12 +1006,13 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         verify(mBatteryStats).reportWifiScanStartedFromSource(eq(workSource));
 
         // but then fails to execute
-        eventHandler.onScanStatus(WifiNative.WIFI_SCAN_FAILED);
+        eventHandler.onScanRequestFailed(WifiScanner.REASON_UNSPECIFIED);
         mLooper.dispatchAll();
         client.verifyFailedResponse(
-                WifiScanner.REASON_UNSPECIFIED, "Scan failed");
+                WifiScanner.REASON_UNSPECIFIED,
+                "Scan failed - unspecified reason");
         assertDumpContainsCallbackLog("singleScanFailed",
-                "reason=" + WifiScanner.REASON_UNSPECIFIED + ", Scan failed");
+                "reason=" + WifiScanner.REASON_UNSPECIFIED + ", Scan failed - unspecified reason");
         verify(mWifiMetrics).incrementOneshotScanCount();
         verify(mWifiMetrics).incrementScanReturnEntry(WifiMetricsProto.WifiLog.SCAN_UNKNOWN, 1);
         verify(mBatteryStats).reportWifiScanStoppedFromSource(eq(workSource));
@@ -1839,10 +1851,9 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         scanResults.getRawScanResults()[1].timestamp = (currentTimeInMillis - 2) * 1000;
         scanResults.getRawScanResults()[2].timestamp =
                 (currentTimeInMillis - CACHED_SCAN_RESULTS_MAX_AGE_IN_MILLIS) * 1000;
-        List<ScanResult> expectedResults = new ArrayList<ScanResult>() {{
-                add(scanResults.getRawScanResults()[0]);
-                add(scanResults.getRawScanResults()[1]);
-            }};
+        List<ScanResult> expectedResults = List.of(
+                scanResults.getRawScanResults()[0],
+                scanResults.getRawScanResults()[1]);
 
         doSuccessfulSingleScan(requestSettings,
                 computeSingleScanNativeSettings(requestSettings), scanResults);
@@ -3031,13 +3042,13 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         verify(mBatteryStats).reportWifiScanStartedFromSource(eq(workSource));
 
         // but then fails to execute
-        eventHandler0.onScanStatus(WifiNative.WIFI_SCAN_FAILED);
-        eventHandler1.onScanStatus(WifiNative.WIFI_SCAN_FAILED);
+        eventHandler0.onScanRequestFailed(WifiScanner.REASON_UNSPECIFIED);
+        eventHandler1.onScanRequestFailed(WifiScanner.REASON_UNSPECIFIED);
         mLooper.dispatchAll();
         client.verifyFailedResponse(
-                WifiScanner.REASON_UNSPECIFIED, "Scan failed");
+                WifiScanner.REASON_UNSPECIFIED, "Scan failed - unspecified reason");
         assertDumpContainsCallbackLog("singleScanFailed",
-                "reason=" + WifiScanner.REASON_UNSPECIFIED + ", Scan failed");
+                "reason=" + WifiScanner.REASON_UNSPECIFIED + ", Scan failed - unspecified reason");
         verify(mWifiMetrics).incrementOneshotScanCount();
         verify(mWifiMetrics).incrementScanReturnEntry(WifiMetricsProto.WifiLog.SCAN_UNKNOWN, 1);
         verify(mBatteryStats).reportWifiScanStoppedFromSource(eq(workSource));
@@ -3353,6 +3364,44 @@ public class WifiScanningServiceTest extends WifiBaseTest {
                 mWifiScanningServiceImpl.isScanning());
     }
 
+    @Test
+    public void getAvailableChannels_noPermission_throwsException_After_U() {
+        assumeTrue(SdkLevel.isAtLeastU());
+        startServiceAndLoadDriver();
+
+        // verify app targeting prior to Android U can call API with location permission
+        when(mWifiPermissionsUtil.isTargetSdkLessThan(any(),
+                eq(Build.VERSION_CODES.UPSIDE_DOWN_CAKE),
+                anyInt())).thenReturn(true);
+        mWifiScanningServiceImpl.getAvailableChannels(WifiScanner.WIFI_BAND_24_GHZ,
+                TEST_PACKAGE_NAME, TEST_FEATURE_ID, mExtras);
+
+        // Verify app targeting prior to Android U fails to call API without location permission
+        doThrow(new SecurityException()).when(mContext).enforcePermission(
+                eq(Manifest.permission.NETWORK_STACK), anyInt(), eq(Binder.getCallingUid()), any());
+        doThrow(new SecurityException())
+                .when(mWifiPermissionsUtil).enforceCanAccessScanResultsForWifiScanner(
+                        TEST_PACKAGE_NAME, TEST_FEATURE_ID, Binder.getCallingUid(), false, false);
+        assertThrows(SecurityException.class,
+                () -> mWifiScanningServiceImpl.getAvailableChannels(WifiScanner.WIFI_BAND_24_GHZ,
+                        TEST_PACKAGE_NAME, TEST_FEATURE_ID, mExtras));
+
+        // Verify app targeting Android U no longer need location.
+        when(mWifiPermissionsUtil.isTargetSdkLessThan(any(),
+                eq(Build.VERSION_CODES.UPSIDE_DOWN_CAKE),
+                anyInt())).thenReturn(false);
+        mWifiScanningServiceImpl.getAvailableChannels(WifiScanner.WIFI_BAND_24_GHZ,
+                TEST_PACKAGE_NAME, TEST_FEATURE_ID, mExtras);
+
+        // Verify app targeting Android U will fail without nearby permission
+        doThrow(new SecurityException())
+                .when(mWifiPermissionsUtil).enforceNearbyDevicesPermission(
+                        any(), anyBoolean(), any());
+        assertThrows(SecurityException.class,
+                () -> mWifiScanningServiceImpl.getAvailableChannels(WifiScanner.WIFI_BAND_24_GHZ,
+                        TEST_PACKAGE_NAME, TEST_FEATURE_ID, mExtras));
+    }
+
     /**
      * Tests that {@link WifiScanningServiceImpl#getAvailableChannels(int, String)} throws a
      * {@link SecurityException} if the caller doesn't hold the required permissions.
@@ -3371,7 +3420,7 @@ public class WifiScanningServiceTest extends WifiBaseTest {
                 TEST_PACKAGE_NAME, TEST_FEATURE_ID, Binder.getCallingUid(), false, false);
 
         mWifiScanningServiceImpl.getAvailableChannels(WifiScanner.WIFI_BAND_24_GHZ,
-                TEST_PACKAGE_NAME, TEST_FEATURE_ID);
+                TEST_PACKAGE_NAME, TEST_FEATURE_ID, mExtras);
     }
 
     /**
@@ -3392,7 +3441,7 @@ public class WifiScanningServiceTest extends WifiBaseTest {
 
         mLooper.startAutoDispatch();
         Bundle bundle = mWifiScanningServiceImpl.getAvailableChannels(
-                WifiScanner.WIFI_BAND_24_GHZ, TEST_PACKAGE_NAME, TEST_FEATURE_ID);
+                WifiScanner.WIFI_BAND_24_GHZ, TEST_PACKAGE_NAME, TEST_FEATURE_ID, mExtras);
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         List<Integer> actual = bundle.getIntegerArrayList(GET_AVAILABLE_CHANNELS_EXTRA);
 
@@ -3418,7 +3467,7 @@ public class WifiScanningServiceTest extends WifiBaseTest {
 
         mLooper.startAutoDispatch();
         Bundle bundle = mWifiScanningServiceImpl.getAvailableChannels(
-                WifiScanner.WIFI_BAND_24_GHZ, TEST_PACKAGE_NAME, TEST_FEATURE_ID);
+                WifiScanner.WIFI_BAND_24_GHZ, TEST_PACKAGE_NAME, TEST_FEATURE_ID, mExtras);
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         List<Integer> actual = bundle.getIntegerArrayList(GET_AVAILABLE_CHANNELS_EXTRA);
 
@@ -3595,5 +3644,39 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         mLooper.dispatchAll();
         order.verify(client.listener, never()).onResults(any());
         order.verify(client.listener, never()).onSingleScanCompleted();
+    }
+
+    /**
+     * Verify that scan abort failure message is received by the listener.
+     */
+    @Test
+    public void sendSingleScanRequestWhichGetsAbortedAfterStart() throws Exception {
+
+        WifiScanner.ScanSettings requestSettings = createRequest(WifiScanner.WIFI_BAND_BOTH, 0,
+                0, 20, WifiScanner.REPORT_EVENT_AFTER_EACH_SCAN);
+
+        startServiceAndLoadDriver();
+
+        TestClient client = new TestClient();
+        InOrder order = inOrder(client.listener, mWifiScannerImpl0);
+
+        // successful start
+        when(mWifiScannerImpl0.startSingleScan(any(WifiNative.ScanSettings.class),
+                any(WifiNative.ScanEventHandler.class))).thenReturn(true);
+
+        client.sendSingleScanRequest(requestSettings, null);
+
+        // Scan is successfully queue
+        mLooper.dispatchAll();
+        WifiNative.ScanEventHandler eventHandler =
+                verifyStartSingleScan(order, computeSingleScanNativeSettings(requestSettings));
+        client.verifySuccessfulResponse();
+
+        // scan is aborted
+        eventHandler.onScanRequestFailed(WifiScanner.REASON_ABORT);
+        mLooper.dispatchAll();
+        client.verifyFailedResponse(
+                WifiScanner.REASON_ABORT,
+                "Scan aborted");
     }
 }

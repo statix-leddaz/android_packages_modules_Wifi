@@ -35,6 +35,7 @@ import android.net.MacAddress;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.SupplicantState;
+import android.net.wifi.WifiAnnotations;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiNetworkSelectionConfig.AssociatedNetworkSelectionOverride;
@@ -128,6 +129,8 @@ public class WifiNetworkSelector {
     private boolean mIsEnhancedOpenSupported;
     private boolean mSufficiencyCheckEnabledWhenScreenOff  = true;
     private boolean mSufficiencyCheckEnabledWhenScreenOn  = true;
+    private boolean mUserConnectChoiceOverrideEnabled = true;
+    private boolean mLastSelectionWeightEnabled = true;
     private @AssociatedNetworkSelectionOverride int mAssociatedNetworkSelectionOverride =
             ASSOCIATED_NETWORK_SELECTION_OVERRIDE_NONE;
     private boolean mScreenOn = false;
@@ -319,7 +322,7 @@ public class WifiNetworkSelector {
         }
 
         // Metered networks costs the user data, so this is insufficient.
-        if (network.meteredOverride == WifiConfiguration.METERED_OVERRIDE_METERED) {
+        if (WifiConfiguration.isMetered(network, wifiInfo)) {
             localLog("Current network is metered");
             return false;
         }
@@ -549,7 +552,7 @@ public class WifiNetworkSelector {
             // Skip network that does not meet the admin set minimum security level restriction
             if (adminMinimumSecurityLevel != 0) {
                 boolean securityRestrictionPassed = false;
-                @WifiInfo.SecurityType int[] securityTypes = scanResult.getSecurityTypes();
+                @WifiAnnotations.SecurityType int[] securityTypes = scanResult.getSecurityTypes();
                 for (int type : securityTypes) {
                     int securityLevel = WifiInfo.convertSecurityTypeToDpmWifiSecurity(type);
 
@@ -880,7 +883,7 @@ public class WifiNetworkSelector {
             ifaceName = clientModeManager.getInterfaceName();
             connected = clientModeManager.isConnected();
             disconnected = clientModeManager.isDisconnected();
-            wifiInfo = clientModeManager.syncRequestConnectionInfo();
+            wifiInfo = clientModeManager.getConnectionInfo();
         }
 
         ClientModeManagerState() {
@@ -968,6 +971,20 @@ public class WifiNetworkSelector {
     }
 
     /**
+     * Enable or disable candidate override with user connect choice.
+     */
+    public void setUserConnectChoiceOverrideEnabled(boolean enabled) {
+        mUserConnectChoiceOverrideEnabled = enabled;
+    }
+
+    /**
+     * Enable or disable last selection weight.
+     */
+    public void setLastSelectionWeightEnabled(boolean enabled) {
+        mLastSelectionWeightEnabled = enabled;
+    }
+
+    /**
      * Returns the list of Candidates from networks in range.
      *
      * @param scanDetails              List of ScanDetail for all the APs in range
@@ -1044,7 +1061,8 @@ public class WifiNetworkSelector {
                         cmmState.wifiInfo.getRssi(),
                         cmmState.wifiInfo.getFrequency(),
                         ScanResult.CHANNEL_WIDTH_20MHZ, // channel width not available in WifiInfo
-                        calculateLastSelectionWeight(currentNetwork.networkId),
+                        calculateLastSelectionWeight(currentNetwork.networkId,
+                                WifiConfiguration.isMetered(currentNetwork, cmmState.wifiInfo)),
                         WifiConfiguration.isMetered(currentNetwork, cmmState.wifiInfo),
                         isFromCarrierOrPrivilegedApp(currentNetwork),
                         predictedTputMbps);
@@ -1076,7 +1094,7 @@ public class WifiNetworkSelector {
                                     scanDetail.getScanResult().level,
                                     scanDetail.getScanResult().frequency,
                                     scanDetail.getScanResult().channelWidth,
-                                    calculateLastSelectionWeight(config.networkId),
+                                    calculateLastSelectionWeight(config.networkId, metered),
                                     metered,
                                     isFromCarrierOrPrivilegedApp(config),
                                     predictThroughput(scanDetail));
@@ -1360,7 +1378,8 @@ public class WifiNetworkSelector {
         // Get a fresh copy of WifiConfiguration reflecting any scan result updates
         WifiConfiguration selectedNetwork =
                 mWifiConfigManager.getConfiguredNetwork(selectedNetworkId);
-        if (selectedNetwork != null && legacyOverrideWanted && overrideEnabled) {
+        if (selectedNetwork != null && legacyOverrideWanted && overrideEnabled
+                && mUserConnectChoiceOverrideEnabled) {
             selectedNetwork = overrideCandidateWithUserConnectChoice(selectedNetwork);
         }
         if (selectedNetwork != null) {
@@ -1423,11 +1442,16 @@ public class WifiNetworkSelector {
         }
     }
 
-    private double calculateLastSelectionWeight(int networkId) {
-        if (networkId != mWifiConfigManager.getLastSelectedNetwork()) return 0.0;
+    private double calculateLastSelectionWeight(int networkId, boolean isMetered) {
+        if (!mLastSelectionWeightEnabled
+                || networkId != mWifiConfigManager.getLastSelectedNetwork()) {
+            return 0.0;
+        }
         double timeDifference = mClock.getElapsedSinceBootMillis()
                 - mWifiConfigManager.getLastSelectedTimeStamp();
-        long millis = TimeUnit.MINUTES.toMillis(mScoringParams.getLastSelectionMinutes());
+        long millis = TimeUnit.MINUTES.toMillis(isMetered
+                ? mScoringParams.getLastMeteredSelectionMinutes()
+                : mScoringParams.getLastUnmeteredSelectionMinutes());
         if (timeDifference >= millis) return 0.0;
         double unclipped = 1.0 - (timeDifference / millis);
         return Math.min(Math.max(unclipped, 0.0), 1.0);

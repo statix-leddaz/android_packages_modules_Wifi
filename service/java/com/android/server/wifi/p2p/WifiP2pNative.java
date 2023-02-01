@@ -20,7 +20,6 @@ import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_P2P;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.hardware.wifi.V1_0.IWifiP2pIface;
 import android.net.wifi.CoexUnsafeChannel;
 import android.net.wifi.ScanResult;
 import android.net.wifi.nl80211.WifiNl80211Manager;
@@ -58,7 +57,7 @@ public class WifiP2pNative {
     private final HalDeviceManager mHalDeviceManager;
     private final PropertyService mPropertyService;
     private final WifiVendorHal mWifiVendorHal;
-    private IWifiP2pIface mIWifiP2pIface;
+    private String mP2pIfaceName;
     private InterfaceDestroyedListenerInternal mInterfaceDestroyedListener;
     // Cache the features and return it when P2P interface is not up.
     private long mSupportedFeatures = -1L;
@@ -80,7 +79,7 @@ public class WifiP2pNative {
             if (!TextUtils.isEmpty(ifaceName)) {
                 mSupplicantP2pIfaceHal.teardownIface(ifaceName);
             }
-            mIWifiP2pIface = null;
+            mP2pIfaceName = null;
             mValid = false;
         }
 
@@ -164,6 +163,7 @@ public class WifiP2pNative {
 
     private static final String P2P_IFACE_NAME = "p2p0";
     private static final String P2P_INTERFACE_PROPERTY = "wifi.direct.interface";
+
     /**
      * Helper function to handle creation of P2P iface.
      * For devices which do not the support the HAL, this will bypass HalDeviceManager &
@@ -171,19 +171,13 @@ public class WifiP2pNative {
      */
     private String createP2pIface(Handler handler, WorkSource requestorWs) {
         if (mHalDeviceManager.isSupported()) {
-            mIWifiP2pIface = mHalDeviceManager
-                                .createP2pIface(mInterfaceDestroyedListener, handler, requestorWs);
-            if (mIWifiP2pIface == null) {
+            mP2pIfaceName = mHalDeviceManager.createP2pIface(
+                    mInterfaceDestroyedListener, handler, requestorWs);
+            if (mP2pIfaceName == null) {
                 Log.e(TAG, "Failed to create P2p iface in HalDeviceManager");
                 return null;
             }
-            String ifaceName = HalDeviceManager.getName(mIWifiP2pIface);
-            if (TextUtils.isEmpty(ifaceName)) {
-                Log.e(TAG, "Failed to get p2p iface name");
-                teardownInterface();
-                return null;
-            }
-            return ifaceName;
+            return mP2pIfaceName;
         } else {
             Log.i(TAG, "Vendor Hal is not supported, ignoring createP2pIface.");
             return mPropertyService.getString(P2P_INTERFACE_PROPERTY, P2P_IFACE_NAME);
@@ -201,7 +195,7 @@ public class WifiP2pNative {
             @Nullable HalDeviceManager.InterfaceDestroyedListener destroyedListener,
             @NonNull Handler handler, @NonNull WorkSource requestorWs) {
         Log.d(TAG, "Setup P2P interface");
-        if (mIWifiP2pIface == null) {
+        if (mP2pIfaceName == null) {
             mInterfaceDestroyedListener = (null == destroyedListener)
                     ? null
                     : new InterfaceDestroyedListenerInternal(destroyedListener);
@@ -230,9 +224,9 @@ public class WifiP2pNative {
             Log.i(TAG, "P2P interface setup completed");
             return ifaceName;
         } else {
-            Log.i(TAG, "P2P interface is already existed");
+            Log.i(TAG, "P2P interface already exists");
             return mHalDeviceManager.isSupported()
-                ? HalDeviceManager.getName(mIWifiP2pIface)
+                ? mP2pIfaceName
                 : mPropertyService.getString(P2P_INTERFACE_PROPERTY, P2P_IFACE_NAME);
         }
     }
@@ -243,11 +237,10 @@ public class WifiP2pNative {
     public void teardownInterface() {
         Log.d(TAG, "Teardown P2P interface");
         if (mHalDeviceManager.isSupported()) {
-            if (mIWifiP2pIface != null) {
-                String ifaceName = HalDeviceManager.getName(mIWifiP2pIface);
-                mHalDeviceManager.removeIface(mIWifiP2pIface);
+            if (mP2pIfaceName != null) {
+                mHalDeviceManager.removeP2pIface(mP2pIfaceName);
                 if (null != mInterfaceDestroyedListener) {
-                    mInterfaceDestroyedListener.teardownAndInvalidate(ifaceName);
+                    mInterfaceDestroyedListener.teardownAndInvalidate(mP2pIfaceName);
                 }
                 Log.i(TAG, "P2P interface teardown completed");
             }
@@ -265,8 +258,8 @@ public class WifiP2pNative {
      */
     public boolean replaceRequestorWs(WorkSource requestorWs) {
         if (mHalDeviceManager.isSupported()) {
-            if (mIWifiP2pIface == null) return false;
-            return mHalDeviceManager.replaceRequestorWs(mIWifiP2pIface, requestorWs);
+            if (mP2pIfaceName == null) return false;
+            return mHalDeviceManager.replaceRequestorWsForP2pIface(mP2pIfaceName, requestorWs);
         } else {
             Log.i(TAG, "HAL is not supported. Ignore replace requestorWs");
             return true;
@@ -924,7 +917,7 @@ public class WifiP2pNative {
      * Set vendor-specific information elements to the native service.
      *
      * @param vendorElements the vendor opaque data.
-     * @return true, if opeartion was successful.
+     * @return true, if operation was successful.
      */
     public boolean setVendorElements(Set<ScanResult.InformationElement> vendorElements) {
         return mSupplicantP2pIfaceHal.setVendorElements(vendorElements);
@@ -940,8 +933,8 @@ public class WifiP2pNative {
 
     /** Indicate whether or not 5GHz/6GHz DBS is supported. */
     public boolean is5g6gDbsSupported() {
-        if (null == mIWifiP2pIface) return false;
+        if (mP2pIfaceName == null) return false;
         if (!mHalDeviceManager.isSupported()) return false;
-        return mHalDeviceManager.is5g6gDbsSupported(mIWifiP2pIface);
+        return mHalDeviceManager.is5g6gDbsSupportedOnP2pIface(mP2pIfaceName);
     }
 }

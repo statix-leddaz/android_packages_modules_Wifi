@@ -80,7 +80,6 @@ import org.mockito.stubbing.Answer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
@@ -156,27 +155,23 @@ public class WifiNativeTest extends WifiBaseTest {
     private static final WifiNl80211Manager.SignalPollResult SIGNAL_POLL_RESULT =
             new WifiNl80211Manager.SignalPollResult(-60, 12, 6, 5240);
 
-    private static final Set<Integer> SCAN_FREQ_SET =
-            new HashSet<Integer>() {{
-                add(2410);
-                add(2450);
-                add(5050);
-                add(5200);
-            }};
+    private static final Set<Integer> SCAN_FREQ_SET = Set.of(
+            2410,
+            2450,
+            5050,
+            5200);
+
     private static final String TEST_QUOTED_SSID_1 = "\"testSsid1\"";
     private static final String TEST_QUOTED_SSID_2 = "\"testSsid2\"";
     private static final int[] TEST_FREQUENCIES_1 = {};
     private static final int[] TEST_FREQUENCIES_2 = {2500, 5124};
-    private static final List<String> SCAN_HIDDEN_NETWORK_SSID_SET =
-            new ArrayList<String>() {{
-                add(TEST_QUOTED_SSID_1);
-                add(TEST_QUOTED_SSID_2);
-            }};
-    private static final List<byte[]> SCAN_HIDDEN_NETWORK_BYTE_SSID_SET =
-            new ArrayList<byte[]>() {{
-                add(NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(TEST_QUOTED_SSID_1)));
-                add(NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(TEST_QUOTED_SSID_2)));
-            }};
+    private static final List<String> SCAN_HIDDEN_NETWORK_SSID_SET = List.of(
+            TEST_QUOTED_SSID_1,
+            TEST_QUOTED_SSID_2);
+
+    private static final List<byte[]> SCAN_HIDDEN_NETWORK_BYTE_SSID_SET = List.of(
+            NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(TEST_QUOTED_SSID_1)),
+            NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(TEST_QUOTED_SSID_2)));
 
     private static final WifiNative.PnoSettings TEST_PNO_SETTINGS =
             new WifiNative.PnoSettings() {{
@@ -272,6 +267,7 @@ public class WifiNativeTest extends WifiBaseTest {
     @Mock WifiSettingsConfigStore mSettingsConfigStore;
     @Mock private SoftApManager mSoftApManager;
     @Mock private SsidTranslator mSsidTranslator;
+    @Mock private WifiGlobals mWifiGlobals;
     @Mock DeviceConfigFacade mDeviceConfigFacade;
 
     ArgumentCaptor<WifiNl80211Manager.ScanEventCallback> mScanCallbackCaptor =
@@ -316,6 +312,7 @@ public class WifiNativeTest extends WifiBaseTest {
         when(mWifiInjector.getSettingsConfigStore()).thenReturn(mSettingsConfigStore);
         when(mWifiInjector.getContext()).thenReturn(mContext);
         when(mWifiInjector.getSsidTranslator()).thenReturn(mSsidTranslator);
+        when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
         mResources = getMockResources();
         mResources.setBoolean(R.bool.config_wifiNetworkCentricQosPolicyFeatureEnabled, false);
         when(mContext.getResources()).thenReturn(mResources);
@@ -675,7 +672,7 @@ public class WifiNativeTest extends WifiBaseTest {
      */
     @Test
     public void testGetWifiLinkLayerStatsForClientInConnectivityMode() throws Exception {
-        mWifiNative.setupInterfaceForClientInConnectivityMode(null, TEST_WORKSOURCE);
+        mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE);
         mWifiNative.getWifiLinkLayerStats(WIFI_IFACE_NAME);
         mWifiNative.getWifiLinkLayerStats(WIFI_IFACE_NAME);
         verify(mWifiVendorHal, times(2)).getWifiLinkLayerStats(eq(WIFI_IFACE_NAME));
@@ -687,7 +684,7 @@ public class WifiNativeTest extends WifiBaseTest {
     @Test
     public void testClientModeScanSuccess() {
         InOrder order = inOrder(mWificondControl, mNetdWrapper, mWifiVendorHal);
-        mWifiNative.setupInterfaceForClientInConnectivityMode(null, TEST_WORKSOURCE);
+        mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE);
         order.verify(mWificondControl).setupInterfaceForClientMode(eq(WIFI_IFACE_NAME), any(),
                 mScanCallbackCaptor.capture(), any());
         order.verify(mNetdWrapper).isInterfaceUp(eq(WIFI_IFACE_NAME));
@@ -702,12 +699,17 @@ public class WifiNativeTest extends WifiBaseTest {
      */
     @Test
     public void testClientModeScanFailure() {
-        mWifiNative.setupInterfaceForClientInConnectivityMode(null, TEST_WORKSOURCE);
+        mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE);
         verify(mWificondControl).setupInterfaceForClientMode(eq(WIFI_IFACE_NAME), any(),
                 mScanCallbackCaptor.capture(), any());
 
-        mScanCallbackCaptor.getValue().onScanFailed();
-        verify(mWifiMonitor).broadcastScanFailedEvent(WIFI_IFACE_NAME);
+        if (SdkLevel.isAtLeastU()) {
+            mScanCallbackCaptor.getValue().onScanFailed(WifiScanner.REASON_UNSPECIFIED);
+        } else {
+            mScanCallbackCaptor.getValue().onScanFailed();
+        }
+        verify(mWifiMonitor).broadcastScanFailedEvent(WIFI_IFACE_NAME,
+                WifiScanner.REASON_UNSPECIFIED);
     }
 
     /**
@@ -715,7 +717,7 @@ public class WifiNativeTest extends WifiBaseTest {
      */
     @Test
     public void testClientModePnoScanSuccess() {
-        mWifiNative.setupInterfaceForClientInConnectivityMode(null, TEST_WORKSOURCE);
+        mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE);
         verify(mWificondControl).setupInterfaceForClientMode(eq(WIFI_IFACE_NAME), any(),
                 any(), mScanCallbackCaptor.capture());
 
@@ -729,7 +731,7 @@ public class WifiNativeTest extends WifiBaseTest {
      */
     @Test
     public void testClientModePnoScanFailure() {
-        mWifiNative.setupInterfaceForClientInConnectivityMode(null, TEST_WORKSOURCE);
+        mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE);
         verify(mWificondControl).setupInterfaceForClientMode(eq(WIFI_IFACE_NAME), any(),
                 any(), mScanCallbackCaptor.capture());
 
@@ -785,8 +787,13 @@ public class WifiNativeTest extends WifiBaseTest {
         verify(mWificondControl).setupInterfaceForClientMode(eq(WIFI_IFACE_NAME), any(),
                 mScanCallbackCaptor.capture(), any());
 
-        mScanCallbackCaptor.getValue().onScanFailed();
-        verify(mWifiMonitor).broadcastScanFailedEvent(WIFI_IFACE_NAME);
+        if (SdkLevel.isAtLeastU()) {
+            mScanCallbackCaptor.getValue().onScanFailed(WifiScanner.REASON_UNSPECIFIED);
+        } else {
+            mScanCallbackCaptor.getValue().onScanFailed();
+        }
+        verify(mWifiMonitor).broadcastScanFailedEvent(eq(WIFI_IFACE_NAME),
+                eq(WifiScanner.REASON_UNSPECIFIED));
     }
 
     /**
@@ -830,7 +837,7 @@ public class WifiNativeTest extends WifiBaseTest {
         when(mCoexManager.getCoexRestrictions()).thenReturn(restrictions);
         mWifiNative.setCoexUnsafeChannels(unsafeChannels, restrictions);
 
-        mWifiNative.setupInterfaceForClientInConnectivityMode(null, TEST_WORKSOURCE);
+        mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE);
         verify(mWifiVendorHal, times(2)).setCoexUnsafeChannels(unsafeChannels, restrictions);
 
         mWifiNative.teardownAllInterfaces();
@@ -850,13 +857,14 @@ public class WifiNativeTest extends WifiBaseTest {
     public void testSignalPoll() throws Exception {
         when(mWificondControl.signalPoll(WIFI_IFACE_NAME))
                 .thenReturn(SIGNAL_POLL_RESULT);
+        when(mStaIfaceHal.getSignalPollResults(WIFI_IFACE_NAME)).thenReturn(null);
 
-        WifiNl80211Manager.SignalPollResult pollResult = mWifiNative.signalPoll(WIFI_IFACE_NAME);
-        assertEquals(SIGNAL_POLL_RESULT.currentRssiDbm, pollResult.currentRssiDbm);
-        assertEquals(SIGNAL_POLL_RESULT.txBitrateMbps, pollResult.txBitrateMbps);
+        WifiSignalPollResults pollResults = mWifiNative.signalPoll(WIFI_IFACE_NAME);
+        assertEquals(SIGNAL_POLL_RESULT.currentRssiDbm, pollResults.getRssi());
+        assertEquals(SIGNAL_POLL_RESULT.txBitrateMbps, pollResults.getTxLinkSpeed());
         assertEquals(SIGNAL_POLL_RESULT.associationFrequencyMHz,
-                pollResult.associationFrequencyMHz);
-        assertEquals(SIGNAL_POLL_RESULT.rxBitrateMbps, pollResult.rxBitrateMbps);
+                pollResults.getFrequency());
+        assertEquals(SIGNAL_POLL_RESULT.rxBitrateMbps, pollResults.getRxLinkSpeed());
 
         verify(mWificondControl).signalPoll(WIFI_IFACE_NAME);
     }
@@ -890,9 +898,15 @@ public class WifiNativeTest extends WifiBaseTest {
                 SCAN_HIDDEN_NETWORK_SSID_SET, true);
         ArgumentCaptor<List<byte[]>> ssidSetCaptor = ArgumentCaptor.forClass(List.class);
         ArgumentCaptor<Bundle> bundleCaptor = ArgumentCaptor.forClass(Bundle.class);
-        verify(mWificondControl).startScan(
-                eq(WIFI_IFACE_NAME), eq(WifiScanner.SCAN_TYPE_HIGH_ACCURACY),
-                eq(SCAN_FREQ_SET), ssidSetCaptor.capture(), bundleCaptor.capture());
+        if (SdkLevel.isAtLeastU()) {
+            verify(mWificondControl).startScan2(
+                    eq(WIFI_IFACE_NAME), eq(WifiScanner.SCAN_TYPE_HIGH_ACCURACY),
+                    eq(SCAN_FREQ_SET), ssidSetCaptor.capture(), bundleCaptor.capture());
+        } else {
+            verify(mWificondControl).startScan(
+                    eq(WIFI_IFACE_NAME), eq(WifiScanner.SCAN_TYPE_HIGH_ACCURACY),
+                    eq(SCAN_FREQ_SET), ssidSetCaptor.capture(), bundleCaptor.capture());
+        }
         List<byte[]> ssidSet = ssidSetCaptor.getValue();
         assertArrayEquals(ssidSet.toArray(), SCAN_HIDDEN_NETWORK_BYTE_SSID_SET.toArray());
         Bundle bundle = bundleCaptor.getValue();
@@ -1070,15 +1084,6 @@ public class WifiNativeTest extends WifiBaseTest {
         assumeTrue(SdkLevel.isAtLeastS());
         mWifiNative.setCoexUnsafeChannels(Collections.emptyList(), 0);
         verify(mWifiVendorHal).setCoexUnsafeChannels(Collections.emptyList(), 0);
-    }
-
-    /**
-     * Verifies that isSetMacAddressSupported() calls underlying WifiVendorHal.
-     */
-    @Test
-    public void testIsStaSetMacAddressSupported() throws Exception {
-        mWifiNative.isStaSetMacAddressSupported(WIFI_IFACE_NAME);
-        verify(mWifiVendorHal).isStaSetMacAddressSupported(WIFI_IFACE_NAME);
     }
 
     /**
@@ -1314,7 +1319,7 @@ public class WifiNativeTest extends WifiBaseTest {
     @Test
     public void testReplaceStaIfaceRequestorWs() {
         assertEquals(WIFI_IFACE_NAME,
-                mWifiNative.setupInterfaceForClientInConnectivityMode(
+                mWifiNative.setupInterfaceForClientInScanMode(
                         mInterfaceCallback, TEST_WORKSOURCE));
         when(mWifiVendorHal.replaceStaIfaceRequestorWs(WIFI_IFACE_NAME, TEST_WORKSOURCE2))
                 .thenReturn(true);

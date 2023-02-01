@@ -46,6 +46,7 @@ import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -459,7 +460,7 @@ public class WifiBackupRestore {
         }
         if (mDebugLastIpConfigBackupDataRestored != null) {
             pw.println("Last old ipconfig backup data restored: "
-                    + mDebugLastIpConfigBackupDataRestored);
+                    + Arrays.toString(mDebugLastIpConfigBackupDataRestored));
         }
     }
 
@@ -640,9 +641,8 @@ public class WifiBackupRestore {
                 }
                 if (mParsedKeyMgmtLine == null) {
                     // no key_mgmt line specified; this is defined as equivalent to
-                    // "WPA-PSK WPA-EAP".
+                    // "WPA-PSK".
                     configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-                    configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_EAP);
                 } else {
                     // Need to parse the mParsedKeyMgmtLine line
                     final String bareKeyMgmt =

@@ -160,6 +160,8 @@ public class WifiP2pManager {
     public static final long FEATURE_FLEXIBLE_DISCOVERY         = 1L << 1;
     /** @hide */
     public static final long FEATURE_GROUP_CLIENT_REMOVAL       = 1L << 2;
+    /** @hide */
+    public static final long FEATURE_GROUP_CLIENT_IPV6_LINK_LOCAL_IP_PROVISIONING = 1L << 3;
 
     /**
      * Extra for transporting a WifiP2pConfig
@@ -218,6 +220,13 @@ public class WifiP2pManager {
      */
     public static final String EXTRA_PARAM_KEY_INFORMATION_ELEMENT_LIST =
             "android.net.wifi.p2p.EXTRA_PARAM_KEY_INFORMATION_ELEMENT_LIST";
+
+    /**
+     * Key for transporting a bundle of extra information.
+     * @hide
+     */
+    public static final String EXTRA_PARAM_KEY_BUNDLE =
+            "android.net.wifi.p2p.EXTRA_PARAM_KEY_BUNDLE";
 
     /**
      * Broadcast intent action to indicate whether Wi-Fi p2p is enabled or disabled. An
@@ -1506,10 +1515,15 @@ public class WifiP2pManager {
         if (req == null) throw new IllegalArgumentException("service request is null");
     }
 
-    private static void checkP2pConfig(WifiP2pConfig c) {
+    private void checkP2pConfig(WifiP2pConfig c) {
         if (c == null) throw new IllegalArgumentException("config cannot be null");
         if (TextUtils.isEmpty(c.deviceAddress)) {
             throw new IllegalArgumentException("deviceAddress cannot be empty");
+        }
+        if (c.getGroupClientIpProvisioningMode()
+                == WifiP2pConfig.GROUP_CLIENT_IP_PROVISIONING_MODE_IPV6_LINK_LOCAL
+                && !isGroupClientIpv6LinkLocalProvisioningSupported()) {
+            throw new UnsupportedOperationException("IPv6 link-local provisioning not supported");
         }
     }
 
@@ -1524,7 +1538,7 @@ public class WifiP2pManager {
      */
     public Channel initialize(Context srcContext, Looper srcLooper, ChannelListener listener) {
         Binder binder = new Binder();
-        Bundle extras = prepareExtrasBundle(srcContext);
+        Bundle extras = prepareExtrasBundleWithAttributionSource(srcContext);
         int displayId = Display.DEFAULT_DISPLAY;
         try {
             Display display = srcContext.getDisplay();
@@ -1551,19 +1565,39 @@ public class WifiP2pManager {
                 null);
     }
 
+    private Message prepareMessage(int what, int arg1, int arg2, Bundle extras, Context context) {
+        Message msg = Message.obtain();
+        msg.what = what;
+        msg.arg1 = arg1;
+        msg.arg2 = arg2;
+        msg.obj = maybeGetAttributionSource(context);
+        msg.getData().putBundle(EXTRA_PARAM_KEY_BUNDLE, extras);
+        return msg;
+    }
+
     private Bundle prepareExtrasBundle(Channel c) {
-        Bundle b = prepareExtrasBundle(c.mContext);
+        Bundle b = new Bundle();
         b.putBinder(CALLING_BINDER, c.getBinder());
         return b;
     }
 
-    private Bundle prepareExtrasBundle(Context context) {
+    /**
+     * Note, this should only be used for Binder calls.
+     * Unparcelling an AttributionSource will throw an exception when done outside of a Binder
+     * transaction. So don't use this with AsyncChannel since it will throw exception when
+     * unparcelling.
+     */
+    private Bundle prepareExtrasBundleWithAttributionSource(Context context) {
         Bundle bundle = new Bundle();
         if (SdkLevel.isAtLeastS()) {
             bundle.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
                     context.getAttributionSource());
         }
         return bundle;
+    }
+
+    private Object maybeGetAttributionSource(Context context) {
+        return SdkLevel.isAtLeastS() ? context.getAttributionSource() : null;
     }
 
     private Channel initializeChannel(Context srcContext, Looper srcLooper,
@@ -1577,12 +1611,9 @@ public class WifiP2pManager {
             bundle.putString(CALLING_PACKAGE, c.mContext.getOpPackageName());
             bundle.putString(CALLING_FEATURE_ID, c.mContext.getAttributionTag());
             bundle.putBinder(CALLING_BINDER, binder);
-            if (SdkLevel.isAtLeastT()) {
-                bundle.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        c.mContext.getAttributionSource());
-            }
-            c.mAsyncChannel.sendMessage(UPDATE_CHANNEL_INFO, 0,
-                    c.putListener(null), bundle);
+            Message msg = prepareMessage(UPDATE_CHANNEL_INFO, 0, c.putListener(null),
+                    bundle, c.mContext);
+            c.mAsyncChannel.sendMessage(msg);
             return c;
         } else {
             c.close();
@@ -1625,8 +1656,8 @@ public class WifiP2pManager {
     public void discoverPeers(Channel channel, ActionListener listener) {
         checkChannel(channel);
         Bundle extras = prepareExtrasBundle(channel);
-        channel.mAsyncChannel.sendMessage(DISCOVER_PEERS, WIFI_P2P_SCAN_FULL,
-                channel.putListener(listener), extras);
+        channel.mAsyncChannel.sendMessage(prepareMessage(DISCOVER_PEERS, WIFI_P2P_SCAN_FULL,
+                channel.putListener(listener), extras, channel.mContext));
     }
 
     /**
@@ -1670,8 +1701,8 @@ public class WifiP2pManager {
         }
         checkChannel(channel);
         Bundle extras = prepareExtrasBundle(channel);
-        channel.mAsyncChannel.sendMessage(DISCOVER_PEERS, WIFI_P2P_SCAN_SOCIAL,
-                channel.putListener(listener), extras);
+        channel.mAsyncChannel.sendMessage(prepareMessage(DISCOVER_PEERS, WIFI_P2P_SCAN_SOCIAL,
+                channel.putListener(listener), extras, channel.mContext));
     }
 
     /**
@@ -1720,8 +1751,8 @@ public class WifiP2pManager {
         }
         Bundle extras = prepareExtrasBundle(channel);
         extras.putInt(EXTRA_PARAM_KEY_PEER_DISCOVERY_FREQ, frequencyMhz);
-        channel.mAsyncChannel.sendMessage(DISCOVER_PEERS, WIFI_P2P_SCAN_SINGLE_FREQ,
-                channel.putListener(listener), extras);
+        channel.mAsyncChannel.sendMessage(prepareMessage(DISCOVER_PEERS, WIFI_P2P_SCAN_SINGLE_FREQ,
+                channel.putListener(listener), extras, channel.mContext));
     }
 
     /**
@@ -1790,7 +1821,8 @@ public class WifiP2pManager {
         checkP2pConfig(config);
         Bundle extras = prepareExtrasBundle(channel);
         extras.putParcelable(EXTRA_PARAM_KEY_CONFIG, config);
-        channel.mAsyncChannel.sendMessage(CONNECT, 0, channel.putListener(listener), extras);
+        channel.mAsyncChannel.sendMessage(prepareMessage(CONNECT, 0, channel.putListener(listener),
+                extras, channel.mContext));
     }
 
     /**
@@ -1844,8 +1876,9 @@ public class WifiP2pManager {
     public void createGroup(Channel channel, ActionListener listener) {
         checkChannel(channel);
         Bundle extras = prepareExtrasBundle(channel);
-        channel.mAsyncChannel.sendMessage(CREATE_GROUP, WifiP2pGroup.NETWORK_ID_PERSISTENT,
-                channel.putListener(listener), extras);
+        channel.mAsyncChannel.sendMessage(prepareMessage(CREATE_GROUP,
+                WifiP2pGroup.NETWORK_ID_PERSISTENT, channel.putListener(listener), extras,
+                channel.mContext));
     }
 
     /**
@@ -1891,8 +1924,8 @@ public class WifiP2pManager {
         checkChannel(channel);
         Bundle extras = prepareExtrasBundle(channel);
         extras.putParcelable(EXTRA_PARAM_KEY_CONFIG, config);
-        channel.mAsyncChannel.sendMessage(CREATE_GROUP, 0,
-                channel.putListener(listener), extras);
+        channel.mAsyncChannel.sendMessage(prepareMessage(CREATE_GROUP, 0,
+                channel.putListener(listener), extras, channel.mContext));
     }
 
     /**
@@ -1939,7 +1972,8 @@ public class WifiP2pManager {
     public void startListening(@NonNull Channel channel, @Nullable ActionListener listener) {
         checkChannel(channel);
         Bundle extras = prepareExtrasBundle(channel);
-        channel.mAsyncChannel.sendMessage(START_LISTEN, 0, channel.putListener(listener), extras);
+        channel.mAsyncChannel.sendMessage(prepareMessage(START_LISTEN, 0,
+                channel.putListener(listener), extras, channel.mContext));
     }
 
     /**
@@ -2043,8 +2077,8 @@ public class WifiP2pManager {
         checkServiceInfo(servInfo);
         Bundle extras = prepareExtrasBundle(channel);
         extras.putParcelable(EXTRA_PARAM_KEY_SERVICE_INFO, servInfo);
-        channel.mAsyncChannel.sendMessage(
-                ADD_LOCAL_SERVICE, 0, channel.putListener(listener), extras);
+        channel.mAsyncChannel.sendMessage(prepareMessage(ADD_LOCAL_SERVICE, 0,
+                channel.putListener(listener), extras, channel.mContext));
     }
 
     /**
@@ -2167,8 +2201,8 @@ public class WifiP2pManager {
     public void discoverServices(Channel channel, ActionListener listener) {
         checkChannel(channel);
         Bundle extras = prepareExtrasBundle(channel);
-        channel.mAsyncChannel.sendMessage(
-                DISCOVER_SERVICES, 0, channel.putListener(listener), extras);
+        channel.mAsyncChannel.sendMessage(prepareMessage(DISCOVER_SERVICES, 0,
+                channel.putListener(listener), extras, channel.mContext));
     }
 
     /**
@@ -2257,7 +2291,8 @@ public class WifiP2pManager {
     public void requestPeers(Channel channel, PeerListListener listener) {
         checkChannel(channel);
         Bundle extras = prepareExtrasBundle(channel);
-        channel.mAsyncChannel.sendMessage(REQUEST_PEERS, 0, channel.putListener(listener), extras);
+        channel.mAsyncChannel.sendMessage(prepareMessage(REQUEST_PEERS, 0,
+                channel.putListener(listener), extras, channel.mContext));
     }
 
     /**
@@ -2294,8 +2329,8 @@ public class WifiP2pManager {
     public void requestGroupInfo(Channel channel, GroupInfoListener listener) {
         checkChannel(channel);
         Bundle extras = prepareExtrasBundle(channel);
-        channel.mAsyncChannel.sendMessage(
-                REQUEST_GROUP_INFO, 0, channel.putListener(listener), extras);
+        channel.mAsyncChannel.sendMessage(prepareMessage(REQUEST_GROUP_INFO, 0,
+                channel.putListener(listener), extras, channel.mContext));
     }
 
     /**
@@ -2326,10 +2361,7 @@ public class WifiP2pManager {
      * @param channel is the channel created at {@link #initialize}
      * @param wfdInfo the Wifi Display information to set
      * @param listener for callbacks on success or failure. Can be null.
-     *
-     * @hide
      */
-    @SystemApi
     @RequiresPermission(android.Manifest.permission.CONFIGURE_WIFI_DISPLAY)
     public void setWfdInfo(@NonNull Channel channel, @NonNull WifiP2pWfdInfo wfdInfo,
             @Nullable ActionListener listener) {
@@ -2441,8 +2473,8 @@ public class WifiP2pManager {
             @Nullable PersistentGroupInfoListener listener) {
         checkChannel(channel);
         Bundle extras = prepareExtrasBundle(channel);
-        channel.mAsyncChannel.sendMessage(
-                REQUEST_PERSISTENT_GROUP_INFO, 0, channel.putListener(listener), extras);
+        channel.mAsyncChannel.sendMessage(prepareMessage(REQUEST_PERSISTENT_GROUP_INFO, 0,
+                channel.putListener(listener), extras, channel.mContext));
     }
 
     /** @hide */
@@ -2607,6 +2639,19 @@ public class WifiP2pManager {
         return isFeatureSupported(FEATURE_GROUP_CLIENT_REMOVAL);
     }
 
+    /**
+     * Check if this device supports the IPv6 link-local provisioning for a group client.
+     *
+     * Gates whether the
+     * {@link #connect(Channel, WifiP2pConfig, ActionListener)} method is functional on this device
+     * for {@link WifiP2pConfig#GROUP_CLIENT_IP_PROVISIONING_MODE_IPV6_LINK_LOCAL}.
+     *
+     * @return {@code true} if supported, {@code false} otherwise.
+     */
+    public boolean isGroupClientIpv6LinkLocalProvisioningSupported() {
+        return SdkLevel.isAtLeastT()
+                && isFeatureSupported(FEATURE_GROUP_CLIENT_IPV6_LINK_LOCAL_IP_PROVISIONING);
+    }
 
     /**
      * Get a handover request message for use in WFA NFC Handover transfer.
@@ -2805,7 +2850,8 @@ public class WifiP2pManager {
         if (listener == null) throw new IllegalArgumentException("This listener cannot be null.");
 
         Bundle extras = prepareExtrasBundle(c);
-        c.mAsyncChannel.sendMessage(REQUEST_DEVICE_INFO, 0, c.putListener(listener), extras);
+        c.mAsyncChannel.sendMessage(prepareMessage(REQUEST_DEVICE_INFO, 0,
+                c.putListener(listener), extras, c.mContext));
     }
 
     /**
@@ -2847,7 +2893,8 @@ public class WifiP2pManager {
 
         Bundle extras = prepareExtrasBundle(c);
         extras.putParcelable(EXTRA_PARAM_KEY_PEER_ADDRESS, deviceAddress);
-        c.mAsyncChannel.sendMessage(ADD_EXTERNAL_APPROVER, 0, c.putListener(listener), extras);
+        c.mAsyncChannel.sendMessage(prepareMessage(ADD_EXTERNAL_APPROVER, 0,
+                c.putListener(listener), extras, c.mContext));
     }
 
     /**
@@ -2872,7 +2919,8 @@ public class WifiP2pManager {
 
         Bundle extras = prepareExtrasBundle(c);
         extras.putParcelable(EXTRA_PARAM_KEY_PEER_ADDRESS, deviceAddress);
-        c.mAsyncChannel.sendMessage(REMOVE_EXTERNAL_APPROVER, 0, c.putListener(listener), extras);
+        c.mAsyncChannel.sendMessage(prepareMessage(REMOVE_EXTERNAL_APPROVER, 0,
+                c.putListener(listener), extras, c.mContext));
     }
 
     /**
@@ -2898,8 +2946,8 @@ public class WifiP2pManager {
 
         Bundle extras = prepareExtrasBundle(c);
         extras.putParcelable(EXTRA_PARAM_KEY_PEER_ADDRESS, deviceAddress);
-        c.mAsyncChannel.sendMessage(SET_CONNECTION_REQUEST_RESULT,
-                result, c.putListener(listener), extras);
+        c.mAsyncChannel.sendMessage(prepareMessage(SET_CONNECTION_REQUEST_RESULT,
+                result, c.putListener(listener), extras, c.mContext));
     }
 
     /**
@@ -2931,8 +2979,8 @@ public class WifiP2pManager {
         Bundle extras = prepareExtrasBundle(c);
         extras.putParcelable(EXTRA_PARAM_KEY_PEER_ADDRESS, deviceAddress);
         extras.putString(EXTRA_PARAM_KEY_WPS_PIN, pin);
-        c.mAsyncChannel.sendMessage(SET_CONNECTION_REQUEST_RESULT,
-                result, c.putListener(listener), extras);
+        c.mAsyncChannel.sendMessage(prepareMessage(SET_CONNECTION_REQUEST_RESULT,
+                result, c.putListener(listener), extras, c.mContext));
     }
 
     /**
@@ -2991,8 +3039,8 @@ public class WifiP2pManager {
         Bundle extras = prepareExtrasBundle(c);
         extras.putParcelableArrayList(EXTRA_PARAM_KEY_INFORMATION_ELEMENT_LIST,
                 new ArrayList<>(vendorElements));
-        c.mAsyncChannel.sendMessage(SET_VENDOR_ELEMENTS, 0,
-                c.putListener(listener), extras);
+        c.mAsyncChannel.sendMessage(prepareMessage(SET_VENDOR_ELEMENTS, 0,
+                c.putListener(listener), extras, c.mContext));
     }
 
     /**

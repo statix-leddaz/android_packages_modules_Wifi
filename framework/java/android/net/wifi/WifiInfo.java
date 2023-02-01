@@ -192,29 +192,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
      */
     public static final int DPM_SECURITY_TYPE_UNKNOWN = -1;
 
-    /**
-     * Security type of current connection.
-     * @hide
-     */
-    @Retention(RetentionPolicy.SOURCE)
-    @IntDef(prefix = { "SECURITY_TYPE_" }, value = {
-            SECURITY_TYPE_UNKNOWN,
-            SECURITY_TYPE_OPEN,
-            SECURITY_TYPE_WEP,
-            SECURITY_TYPE_PSK,
-            SECURITY_TYPE_EAP,
-            SECURITY_TYPE_SAE,
-            SECURITY_TYPE_OWE,
-            SECURITY_TYPE_WAPI_PSK,
-            SECURITY_TYPE_WAPI_CERT,
-            SECURITY_TYPE_EAP_WPA3_ENTERPRISE,
-            SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT,
-            SECURITY_TYPE_PASSPOINT_R1_R2,
-            SECURITY_TYPE_PASSPOINT_R3,
-            SECURITY_TYPE_DPP,
-    })
-    public @interface SecurityType {}
-
     /** @see #isPrimary() - No permission to access the field.  */
     private static final int IS_PRIMARY_NO_PERMISSION = -1;
     /** @see #isPrimary() - false */
@@ -361,7 +338,10 @@ public class WifiInfo implements TransportInfo, Parcelable {
     private double mLostTxPacketsPerSecond;
 
     /**
-     * Average rate of lost transmitted packets, in units of packets per second.
+     * Average rate of lost transmitted packets, in units of packets per second. In case of Multi
+     * Link Operation (MLO), returned value is the average rate of lost transmitted packets on all
+     * associated links.
+     *
      * @hide
      */
     @SystemApi
@@ -377,7 +357,10 @@ public class WifiInfo implements TransportInfo, Parcelable {
     private double mTxRetriedTxPacketsPerSecond;
 
     /**
-     * Average rate of transmitted retry packets, in units of packets per second.
+     * Average rate of transmitted retry packets, in units of packets per second. In case Multi Link
+     * Operation (MLO), the returned value is the average rate of transmitted retry packets on all
+     * associated links.
+     *
      * @hide
      */
     @SystemApi
@@ -393,7 +376,10 @@ public class WifiInfo implements TransportInfo, Parcelable {
     private double mSuccessfulTxPacketsPerSecond;
 
     /**
-     * Average rate of successfully transmitted unicast packets, in units of packets per second.
+     * Average rate of successfully transmitted unicast packets, in units of packets per second. In
+     * case Multi Link Operation (MLO), returned value is the average rate of successfully
+     * transmitted unicast packets on all associated links.
+     *
      * @hide
      */
     @SystemApi
@@ -409,7 +395,10 @@ public class WifiInfo implements TransportInfo, Parcelable {
     private double mSuccessfulRxPacketsPerSecond;
 
     /**
-     * Average rate of received unicast data packets, in units of packets per second.
+     * Average rate of received unicast data packets, in units of packets per second. In case of
+     * Multi Link Operation (MLO), the returned value is the average rate of received unicast data
+     * packets on all associated links.
+     *
      * @hide
      */
     @SystemApi
@@ -849,7 +838,9 @@ public class WifiInfo implements TransportInfo, Parcelable {
     }
 
     /**
-     * Return the basic service set identifier (BSSID) of the current access point.
+     * Return the basic service set identifier (BSSID) of the current access point. In case of
+     * Multi Link Operation (MLO), the BSSID corresponds to the BSSID of the link used for
+     * association.
      * <p>
      * The BSSID may be
      * <lt>{@code null}, if there is no network currently connected.</lt>
@@ -898,6 +889,11 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * Return the Multi-Link Operation (MLO) affiliated Links for Wi-Fi 7 access points.
      * i.e. when {@link #getWifiStandard()} returns {@link ScanResult#WIFI_STANDARD_11BE}.
      *
+     * Affiliated links are the links supported by the Access Point Multi Link Device (AP MLD). The
+     * Station Multi Link Device (STA MLD) gathers affiliated link information from scan results.
+     * Depending on Station's capability, it associates to all or a subset of affiliated links.
+     * <p><b>Note:</b>{@link #getAssociatedMloLinks()} returns associated links.
+     *
      * @return List of affiliated MLO links, or an empty list if access point is not Wi-Fi 7
      */
     @NonNull
@@ -906,11 +902,36 @@ public class WifiInfo implements TransportInfo, Parcelable {
     }
 
     /**
-     * Returns the received signal strength indicator of the current 802.11
-     * network, in dBm.
+     * Return the associated Multi-Link Operation (MLO) Links for Wi-Fi 7 access points.
+     * i.e. when {@link #getWifiStandard()} returns {@link ScanResult#WIFI_STANDARD_11BE}.
      *
-     * <p>Use {@link android.net.wifi.WifiManager#calculateSignalLevel} to convert this number into
+     * Affiliated links are the links supported by the Access Point Multi Link Device (AP MLD). The
+     * Station Multi Link Device (STA MLD) gathers affiliated link information from scan results.
+     * Depending on Station's capability, it associates to all or a subset of affiliated links.
+     * <p><b>Note:</b>{@link #getAffiliatedMloLinks()} returns affiliated links.
+     *
+     * @return List of associated MLO links, or an empty list if access point is not a multi-link
+     * device.
+     */
+    @NonNull
+    public List<MloLink> getAssociatedMloLinks() {
+        ArrayList associatedMloLinks = new ArrayList<MloLink>();
+        for (MloLink link : getAffiliatedMloLinks()) {
+            if (link.getState() == MloLink.MLO_LINK_STATE_IDLE
+                    || link.getState() == MloLink.MLO_LINK_STATE_ACTIVE) {
+                associatedMloLinks.add(link);
+            }
+        }
+        return associatedMloLinks;
+    }
+
+    /**
+     * Returns the received signal strength indicator of the current 802.11 network, in dBm. In
+     * case of Multi Link Operation (MLO), returned RSSI is the highest of all associated links.
+     * <p>
+     * Use {@link android.net.wifi.WifiManager#calculateSignalLevel} to convert this number into
      * an absolute signal level which can be displayed to a user.
+     * </p>
      *
      * @return the RSSI.
      */
@@ -945,7 +966,9 @@ public class WifiInfo implements TransportInfo, Parcelable {
     }
 
     /**
-     * Returns the current link speed in {@link #LINK_SPEED_UNITS}.
+     * Returns the current link speed in {@link #LINK_SPEED_UNITS}. In case of Multi Link Operation
+     * (MLO), returned value is the current link speed of the associated link with the highest RSSI.
+     *
      * @return the link speed or {@link #LINK_SPEED_UNKNOWN} if link speed is unknown.
      * @see #LINK_SPEED_UNITS
      * @see #LINK_SPEED_UNKNOWN
@@ -961,7 +984,10 @@ public class WifiInfo implements TransportInfo, Parcelable {
     }
 
     /**
-     * Returns the current transmit link speed in Mbps.
+     * Returns the current transmit link speed in Mbps. In case of Multi Link Operation (MLO),
+     * returned value is the current transmit link speed of the associated link with the highest
+     * RSSI.
+     *
      * @return the Tx link speed or {@link #LINK_SPEED_UNKNOWN} if link speed is unknown.
      * @see #LINK_SPEED_UNKNOWN
      */
@@ -996,7 +1022,9 @@ public class WifiInfo implements TransportInfo, Parcelable {
     }
 
     /**
-     * Returns the current receive link speed in Mbps.
+     * Returns the current receive link speed in Mbps. In case of Multi Link Operation (MLO),
+     * returned value is the receive link speed of the associated link with the highest RSSI.
+     *
      * @return the Rx link speed or {@link #LINK_SPEED_UNKNOWN} if link speed is unknown.
      * @see #LINK_SPEED_UNKNOWN
      */
@@ -1031,7 +1059,9 @@ public class WifiInfo implements TransportInfo, Parcelable {
     }
 
     /**
-     * Returns the current frequency in {@link #FREQUENCY_UNITS}.
+     * Returns the current frequency in {@link #FREQUENCY_UNITS}. In case of Multi Link Operation
+     * (MLO), returned value is the frequency of the associated link with the highest RSSI.
+     *
      * @return the frequency.
      * @see #FREQUENCY_UNITS
      */
@@ -1077,7 +1107,9 @@ public class WifiInfo implements TransportInfo, Parcelable {
     }
 
     /**
-     * Returns the MAC address used for this connection.
+     * Returns the MAC address used for this connection. In case of Multi Link Operation (MLO),
+     * returned value is the mac address of the link used for association.
+     *
      * @return MAC address of the connection or {@code "02:00:00:00:00:00"} if the caller has
      * insufficient permission.
      *
@@ -1895,7 +1927,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
      *
      * @return the security type, or {@link #SECURITY_TYPE_UNKNOWN} if not currently connected.
      */
-    public @SecurityType int getCurrentSecurityType() {
+    public @WifiAnnotations.SecurityType int getCurrentSecurityType() {
         return mSecurityType;
     }
 
@@ -1905,7 +1937,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * @return security type as a WifiInfo.SecurityType
      * @hide
      */
-    public static @SecurityType int convertWifiConfigurationSecurityType(
+    public static @WifiAnnotations.SecurityType int convertWifiConfigurationSecurityType(
             @WifiConfiguration.SecurityType int wifiConfigSecurity) {
         switch (wifiConfigSecurity) {
             case WifiConfiguration.SECURITY_TYPE_OPEN:
@@ -1947,7 +1979,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * @hide
      */
     public static int convertSecurityTypeToDpmWifiSecurity(
-            @WifiInfo.SecurityType int securityType) {
+            @WifiAnnotations.SecurityType int securityType) {
         switch (securityType) {
             case SECURITY_TYPE_OPEN:
             case SECURITY_TYPE_OWE:

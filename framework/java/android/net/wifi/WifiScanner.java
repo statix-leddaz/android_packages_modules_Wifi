@@ -16,6 +16,8 @@
 
 package android.net.wifi;
 
+import static android.Manifest.permission.NEARBY_WIFI_DEVICES;
+
 import android.Manifest;
 import android.annotation.CallbackExecutor;
 import android.annotation.IntDef;
@@ -169,6 +171,33 @@ public class WifiScanner {
     public static final int REASON_NOT_AUTHORIZED = -4;
     /** An outstanding request with the same listener hasn't finished yet. */
     public static final int REASON_DUPLICATE_REQEUST = -5;
+    /** Busy - Due to Connection in progress, processing another scan request etc. */
+    public static final int REASON_BUSY = -6;
+    /** Abort - Due to another high priority operation like roaming, offload scan etc. */
+    public static final int REASON_ABORT = -7;
+    /** No such device - Wrong interface or interface doesn't exist. */
+    public static final int REASON_NO_DEVICE = -8;
+    /** Invalid argument - Wrong/unsupported argument passed in scan params. */
+    public static final int REASON_INVALID_ARGS = -9;
+    /** Timeout - Device didn't respond back with scan results */
+    public static final int REASON_TIMEOUT = -10;
+
+    /** @hide */
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef(prefix = { "REASON_" }, value = {
+            REASON_SUCCEEDED,
+            REASON_UNSPECIFIED,
+            REASON_INVALID_LISTENER,
+            REASON_INVALID_REQUEST,
+            REASON_NOT_AUTHORIZED,
+            REASON_DUPLICATE_REQEUST,
+            REASON_BUSY,
+            REASON_ABORT,
+            REASON_NO_DEVICE,
+            REASON_INVALID_ARGS,
+            REASON_TIMEOUT,
+    })
+    public @interface ScanStatusCode {}
 
     /** @hide */
     public static final String GET_AVAILABLE_CHANNELS_EXTRA = "Channels";
@@ -244,16 +273,18 @@ public class WifiScanner {
      * @param band one of the WifiScanner#WIFI_BAND_* constants, e.g. {@link #WIFI_BAND_24_GHZ}
      * @return a list of all the frequencies, in MHz, for the given band(s) e.g. channel 1 is
      * 2412, or null if an error occurred.
-     *
-     * @hide
      */
-    @SystemApi
     @NonNull
-    @RequiresPermission(android.Manifest.permission.LOCATION_HARDWARE)
+    @RequiresPermission(NEARBY_WIFI_DEVICES)
     public List<Integer> getAvailableChannels(int band) {
         try {
+            Bundle extras = new Bundle();
+            if (SdkLevel.isAtLeastS()) {
+                extras.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                        mContext.getAttributionSource());
+            }
             Bundle bundle = mService.getAvailableChannels(band, mContext.getOpPackageName(),
-                    mContext.getAttributionTag());
+                    mContext.getAttributionTag(), extras);
             List<Integer> channels = bundle.getIntegerArrayList(GET_AVAILABLE_CHANNELS_EXTRA);
             return channels == null ? new ArrayList<>() : channels;
         } catch (RemoteException e) {

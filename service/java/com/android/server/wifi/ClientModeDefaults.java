@@ -18,11 +18,13 @@ package com.android.server.wifi;
 
 import android.annotation.NonNull;
 import android.net.DhcpResultsParcelable;
+import android.net.MacAddress;
 import android.net.Network;
 import android.net.wifi.IWifiConnectedNetworkScorer;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiManager.DeviceMobilityState;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.nl80211.DeviceWiphyCapabilities;
@@ -66,6 +68,8 @@ public interface ClientModeDefaults extends ClientMode {
 
     default void startRoamToNetwork(int networkId, String bssid) { }
 
+    default void onDeviceMobilityStateUpdated(@DeviceMobilityState int newState) { }
+
     default boolean setWifiConnectedNetworkScorer(
             IBinder binder, IWifiConnectedNetworkScorer scorer) {
         // don't fail the public API when wifi is off.
@@ -78,7 +82,7 @@ public interface ClientModeDefaults extends ClientMode {
 
     default void onBluetoothConnectionStateChanged() { }
 
-    default WifiInfo syncRequestConnectionInfo() {
+    default WifiInfo getConnectionInfo() {
         return new WifiInfo();
     }
 
@@ -227,4 +231,9 @@ public interface ClientModeDefaults extends ClientMode {
 
     @Override
     default void updateCapabilities() { }
+
+    @Override
+    default boolean isAffiliatedLinkBssid(MacAddress bssid) {
+        return false;
+    }
 }

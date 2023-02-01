@@ -27,7 +27,6 @@ import static org.mockito.Mockito.when;
 
 import android.app.AppOpsManager;
 import android.content.Context;
-import android.hardware.wifi.V1_0.NanStatusType;
 import android.net.wifi.aware.WifiAwareNetworkSpecifier;
 import android.util.LocalLog;
 import android.util.Log;
@@ -38,6 +37,7 @@ import androidx.test.filters.SmallTest;
 
 import com.android.server.wifi.Clock;
 import com.android.server.wifi.WifiBaseTest;
+import com.android.server.wifi.hal.WifiNanIface.NanStatusCode;
 import com.android.server.wifi.proto.nano.WifiMetricsProto;
 import com.android.server.wifi.util.MetricsUtils;
 import com.android.server.wifi.util.WifiPermissionsUtil;
@@ -64,6 +64,7 @@ public class WifiAwareMetricsTest extends WifiBaseTest {
     @Mock private AppOpsManager mMockAppOpsManager;
     @Mock private WifiPermissionsUtil mWifiPermissionsUtil;
     @Rule public ErrorCollector collector = new ErrorCollector();
+    @Mock private PairingConfigManager mPairingConfigManager;
 
     private WifiAwareMetrics mDut;
     private LocalLog mLocalLog = new LocalLog(512);
@@ -245,25 +246,29 @@ public class WifiAwareMetricsTest extends WifiBaseTest {
         // uid1: session 1
         clients.put(10,
                 new WifiAwareClientState(mMockContext, 10, uid1, 0, null, null, null, null, false,
-                        mClock.getElapsedSinceBootMillis(), mWifiPermissionsUtil, null, mLocalLog));
+                        mClock.getElapsedSinceBootMillis(), mWifiPermissionsUtil, null, mLocalLog,
+                        false));
         mDut.recordAttachSession(uid1, false, clients);
 
         // uid1: session 2
         clients.put(11,
                 new WifiAwareClientState(mMockContext, 11, uid1, 0, null, null, null, null, false,
-                        mClock.getElapsedSinceBootMillis(), mWifiPermissionsUtil, null, mLocalLog));
+                        mClock.getElapsedSinceBootMillis(), mWifiPermissionsUtil, null, mLocalLog,
+                        false));
         mDut.recordAttachSession(uid1, false, clients);
 
         // uid2: session 1
         clients.put(12,
                 new WifiAwareClientState(mMockContext, 12, uid2, 0, null, null, null, null, false,
-                        mClock.getElapsedSinceBootMillis(), mWifiPermissionsUtil, null, mLocalLog));
+                        mClock.getElapsedSinceBootMillis(), mWifiPermissionsUtil, null, mLocalLog,
+                        false));
         mDut.recordAttachSession(uid2, false, clients);
 
         // uid2: session 2
         clients.put(13,
                 new WifiAwareClientState(mMockContext, 13, uid2, 0, null, null, null, null, true,
-                        mClock.getElapsedSinceBootMillis(), mWifiPermissionsUtil, null, mLocalLog));
+                        mClock.getElapsedSinceBootMillis(), mWifiPermissionsUtil, null, mLocalLog,
+                        false));
         mDut.recordAttachSession(uid2, true, clients);
 
         // uid2: delete session 1
@@ -279,12 +284,13 @@ public class WifiAwareMetricsTest extends WifiBaseTest {
         // uid2: session 3
         clients.put(14,
                 new WifiAwareClientState(mMockContext, 14, uid2, 0, null, null, null, null, false,
-                        mClock.getElapsedSinceBootMillis(), mWifiPermissionsUtil, null, mLocalLog));
+                        mClock.getElapsedSinceBootMillis(), mWifiPermissionsUtil, null, mLocalLog,
+                        false));
         mDut.recordAttachSession(uid2, false, clients);
 
         // a few failures
-        mDut.recordAttachStatus(NanStatusType.INTERNAL_FAILURE);
-        mDut.recordAttachStatus(NanStatusType.INTERNAL_FAILURE);
+        mDut.recordAttachStatus(NanStatusCode.INTERNAL_FAILURE);
+        mDut.recordAttachStatus(NanStatusCode.INTERNAL_FAILURE);
         mDut.recordAttachStatus(-5); // invalid
 
         // verify
@@ -322,62 +328,158 @@ public class WifiAwareMetricsTest extends WifiBaseTest {
 
         setTime(5);
         WifiAwareClientState client1 = new WifiAwareClientState(mMockContext, 10, uid1, 0, null,
-                null, null, null, false, 0, mWifiPermissionsUtil, null, mLocalLog);
+                null, null, null, false, 0, mWifiPermissionsUtil, null, mLocalLog, false);
         WifiAwareClientState client2 = new WifiAwareClientState(mMockContext, 11, uid2, 0, null,
-                null, null, null, false, 0, mWifiPermissionsUtil, null, mLocalLog);
+                null, null, null, false, 0, mWifiPermissionsUtil, null, mLocalLog, false);
         WifiAwareClientState client3 = new WifiAwareClientState(mMockContext, 12, uid3, 0, null,
-                null, null, null, false, 0, mWifiPermissionsUtil, null, mLocalLog);
+                null, null, null, false, 0, mWifiPermissionsUtil, null, mLocalLog, false);
         clients.put(10, client1);
         clients.put(11, client2);
         clients.put(12, client3);
 
         // uid1: publish session 1
-        client1.addSession(new WifiAwareDiscoverySessionState(null, 100, (byte) 0, null, true,
-                false, mClock.getElapsedSinceBootMillis(), false, 0, mLocalLog));
+        client1.addSession(
+                new WifiAwareDiscoverySessionState(
+                        /* wifiAwareNativeApi= */ null,
+                        /* sessionId= */ 100,
+                        /* pubSubId= */ (byte) 0,
+                        /* callback= */ null,
+                        /* isPublishSession= */ true,
+                        /* isRangingEnabled= */ false,
+                        /* creationTime= */ mClock.getElapsedSinceBootMillis(),
+                        /* instantModeEnabled= */ false,
+                        /* instantModeBand= */ 0,
+                        /* isSuspendable= */ false,
+                        mLocalLog,
+                        /* pairingConfig= */ null));
         mDut.recordDiscoverySession(uid1, clients);
-        mDut.recordDiscoveryStatus(uid1, NanStatusType.SUCCESS, true);
+        mDut.recordDiscoveryStatus(uid1, NanStatusCode.SUCCESS, true);
 
         // uid1: publish session 2
-        client1.addSession(new WifiAwareDiscoverySessionState(null, 101, (byte) 0, null, true,
-                false, mClock.getElapsedSinceBootMillis(), false, 0, mLocalLog));
+        client1.addSession(
+                new WifiAwareDiscoverySessionState(
+                        /* wifiAwareNativeApi= */ null,
+                        /* sessionId= */ 101,
+                        /* pubSubId= */ (byte) 0,
+                        /* callback= */ null,
+                        /* isPublishSession= */ true,
+                        /* isRangingEnabled= */ false,
+                        /* creationTime= */ mClock.getElapsedSinceBootMillis(),
+                        /* instantModeEnabled= */ false,
+                        /* instantModeBand= */ 0,
+                        /* isSuspendable= */ false,
+                        mLocalLog,
+                        /* pairingConfig= */ null));
         mDut.recordDiscoverySession(uid1, clients);
-        mDut.recordDiscoveryStatus(uid1, NanStatusType.SUCCESS, true);
+        mDut.recordDiscoveryStatus(uid1, NanStatusCode.SUCCESS, true);
 
         // uid3: publish session 3 with ranging
-        client3.addSession(new WifiAwareDiscoverySessionState(null, 111, (byte) 0, null, true,
-                true, mClock.getElapsedSinceBootMillis(), false, 0, mLocalLog));
+        client3.addSession(
+                new WifiAwareDiscoverySessionState(
+                        /* wifiAwareNativeApi= */ null,
+                        /* sessionId= */ 111,
+                        /* pubSubId= */ (byte) 0,
+                        /* callback= */ null,
+                        /* isPublishSession= */ true,
+                        /* isRangingEnabled= */ true,
+                        /* creationTime= */ mClock.getElapsedSinceBootMillis(),
+                        /* instantModeEnabled= */ false,
+                        /* instantModeBand= */ 0,
+                        /* isSuspendable= */ false,
+                        mLocalLog,
+                        /* pairingConfig= */ null));
         mDut.recordDiscoverySessionWithRanging(uid3, false, -1, -1, clients);
-        mDut.recordDiscoveryStatus(uid3, NanStatusType.SUCCESS, true);
+        mDut.recordDiscoveryStatus(uid3, NanStatusCode.SUCCESS, true);
 
         // uid2: subscribe session 1
-        client2.addSession(new WifiAwareDiscoverySessionState(null, 102, (byte) 0, null, false,
-                false, mClock.getElapsedSinceBootMillis(), false, 0, mLocalLog));
+        client2.addSession(
+                new WifiAwareDiscoverySessionState(
+                        /* wifiAwareNativeApi= */ null,
+                        /* sessionId= */ 102,
+                        /* pubSubId= */ (byte) 0,
+                        /* callback= */ null,
+                        /* isPublishSession= */ false,
+                        /* isRangingEnabled= */ false,
+                        /* creationTime= */ mClock.getElapsedSinceBootMillis(),
+                        /* instantModeEnabled= */ false,
+                        /* instantModeBand= */ 0,
+                        /* isSuspendable= */ false,
+                        mLocalLog,
+                        /* pairingConfig= */ null));
         mDut.recordDiscoverySession(uid2, clients);
-        mDut.recordDiscoveryStatus(uid2, NanStatusType.SUCCESS, false);
+        mDut.recordDiscoveryStatus(uid2, NanStatusCode.SUCCESS, false);
 
         // uid2: publish session 2
-        client2.addSession(new WifiAwareDiscoverySessionState(null, 103, (byte) 0, null, true,
-                false, mClock.getElapsedSinceBootMillis(), false, 0, mLocalLog));
+        client2.addSession(
+                new WifiAwareDiscoverySessionState(
+                        /* wifiAwareNativeApi= */ null,
+                        /* sessionId= */ 103,
+                        /* pubSubId= */ (byte) 0,
+                        /* callback= */ null,
+                        /* isPublishSession= */ true,
+                        /* isRangingEnabled= */ false,
+                        /* creationTime= */ mClock.getElapsedSinceBootMillis(),
+                        /* instantModeEnabled= */ false,
+                        /* instantModeBand= */ 0,
+                        /* isSuspendable= */ false,
+                        mLocalLog,
+                        /* pairingConfig= */ null));
         mDut.recordDiscoverySession(uid2, clients);
-        mDut.recordDiscoveryStatus(uid2, NanStatusType.SUCCESS, false);
+        mDut.recordDiscoveryStatus(uid2, NanStatusCode.SUCCESS, false);
 
         // uid3: subscribe session 3 with ranging: min
-        client3.addSession(new WifiAwareDiscoverySessionState(null, 112, (byte) 0, null, false,
-                true, mClock.getElapsedSinceBootMillis(), false, 0, mLocalLog));
+        client3.addSession(
+                new WifiAwareDiscoverySessionState(
+                        /* wifiAwareNativeApi= */ null,
+                        /* sessionId= */ 112,
+                        /* pubSubId= */ (byte) 0,
+                        /* callback= */ null,
+                        /* isPublishSession= */ false,
+                        /* isRangingEnabled= */ true,
+                        /* creationTime= */ mClock.getElapsedSinceBootMillis(),
+                        /* instantModeEnabled= */ false,
+                        /* instantModeBand= */ 0,
+                        /* isSuspendable= */ false,
+                        mLocalLog,
+                        /* pairingConfig= */ null));
         mDut.recordDiscoverySessionWithRanging(uid3, true, 10, -1, clients);
-        mDut.recordDiscoveryStatus(uid3, NanStatusType.SUCCESS, false);
+        mDut.recordDiscoveryStatus(uid3, NanStatusCode.SUCCESS, false);
 
         // uid3: subscribe session 3 with ranging: max
-        client3.addSession(new WifiAwareDiscoverySessionState(null, 113, (byte) 0, null, false,
-                true, mClock.getElapsedSinceBootMillis(), false, 0, mLocalLog));
+        client3.addSession(
+                new WifiAwareDiscoverySessionState(
+                        /* wifiAwareNativeApi= */ null,
+                        /* sessionId= */ 113,
+                        /* pubSubId= */ (byte) 0,
+                        /* callback= */ null,
+                        /* isPublishSession= */ false,
+                        /* isRangingEnabled= */ true,
+                        /* creationTime= */ mClock.getElapsedSinceBootMillis(),
+                        /* instantModeEnabled= */ false,
+                        /* instantModeBand= */ 0,
+                        /* isSuspendable= */ false,
+                        mLocalLog,
+                        /* pairingConfig= */ null));
         mDut.recordDiscoverySessionWithRanging(uid3, true, -1, 50, clients);
-        mDut.recordDiscoveryStatus(uid3, NanStatusType.SUCCESS, false);
+        mDut.recordDiscoveryStatus(uid3, NanStatusCode.SUCCESS, false);
 
         // uid3: subscribe session 3 with ranging: minmax
-        client3.addSession(new WifiAwareDiscoverySessionState(null, 114, (byte) 0, null, false,
-                true, mClock.getElapsedSinceBootMillis(), false, 0, mLocalLog));
+        client3.addSession(
+                new WifiAwareDiscoverySessionState(
+                        /* wifiAwareNativeApi= */ null,
+                        /* sessionId= */ 114,
+                        /* pubSubId= */ (byte) 0,
+                        /* callback= */ null,
+                        /* isPublishSession= */ false,
+                        /* isRangingEnabled= */ true,
+                        /* creationTime= */ mClock.getElapsedSinceBootMillis(),
+                        /* instantModeEnabled= */ false,
+                        /* instantModeBand= */ 0,
+                        /* isSuspendable= */ false,
+                        mLocalLog,
+                        /* pairingConfig= */ null));
         mDut.recordDiscoverySessionWithRanging(uid3, true, 0, 110, clients);
-        mDut.recordDiscoveryStatus(uid3, NanStatusType.SUCCESS, false);
+        mDut.recordDiscoveryStatus(uid3, NanStatusCode.SUCCESS, false);
 
         // uid1: delete session 1
         setTime(10);
@@ -393,13 +495,25 @@ public class WifiAwareMetricsTest extends WifiBaseTest {
 
         // uid2: subscribe session 3
         mDut.recordDiscoverySession(uid2, clients);
-        client2.addSession(new WifiAwareDiscoverySessionState(null, 104, (byte) 0, null, false,
-                false, mClock.getElapsedSinceBootMillis(), false, 0, mLocalLog));
+        client2.addSession(
+                new WifiAwareDiscoverySessionState(
+                        /* wifiAwareNativeApi= */ null,
+                        /* sessionId= */ 104,
+                        /* pubSubId= */ (byte) 0,
+                        /* callback= */ null,
+                        /* isPublishSession= */ false,
+                        /* isRangingEnabled= */ false,
+                        /* creationTime= */ mClock.getElapsedSinceBootMillis(),
+                        /* instantModeEnabled= */ false,
+                        /* instantModeBand= */ 0,
+                        /* isSuspendable= */ false,
+                        mLocalLog,
+                        /* pairingConfig= */ null));
 
         // a few failures
-        mDut.recordDiscoveryStatus(uid1, NanStatusType.INTERNAL_FAILURE, true);
-        mDut.recordDiscoveryStatus(uid2, NanStatusType.INTERNAL_FAILURE, false);
-        mDut.recordDiscoveryStatus(uid2, NanStatusType.NO_RESOURCES_AVAILABLE, false);
+        mDut.recordDiscoveryStatus(uid1, NanStatusCode.INTERNAL_FAILURE, true);
+        mDut.recordDiscoveryStatus(uid2, NanStatusCode.INTERNAL_FAILURE, false);
+        mDut.recordDiscoveryStatus(uid2, NanStatusCode.NO_RESOURCES_AVAILABLE, false);
         mDut.recordAttachStatus(-5); // invalid
 
         // verify
@@ -486,28 +600,28 @@ public class WifiAwareMetricsTest extends WifiBaseTest {
         addNetworkInfoToCache(networkRequestCache, 10, uid1, package1, ndi0, null);
         mDut.recordNdpCreation(uid1, package1, networkRequestCache);
         setTime(7); // 2ms creation time
-        mDut.recordNdpStatus(NanStatusType.SUCCESS, false, 5);
+        mDut.recordNdpStatus(NanStatusCode.SUCCESS, false, 5);
 
         // uid2: ndp (non-secure) on ndi0
         WifiAwareNetworkSpecifier ns = addNetworkInfoToCache(networkRequestCache, 11, uid2,
                 package2, ndi0, null);
         mDut.recordNdpCreation(uid2, package2, networkRequestCache);
         setTime(10); // 3 ms creation time
-        mDut.recordNdpStatus(NanStatusType.SUCCESS, false, 7);
+        mDut.recordNdpStatus(NanStatusCode.SUCCESS, false, 7);
 
         // uid2: ndp (secure) on ndi1 (OOB)
         addNetworkInfoToCache(networkRequestCache, 12, uid2, package2, ndi1,
                 "passphrase of some kind");
         mDut.recordNdpCreation(uid2, package2, networkRequestCache);
         setTime(25); // 15 ms creation time
-        mDut.recordNdpStatus(NanStatusType.SUCCESS, true, 10);
+        mDut.recordNdpStatus(NanStatusCode.SUCCESS, true, 10);
 
         // uid2: ndp (secure) on ndi0 (OOB)
         addNetworkInfoToCache(networkRequestCache, 13, uid2, package2, ndi0,
                 "super secret password");
         mDut.recordNdpCreation(uid2, package2, networkRequestCache);
         setTime(36); // 11 ms creation time
-        mDut.recordNdpStatus(NanStatusType.SUCCESS, true, 25);
+        mDut.recordNdpStatus(NanStatusCode.SUCCESS, true, 25);
 
         // uid2: delete the first NDP
         networkRequestCache.remove(ns);
@@ -516,12 +630,12 @@ public class WifiAwareMetricsTest extends WifiBaseTest {
         addNetworkInfoToCache(networkRequestCache, 14, uid2, package2, ndi0, null);
         mDut.recordNdpCreation(uid2, package2, networkRequestCache);
         setTime(37); // 1 ms creation time!
-        mDut.recordNdpStatus(NanStatusType.SUCCESS, false, 36);
+        mDut.recordNdpStatus(NanStatusCode.SUCCESS, false, 36);
 
         // a few error codes
-        mDut.recordNdpStatus(NanStatusType.INTERNAL_FAILURE, false, 0);
-        mDut.recordNdpStatus(NanStatusType.INTERNAL_FAILURE, false, 0);
-        mDut.recordNdpStatus(NanStatusType.NO_RESOURCES_AVAILABLE, false, 0);
+        mDut.recordNdpStatus(NanStatusCode.INTERNAL_FAILURE, false, 0);
+        mDut.recordNdpStatus(NanStatusCode.INTERNAL_FAILURE, false, 0);
+        mDut.recordNdpStatus(NanStatusCode.NO_RESOURCES_AVAILABLE, false, 0);
 
         // and some durations
         setTime(150);
@@ -611,13 +725,13 @@ public class WifiAwareMetricsTest extends WifiBaseTest {
     public void testNanStatusTypeHistogram() {
         SparseIntArray statusHistogram = new SparseIntArray();
 
-        addNanHalStatusToHistogram(NanStatusType.SUCCESS, statusHistogram);
+        addNanHalStatusToHistogram(NanStatusCode.SUCCESS, statusHistogram);
         addNanHalStatusToHistogram(-1, statusHistogram);
-        addNanHalStatusToHistogram(NanStatusType.ALREADY_ENABLED, statusHistogram);
-        addNanHalStatusToHistogram(NanStatusType.SUCCESS, statusHistogram);
-        addNanHalStatusToHistogram(NanStatusType.INTERNAL_FAILURE, statusHistogram);
-        addNanHalStatusToHistogram(NanStatusType.SUCCESS, statusHistogram);
-        addNanHalStatusToHistogram(NanStatusType.INTERNAL_FAILURE, statusHistogram);
+        addNanHalStatusToHistogram(NanStatusCode.ALREADY_ENABLED, statusHistogram);
+        addNanHalStatusToHistogram(NanStatusCode.SUCCESS, statusHistogram);
+        addNanHalStatusToHistogram(NanStatusCode.INTERNAL_FAILURE, statusHistogram);
+        addNanHalStatusToHistogram(NanStatusCode.SUCCESS, statusHistogram);
+        addNanHalStatusToHistogram(NanStatusCode.INTERNAL_FAILURE, statusHistogram);
         addNanHalStatusToHistogram(55, statusHistogram);
         addNanHalStatusToHistogram(65, statusHistogram);
 

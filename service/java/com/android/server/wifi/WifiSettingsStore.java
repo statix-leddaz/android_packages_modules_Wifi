@@ -28,6 +28,7 @@ import android.net.wifi.WifiContext;
 import android.provider.Settings;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
 import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
@@ -131,10 +132,6 @@ public class WifiSettingsStore {
     /* Tracks when airplane mode has been enabled in milliseconds since boot */
     private long mApmEnabledTimeSinceBootMillis = 0;
 
-    // TODO(b/240650689): Replace NOTE_WIFI_APM_NOTIFICATION with
-    // SystemMessage.NOTE_WIFI_APM_NOTIFICATION
-    private static final int WIFI_APM_NOTIFICATION_ID = 73;
-
     private final String mApmEnhancementHelpLink;
     private final WifiContext mContext;
     private final WifiSettingsConfigStore mSettingsConfigStore;
@@ -232,7 +229,7 @@ public class WifiSettingsStore {
                 .setStyle(new Notification.BigTextStyle().bigText(message))
                 .setSmallIcon(Icon.createWithResource(mContext.getWifiOverlayApkPkgName(),
                         R.drawable.ic_wifi_settings));
-        mNotificationManager.notify(WIFI_APM_NOTIFICATION_ID, builder.build());
+        mNotificationManager.notify(SystemMessage.NOTE_WIFI_APM_NOTIFICATION, builder.build());
     }
 
     public synchronized boolean handleWifiToggled(boolean wifiEnabled) {

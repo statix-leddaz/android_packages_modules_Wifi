@@ -1032,6 +1032,10 @@ public class WifiConfiguration implements Parcelable {
 
     private List<MacAddress> mBssidAllowlist;
 
+    private byte[] mEncryptedPreSharedKey;
+    private byte[] mEncryptedPreSharedKeyIv;
+    private boolean mHasPreSharedKeyChanged;
+
     /**
      * Set a list of BSSIDs to control if this network configuration entry should be used to
      * associate an AP.
@@ -1474,9 +1478,15 @@ public class WifiConfiguration implements Parcelable {
     public boolean osu;
 
     /**
-     * Last time the system was connected to this configuration.
+     * Last time the system was connected to this configuration represented as the difference,
+     * measured in milliseconds, between the last connected time and midnight, January 1, 1970 UTC.
+     * <P>
+     * Note that this information is only in memory will be cleared (reset to 0) for all
+     * WifiConfiguration(s) after a reboot.
      * @hide
      */
+    @SuppressLint("MutableBareField")
+    @SystemApi
     public long lastConnected;
 
     /**
@@ -1497,6 +1507,8 @@ public class WifiConfiguration implements Parcelable {
      * Number of reboots since this config was last used (either connected or updated).
      * @hide
      */
+    @SuppressLint("MutableBareField")
+    @SystemApi
     public int numRebootsSinceLastUse;
 
     /**
@@ -1562,14 +1574,6 @@ public class WifiConfiguration implements Parcelable {
      * @hide
      */
     public boolean oemPrivate;
-
-    /**
-     * Indicate whether or not the network is a secondary network with internet, associated with
-     * a DBS AP same as the primary network on a different band.
-     * This bit is set when this Wifi configuration is created from {@link WifiConnectivityManager}.
-     * @hide
-     */
-    public boolean dbsSecondaryInternet;
 
     /**
      * Indicate whether or not the network is a carrier merged network.
@@ -2127,7 +2131,6 @@ public class WifiConfiguration implements Parcelable {
         /**
          * This code is used to disable a network when a security params is disabled
          * by the transition disable indication.
-         * @hide
          */
         public static final int DISABLED_TRANSITION_DISABLE_INDICATION = 13;
         /**
@@ -3205,7 +3208,6 @@ public class WifiConfiguration implements Parcelable {
         carrierMerged = false;
         fromWifiNetworkSuggestion = false;
         fromWifiNetworkSpecifier = false;
-        dbsSecondaryInternet = false;
         meteredHint = false;
         mIsRepeaterEnabled = false;
         meteredOverride = METERED_OVERRIDE_NONE;
@@ -3225,6 +3227,9 @@ public class WifiConfiguration implements Parcelable {
         mDppConnector = new byte[0];
         mDppCSignKey = new byte[0];
         mDppNetAccessKey = new byte[0];
+        mHasPreSharedKeyChanged = false;
+        mEncryptedPreSharedKey = new byte[0];
+        mEncryptedPreSharedKeyIv = new byte[0];
     }
 
     /**
@@ -3354,14 +3359,13 @@ public class WifiConfiguration implements Parcelable {
         if (this.carrierMerged) sbuf.append(" carrierMerged");
         if (this.fromWifiNetworkSuggestion) sbuf.append(" fromWifiNetworkSuggestion");
         if (this.fromWifiNetworkSpecifier) sbuf.append(" fromWifiNetworkSpecifier");
-        if (this.dbsSecondaryInternet) sbuf.append(" dbsSecondaryInternet");
         if (this.meteredHint) sbuf.append(" meteredHint");
         if (this.mIsRepeaterEnabled) sbuf.append(" repeaterEnabled");
         if (this.useExternalScores) sbuf.append(" useExternalScores");
         if (this.validatedInternetAccess || this.ephemeral || this.trusted || this.oemPaid
                 || this.oemPrivate || this.carrierMerged || this.fromWifiNetworkSuggestion
                 || this.fromWifiNetworkSpecifier || this.meteredHint || this.useExternalScores
-                || this.restricted || this.dbsSecondaryInternet) {
+                || this.restricted) {
             sbuf.append("\n");
         }
         if (this.meteredOverride != METERED_OVERRIDE_NONE) {
@@ -3544,6 +3548,7 @@ public class WifiConfiguration implements Parcelable {
         }
         sbuf.append("\n");
         sbuf.append("IsDppConfigurator: ").append(this.mIsDppConfigurator).append("\n");
+        sbuf.append("HasEncryptedPreSharedKey: ").append(hasEncryptedPreSharedKey()).append("\n");
         return sbuf.toString();
     }
 
@@ -3641,6 +3646,7 @@ public class WifiConfiguration implements Parcelable {
     /**
      * Get the authentication type of the network.
      * @return One of the {@link KeyMgmt} constants. e.g. {@link KeyMgmt#WPA2_PSK}.
+     * @throws IllegalStateException if config is invalid for authentication type.
      * @hide
      */
     @SystemApi
@@ -3936,7 +3942,6 @@ public class WifiConfiguration implements Parcelable {
             carrierMerged = source.carrierMerged;
             fromWifiNetworkSuggestion = source.fromWifiNetworkSuggestion;
             fromWifiNetworkSpecifier = source.fromWifiNetworkSpecifier;
-            dbsSecondaryInternet = source.dbsSecondaryInternet;
             meteredHint = source.meteredHint;
             mIsRepeaterEnabled = source.mIsRepeaterEnabled;
             meteredOverride = source.meteredOverride;
@@ -3983,6 +3988,11 @@ public class WifiConfiguration implements Parcelable {
             mDppCSignKey = source.mDppCSignKey.clone();
             mDppNetAccessKey = source.mDppNetAccessKey.clone();
             isCurrentlyConnected = source.isCurrentlyConnected;
+            mHasPreSharedKeyChanged = source.hasPreSharedKeyChanged();
+            mEncryptedPreSharedKey = source.mEncryptedPreSharedKey != null
+                    ? source.mEncryptedPreSharedKey.clone() : new byte[0];
+            mEncryptedPreSharedKeyIv = source.mEncryptedPreSharedKeyIv != null
+                    ? source.mEncryptedPreSharedKeyIv.clone() : new byte[0];
         }
     }
 
@@ -4040,7 +4050,6 @@ public class WifiConfiguration implements Parcelable {
         dest.writeInt(carrierMerged ? 1 : 0);
         dest.writeInt(fromWifiNetworkSuggestion ? 1 : 0);
         dest.writeInt(fromWifiNetworkSpecifier ? 1 : 0);
-        dest.writeInt(dbsSecondaryInternet ? 1 : 0);
         dest.writeInt(meteredHint ? 1 : 0);
         dest.writeBoolean(mIsRepeaterEnabled);
         dest.writeInt(meteredOverride);
@@ -4077,10 +4086,13 @@ public class WifiConfiguration implements Parcelable {
         dest.writeByteArray(mDppCSignKey);
         dest.writeByteArray(mDppNetAccessKey);
         dest.writeBoolean(isCurrentlyConnected);
+        dest.writeBoolean(mHasPreSharedKeyChanged);
+        dest.writeByteArray(mEncryptedPreSharedKey);
+        dest.writeByteArray(mEncryptedPreSharedKeyIv);
     }
 
     /** Implement the Parcelable interface {@hide} */
-    @UnsupportedAppUsage
+    @SystemApi
     public static final @android.annotation.NonNull Creator<WifiConfiguration> CREATOR =
         new Creator<WifiConfiguration>() {
             public WifiConfiguration createFromParcel(Parcel in) {
@@ -4137,7 +4149,6 @@ public class WifiConfiguration implements Parcelable {
                 config.carrierMerged = in.readInt() != 0;
                 config.fromWifiNetworkSuggestion = in.readInt() != 0;
                 config.fromWifiNetworkSpecifier = in.readInt() != 0;
-                config.dbsSecondaryInternet = in.readInt() != 0;
                 config.meteredHint = in.readInt() != 0;
                 config.mIsRepeaterEnabled = in.readBoolean();
                 config.meteredOverride = in.readInt();
@@ -4173,6 +4184,15 @@ public class WifiConfiguration implements Parcelable {
                 config.mDppCSignKey = in.createByteArray();
                 config.mDppNetAccessKey = in.createByteArray();
                 config.isCurrentlyConnected = in.readBoolean();
+                config.mHasPreSharedKeyChanged = in.readBoolean();
+                config.mEncryptedPreSharedKey = in.createByteArray();
+                if (config.mEncryptedPreSharedKey == null) {
+                    config.mEncryptedPreSharedKey = new byte[0];
+                }
+                config.mEncryptedPreSharedKeyIv = in.createByteArray();
+                if (config.mEncryptedPreSharedKeyIv == null) {
+                    config.mEncryptedPreSharedKeyIv = new byte[0];
+                }
                 return config;
             }
 
@@ -4232,6 +4252,73 @@ public class WifiConfiguration implements Parcelable {
                 .anyMatch(params -> params.isSecurityType(SECURITY_TYPE_PSK)
                         || params.isSecurityType(SECURITY_TYPE_SAE)
                         || params.isSecurityType(SECURITY_TYPE_WAPI_PSK));
+    }
+
+    /**
+     * Return if the encrypted data is present
+     * @return true if encrypted data is present
+     * @hide
+     */
+    public boolean hasEncryptedPreSharedKey() {
+        if (mEncryptedPreSharedKey == null || mEncryptedPreSharedKeyIv == null) return false;
+        return !(mEncryptedPreSharedKey.length == 0 && mEncryptedPreSharedKeyIv.length == 0);
+    }
+
+    /**
+     * Set the encrypted data for preSharedKey
+     * @param encryptedPreSharedKey encrypted preSharedKey
+     * @param encryptedPreSharedKeyIv encrypted preSharedKey
+     * @hide
+     */
+    public void setEncryptedPreSharedKey(byte[] encryptedPreSharedKey,
+            byte[] encryptedPreSharedKeyIv) {
+        mEncryptedPreSharedKey = encryptedPreSharedKey;
+        mEncryptedPreSharedKeyIv = encryptedPreSharedKeyIv;
+    }
+
+    /**
+     * Get the encrypted data
+     *
+     * @return encrypted data of the WifiConfiguration
+     * @hide
+     */
+    public byte[] getEncryptedPreSharedKey() {
+        return mEncryptedPreSharedKey;
+    }
+
+    /**
+     * Get the encrypted data IV
+     *
+     * @return encrypted data IV of the WifiConfiguration
+     * @hide
+     */
+    public byte[] getEncryptedPreSharedKeyIv() {
+        return mEncryptedPreSharedKeyIv;
+    }
+
+    /**
+     * Check whether the configuration's password has changed.
+     * If true, the encrypted data is no longer valid.
+     *
+     * @return true if preSharedKey encryption is needed, false otherwise.
+     * @hide
+     */
+    public boolean hasPreSharedKeyChanged() {
+        return mHasPreSharedKeyChanged;
+    }
+
+    /**
+     * Set whether the WifiConfiguration needs a preSharedKey encryption.
+     *
+     * @param changed true if preSharedKey is changed, false otherwise.
+     * @hide
+     */
+    public void setHasPreSharedKeyChanged(boolean changed) {
+        mHasPreSharedKeyChanged = changed;
+        if (mHasPreSharedKeyChanged) {
+            mEncryptedPreSharedKey = new byte[0];
+            mEncryptedPreSharedKeyIv = new byte[0];
+        }
     }
 
     /**

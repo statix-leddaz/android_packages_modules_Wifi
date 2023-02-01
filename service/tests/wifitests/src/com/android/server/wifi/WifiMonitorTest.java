@@ -31,8 +31,10 @@ import android.hardware.wifi.supplicant.V1_0.ISupplicantStaIfaceCallback.WpsErro
 import android.net.DscpPolicy;
 import android.net.MacAddress;
 import android.net.wifi.SupplicantState;
+import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
 import android.os.Handler;
 import android.os.Message;
@@ -53,6 +55,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.List;
 
 /**
@@ -349,7 +352,7 @@ public class WifiMonitorTest extends WifiBaseTest {
     public void testBroadcastScanFailedEvent() {
         mWifiMonitor.registerHandler(
                 WLAN_IFACE_NAME, WifiMonitor.SCAN_FAILED_EVENT, mHandlerSpy);
-        mWifiMonitor.broadcastScanFailedEvent(WLAN_IFACE_NAME);
+        mWifiMonitor.broadcastScanFailedEvent(WLAN_IFACE_NAME, WifiScanner.REASON_UNSPECIFIED);
         mLooper.dispatchAll();
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
@@ -471,6 +474,33 @@ public class WifiMonitorTest extends WifiBaseTest {
         assertFalse(info.isFilsConnection);
         assertEquals(wifiSsid, info.wifiSsid);
         assertEquals(bssid, info.bssid);
+    }
+
+    /**
+     * Broadcast network connection with akm test.
+     */
+    @Test
+    public void testBroadcastNetworkConnectionEventWithAkm() {
+        mWifiMonitor.registerHandler(
+                WLAN_IFACE_NAME, WifiMonitor.NETWORK_CONNECTION_EVENT, mHandlerSpy);
+        int networkId = NETWORK_ID;
+        WifiSsid wifiSsid = WifiSsid.fromBytes(new byte[]{'a', 'b', 'c'});
+        String bssid = BSSID;
+        BitSet akm = new BitSet();
+        akm.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+        mWifiMonitor.broadcastNetworkConnectionEvent(WLAN_IFACE_NAME, networkId, false,
+                wifiSsid, bssid, akm);
+        mLooper.dispatchAll();
+
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(mHandlerSpy).handleMessage(messageCaptor.capture());
+        assertEquals(WifiMonitor.NETWORK_CONNECTION_EVENT, messageCaptor.getValue().what);
+        NetworkConnectionEventInfo info = (NetworkConnectionEventInfo) messageCaptor.getValue().obj;
+        assertEquals(networkId, info.networkId);
+        assertFalse(info.isFilsConnection);
+        assertEquals(wifiSsid, info.wifiSsid);
+        assertEquals(bssid, info.bssid);
+        assertEquals(akm, info.keyMgmtMask);
     }
 
     /**

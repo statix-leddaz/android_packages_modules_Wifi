@@ -64,6 +64,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.location.LocationManager;
+import android.net.MacAddress;
 import android.net.Network;
 import android.net.wifi.ISubsystemRestartCallback;
 import android.net.wifi.IWifiConnectedNetworkScorer;
@@ -84,6 +85,7 @@ import android.os.UserManager;
 import android.os.WorkSource;
 import android.os.test.TestLooper;
 import android.telephony.TelephonyManager;
+import android.util.LocalLog;
 import android.util.Log;
 
 import androidx.test.filters.SmallTest;
@@ -174,6 +176,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
     @Mock UserManager mUserManager;
     @Mock PackageManager mPackageManager;
     @Mock Network mNetwork;
+    @Mock LocalLog mLocalLog;
     @Mock WifiSettingsConfigStore mSettingsConfigStore;
 
     Listener<ConcreteClientModeManager> mClientListener;
@@ -206,6 +209,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         when(mWifiInjector.getSarManager()).thenReturn(mSarManager);
         when(mWifiInjector.getHalDeviceManager()).thenReturn(mHalDeviceManager);
         when(mWifiInjector.getUserManager()).thenReturn(mUserManager);
+        when(mWifiInjector.getWifiHandlerLocalLog()).thenReturn(mLocalLog);
         when(mClientModeManager.getRole()).thenReturn(ROLE_CLIENT_PRIMARY);
         when(mClientModeManager.getInterfaceName()).thenReturn(WIFI_IFACE_NAME);
         when(mContext.getResources()).thenReturn(mResources);
@@ -4808,6 +4812,24 @@ public class ActiveModeWardenTest extends WifiBaseTest {
     @Test public void testGetCurrentNetworkClientMode() throws Exception {
         mActiveModeWarden.setCurrentNetwork(mNetwork);
         assertEquals(mNetwork, mActiveModeWarden.getCurrentNetwork());
+    }
+
+    /**
+     *  Verifies that isClientModeManagerConnectedOrConnectingToBssid() checks for Affiliated link
+     *  BSSID, if exists.
+     */
+    @Test
+    public void testClientModeManagerConnectedOrConnectingToBssid() {
+
+        WifiConfiguration config1 = new WifiConfiguration();
+        config1.SSID = TEST_SSID_1;
+        MacAddress bssid2 = MacAddress.fromString(TEST_BSSID_2);
+        when(mClientModeManager.getConnectedWifiConfiguration()).thenReturn(config1);
+        when(mClientModeManager.getConnectedBssid()).thenReturn(TEST_BSSID_1);
+        when(mClientModeManager.isAffiliatedLinkBssid(eq(bssid2))).thenReturn(true);
+
+        assertTrue(mActiveModeWarden.isClientModeManagerConnectedOrConnectingToBssid(
+                mClientModeManager, TEST_SSID_1, TEST_BSSID_2));
     }
 
     @Test

@@ -66,6 +66,7 @@ import android.net.wifi.WifiContext;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiStringResourceWrapper;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.Credential;
 import android.os.Handler;
@@ -164,6 +165,8 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
     @Mock WifiCarrierInfoManager.OnCarrierOffloadDisabledListener mOnCarrierOffloadDisabledListener;
     @Mock Clock mClock;
     @Mock WifiNetworkSuggestionsManager mWifiNetworkSuggestionsManager;
+    @Mock DeviceConfigFacade mDeviceConfigFacade;
+    @Mock WifiStringResourceWrapper mWifiStringResourceWrapper;
 
     private List<SubscriptionInfo> mSubInfoList;
     private long mCurrentTimeMills = 1000L;
@@ -211,6 +214,9 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
         when(mWifiInjector.getWifiDialogManager()).thenReturn(mWifiDialogManager);
         when(mWifiInjector.getWifiNetworkSuggestionsManager())
                 .thenReturn(mWifiNetworkSuggestionsManager);
+        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfigFacade);
+        when(mContext.getStringResourceWrapper(anyInt(), anyInt()))
+                .thenReturn(mWifiStringResourceWrapper);
         mWifiCarrierInfoManager = new WifiCarrierInfoManager(mTelephonyManager,
                 mSubscriptionManager, mWifiInjector, mFrameworkFacade, mContext, mWifiConfigStore,
                 new Handler(mLooper.getLooper()), mWifiMetrics, mClock);
@@ -1964,6 +1970,7 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
     public void testSetAndGetUnmergedCarrierNetworkOffload() {
         assertTrue(mWifiCarrierInfoManager.isCarrierNetworkOffloadEnabled(DATA_SUBID, false));
         mWifiCarrierInfoManager.setCarrierNetworkOffloadEnabled(DATA_SUBID, false, false);
+        mLooper.dispatchAll();
         verify(mWifiConfigManager).saveToStore(true);
         assertFalse(mWifiCarrierInfoManager.isCarrierNetworkOffloadEnabled(DATA_SUBID, false));
     }
@@ -1985,6 +1992,7 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
 
         listenerCaptor.getValue().onDataEnabledChanged(true, DATA_ENABLED_REASON_USER);
         mWifiCarrierInfoManager.setCarrierNetworkOffloadEnabled(DATA_SUBID, true, false);
+        mLooper.dispatchAll();
         verify(mWifiConfigManager).saveToStore(true);
         assertFalse(mWifiCarrierInfoManager.isCarrierNetworkOffloadEnabled(DATA_SUBID, true));
 
@@ -2034,9 +2042,7 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
         when(mContext.getPackageManager()).thenReturn(mockPackageManager);
         PackageInfo pi = new PackageInfo();
         pi.packageName = "com.example.app";
-        List<PackageInfo> pis = new ArrayList<>() {{
-                add(pi);
-            }};
+        List<PackageInfo> pis = List.of(pi);
         when(mockPackageManager.getPackagesHoldingPermissions(
                 eq(new String[] {android.Manifest.permission.NETWORK_CARRIER_PROVISIONING}),
                 anyInt())).thenReturn(pis);
@@ -2212,6 +2218,7 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
         verify(mDataTelephonyManager).registerTelephonyCallback(any(), captor.capture());
 
         mWifiCarrierInfoManager.setCarrierNetworkOffloadEnabled(DATA_SUBID, true, false);
+        mLooper.dispatchAll();
         verify(mOnCarrierOffloadDisabledListener).onCarrierOffloadDisabled(DATA_SUBID, true);
 
         captor.getValue().onDataEnabledChanged(false, DATA_ENABLED_REASON_CARRIER);
@@ -2263,5 +2270,22 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
         mLooper.dispatchAll();
         // Non-data sim should be selected
         assertEquals(NON_DATA_SUBID, mWifiCarrierInfoManager.getMatchingSubId(DATA_CARRIER_ID));
+    }
+
+    @Test
+    public void testIsOobPseudonymFeatureEnabled_phFlagDisabled() {
+        when(mDeviceConfigFacade.isOobPseudonymEnabled()).thenReturn(false);
+
+        assertFalse(mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(123));
+    }
+
+    @Test
+    public void testIsOobPseudonymFeatureEnabled_resourceOverrideAsTrue() {
+        when(mDeviceConfigFacade.isOobPseudonymEnabled()).thenReturn(true);
+        when(mWifiStringResourceWrapper.getBoolean(
+                eq(WifiCarrierInfoManager.CONFIG_WIFI_OOB_PSEUDONYM_ENABLED), anyBoolean()))
+                .thenReturn(true);
+
+        assertTrue(mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(1));
     }
 }

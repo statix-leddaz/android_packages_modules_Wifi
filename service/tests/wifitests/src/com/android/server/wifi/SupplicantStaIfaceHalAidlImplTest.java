@@ -74,6 +74,8 @@ import android.hardware.wifi.supplicant.IfaceInfo;
 import android.hardware.wifi.supplicant.IfaceType;
 import android.hardware.wifi.supplicant.KeyMgmtMask;
 import android.hardware.wifi.supplicant.LegacyMode;
+import android.hardware.wifi.supplicant.MloLink;
+import android.hardware.wifi.supplicant.MloLinksInfo;
 import android.hardware.wifi.supplicant.OceRssiBasedAssocRejectAttr;
 import android.hardware.wifi.supplicant.OsuMethod;
 import android.hardware.wifi.supplicant.PortRange;
@@ -86,6 +88,7 @@ import android.hardware.wifi.supplicant.QosPolicyStatusCode;
 import android.hardware.wifi.supplicant.StaIfaceCallbackState;
 import android.hardware.wifi.supplicant.StaIfaceReasonCode;
 import android.hardware.wifi.supplicant.StaIfaceStatusCode;
+import android.hardware.wifi.supplicant.SupplicantStateChangeData;
 import android.hardware.wifi.supplicant.SupplicantStatusCode;
 import android.hardware.wifi.supplicant.WifiTechnology;
 import android.hardware.wifi.supplicant.WpaDriverCapabilitiesMask;
@@ -129,6 +132,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -142,11 +146,10 @@ import java.util.Set;
  */
 @SmallTest
 public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
-    private static final Map<Integer, String> NETWORK_ID_TO_SSID = new HashMap<Integer, String>() {{
-            put(1, "\"ssid1\"");
-            put(2, "\"ssid2\"");
-            put(3, "\"ssid3\"");
-        }};
+    private static final Map<Integer, String> NETWORK_ID_TO_SSID = Map.of(
+            1, "\"ssid1\"",
+            2, "\"ssid2\"",
+            3, "\"ssid3\"");
     private static final int SUPPLICANT_NETWORK_ID = 2;
     private static final String SUPPLICANT_SSID = NETWORK_ID_TO_SSID.get(SUPPLICANT_NETWORK_ID);
     private static final WifiSsid TRANSLATED_SUPPLICANT_SSID =
@@ -231,6 +234,8 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         mIfaceInfoList[2] = createIfaceInfo(IfaceType.P2P, P2P_IFACE_NAME);
         doReturn(CONNECTED_MAC_ADDRESS_BYTES).when(mISupplicantStaIfaceMock).getMacAddress();
         mHandler = spy(new Handler(mLooper.getLooper()));
+        when(mISupplicantMock.asBinder()).thenReturn(mServiceBinderMock);
+        when(mISupplicantMock.getInterfaceVersion()).thenReturn(ISupplicant.VERSION);
         when(mSsidTranslator.getTranslatedSsid(any())).thenReturn(TRANSLATED_SUPPLICANT_SSID);
         when(mSsidTranslator.getOriginalSsid(any())).thenAnswer((Answer<WifiSsid>) invocation ->
                 WifiSsid.fromString(((WifiConfiguration) invocation.getArgument(0)).SSID));
@@ -991,7 +996,40 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
 
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastNetworkConnectionEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId), eq(false),
-                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID));
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(null));
+        wifiMonitorInOrder.verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
+                eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId),
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(SupplicantState.COMPLETED));
+    }
+
+    /**
+     * Tests the handling of state change notification after configuring a network.
+     */
+    @Test
+    public void testStateChangeToCompleted() throws Exception {
+        InOrder wifiMonitorInOrder = inOrder(mWifiMonitor);
+        executeAndValidateInitializationSequence();
+        int frameworkNetworkId = 6;
+        executeAndValidateConnectSequence(frameworkNetworkId, false,
+                TRANSLATED_SUPPLICANT_SSID.toString());
+        assertNotNull(mISupplicantStaIfaceCallback);
+
+        BitSet expectedAkmMask = new BitSet();
+        expectedAkmMask.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+
+        SupplicantStateChangeData stateChangeData = new SupplicantStateChangeData();
+        stateChangeData.newState = StaIfaceCallbackState.COMPLETED;
+        stateChangeData.id = frameworkNetworkId;
+        stateChangeData.ssid = NativeUtil.byteArrayFromArrayList(
+                NativeUtil.decodeSsid(SUPPLICANT_SSID));
+        stateChangeData.bssid = NativeUtil.macAddressToByteArray(BSSID);
+        stateChangeData.keyMgmtMask = android.hardware.wifi.supplicant.KeyMgmtMask.WPA_PSK;
+        stateChangeData.filsHlpSent = false;
+        mISupplicantStaIfaceCallback.onSupplicantStateChanged(stateChangeData);
+
+        wifiMonitorInOrder.verify(mWifiMonitor).broadcastNetworkConnectionEvent(
+                eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId), eq(false),
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(expectedAkmMask));
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId),
                 eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(SupplicantState.COMPLETED));
@@ -1446,7 +1484,7 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         assertTrue(mDut.isInitializationComplete());
         assertTrue(mDut.registerDeathHandler(mSupplicantHalDeathHandler));
 
-        mSupplicantDeathCaptor.getValue().binderDied();
+        mSupplicantDeathCaptor.getValue().binderDied(mServiceBinderMock);
         mLooper.dispatchAll();
 
         assertFalse(mDut.isInitializationComplete());
@@ -1478,7 +1516,7 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
 
         // Now trigger a death notification and ensure it's handled.
         assertNotNull(mSupplicantDeathCaptor.getValue());
-        mSupplicantDeathCaptor.getValue().binderDied();
+        mSupplicantDeathCaptor.getValue().binderDied(mServiceBinderMock);
         mLooper.dispatchAll();
 
         // External death notification fires only once!
@@ -1641,7 +1679,7 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
 
         // Check that all internal state is cleared once the death notification is received.
         assertTrue(mDut.isInitializationComplete());
-        mSupplicantDeathCaptor.getValue().binderDied();
+        mSupplicantDeathCaptor.getValue().binderDied(mServiceBinderMock);
         assertFalse(mDut.isInitializationComplete());
     }
 
@@ -2123,7 +2161,7 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
 
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastNetworkConnectionEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId), eq(true),
-                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID));
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(null));
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId),
                 eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(SupplicantState.COMPLETED));
@@ -2542,6 +2580,7 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         assertTrue(mDut.startDaemon());
         verify(mISupplicantMock).getInterfaceVersion();
         verify(mServiceBinderMock).linkToDeath(mSupplicantDeathCaptor.capture(), anyInt());
+        verify(mISupplicantMock).registerNonStandardCertCallback(any());
         assertTrue(mDut.isInitializationComplete());
 
         // Attempt to setup the interface
@@ -2802,5 +2841,64 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
             }
         }
         return true;
+    }
+
+    /**
+     * Test getConnectionMloLinkInfo returns WifiNative.ConnectionMloLinksInfo from interface name.
+     */
+    @Test
+    public void testGetConnectionMloLinksInfo() throws Exception {
+        final int mDownlinkTid = 3;
+        final int mUplinkTid = 6;
+        // initialize MLO Links
+        MloLinksInfo info = new MloLinksInfo();
+        MloLink[] links = new MloLink[3];
+        links[0] = new android.hardware.wifi.supplicant.MloLink();
+        links[0].linkId = 1;
+        links[0].staLinkMacAddress = new byte[]{0x00, 0x01, 0x02, 0x03, 0x04, 0x01};
+        links[0].tidsDownlinkMap = Byte.MAX_VALUE;
+        links[0].tidsDownlinkMap = Byte.MIN_VALUE;
+        links[1] = new android.hardware.wifi.supplicant.MloLink();
+        links[1].linkId = 2;
+        links[1].staLinkMacAddress = new byte[]{0x00, 0x01, 0x02, 0x03, 0x04, 0x02};
+        links[1].tidsDownlinkMap =  1 << mDownlinkTid;
+        links[1].tidsUplinkMap = 1 << mUplinkTid;
+        links[2] = new android.hardware.wifi.supplicant.MloLink();
+        links[2].linkId = 3;
+        links[2].staLinkMacAddress = new byte[]{0x00, 0x01, 0x02, 0x03, 0x04, 0x03};
+        links[2].tidsDownlinkMap = 0;
+        links[2].tidsUplinkMap = 0;
+        info.links = links;
+        executeAndValidateInitializationSequence();
+        // Mock MloLinksInfo as null.
+        when(mISupplicantStaIfaceMock.getConnectionMloLinksInfo()).thenReturn(null);
+        // Pass wrong interface.
+        assertNull(mDut.getConnectionMloLinksInfo(WLAN1_IFACE_NAME));
+        // Pass correct interface.
+        assertNull(mDut.getConnectionMloLinksInfo(WLAN0_IFACE_NAME));
+        // Mock MloLinksInfo.
+        when(mISupplicantStaIfaceMock.getConnectionMloLinksInfo()).thenReturn(info);
+        // Pass wrong interface with mock MloLinksInfo.
+        assertNull(mDut.getConnectionMloLinksInfo(WLAN1_IFACE_NAME));
+        // Pass correct interface with mock MloLinksInfo.
+        WifiNative.ConnectionMloLinksInfo nativeInfo = mDut.getConnectionMloLinksInfo(
+                WLAN0_IFACE_NAME);
+        // Check all return values.
+        assertNotNull(nativeInfo);
+        assertEquals(nativeInfo.links.length, info.links.length);
+        assertEquals(nativeInfo.links[0].getLinkId(), info.links[0].linkId);
+        assertEquals(nativeInfo.links[0].getMacAddress(),
+                MacAddress.fromBytes(info.links[0].staLinkMacAddress));
+        assertTrue(nativeInfo.links[0].isAnyTidMapped());
+        assertEquals(nativeInfo.links[1].getLinkId(), info.links[1].linkId);
+        assertEquals(nativeInfo.links[1].getMacAddress(),
+                MacAddress.fromBytes(info.links[1].staLinkMacAddress));
+        assertTrue(nativeInfo.links[1].isAnyTidMapped());
+        assertTrue(nativeInfo.links[1].isTidMappedtoDownlink((byte) mDownlinkTid));
+        assertTrue(nativeInfo.links[1].isTidMappedToUplink((byte) mUplinkTid));
+        assertEquals(nativeInfo.links[2].getLinkId(), info.links[2].linkId);
+        assertEquals(nativeInfo.links[2].getMacAddress(),
+                MacAddress.fromBytes(info.links[2].staLinkMacAddress));
+        assertFalse(nativeInfo.links[2].isAnyTidMapped());
     }
 }

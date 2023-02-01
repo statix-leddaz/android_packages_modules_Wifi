@@ -16,6 +16,11 @@
 
 package com.android.server.wifi;
 
+import static android.content.pm.PackageManager.PERMISSION_GRANTED;
+import static android.net.wifi.WifiManager.AddNetworkResult.STATUS_INVALID_CONFIGURATION;
+import static android.net.wifi.WifiManager.AddNetworkResult.STATUS_INVALID_CONFIGURATION_ENTERPRISE;
+import static android.net.wifi.WifiManager.AddNetworkResult.STATUS_NO_PERMISSION_MODIFY_CONFIG;
+import static android.net.wifi.WifiManager.AddNetworkResult.STATUS_SUCCESS;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE;
 
 import android.Manifest;
@@ -717,7 +722,6 @@ public class WifiConfigManager {
 
     /**
      * Returns whether MAC randomization is supported on this device.
-     * @param config
      * @return
      */
     private boolean isMacRandomizationSupported() {
@@ -1020,7 +1024,8 @@ public class WifiConfigManager {
             // modify the network.
             return isCreator
                     || mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
-                    || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid);
+                    || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid)
+                    || mWifiPermissionsUtil.checkConfigOverridePermission(uid);
         }
 
         final ContentResolver resolver = mContext.getContentResolver();
@@ -1029,7 +1034,8 @@ public class WifiConfigManager {
         return !isLockdownFeatureEnabled
                 // If not locked down, settings app (i.e user) has permission to modify the network.
                 && (mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
-                || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid));
+                || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid)
+                || mWifiPermissionsUtil.checkConfigOverridePermission(uid));
     }
 
     private void mergeSecurityParamsListWithInternalWifiConfiguration(
@@ -1183,7 +1189,6 @@ public class WifiConfigManager {
         internalConfig.trusted = externalConfig.trusted;
         internalConfig.oemPaid = externalConfig.oemPaid;
         internalConfig.oemPrivate = externalConfig.oemPrivate;
-        internalConfig.dbsSecondaryInternet = externalConfig.dbsSecondaryInternet;
         internalConfig.carrierMerged = externalConfig.carrierMerged;
         internalConfig.restricted = externalConfig.restricted;
 
@@ -1351,7 +1356,8 @@ public class WifiConfigManager {
                     WifiConfigurationUtil.VALIDATE_FOR_ADD)) {
                 Log.e(TAG, "Cannot add network with invalid config");
                 return new Pair<>(
-                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID),
+                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID,
+                                STATUS_INVALID_CONFIGURATION),
                         existingInternalConfig);
             }
             newInternalConfig =
@@ -1368,7 +1374,8 @@ public class WifiConfigManager {
                     config, supportedFeatures, WifiConfigurationUtil.VALIDATE_FOR_UPDATE)) {
                 Log.e(TAG, "Cannot update network with invalid config");
                 return new Pair<>(
-                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID),
+                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID,
+                                STATUS_INVALID_CONFIGURATION),
                         existingInternalConfig);
             }
             // Check for the app's permission before we let it update this network.
@@ -1376,7 +1383,8 @@ public class WifiConfigManager {
                 Log.e(TAG, "UID " + uid + " does not have permission to update configuration "
                         + config.getProfileKey());
                 return new Pair<>(
-                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID),
+                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID,
+                                STATUS_NO_PERMISSION_MODIFY_CONFIG),
                         existingInternalConfig);
             }
             if (mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
@@ -1408,7 +1416,8 @@ public class WifiConfigManager {
         // Only allow changes in Repeater Enabled flag if the user has permission to
         if (WifiConfigurationUtil.hasRepeaterEnabledChanged(
                 existingInternalConfig, newInternalConfig)
-                && !mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)) {
+                && !mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
+                && !mWifiPermissionsUtil.checkConfigOverridePermission(uid)) {
             Log.e(TAG, "UID " + uid
                     + " does not have permission to modify Repeater Enabled Settings "
                     + " , or add a network with Repeater Enabled set to true "
@@ -1421,6 +1430,7 @@ public class WifiConfigManager {
         if (WifiConfigurationUtil.hasMacRandomizationSettingsChanged(existingInternalConfig,
                 newInternalConfig) && !mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
                 && !mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid)
+                && !mWifiPermissionsUtil.checkConfigOverridePermission(uid)
                 && !(newInternalConfig.isPasspoint() && uid == newInternalConfig.creatorUid)
                 && !config.fromWifiNetworkSuggestion
                 && !mWifiPermissionsUtil.isDeviceInDemoMode(mContext)
@@ -1434,6 +1444,27 @@ public class WifiConfigManager {
             return new Pair<>(
                     new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID),
                     existingInternalConfig);
+        }
+
+        if (config.isEnterprise()
+                && config.enterpriseConfig.isEapMethodServerCertUsed()
+                && !config.enterpriseConfig.isMandatoryParameterSetForServerCertValidation()
+                && !config.enterpriseConfig.isTrustOnFirstUseEnabled()) {
+            boolean isSettingsOrSuw = mContext.checkPermission(Manifest.permission.NETWORK_SETTINGS,
+                    -1 /* pid */, uid) == PERMISSION_GRANTED
+                    || mContext.checkPermission(Manifest.permission.NETWORK_SETUP_WIZARD,
+                    -1 /* pid */, uid) == PERMISSION_GRANTED;
+            if (!(mWifiInjector.getWifiGlobals().isInsecureEnterpriseConfigurationAllowed()
+                    && isSettingsOrSuw)) {
+                Log.e(TAG, "Enterprise network configuration is missing either a Root CA "
+                        + "or a domain name");
+                return new Pair<>(
+                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID,
+                                STATUS_INVALID_CONFIGURATION_ENTERPRISE),
+                        existingInternalConfig);
+            }
+            Log.w(TAG, "Insecure Enterprise network " + config.SSID
+                    + " configured by Settings/SUW");
         }
 
         // Update the keys for saved enterprise networks. For Passpoint, the certificates
@@ -1485,6 +1516,7 @@ public class WifiConfigManager {
                         existingInternalConfig, newInternalConfig);
         if (hasCredentialChanged) {
             newInternalConfig.getNetworkSelectionStatus().setHasEverConnected(false);
+            newInternalConfig.setHasPreSharedKeyChanged(true);
         }
 
         // Ensure that the user approve flag is set to false for a new network.
@@ -1526,6 +1558,7 @@ public class WifiConfigManager {
 
         NetworkUpdateResult result = new NetworkUpdateResult(
                 newInternalConfig.networkId,
+                STATUS_SUCCESS,
                 hasIpChanged,
                 hasProxyChanged,
                 hasCredentialChanged,
@@ -3575,7 +3608,7 @@ public class WifiConfigManager {
      * @param forceWrite Whether the write needs to be forced or not.
      * @return Whether the write was successful or not, this is applicable only for force writes.
      */
-    public boolean saveToStore(boolean forceWrite) {
+    public synchronized boolean saveToStore(boolean forceWrite) {
         if (mPendingStoreRead) {
             Log.e(TAG, "Cannot save to store before store is read!");
             return false;
@@ -3692,7 +3725,8 @@ public class WifiConfigManager {
                 mWifiPermissionsUtil.checkNetworkManagedProvisioningPermission(uid);
         // If |uid| corresponds to the admin, allow all modifications.
         if (isAdmin || hasNetworkSettingsPermission
-                || hasNetworkSetupWizardPermission || hasNetworkManagedProvisioningPermission) {
+                || hasNetworkSetupWizardPermission || hasNetworkManagedProvisioningPermission
+                || mWifiPermissionsUtil.checkConfigOverridePermission(uid)) {
             return true;
         }
         if (mVerboseLoggingEnabled) {

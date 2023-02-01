@@ -95,6 +95,7 @@ final class ThroughputScorer implements WifiCandidates.CandidateScorer {
         int rssiBaseScore = calculateRssiScore(candidate);
         int throughputBonusScore = calculateThroughputBonusScore(candidate);
         int rssiAndThroughputScore = rssiBaseScore + throughputBonusScore;
+        int frequencyScore = mScoringParams.getFrequencyScore(candidate.getFrequency());
 
         boolean unExpectedNoInternet = candidate.hasNoInternetAccess()
                 && !candidate.isNoInternetAccessExpected();
@@ -105,6 +106,10 @@ final class ThroughputScorer implements WifiCandidates.CandidateScorer {
                 ? mScoringParams.getBand6GhzBonus() : 0;
         int currentNetworkBoost = (candidate.isCurrentNetwork() && !unExpectedNoInternet)
                 ? currentNetworkBonus : 0;
+        int rssiBoost = (candidate.isCurrentNetwork() && unExpectedNoInternet)
+                ? 0 : rssiBaseScore;
+        int throughputBoost = (candidate.isCurrentNetwork() && unExpectedNoInternet)
+                ? 0 : throughputBonusScore;
 
         int securityAward = candidate.isOpenNetwork()
                 ? 0
@@ -157,8 +162,8 @@ final class ThroughputScorer implements WifiCandidates.CandidateScorer {
                 + notOemPaidAward + notOemPrivateAward + securityAward;
         // Within the same scoring bucket, ties are broken by the following bonus scores. The sum
         // of these scores should be capped to the buket step size to prevent overlapping bucket.
-        int scoreWithinBucket = rssiBaseScore + throughputBonusScore + currentNetworkBoost
-                + bandSpecificBonus;
+        int scoreWithinBucket = rssiBoost + throughputBoost + currentNetworkBoost
+                + bandSpecificBonus + frequencyScore;
         int score = scoreToDetermineBucket
                 + Math.min(mScoringParams.getScoringBucketStepSize(), scoreWithinBucket);
 
@@ -185,6 +190,7 @@ final class ThroughputScorer implements WifiCandidates.CandidateScorer {
                     + " trustedAward: " + trustedAward
                     + " notOemPaidAward: " + notOemPaidAward
                     + " notOemPrivateAward: " + notOemPrivateAward
+                    + " frequencyScore: " + frequencyScore
                     + " final score: " + score);
         }
 

@@ -20,11 +20,13 @@ import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.net.DhcpResultsParcelable;
+import android.net.MacAddress;
 import android.net.Network;
 import android.net.wifi.IWifiConnectedNetworkScorer;
 import android.net.wifi.WifiAnnotations;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager.DeviceMobilityState;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.nl80211.DeviceWiphyCapabilities;
@@ -79,6 +81,9 @@ public interface ClientMode {
 
     void startRoamToNetwork(int networkId, String bssid);
 
+    /** When the device mobility changes, update the RSSI polling interval accordingly */
+    void onDeviceMobilityStateUpdated(@DeviceMobilityState int newState);
+
     boolean setWifiConnectedNetworkScorer(IBinder binder, IWifiConnectedNetworkScorer scorer);
 
     void clearWifiConnectedNetworkScorer();
@@ -91,7 +96,11 @@ public interface ClientMode {
      */
     void onBluetoothConnectionStateChanged();
 
-    WifiInfo syncRequestConnectionInfo();
+    /**
+     * Get current Wifi connection information
+     * @return Wifi info
+     */
+    WifiInfo getConnectionInfo();
 
     boolean syncQueryPasspointIcon(long bssid, String fileName);
 
@@ -302,4 +311,11 @@ public interface ClientMode {
      * update the capabilities
      */
     void updateCapabilities();
+
+    /**
+     * Check if BSSID belongs to any of the affiliated link BSSID's.
+     * @param bssid BSSID of the AP
+     * @return true if BSSID matches to one of the affiliated link BSSIDs, false otherwise.
+     */
+    boolean isAffiliatedLinkBssid(MacAddress bssid);
 }

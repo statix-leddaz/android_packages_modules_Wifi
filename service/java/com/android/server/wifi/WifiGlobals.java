@@ -33,43 +33,32 @@ import javax.annotation.concurrent.ThreadSafe;
 @ThreadSafe
 public class WifiGlobals {
 
-    /**
-     * Maximum allowable interval in milliseconds between polling for RSSI and linkspeed
-     * information. This is also used as the polling interval for WifiTrafficPoller, which updates
-     * its data activity on every CMD_RSSI_POLL.
-     */
-    private static final int MAXIMUM_POLL_RSSI_INTERVAL_MSECS = 6000;
-
     private final Context mContext;
 
     private final AtomicInteger mPollRssiIntervalMillis = new AtomicInteger(-1);
     private final AtomicBoolean mIpReachabilityDisconnectEnabled = new AtomicBoolean(true);
     private final AtomicBoolean mIsBluetoothConnected = new AtomicBoolean(false);
 
-    // This is read from the overlay, cache it after boot up.
+    // These are read from the overlay, cache them after boot up.
     private final boolean mIsWpa3SaeUpgradeEnabled;
-    // This is read from the overlay, cache it after boot up.
     private final boolean mIsWpa3SaeUpgradeOffloadEnabled;
-    // This is read from the overlay, cache it after boot up.
     private final boolean mIsOweUpgradeEnabled;
-    // This is read from the overlay, cache it after boot up.
     private final boolean mFlushAnqpCacheOnWifiToggleOffEvent;
-    // This is read from the overlay, cache it after boot up.
     private final boolean mIsWpa3SaeH2eSupported;
-    // This is read from the overlay, cache it after boot up.
     private final String mP2pDeviceNamePrefix;
-    // This is read from the overlay, cache it after boot up.
     private final int mP2pDeviceNamePostfixNumDigits;
-    // This is read from the overlay, cache it after boot up.
     private final int mClientModeImplNumLogRecs;
-    // This is read from the overlay, cache it after boot up.
     private final boolean mSaveFactoryMacToConfigStoreEnabled;
     private final int mWifiLowConnectedScoreThresholdToTriggerScanForMbb;
     private final int mWifiLowConnectedScoreScanPeriodSeconds;
-    // This is read from the overlay, cache it after boot up.
     private final boolean mWifiAllowInsecureEnterpriseConfiguration;
-    // This is read from the overlay, cache it after boot up.
     private final boolean mIsP2pMacRandomizationSupported;
+    private final int mPollRssiShortIntervalMillis;
+    private final int mPollRssiLongIntervalMillis;
+    private final int mClientRssiMonitorThresholdDbm;
+    private final int mClientRssiMonitorHysteresisDb;
+    private final boolean mAdjustPollRssiIntervalEnabled;
+    private final boolean mWifiInterfaceAddedSelfRecoveryEnabled;
 
     // This is set by WifiManager#setVerboseLoggingEnabled(int).
     private boolean mIsShowKeyVerboseLoggingModeEnabled = false;
@@ -104,19 +93,25 @@ public class WifiGlobals {
                 R.bool.config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW);
         mIsP2pMacRandomizationSupported = mContext.getResources().getBoolean(
                 R.bool.config_wifi_p2p_mac_randomization_supported);
+        mPollRssiIntervalMillis.set(mContext.getResources().getInteger(
+                R.integer.config_wifiPollRssiIntervalMilliseconds));
+        mPollRssiShortIntervalMillis = mContext.getResources().getInteger(
+                R.integer.config_wifiPollRssiIntervalMilliseconds);
+        mPollRssiLongIntervalMillis = mContext.getResources().getInteger(
+                R.integer.config_wifiPollRssiLongIntervalMilliseconds);
+        mClientRssiMonitorThresholdDbm = mContext.getResources().getInteger(
+                R.integer.config_wifiClientRssiMonitorThresholdDbm);
+        mClientRssiMonitorHysteresisDb = mContext.getResources().getInteger(
+                R.integer.config_wifiClientRssiMonitorHysteresisDb);
+        mAdjustPollRssiIntervalEnabled = mContext.getResources().getBoolean(
+                R.bool.config_wifiAdjustPollRssiIntervalEnabled);
+        mWifiInterfaceAddedSelfRecoveryEnabled = mContext.getResources().getBoolean(
+                R.bool.config_wifiInterfaceAddedSelfRecoveryEnabled);
     }
 
     /** Get the interval between RSSI polls, in milliseconds. */
     public int getPollRssiIntervalMillis() {
-        int interval = mPollRssiIntervalMillis.get();
-        if (interval > 0) {
-            return interval;
-        } else {
-            return Math.min(
-                    mContext.getResources()
-                            .getInteger(R.integer.config_wifiPollRssiIntervalMilliseconds),
-                    MAXIMUM_POLL_RSSI_INTERVAL_MSECS);
-        }
+        return mPollRssiIntervalMillis.get();
     }
 
     /** Set the interval between RSSI polls, in milliseconds. */
@@ -271,6 +266,53 @@ public class WifiGlobals {
         return mIsP2pMacRandomizationSupported;
     }
 
+    /** Get the regular (short) interval between RSSI polls, in milliseconds. */
+    public int getPollRssiShortIntervalMillis() {
+        return mPollRssiShortIntervalMillis;
+    }
+
+    /**
+     * Get the long interval between RSSI polls, in milliseconds. The long interval is to
+     * reduce power consumption of the polls. This value should be greater than the regular
+     * interval.
+     */
+    public int getPollRssiLongIntervalMillis() {
+        return mPollRssiLongIntervalMillis;
+    }
+
+    /**
+     * Get the RSSI threshold for client mode RSSI monitor, in dBm. If the device is stationary
+     * and current RSSI >= Threshold + Hysteresis value, set long interval and enable RSSI
+     * monitoring using the RSSI threshold. If device is non-stationary or current RSSI <=
+     * Threshold, set regular interval and disable RSSI monitoring.
+     */
+    public int getClientRssiMonitorThresholdDbm() {
+        return mClientRssiMonitorThresholdDbm;
+    }
+
+    /**
+     * Get the hysteresis value in dB for the client mode RSSI monitor threshold. It can avoid
+     * frequent switch between regular and long polling intervals.
+     */
+    public int getClientRssiMonitorHysteresisDb() {
+        return mClientRssiMonitorHysteresisDb;
+    }
+
+    /**
+     * Get whether adjusting the RSSI polling interval between regular and long intervals
+     * is enabled.
+     */
+    public boolean isAdjustPollRssiIntervalEnabled() {
+        return mAdjustPollRssiIntervalEnabled;
+    }
+
+    /**
+     * Get whether hot-plugging an interface will trigger a restart of the wifi stack.
+     */
+    public boolean isWifiInterfaceAddedSelfRecoveryEnabled() {
+        return mWifiInterfaceAddedSelfRecoveryEnabled;
+    }
+
     /** Dump method for debugging */
     public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         pw.println("Dump of WifiGlobals");
@@ -292,8 +334,10 @@ public class WifiGlobals {
                 + mWifiLowConnectedScoreScanPeriodSeconds);
         pw.println("mIsUsingExternalScorer="
                 + mIsUsingExternalScorer);
-        pw.println("mWifiAllowInsecureEnterpriseConfiguratio"
+        pw.println("mWifiAllowInsecureEnterpriseConfiguration="
                 + mWifiAllowInsecureEnterpriseConfiguration);
         pw.println("mIsP2pMacRandomizationSupported" + mIsP2pMacRandomizationSupported);
+        pw.println("mWifiInterfaceAddedSelfRecoveryEnabled="
+                + mWifiInterfaceAddedSelfRecoveryEnabled);
     }
 }

@@ -34,7 +34,7 @@ import java.util.concurrent.TimeUnit;
  * This class allows getting all configurable flags from DeviceConfig.
  */
 public class DeviceConfigFacade {
-    private Context mContext;
+    private final Context mContext;
     private final WifiMetrics mWifiMetrics;
 
     private static final String NAMESPACE = "wifi";
@@ -208,6 +208,11 @@ public class DeviceConfigFacade {
     private boolean mInterfaceFailureBugreportEnabled;
     private boolean mP2pFailureBugreportEnabled;
     private boolean mApmEnhancementEnabled;
+    private boolean mAwareSuspensionEnabled;
+    private boolean mHighPerfLockDeprecated;
+    private boolean mOobPseudonymEnabled;
+    private boolean mApplicationQosPolicyApiEnabled;
+    private boolean mAdjustPollRssiIntervalEnabled;
 
     public DeviceConfigFacade(Context context, Handler handler, WifiMetrics wifiMetrics) {
         mContext = context;
@@ -385,7 +390,16 @@ public class DeviceConfigFacade {
                 "p2p_failure_bugreport_enabled", false);
         mApmEnhancementEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "apm_enhancement_enabled", false);
-
+        mAwareSuspensionEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "aware_suspension_enabled", false);
+        mHighPerfLockDeprecated = DeviceConfig.getBoolean(NAMESPACE,
+                "high_perf_lock_deprecated", false);
+        mOobPseudonymEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "oob_pseudonym_enabled", false);
+        mApplicationQosPolicyApiEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "application_qos_policy_api_enabled", false);
+        mAdjustPollRssiIntervalEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "adjust_poll_rssi_interval_enabled", false);
     }
 
     private Set<String> getUnmodifiableSetQuoted(String key) {
@@ -822,5 +836,40 @@ public class DeviceConfigFacade {
         // reads the value set by Bluetooth device config for APM enhancement feature flag
         return Settings.Global.getInt(
                 mContext.getContentResolver(), "apm_enhancement_enabled", 0) == 1;
+    }
+
+    /**
+     * Gets the feature flag for Aware suspension
+     */
+    public boolean isAwareSuspensionEnabled() {
+        return mAwareSuspensionEnabled;
+    }
+
+    /**
+     * Gets the feature flag for High Perf lock deprecation
+     */
+    public boolean isHighPerfLockDeprecated() {
+        return mHighPerfLockDeprecated;
+    }
+
+    /**
+     * Gets the feature flag for the OOB pseudonym of EAP-SIM/AKA/AKA'
+     */
+    public boolean isOobPseudonymEnabled() {
+        return mOobPseudonymEnabled;
+    }
+
+    /**
+     * Gets the feature flag indicating whether the application QoS policy API is enabled.
+     */
+    public boolean isApplicationQosPolicyApiEnabled() {
+        return mApplicationQosPolicyApiEnabled;
+    }
+
+    /**
+     * Gets the feature flag for adjusting link layer stats and RSSI polling interval
+     */
+    public boolean isAdjustPollRssiIntervalEnabled() {
+        return mAdjustPollRssiIntervalEnabled;
     }
 }
