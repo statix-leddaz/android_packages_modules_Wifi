@@ -46,6 +46,7 @@ import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -217,6 +218,15 @@ public class WifiBackupRestore {
                 Log.d(TAG, "Ignoring network from an app with no config override permission: "
                         + configuration.getKey());
                 continue;
+            }
+            // Skip if user has never connected due to wrong password.
+            if (!configuration.getNetworkSelectionStatus().hasEverConnected()) {
+                int disableReason = configuration.getNetworkSelectionStatus()
+                        .getNetworkSelectionDisableReason();
+                if (disableReason
+                        == WifiConfiguration.NetworkSelectionStatus.DISABLED_BY_WRONG_PASSWORD) {
+                    continue;
+                }
             }
             // Write this configuration data now.
             XmlUtil.writeNextSectionStart(out, XML_TAG_SECTION_HEADER_NETWORK);
@@ -415,8 +425,8 @@ public class WifiBackupRestore {
      *
      * @param verbose verbosity level.
      */
-    public void enableVerboseLogging(int verbose) {
-        mVerboseLoggingEnabled = (verbose > 0);
+    public void enableVerboseLogging(boolean verboseEnabled) {
+        mVerboseLoggingEnabled = verboseEnabled;
         if (!mVerboseLoggingEnabled) {
             mDebugLastBackupDataRetrieved = null;
             mDebugLastBackupDataRestored = null;
@@ -449,7 +459,7 @@ public class WifiBackupRestore {
         }
         if (mDebugLastIpConfigBackupDataRestored != null) {
             pw.println("Last old ipconfig backup data restored: "
-                    + mDebugLastIpConfigBackupDataRestored);
+                    + Arrays.toString(mDebugLastIpConfigBackupDataRestored));
         }
     }
 
@@ -705,14 +715,14 @@ public class WifiBackupRestore {
                             mParsedIdStrLine.substring(mParsedIdStrLine.indexOf('=') + 1);
                     if (idString != null) {
                         Map<String, String> extras =
-                                SupplicantStaNetworkHal.parseNetworkExtra(
+                                SupplicantStaNetworkHalHidlImpl.parseNetworkExtra(
                                         NativeUtil.removeEnclosingQuotes(idString));
                         if (extras == null) {
                             Log.e(TAG, "Error parsing network extras, ignoring network.");
                             return null;
                         }
                         String configKey = extras.get(
-                                SupplicantStaNetworkHal.ID_STRING_KEY_CONFIG_KEY);
+                                SupplicantStaNetworkHalHidlImpl.ID_STRING_KEY_CONFIG_KEY);
                         // No ConfigKey was passed but we need it for validating the parsed
                         // network so we stop the restore.
                         if (configKey == null) {
@@ -729,7 +739,7 @@ public class WifiBackupRestore {
                         // these networks were created by system apps.
                         int creatorUid =
                                 Integer.parseInt(extras.get(
-                                        SupplicantStaNetworkHal.ID_STRING_KEY_CREATOR_UID));
+                                        SupplicantStaNetworkHalHidlImpl.ID_STRING_KEY_CREATOR_UID));
                         if (creatorUid >= Process.FIRST_APPLICATION_UID) {
                             Log.d(TAG, "Ignoring network from non-system app: "
                                     + configuration.getKey());

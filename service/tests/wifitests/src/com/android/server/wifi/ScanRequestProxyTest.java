@@ -68,17 +68,13 @@ public class ScanRequestProxyTest extends WifiBaseTest {
     private static final int TEST_UID = 5;
     private static final String TEST_PACKAGE_NAME_1 = "com.test.1";
     private static final String TEST_PACKAGE_NAME_2 = "com.test.2";
-    private static final List<HiddenNetwork> TEST_HIDDEN_NETWORKS_LIST =
-            new ArrayList<HiddenNetwork>() {{
-                add(new HiddenNetwork("test_ssid_1"));
-                add(new HiddenNetwork("test_ssid_2"));
+    private static final List<HiddenNetwork> TEST_HIDDEN_NETWORKS_LIST = List.of(
+            new HiddenNetwork("test_ssid_1"),
+            new HiddenNetwork("test_ssid_2"));
 
-            }};
-    private static final List<HiddenNetwork> TEST_HIDDEN_NETWORKS_LIST_NS =
-            new ArrayList<HiddenNetwork>() {{
-                add(new HiddenNetwork("test_ssid_3"));
-                add(new HiddenNetwork("test_ssid_4"));
-            }};
+    private static final List<HiddenNetwork> TEST_HIDDEN_NETWORKS_LIST_NS = List.of(
+            new HiddenNetwork("test_ssid_3"),
+            new HiddenNetwork("test_ssid_4"));
 
     @Mock private Context mContext;
     @Mock private AppOpsManager mAppOps;
@@ -127,8 +123,9 @@ public class ScanRequestProxyTest extends WifiBaseTest {
         when(mWifiInjector.getWifiScanner()).thenReturn(mWifiScanner);
         when(mWifiInjector.getWifiNetworkSuggestionsManager())
                 .thenReturn(mWifiNetworkSuggestionsManager);
-        when(mWifiConfigManager.retrieveHiddenNetworkList()).thenReturn(TEST_HIDDEN_NETWORKS_LIST);
-        when(mWifiNetworkSuggestionsManager.retrieveHiddenNetworkList())
+        when(mWifiConfigManager.retrieveHiddenNetworkList(false /* autoJoinOnly */))
+                .thenReturn(TEST_HIDDEN_NETWORKS_LIST);
+        when(mWifiNetworkSuggestionsManager.retrieveHiddenNetworkList(false /* autoJoinOnly */))
                 .thenReturn(TEST_HIDDEN_NETWORKS_LIST_NS);
         when(mWifiMetrics.getScanMetrics()).thenReturn(mScanMetrics);
         doNothing().when(mWifiScanner).registerScanListener(
@@ -289,8 +286,10 @@ public class ScanRequestProxyTest extends WifiBaseTest {
         validateScanAvailableBroadcastSent(true);
 
         assertTrue(mScanRequestProxy.startScan(TEST_UID, TEST_PACKAGE_NAME_1));
-        mInOrder.verify(mWifiConfigManager, never()).retrieveHiddenNetworkList();
-        mInOrder.verify(mWifiNetworkSuggestionsManager, never()).retrieveHiddenNetworkList();
+        mInOrder.verify(mWifiConfigManager, never())
+                .retrieveHiddenNetworkList(false /* autoJoinOnly */);
+        mInOrder.verify(mWifiNetworkSuggestionsManager, never())
+                .retrieveHiddenNetworkList(false /* autoJoinOnly */);
         mInOrder.verify(mWifiScanner).startScan(any(), any(), any(), any());
 
         assertEquals(mWorkSourceArgumentCaptor.getValue(),
@@ -312,8 +311,10 @@ public class ScanRequestProxyTest extends WifiBaseTest {
 
         assertTrue(mScanRequestProxy.startScan(TEST_UID, TEST_PACKAGE_NAME_1));
 
-        mInOrder.verify(mWifiConfigManager).retrieveHiddenNetworkList();
-        mInOrder.verify(mWifiNetworkSuggestionsManager).retrieveHiddenNetworkList();
+        mInOrder.verify(mWifiConfigManager)
+                .retrieveHiddenNetworkList(false /* autoJoinOnly */);
+        mInOrder.verify(mWifiNetworkSuggestionsManager)
+                .retrieveHiddenNetworkList(false /* autoJoinOnly */);
         mInOrder.verify(mWifiScanner).startScan(any(), any(), any(), any());
 
         assertEquals(mWorkSourceArgumentCaptor.getValue(),
