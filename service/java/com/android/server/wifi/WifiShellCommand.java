@@ -826,7 +826,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 case "settings-reset":
                     mWifiNative.stopFakingScanDetails();
                     mWifiNative.resetFakeScanDetails();
-                    mWifiService.factoryReset(SHELL_PACKAGE_NAME);
+                    mWifiService.factoryReset("android");
                     return 0;
                 case "list-scan-results":
                     List<ScanResult> scanResults =
