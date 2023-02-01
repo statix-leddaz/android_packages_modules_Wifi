@@ -39,16 +39,14 @@ import java.util.Map;
 @SmallTest
 public class OsuProviderTest {
     private static final WifiSsid TEST_SSID =
-            WifiSsid.createFromByteArray("TEST SSID".getBytes(StandardCharsets.UTF_8));
+            WifiSsid.fromBytes("TEST SSID".getBytes(StandardCharsets.UTF_8));
     private static final String TEST_FRIENDLY_NAME = "Friendly Name";
-    private static final Map<String, String> TEST_FRIENDLY_NAMES =
-            new HashMap<String, String>() {
-                {
-                    put("en", TEST_FRIENDLY_NAME);
-                    put("kr", TEST_FRIENDLY_NAME + 2);
-                    put("jp", TEST_FRIENDLY_NAME + 3);
-                }
-            };
+    private static final Map<String, String> TEST_FRIENDLY_NAMES = new HashMap<>();
+    static {
+        TEST_FRIENDLY_NAMES.put("en", TEST_FRIENDLY_NAME);
+        TEST_FRIENDLY_NAMES.put("kr", TEST_FRIENDLY_NAME + 2);
+        TEST_FRIENDLY_NAMES.put("jp", TEST_FRIENDLY_NAME + 3);
+    }
 
     private static final String TEST_SERVICE_DESCRIPTION = "Dummy Service";
     private static final Uri TEST_SERVER_URI = Uri.parse("https://test.com");
