@@ -19,7 +19,6 @@ package {
 java_defaults {
     name: "wifi-module-sdk-version-defaults",
     min_sdk_version: "30",
-    target_sdk_version: "31",
 }
 
 filegroup {
@@ -95,11 +94,13 @@ java_defaults {
         "framework-wifi-util-lib",
         "android.hardware.wifi-V1.0-java-constants",
         "wifi-modules-utils",
+        "PlatformProperties",
     ],
     libs: [
         "androidx.annotation_annotation",
         "unsupportedappusage", // for android.compat.annotation.UnsupportedAppUsage
         "framework-connectivity.stubs.module_lib",
+        "app-compat-annotations",
     ],
     aidl: {
         include_dirs: [
@@ -119,8 +120,6 @@ java_library {
     defaults: ["framework-wifi-defaults"],
     sdk_version: "module_current",
     libs: ["framework-annotations-lib"],
-    // java_api_finder must accompany `srcs` (`srcs` defined in `framework-wifi-defaults`)
-    plugins: ["java_api_finder"],
     installable: false,
     visibility: [
         "//frameworks/opt/net/wifi/service",
@@ -152,6 +151,7 @@ java_sdk_library {
     impl_library_visibility: [
         "//frameworks/opt/net/wifi/service:__subpackages__",
         "//packages/modules/Wifi/service:__subpackages__",
+        "//packages/modules/Wifi/WifiDialog:__subpackages__",
     ] + test_access_hidden_api_whitelist,
 
     apex_available: [
@@ -188,4 +188,37 @@ java_defaults {
 filegroup {
     name: "wifi-jarjar-rules",
     srcs: ["jarjar-rules.txt"],
+}
+
+platform_compat_config
+{
+    name: "wifi-compat-config",
+    src: ":framework-wifi-pre-jarjar",
+}
+
+java_api_contribution {
+    name: "framework-wifi-public-stubs",
+    api_surface: "public",
+    api_file: "api/current.txt",
+    visibility: [
+        "//build/orchestrator/apis",
+    ],
+}
+
+java_api_contribution {
+    name: "framework-wifi-system-stubs",
+    api_surface: "system",
+    api_file: "api/system-current.txt",
+    visibility: [
+        "//build/orchestrator/apis",
+    ],
+}
+
+java_api_contribution {
+    name: "framework-wifi-module-lib-stubs",
+    api_surface: "module-lib",
+    api_file: "api/module-lib-current.txt",
+    visibility: [
+        "//build/orchestrator/apis",
+    ],
 }
