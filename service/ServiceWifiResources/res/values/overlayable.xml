@@ -67,6 +67,8 @@
           <item type="integer" name="config_wifiFrameworkSoftApShutDownTimeoutMilliseconds" />
           <item type="integer" name="config_wifiFrameworkSoftApShutDownIdleInstanceInBridgedModeTimeoutMillisecond" />
           <item type="bool" name="config_wifiFrameworkSoftApDisableBridgedModeShutdownIdleInstanceWhenCharging" />
+          <item type="array" name="config_wifiOobPseudonymEnabled_carrier_overrides" />
+          <item type="array" name="config_wifiOobPseudonymEntitlementServerUrl_carrier_overrides" />
           <item type="bool" name="config_wifiSoftApDynamicCountryCodeUpdateSupported" />
           <item type="bool" name="config_wifiSoftapResetChannelConfig" />
           <item type="bool" name="config_wifiSoftapResetHiddenConfig" />
@@ -257,6 +259,7 @@
           <item type="array" name="config_wifiCharsetsForSsidTranslation" />
           <item type="string" name="config_wifiBugreportDeepLink" />
           <item type="bool" name="config_wifiWaitForDestroyedListeners" />
+	  <item type="integer" name="config_wifiImsiProtectionNotificationDelaySeconds" />
           <!-- Params from config.xml that can be overlayed -->
 
           <!-- Params from strings.xml that can be overlayed -->

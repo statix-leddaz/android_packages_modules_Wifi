@@ -66,6 +66,7 @@ import android.net.wifi.WifiContext;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiStringResourceWrapper;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.Credential;
 import android.os.Handler;
@@ -164,8 +165,11 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
     @Mock WifiCarrierInfoManager.OnCarrierOffloadDisabledListener mOnCarrierOffloadDisabledListener;
     @Mock Clock mClock;
     @Mock WifiNetworkSuggestionsManager mWifiNetworkSuggestionsManager;
+    @Mock DeviceConfigFacade mDeviceConfigFacade;
+    @Mock WifiStringResourceWrapper mWifiStringResourceWrapper;
 
     private List<SubscriptionInfo> mSubInfoList;
+    private long mCurrentTimeMills = 1000L;
 
     MockitoSession mMockingSession = null;
     TestLooper mLooper;
@@ -210,6 +214,9 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
         when(mWifiInjector.getWifiDialogManager()).thenReturn(mWifiDialogManager);
         when(mWifiInjector.getWifiNetworkSuggestionsManager())
                 .thenReturn(mWifiNetworkSuggestionsManager);
+        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfigFacade);
+        when(mContext.getStringResourceWrapper(anyInt(), anyInt()))
+                .thenReturn(mWifiStringResourceWrapper);
         mWifiCarrierInfoManager = new WifiCarrierInfoManager(mTelephonyManager,
                 mSubscriptionManager, mWifiInjector, mFrameworkFacade, mContext, mWifiConfigStore,
                 new Handler(mLooper.getLooper()), mWifiMetrics, mClock);
@@ -293,12 +300,14 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
         when(mResources.getText(
                 eq(R.string.wifi_suggestion_action_disallow_imsi_privacy_exemption_confirmation)))
                 .thenReturn("blah");
+        when(mResources.getInteger(eq(R.integer.config_wifiImsiProtectionNotificationDelaySeconds)))
+                .thenReturn(300);
         mWifiCarrierInfoManager.addImsiExemptionUserApprovalListener(mListener);
         verify(mSubscriptionManager).addOnSubscriptionsChangedListener(any(),
                 mListenerArgumentCaptor.capture());
         mListenerArgumentCaptor.getValue().onSubscriptionsChanged();
         mLooper.dispatchAll();
-        when(mClock.getElapsedSinceBootMillis()).thenReturn(1000L);
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(mCurrentTimeMills);
     }
 
     @After
@@ -1738,6 +1747,10 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
         reset(mWifiNotificationManager);
         // No Notification is active, should send notification again.
         mWifiCarrierInfoManager.sendImsiProtectionExemptionNotificationIfRequired(DATA_CARRIER_ID);
+        verifyNoMoreInteractions(mWifiNotificationManager);
+
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(mCurrentTimeMills + 6 * 60 * 1000);
+        mWifiCarrierInfoManager.sendImsiProtectionExemptionNotificationIfRequired(DATA_CARRIER_ID);
         validateImsiProtectionNotification(CARRIER_NAME);
         reset(mWifiNotificationManager);
 
@@ -1822,8 +1835,12 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
         verify(mContext).sendBroadcast(intentCaptor.capture());
         assertEquals(Intent.ACTION_CLOSE_SYSTEM_DIALOGS, intentCaptor.getValue().getAction());
 
-        // As no notification is active, new notification should be sent
+        // As user dismissed the notification, there will be a certain time to delay the next
+        // notification
         mWifiCarrierInfoManager.sendImsiProtectionExemptionNotificationIfRequired(DATA_CARRIER_ID);
+        verifyNoMoreInteractions(mWifiNotificationManager);
+
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(mCurrentTimeMills + 6 * 60 * 1000);
         validateImsiProtectionNotification(CARRIER_NAME);
 
         verify(mWifiConfigManager, never()).saveToStore(true);
@@ -2252,5 +2269,22 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
         mLooper.dispatchAll();
         // Non-data sim should be selected
         assertEquals(NON_DATA_SUBID, mWifiCarrierInfoManager.getMatchingSubId(DATA_CARRIER_ID));
+    }
+
+    @Test
+    public void testIsOobPseudonymFeatureEnabled_phFlagDisabled() {
+        when(mDeviceConfigFacade.isOobPseudonymEnabled()).thenReturn(false);
+
+        assertFalse(mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(123));
+    }
+
+    @Test
+    public void testIsOobPseudonymFeatureEnabled_resourceOverrideAsTrue() {
+        when(mDeviceConfigFacade.isOobPseudonymEnabled()).thenReturn(true);
+        when(mWifiStringResourceWrapper.getBoolean(
+                eq(WifiCarrierInfoManager.CONFIG_WIFI_OOB_PSEUDONYM_ENABLED), anyBoolean()))
+                .thenReturn(true);
+
+        assertTrue(mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(1));
     }
 }

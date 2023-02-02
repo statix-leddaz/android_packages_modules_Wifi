@@ -1047,6 +1047,9 @@ message ConnectionEvent {
 
     // The reason code if a user rejects this connection.
     AUTH_FAILURE_REJECTED_BY_USER = 7;
+
+    // The reason code if an insecure Enterprise connection requires user's approval
+    DISCONNECTED_USER_APPROVAL_NEEDED = 8;
   }
 
   // Entity that recommended connecting to this network.
@@ -2984,6 +2987,12 @@ message P2pConnectionEvent {
 
     // New connection request is issued before ending previous connecting request.
     CLF_NEW_CONNECTION_ATTEMPT = 7;
+
+    // Group has been removed
+    CLF_GROUP_REMOVED = 8;
+
+    // Creating group failed
+    CLF_CREATE_GROUP_FAILED = 9;
   }
 
   // WPS method.
