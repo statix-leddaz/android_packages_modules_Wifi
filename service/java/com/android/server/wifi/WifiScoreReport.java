@@ -823,7 +823,7 @@ public class WifiScoreReport {
             Calendar c = Calendar.getInstance();
             c.setTimeInMillis(now);
             // Date format: "%tm-%td %tH:%tM:%tS.%tL"
-            String timestamp = new StringBuilder().append(c.get(Calendar.MONTH)).append("-")
+            String timestamp = new StringBuilder().append(c.get(Calendar.MONTH) + 1 ).append("-")
                     .append(c.get(Calendar.DAY_OF_MONTH)).append(" ")
                     .append(c.get(Calendar.HOUR_OF_DAY)).append(":")
                     .append(c.get(Calendar.MINUTE)).append(":")
