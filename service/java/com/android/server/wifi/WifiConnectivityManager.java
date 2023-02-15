@@ -489,6 +489,11 @@ public class WifiConnectivityManager {
             @NonNull String listenerName,
             boolean isFullScan,
             @NonNull HandleScanResultsListener handleScanResultsListener) {
+        if (mWifiGlobals.isConnectedMacRandomizationEnabled()
+                && WifiInjector.getInstance().getDppManager().isSessionInProgress()) {
+            localLog("dpp is in progress, skip the auto connect!");
+            return;
+        }
         List<WifiNetworkSelector.ClientModeManagerState> cmmStates = new ArrayList<>();
         Set<String> connectedSsids = new HashSet<>();
         boolean hasExistingSecondaryCmm = false;
