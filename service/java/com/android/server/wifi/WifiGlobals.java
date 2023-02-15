@@ -162,6 +162,17 @@ public class WifiGlobals {
     }
 
     /**
+     * Helper method to check if Enabled MAC Randomization is supported - onDown events are
+     * skipped if this feature is enabled (b/72459123).
+     *
+     * @return boolean true if Enabled MAC randomization is supported, false otherwise
+     */
+    public boolean isEnabledMacRandomizationEnabled() {
+        return mContext.getResources().getBoolean(
+                R.bool.config_wifi_enabled_mac_randomization_supported);
+    }
+
+    /**
      * Help method to check if WPA3 SAE auto-upgrade is enabled.
      *
      * @return boolean true if auto-upgrade is enabled, false otherwise.

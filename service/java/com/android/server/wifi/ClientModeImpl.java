@@ -1393,13 +1393,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // When the firmware does a subsystem restart, wifi will disconnect but we may fail to
             // re-randomize the MAC address of the interface since it's undergoing recovery. Thus,
             // check every time the interface goes up and re-randomize if the failure was detected.
-            if (mWifiGlobals.isConnectedMacRandomizationEnabled()) {
-                mFailedToResetMacAddress = !mWifiNative.setStaMacAddress(
-                        mInterfaceName, MacAddressUtils.createRandomUnicastAddress());
-                if (mFailedToResetMacAddress) {
-                    Log.e(getTag(), "Failed to set random MAC address on interface up");
-                }
-            }
+            resetCurrentMacToFactoryOrRandomMac();
         }
         // No need to handle interface down since it's already handled in the ClientModeManager.
     }
@@ -3599,6 +3593,24 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
     }
 
+    private void resetCurrentMacToFactoryOrRandomMac() {
+        if (!mWifiGlobals.isEnabledMacRandomizationEnabled()) {
+            MacAddress factoryMac = retrieveFactoryMacAddressAndStoreIfNecessary();
+            if (factoryMac != null) {
+                String currentMacStr = mWifiNative.getMacAddress(mInterfaceName);
+                if (!TextUtils.equals(currentMacStr, factoryMac.toString())) {
+                    mWifiNative.setStaMacAddress(mInterfaceName, factoryMac);
+                }
+            }
+        } else if (mWifiGlobals.isConnectedMacRandomizationEnabled()) {
+            mFailedToResetMacAddress = !mWifiNative.setStaMacAddress(
+                    mInterfaceName, MacAddressUtils.createRandomUnicastAddress());
+            if (mFailedToResetMacAddress) {
+                Log.e(getTag(), "Failed to set random MAC address on ClientMode creation");
+            }
+        }
+    }
+
     /**
      * Helper method to start other services and get state ready for client mode
      */
@@ -3619,13 +3631,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mLastSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
         mLastSimBasedConnectionCarrierName = null;
         mLastSignalLevel = -1;
-        if (mWifiGlobals.isConnectedMacRandomizationEnabled()) {
-            mFailedToResetMacAddress = !mWifiNative.setStaMacAddress(
-                    mInterfaceName, MacAddressUtils.createRandomUnicastAddress());
-            if (mFailedToResetMacAddress) {
-                Log.e(getTag(), "Failed to set random MAC address on ClientMode creation");
-            }
-        }
+        resetCurrentMacToFactoryOrRandomMac();
         mWifiInfo.setMacAddress(mWifiNative.getMacAddress(mInterfaceName));
         // TODO: b/79504296 This broadcast has been deprecated and should be removed
         sendSupplicantConnectionChangedBroadcast(true);
@@ -4745,13 +4751,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // case we reconnect back to the same network.
             // 2. Set a random MAC address to ensure that we're not leaking the MAC address.
             mWifiNative.disableNetwork(mInterfaceName);
-            if (mWifiGlobals.isConnectedMacRandomizationEnabled()) {
-                mFailedToResetMacAddress = !mWifiNative.setStaMacAddress(
-                        mInterfaceName, MacAddressUtils.createRandomUnicastAddress());
-                if (mFailedToResetMacAddress) {
-                    Log.e(getTag(), "Failed to set random MAC address on disconnect");
-                }
-            }
+            resetCurrentMacToFactoryOrRandomMac();
             mWifiInfo.reset();
             mWifiInfo.setSupplicantState(SupplicantState.DISCONNECTED);
             mWifiScoreCard.noteSupplicantStateChanged(mWifiInfo);

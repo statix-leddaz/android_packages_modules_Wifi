@@ -341,6 +341,9 @@
     <!-- Indicates that connected MAC randomization is supported on this device -->
     <bool translatable="false" name="config_wifi_connected_mac_randomization_supported">false</bool>
 
+    <!-- Indicates that enabled MAC randomization is supported on this device -->
+    <bool translatable="false" name="config_wifi_enabled_mac_randomization_supported">true</bool>
+
     <!-- Indicates that non-persistent MAC randomization is allowed on open networks that do not
      use captive portals -->
     <bool translatable="false" name="config_wifiAllowNonPersistentMacRandomizationOnOpenSsids">false</bool>
