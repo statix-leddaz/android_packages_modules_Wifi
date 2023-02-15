@@ -2080,7 +2080,8 @@ public class WifiConfiguration implements Parcelable {
                 DISABLED_AUTHENTICATION_NO_SUBSCRIPTION,
                 DISABLED_AUTHENTICATION_PRIVATE_EAP_ERROR,
                 DISABLED_NETWORK_NOT_FOUND,
-                DISABLED_CONSECUTIVE_FAILURES})
+                DISABLED_CONSECUTIVE_FAILURES,
+                DISABLED_UNWANTED_LOW_RSSI})
         public @interface NetworkSelectionDisableReason {}
 
         // Quality Network disabled reasons
@@ -2127,10 +2128,15 @@ public class WifiConfiguration implements Parcelable {
          */
         public static final int DISABLED_CONSECUTIVE_FAILURES = 12;
         /**
+         * This network is temporarily disabled because of multiple unwanted network under low rssi.
+         * @hide
+         */
+        public static final int DISABLED_UNWANTED_LOW_RSSI = 13;
+        /**
          * All other disable reasons should be strictly less than this value.
          * @hide
          */
-        public static final int NETWORK_SELECTION_DISABLED_MAX = 13;
+        public static final int NETWORK_SELECTION_DISABLED_MAX = 14;
 
         /**
          * Get an integer that is equal to the maximum integer value of all the
@@ -2297,7 +2303,10 @@ public class WifiConfiguration implements Parcelable {
                     new DisableReasonInfo("NETWORK_SELECTION_DISABLED_CONSECUTIVE_FAILURES",
                             1,
                             5 * 60 * 1000));
-
+            reasons.append(DISABLED_UNWANTED_LOW_RSSI,
+                    new DisableReasonInfo("NETWORK_SELECTION_DISABLED_UNWANTED_LOW_RSSI",
+                            1,
+                            30 * 1000));
             return reasons;
         }
 
