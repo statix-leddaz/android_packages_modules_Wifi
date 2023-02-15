@@ -262,6 +262,9 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
                 LOW_RSSI_NETWORK_RETRY_MAX_DELAY_SEC);
         resources.setBoolean(R.bool.config_wifiEnable6ghzPscScanning, true);
         resources.setBoolean(R.bool.config_wifiUseHalApiToDisableFwRoaming, true);
+        resources.setInteger(R.integer.config_wifiPnoScanIterations, EXPECTED_PNO_ITERATIONS);
+        resources.setInteger(R.integer.config_wifiPnoScanIntervalMultiplier,
+                EXPECTED_PNO_MULTIPLIER);
     }
 
     /**
@@ -386,6 +389,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     private static final int LOW_RSSI_NETWORK_RETRY_MAX_DELAY_SEC = 80;
     private static final int SCAN_TRIGGER_TIMES = 7;
     private static final long NETWORK_CHANGE_TRIGGER_PNO_THROTTLE_MS = 3000; // 3 seconds
+    private static final int EXPECTED_PNO_ITERATIONS = 3;
+    private static final int EXPECTED_PNO_MULTIPLIER = 4;
     private static final int TEST_FREQUENCY_2G = 2412;
     private static final int TEST_FREQUENCY_5G = 5262;
 
@@ -3979,13 +3984,13 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     @Test
     public void verifyBlocklistRefreshedAfterScanResults() {
         WifiConfiguration disabledConfig = WifiConfigurationTestUtil.createPskNetwork();
+        disabledConfig.getNetworkSelectionStatus().setNetworkSelectionStatus(
+                WifiConfiguration.NetworkSelectionStatus.NETWORK_SELECTION_TEMPORARY_DISABLED);
         List<ScanDetail> mockScanDetails = new ArrayList<>();
         mockScanDetails.add(mock(ScanDetail.class));
         when(mWifiBlocklistMonitor.tryEnablingBlockedBssids(any())).thenReturn(mockScanDetails);
         when(mWifiConfigManager.getSavedNetworkForScanDetail(any())).thenReturn(
                 disabledConfig);
-
-        when(mWifiConnectivityHelper.isFirmwareRoamingSupported()).thenReturn(true);
 
         InOrder inOrder = inOrder(mWifiBlocklistMonitor, mWifiConfigManager);
         // Force a connectivity scan
@@ -3995,6 +4000,35 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         mLooper.dispatchAll();
         inOrder.verify(mWifiBlocklistMonitor).tryEnablingBlockedBssids(any());
         inOrder.verify(mWifiConfigManager).updateNetworkSelectionStatus(disabledConfig.networkId,
+                WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
+        inOrder.verify(mWifiBlocklistMonitor).updateAndGetBssidBlocklistForSsids(anySet());
+    }
+
+    /**
+     *  Verify that a blocklisted BSSID becomes available only after
+     *  BSSID_BLOCKLIST_EXPIRE_TIME_MS, but will not re-enable a permanently disabled
+     *  WifiConfiguration.
+     */
+    @Test
+    public void verifyBlocklistRefreshedAfterScanResultsButIgnorePermanentlyDisabledConfigs() {
+        WifiConfiguration disabledConfig = WifiConfigurationTestUtil.createPskNetwork();
+        disabledConfig.getNetworkSelectionStatus().setNetworkSelectionStatus(
+                WifiConfiguration.NetworkSelectionStatus.NETWORK_SELECTION_PERMANENTLY_DISABLED);
+        List<ScanDetail> mockScanDetails = new ArrayList<>();
+        mockScanDetails.add(mock(ScanDetail.class));
+        when(mWifiBlocklistMonitor.tryEnablingBlockedBssids(any())).thenReturn(mockScanDetails);
+        when(mWifiConfigManager.getSavedNetworkForScanDetail(any())).thenReturn(
+                disabledConfig);
+
+        InOrder inOrder = inOrder(mWifiBlocklistMonitor, mWifiConfigManager);
+        // Force a connectivity scan
+        inOrder.verify(mWifiBlocklistMonitor, never())
+                .updateAndGetBssidBlocklistForSsids(anySet());
+        mWifiConnectivityManager.forceConnectivityScan(WIFI_WORK_SOURCE);
+        mLooper.dispatchAll();
+        inOrder.verify(mWifiBlocklistMonitor).tryEnablingBlockedBssids(any());
+        inOrder.verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(
+                disabledConfig.networkId,
                 WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
         inOrder.verify(mWifiBlocklistMonitor).updateAndGetBssidBlocklistForSsids(anySet());
     }
@@ -4656,10 +4690,15 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         ArgumentCaptor<ScanSettings> scanSettingsCaptor = ArgumentCaptor.forClass(
                 ScanSettings.class);
+        ArgumentCaptor<PnoSettings> pnoSettingsCaptor = ArgumentCaptor.forClass(
+                PnoSettings.class);
         InOrder inOrder = inOrder(mWifiScanner);
 
-        inOrder.verify(mWifiScanner).startPnoScan(scanSettingsCaptor.capture(), any(), any());
+        inOrder.verify(mWifiScanner).startPnoScan(scanSettingsCaptor.capture(),
+                pnoSettingsCaptor.capture(), any());
         assertEquals(interval, scanSettingsCaptor.getValue().periodInMs);
+        assertEquals(EXPECTED_PNO_ITERATIONS, pnoSettingsCaptor.getValue().scanIterations);
+        assertEquals(EXPECTED_PNO_MULTIPLIER, pnoSettingsCaptor.getValue().scanIntervalMultiplier);
     }
 
     /**

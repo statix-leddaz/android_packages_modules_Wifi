@@ -18,11 +18,13 @@ package android.net.wifi.aware;
 
 import android.app.PendingIntent;
 
+import android.net.wifi.IBooleanListener;
+import android.net.wifi.IIntegerListener;
+import android.net.wifi.IListListener;
 import android.net.wifi.aware.ConfigRequest;
 import android.net.wifi.aware.IWifiAwareDiscoverySessionCallback;
 import android.net.wifi.aware.IWifiAwareEventCallback;
 import android.net.wifi.aware.IWifiAwareMacAddressProvider;
-import android.net.wifi.aware.IWifiAwarePairedDevicesListener;
 import android.net.wifi.aware.PublishConfig;
 import android.net.wifi.aware.SubscribeConfig;
 import android.net.wifi.aware.Characteristics;
@@ -49,13 +51,17 @@ interface IWifiAwareManager
     void setAwareParams(in AwareParams parameters);
     void resetPairedDevices(in String callingPackage);
     void removePairedDevice(in String callingPackage, in String alias);
-    void getPairedDevices(in String callingPackage, in IWifiAwarePairedDevicesListener value);
+    void getPairedDevices(in String callingPackage, in IListListener value);
+    void setOpportunisticModeEnabled(in String callingPackage, boolean enable);
+    void isOpportunisticModeEnabled(in String callingPackage, in IBooleanListener value);
 
     // client API
     void connect(in IBinder binder, in String callingPackage, in String callingFeatureId,
             in IWifiAwareEventCallback callback, in ConfigRequest configRequest,
             boolean notifyOnIdentityChanged, in Bundle extras, boolean forAwareOffload);
     void disconnect(int clientId, in IBinder binder);
+    void setMasterPreference(int clientId, in IBinder binder, int mp);
+    void getMasterPreference(int clientId, in IBinder binder, in IIntegerListener listener);
 
     void publish(in String callingPackage, in String callingFeatureId, int clientId,
             in PublishConfig publishConfig, in IWifiAwareDiscoverySessionCallback callback,

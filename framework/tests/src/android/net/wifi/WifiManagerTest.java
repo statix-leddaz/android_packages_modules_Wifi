@@ -137,6 +137,7 @@ import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -175,6 +176,7 @@ public class WifiManagerTest {
             MacAddress.fromString("22:bb:cc:11:aa:ff")};
     private static final String TEST_SSID = "\"Test WiFi Networks\"";
     private static final byte[] TEST_OUI = new byte[]{0x01, 0x02, 0x03};
+    private static final int TEST_LINK_LAYER_STATS_POLLING_INTERVAL_MS = 1000;
 
     @Mock Context mContext;
     @Mock android.net.wifi.IWifiManager mWifiService;
@@ -2468,10 +2470,15 @@ public class WifiManagerTest {
         radioStats[0] = new RadioStats(0, 10, 11, 12, 13, 14, 15, 16, 17, 18);
         radioStats[1] = new RadioStats(1, 20, 21, 22, 23, 24, 25, 26, 27, 28);
         SparseArray<LinkStats> linkStats = new SparseArray<>();
-        linkStats.put(0, new LinkStats(0, 0, -50, 300, 200, 188, 2, 2, 100, 300, 100,
-                contentionTimeStats, rateStats));
-        linkStats.put(1, new LinkStats(0, 0, -40, 860, 600, 388, 2, 2, 200, 400, 100,
-                contentionTimeStats, rateStats));
+        linkStats.put(0,
+                new LinkStats(0, WifiUsabilityStatsEntry.LINK_STATE_NOT_IN_USE, 0, -50, 300,
+                        200,
+                        188, 2, 2, 100, 300, 100,
+                        contentionTimeStats, rateStats));
+        linkStats.put(1,
+                new LinkStats(0, WifiUsabilityStatsEntry.LINK_STATE_IN_USE, 0, -40, 860, 600,
+                        388, 2, 2, 200, 400, 100,
+                        contentionTimeStats, rateStats));
         callbackCaptor.getValue().onWifiUsabilityStats(1, true,
                 new WifiUsabilityStatsEntry(System.currentTimeMillis(), -50, 100, 10, 0, 5, 5,
                         100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 1, 100, 10,
@@ -3954,10 +3961,10 @@ public class WifiManagerTest {
     }
 
     /**
-     * Verify call to {@link WifiManager#addQosPolicy(QosPolicyParams, Executor, Consumer)}.
+     * Verify call to {@link WifiManager#addQosPolicies(List, Executor, Consumer)}.
      */
     @Test
-    public void testAddQosPolicy() throws Exception {
+    public void testAddQosPolicies() throws Exception {
         assumeTrue(SdkLevel.isAtLeastU());
 
         final int policyId = 2;
@@ -3966,29 +3973,23 @@ public class WifiManagerTest {
         QosPolicyParams policyParams = new QosPolicyParams.Builder(policyId, direction)
                 .setUserPriority(userPriority)
                 .build();
-        ArgumentCaptor<QosPolicyParams> paramsCaptor =
-                ArgumentCaptor.forClass(QosPolicyParams.class);
-
         SynchronousExecutor executor = mock(SynchronousExecutor.class);
-        Consumer<Integer> resultsCallback = mock(Consumer.class);
+        Consumer<List<Integer>> resultsCallback = mock(Consumer.class);
 
-        mWifiManager.addQosPolicy(policyParams, executor, resultsCallback);
-        verify(mWifiService).addQosPolicy(paramsCaptor.capture(), any(), eq(TEST_PACKAGE_NAME),
-                any(IIntegerListener.Stub.class));
-        assertEquals(policyId, paramsCaptor.getValue().getPolicyId());
-        assertEquals(direction, paramsCaptor.getValue().getDirection());
-        assertEquals(userPriority, paramsCaptor.getValue().getUserPriority());
+        mWifiManager.addQosPolicies(Arrays.asList(policyParams), executor, resultsCallback);
+        verify(mWifiService).addQosPolicies(any(), any(), eq(TEST_PACKAGE_NAME),
+                any(IListListener.Stub.class));
     }
 
     /**
-     * Verify call to {@link WifiManager#removeQosPolicy(int)}
+     * Verify call to {@link WifiManager#removeQosPolicies(int[])}
      */
     @Test
-    public void testRemoveQosPolicy() throws Exception {
+    public void testRemoveQosPolicies() throws Exception {
         assumeTrue(SdkLevel.isAtLeastU());
-        final int policyId = 127;
-        mWifiManager.removeQosPolicy(policyId);
-        verify(mWifiService).removeQosPolicy(eq(policyId), eq(TEST_PACKAGE_NAME));
+        final int[] policyIdList = new int[]{127, 128};
+        mWifiManager.removeQosPolicies(policyIdList);
+        verify(mWifiService).removeQosPolicies(any(), eq(TEST_PACKAGE_NAME));
     }
 
     @Test
@@ -4003,6 +4004,29 @@ public class WifiManagerTest {
                 nullable(String.class));
         mWifiManager.removeLocalOnlyConnectionFailureListener(mLocalOnlyConnectionFailureListener);
         verify(mWifiService).removeLocalOnlyConnectionStatusListener(any(), eq(TEST_PACKAGE_NAME));
+    }
+
+    /**
+     * Verify if the call for set / get link layer stats polling interval goes to WifiServiceImpl
+     */
+    @Test
+    public void testSetAndGetLinkLayerStatsPollingInterval() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        mWifiManager.setLinkLayerStatsPollingInterval(TEST_LINK_LAYER_STATS_POLLING_INTERVAL_MS);
+        verify(mWifiService).setLinkLayerStatsPollingInterval(
+                eq(TEST_LINK_LAYER_STATS_POLLING_INTERVAL_MS));
+
+        SynchronousExecutor executor = mock(SynchronousExecutor.class);
+        Consumer<Integer> resultsCallback = mock(Consumer.class);
+        mWifiManager.getLinkLayerStatsPollingInterval(executor, resultsCallback);
+        verify(mWifiService).getLinkLayerStatsPollingInterval(any(IIntegerListener.class));
+
+        // null executor
+        assertThrows(NullPointerException.class,
+                () -> mWifiManager.getLinkLayerStatsPollingInterval(null, resultsCallback));
+        // null resultsCallback
+        assertThrows(NullPointerException.class,
+                () -> mWifiManager.getLinkLayerStatsPollingInterval(executor, null));
     }
 
 }

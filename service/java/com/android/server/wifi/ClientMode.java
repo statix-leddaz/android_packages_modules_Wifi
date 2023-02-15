@@ -84,6 +84,14 @@ public interface ClientMode {
     /** When the device mobility changes, update the RSSI polling interval accordingly */
     void onDeviceMobilityStateUpdated(@DeviceMobilityState int newState);
 
+    /**
+     * Set the fixed link layer stats polling interval when it is overridden, or set the interval
+     * to be handled automatically by the framework
+     * @param newIntervalMs new link layer stats polling interval in milliseconds. Use value 0
+     *                      for automatic handling
+     */
+    void setLinkLayerStatsPollingInterval(int newIntervalMs);
+
     boolean setWifiConnectedNetworkScorer(IBinder binder, IWifiConnectedNetworkScorer scorer);
 
     void clearWifiConnectedNetworkScorer();
@@ -120,7 +128,20 @@ public interface ClientMode {
 
     boolean isWifiStandardSupported(@WifiAnnotations.WifiStandard int standard);
 
-    void enableTdls(String remoteMacAddress, boolean enable);
+    /** Enable TDLS session with remote MAC address */
+    boolean enableTdls(String remoteMacAddress, boolean enable);
+
+    /** Enable TDLS session with remote IP address */
+    boolean enableTdlsWithRemoteIpAddress(String remoteIpAddress, boolean enable);
+
+    /** Check if a TDLS session can be established */
+    boolean isTdlsOperationCurrentlyAvailable();
+
+    /** The maximum number of TDLS sessions supported by the device */
+    int getMaxSupportedConcurrentTdlsSessions();
+
+    /** The number of Peer mac addresses configured in the device for establishing a TDLS session */
+    int getNumberOfEnabledTdlsSessions();
 
     void dumpIpClient(FileDescriptor fd, PrintWriter pw, String[] args);
 
