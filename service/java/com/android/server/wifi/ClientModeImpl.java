@@ -2770,7 +2770,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mWifiInfo.clearCurrentSecurityType();
             mWifiInfo.resetMultiLinkInfo();
         }
-        updateLayer2Information();
+        if (!SupplicantState.isConnecting(state) || state == SupplicantState.COMPLETED) {
+            updateLayer2Information();
+        }
         // SSID might have been updated, so call updateCapabilities
         updateCapabilities();
 
