@@ -19,6 +19,8 @@ package com.android.server.wifi;
 import static android.net.util.KeepalivePacketDataUtil.parseTcpKeepalivePacketData;
 import static android.net.wifi.WifiConfiguration.NetworkSelectionStatus.DISABLED_NO_INTERNET_PERMANENT;
 import static android.net.wifi.WifiConfiguration.NetworkSelectionStatus.DISABLED_NO_INTERNET_TEMPORARY;
+import static android.net.wifi.WifiConfiguration.NetworkSelectionStatus.DISABLED_UNWANTED_LOW_RSSI;
+import static android.net.wifi.WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_FILS_SHA256;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_FILS_SHA384;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE;
@@ -6144,6 +6146,18 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             mWifiMetrics.incrementMakeBeforeBreakLingerCompletedCount(
                                     mClock.getElapsedSinceBootMillis()
                                             - mClientModeManager.getLastRoleChangeSinceBootMs());
+                        }
+                        WifiConfiguration config = getConnectedWifiConfigurationInternal();
+
+                        if (isPrimary() && config != null && !isRecentlySelectedByTheUser(config)
+                                && config.getNetworkSelectionStatus().getNetworkSelectionDisableReason()
+                                    == DISABLED_NONE && mWifiInfo.getRssi() != WifiInfo.INVALID_RSSI
+                                && mWifiInfo.getRssi() < mScoringParams.getSufficientRssi(mWifiInfo.getFrequency())) {
+                            Log.d(getTag(), "CMD_UNWANTED_NETWORK update network " + config.networkId
+                                    + " with DISABLED_UNWANTED_LOW_RSSI under rssi:" + mWifiInfo.getRssi());
+                            mWifiConfigManager.updateNetworkSelectionStatus(
+                                    config.networkId,
+                                    DISABLED_UNWANTED_LOW_RSSI);
                         }
                         mWifiNative.disconnect(mInterfaceName);
                     } else if (message.arg1 == NETWORK_STATUS_UNWANTED_DISABLE_AUTOJOIN
