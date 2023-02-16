@@ -380,7 +380,8 @@ public class WifiConnectivityManager {
             // Any candidate has different band with primary will be considered.
             // As a BSSID can not exist in both bands it will not choose the same BSSID as primary.
             secondaryCmmCandidates = candidates.stream().filter(
-                    c -> ScanResult.toBand(c.getFrequency()) != primaryBand)
+                    c -> ScanResult.toBand(c.getFrequency()) != primaryBand
+                            && !c.isPasspoint())
                 .collect(Collectors.toList());
         } else {
             // Only allow the candidates have the same SSID as the primary.
@@ -388,7 +389,8 @@ public class WifiConnectivityManager {
                 return ScanResult.toBand(c.getFrequency()) != primaryBand
                         && TextUtils.equals(c.getKey().matchInfo.networkSsid, primaryInfo.getSSID())
                         && c.getKey().networkId == primaryInfo.getNetworkId()
-                        && c.getKey().securityType == primaryInfo.getCurrentSecurityType();
+                        && c.getKey().securityType == primaryInfo.getCurrentSecurityType()
+                        && !c.isPasspoint();
             }).collect(Collectors.toList());
         }
         // Perform network selection among secondary candidates. Create a new copy. Do not allow
