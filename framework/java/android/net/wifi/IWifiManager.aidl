@@ -446,4 +446,12 @@ interface IWifiManager
     void removeQosPolicies(in int[] policyIdList, String packageName);
 
     void removeAllQosPolicies(String packageName);
+
+    void setLinkLayerStatsPollingInterval(int intervalMs);
+
+    void getLinkLayerStatsPollingInterval(in IIntegerListener listener);
+
+    void setMloMode(int mode, in IBooleanListener listener);
+
+    void getMloMode(in IIntegerListener listener);
 }

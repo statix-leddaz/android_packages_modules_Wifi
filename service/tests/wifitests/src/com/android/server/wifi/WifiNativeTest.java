@@ -177,6 +177,8 @@ public class WifiNativeTest extends WifiBaseTest {
             new WifiNative.PnoSettings() {{
                 isConnected = false;
                 periodInMs = 6000;
+                scanIterations = 3;
+                scanIntervalMultiplier = 3;
                 networkList = new WifiNative.PnoNetwork[2];
                 networkList[0] = new WifiNative.PnoNetwork();
                 networkList[1] = new WifiNative.PnoNetwork();
@@ -1575,5 +1577,13 @@ public class WifiNativeTest extends WifiBaseTest {
     public void testIsSoftApInstanceDiedHandlerSupported() throws Exception {
         mWifiNative.isSoftApInstanceDiedHandlerSupported();
         verify(mHostapdHal).isSoftApInstanceDiedHandlerSupported();
+    }
+
+    @Test
+    public void testEnableStaChannelForPeerNetworkWithOverride() throws Exception {
+        mResources.setBoolean(R.bool.config_wifiEnableStaIndoorChannelForPeerNetwork, true);
+        mResources.setBoolean(R.bool.config_wifiEnableStaDfsChannelForPeerNetwork, true);
+        mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE);
+        verify(mWifiVendorHal).enableStaChannelForPeerNetwork(true, true);
     }
 }

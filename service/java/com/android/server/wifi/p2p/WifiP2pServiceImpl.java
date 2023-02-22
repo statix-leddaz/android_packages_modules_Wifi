@@ -1315,6 +1315,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     return "TETHER_INTERFACE_STATE_CHANGED";
                 case UPDATE_P2P_DISALLOWED_CHANNELS:
                     return "UPDATE_P2P_DISALLOWED_CHANNELS";
+                case WifiP2pManager.ADD_EXTERNAL_APPROVER:
+                    return "WifiP2pManager.ADD_EXTERNAL_APPROVER";
                 case WifiP2pManager.ADD_LOCAL_SERVICE:
                     return "WifiP2pManager.ADD_LOCAL_SERVICE";
                 case WifiP2pManager.ADD_SERVICE_REQUEST:
@@ -1335,6 +1337,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     return "WifiP2pManager.DISCOVER_PEERS";
                 case WifiP2pManager.DISCOVER_SERVICES:
                     return "WifiP2pManager.DISCOVER_SERVICES";
+                case WifiP2pManager.EXTERNAL_APPROVER_ATTACH:
+                    return "WifiP2pManager.EXTERNAL_APPROVER_ATTACH";
                 case WifiP2pManager.FACTORY_RESET:
                     return "WifiP2pManager.FACTORY_RESET";
                 case WifiP2pManager.GET_HANDOVER_REQUEST:
@@ -1343,6 +1347,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     return "WifiP2pManager.GET_HANDOVER_SELECT";
                 case WifiP2pManager.INITIATOR_REPORT_NFC_HANDOVER:
                     return "WifiP2pManager.INITIATOR_REPORT_NFC_HANDOVER";
+                case WifiP2pManager.REMOVE_EXTERNAL_APPROVER:
+                    return "WifiP2pManager.REMOVE_EXTERNAL_APPROVER";
                 case WifiP2pManager.REMOVE_GROUP:
                     return "WifiP2pManager.REMOVE_GROUP";
                 case WifiP2pManager.REMOVE_LOCAL_SERVICE:
@@ -1373,6 +1379,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     return "WifiP2pManager.RESPONDER_REPORT_NFC_HANDOVER";
                 case WifiP2pManager.SET_CHANNEL:
                     return "WifiP2pManager.SET_CHANNEL";
+                case WifiP2pManager.SET_CONNECTION_REQUEST_RESULT:
+                    return "WifiP2pManager.SET_CONNECTION_REQUEST_RESULT";
                 case WifiP2pManager.SET_DEVICE_NAME:
                     return "WifiP2pManager.SET_DEVICE_NAME";
                 case WifiP2pManager.SET_ONGOING_PEER_CONFIG:
@@ -3450,6 +3458,20 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         // Stop discovery will clear pending TX action and cause disconnection.
                         replyToMessage(message, WifiP2pManager.STOP_DISCOVERY_FAILED,
                                 WifiP2pManager.BUSY);
+                        break;
+                    case WifiP2pManager.START_LISTEN:
+                        replyToMessage(message, WifiP2pManager.START_LISTEN_FAILED,
+                                WifiP2pManager.BUSY);
+                        break;
+                    case WifiP2pManager.STOP_LISTEN:
+                        if (mVerboseLoggingEnabled) {
+                            logd(getName() + " stop listen mode");
+                        }
+                        if (mWifiNative.p2pExtListen(false, 0, 0)) {
+                            replyToMessage(message, WifiP2pManager.STOP_LISTEN_SUCCEEDED);
+                        } else {
+                            replyToMessage(message, WifiP2pManager.STOP_LISTEN_FAILED);
+                        }
                         break;
                     case WifiP2pManager.CANCEL_CONNECT:
                         // Do a supplicant p2p_cancel which only cancels an ongoing

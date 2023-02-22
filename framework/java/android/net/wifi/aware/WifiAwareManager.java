@@ -37,6 +37,7 @@ import android.net.MacAddress;
 import android.net.NetworkRequest;
 import android.net.NetworkSpecifier;
 import android.net.wifi.IBooleanListener;
+import android.net.wifi.IIntegerListener;
 import android.net.wifi.IListListener;
 import android.net.wifi.WifiManager;
 import android.net.wifi.util.HexEncoding;
@@ -559,6 +560,37 @@ public class WifiAwareManager {
     }
 
     /** @hide */
+    public void setMasterPreference(int clientId, Binder binder, int mp) {
+        if (VDBG) Log.v(TAG, "setMasterPreference()");
+
+        try {
+            mService.setMasterPreference(clientId, binder, mp);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * @hide
+     */
+    public void getMasterPreference(int clientId, Binder binder, @NonNull Executor executor,
+            @NonNull Consumer<Integer> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            mService.getMasterPreference(clientId, binder,
+                    new IIntegerListener.Stub() {
+                        public void onResult(int value) {
+                            Binder.clearCallingIdentity();
+                            executor.execute(() -> resultsCallback.accept(value));
+                        }
+                    });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /** @hide */
     public void publish(int clientId, Looper looper, PublishConfig publishConfig,
             DiscoverySessionCallback callback) {
         if (VDBG) Log.v(TAG, "publish(): clientId=" + clientId + ", config=" + publishConfig);
@@ -679,7 +711,7 @@ public class WifiAwareManager {
      * @hide
      */
     public void initiateNanPairingSetupRequest(int clientId, int sessionId, PeerHandle peerHandle,
-            String password, String pairingDeviceAlias) {
+            String password, String pairingDeviceAlias, int cipherSuite) {
         if (peerHandle == null) {
             throw new IllegalArgumentException(
                     "initiateNanPairingRequest: invalid peerHandle - must be non-null");
@@ -690,7 +722,7 @@ public class WifiAwareManager {
         }
         try {
             mService.initiateNanPairingSetupRequest(clientId, sessionId, peerHandle.peerId,
-                    password, pairingDeviceAlias);
+                    password, pairingDeviceAlias, cipherSuite);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -700,7 +732,8 @@ public class WifiAwareManager {
      * @hide
      */
     public void responseNanPairingSetupRequest(int clientId, int sessionId, PeerHandle peerHandle,
-            int requestId, String password, String pairingDeviceAlias, boolean accept) {
+            int requestId, String password, String pairingDeviceAlias, boolean accept,
+            int cipherSuite) {
         if (peerHandle == null) {
             throw new IllegalArgumentException(
                     "initiateNanPairingRequest: invalid peerHandle - must be non-null");
@@ -711,7 +744,7 @@ public class WifiAwareManager {
         }
         try {
             mService.responseNanPairingSetupRequest(clientId, sessionId, peerHandle.peerId,
-                    requestId, password, pairingDeviceAlias, accept);
+                    requestId, password, pairingDeviceAlias, accept, cipherSuite);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -1255,8 +1288,8 @@ public class WifiAwareManager {
 
     /**
      * Reset all paired devices setup by the caller by
-     * {@link DiscoverySession#initiatePairingRequest(PeerHandle, String, String)} and
-     * {@link DiscoverySession#acceptPairingRequest(int, PeerHandle, String, String)}
+     * {@link DiscoverySession#initiatePairingRequest(PeerHandle, String, int, String)} and
+     * {@link DiscoverySession#acceptPairingRequest(int, PeerHandle, String, int, String)}
      */
     @RequiresPermission(CHANGE_WIFI_STATE)
     public void resetPairedDevices() {
@@ -1269,8 +1302,8 @@ public class WifiAwareManager {
 
     /**
      * Remove the target paired device setup by the caller by
-     * {@link DiscoverySession#initiatePairingRequest(PeerHandle, String, String)} and
-     * {@link DiscoverySession#acceptPairingRequest(int, PeerHandle, String, String)}
+     * {@link DiscoverySession#initiatePairingRequest(PeerHandle, String, int, String)} and
+     * {@link DiscoverySession#acceptPairingRequest(int, PeerHandle, String, int, String)}
      * @param alias The alias set by the caller
      */
     @RequiresPermission(CHANGE_WIFI_STATE)

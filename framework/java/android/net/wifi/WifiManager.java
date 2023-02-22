@@ -2035,6 +2035,58 @@ public class WifiManager {
             sOnWifiNetworkStateChangedListenerMap = new SparseArray<>();
 
     /**
+     * Multi-link operation (MLO) will allow Wi-Fi devices to operate on multiple links at the same
+     * time through a single connection, aiming to support applications that require lower latency,
+     * and higher capacity. Chip vendors have algorithms that run on the chip to use available links
+     * based on incoming traffic and various inputs. Below is a list of Multi-Link Operation modes
+     * that applications can suggest to be accommodated in the algorithm.
+     *
+     * The default MLO mode is for chip vendors to use algorithms to select the optimum links to
+     * operate on, without any guidance from the calling app.
+     *
+     * @hide
+     */
+    @SystemApi
+    public static final int MLO_MODE_DEFAULT = 0;
+
+    /**
+     * Low latency mode for Multi-link operation. In this mode, the chip vendor's algorithm
+     * should select MLO links that will achieve low latency.
+     *
+     * @hide
+     */
+    @SystemApi
+    public static final int MLO_MODE_LOW_LATENCY = 1;
+
+    /**
+     * High throughput mode for Multi-link operation. In this mode, the chip vendor's algorithm
+     * should select MLO links that will achieve higher throughput.
+     *
+     * @hide
+     */
+    @SystemApi
+    public static final int MLO_MODE_HIGH_THROUGHPUT = 2;
+
+    /**
+     * Low power mode for Multi-link operation. In this mode, the chip vendor's algorithm
+     * should select MLO links that will achieve low power.
+     *
+     * @hide
+     */
+    @SystemApi
+    public static final int MLO_MODE_LOW_POWER = 3;
+
+    /** @hide */
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef(prefix = {"MLO_MODE_"}, value = {
+            MLO_MODE_DEFAULT,
+            MLO_MODE_LOW_LATENCY,
+            MLO_MODE_HIGH_THROUGHPUT,
+            MLO_MODE_LOW_POWER})
+    public @interface MloMode {
+    }
+
+    /**
      * Create a new WifiManager instance.
      * Applications will almost always want to use
      * {@link android.content.Context#getSystemService Context.getSystemService} to retrieve
@@ -3848,6 +3900,11 @@ public class WifiManager {
      * @hide
      */
     public static final long WIFI_FEATURE_DUAL_BAND_SIMULTANEOUS = 1L << 57;
+    /**
+     * Support for TID-To-Link Mapping negotiation.
+     * @hide
+     */
+    public static final long WIFI_FEATURE_T2LM_NEGOTIATION = 1L << 58;
 
     private long getSupportedFeatures() {
         try {
@@ -4642,7 +4699,9 @@ public class WifiManager {
                 WIFI_NETWORK_STATUS_CONNECTING,
                 WIFI_NETWORK_STATUS_AUTHENTICATING,
                 WIFI_NETWORK_STATUS_OBTAINING_IPADDR,
-                WIFI_NETWORK_STATUS_CONNECTED
+                WIFI_NETWORK_STATUS_CONNECTED,
+                WIFI_NETWORK_STATUS_DISCONNECTED,
+                WIFI_NETWORK_STATUS_FAILED
         })
         @interface WifiNetworkState {}
 
@@ -8511,6 +8570,13 @@ public class WifiManager {
     }
 
     /**
+     * @return true if this device supports TID-To-Link Mapping Negotiation.
+     */
+    public boolean isTidToLinkMappingNegotiationSupported() {
+        return isFeatureSupported(WIFI_FEATURE_T2LM_NEGOTIATION);
+    }
+
+    /**
      * Gets the factory Wi-Fi MAC addresses.
      * @return Array of String representing Wi-Fi MAC addresses sorted lexically or an empty Array
      * if failed.
@@ -9736,6 +9802,30 @@ public class WifiManager {
          * implemented and instantiated by framework.
          */
         void onSetScoreUpdateObserver(@NonNull ScoreUpdateObserver observerImpl);
+
+        /**
+         * Called by framework to indicate the user accepted a dialog to switch to a new network.
+         * @param sessionId The ID to indicate current Wi-Fi network connection obtained from
+         *                  {@link WifiConnectedNetworkScorer#onStart(int)}.
+         * @param targetNetworkId Network ID of the target network.
+         * @param targetBssid BSSID of the target network.
+         */
+        default void onNetworkSwitchAccepted(
+                int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            // No-op.
+        }
+
+        /**
+         * Called by framework to indicate the user rejected a dialog to switch to new network.
+         * @param sessionId The ID to indicate current Wi-Fi network connection obtained from
+         *                  {@link WifiConnectedNetworkScorer#onStart(int)}.
+         * @param targetNetworkId Network ID of the target network.
+         * @param targetBssid BSSID of the target network.
+         */
+        default void onNetworkSwitchRejected(
+                int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            // No-op.
+        }
     }
 
 
@@ -11238,6 +11328,145 @@ public class WifiManager {
     public void removeAllQosPolicies() {
         try {
             mService.removeAllQosPolicies(mContext.getOpPackageName());
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Set the link layer stats polling interval, in milliseconds.
+     *
+     * @param intervalMs a non-negative integer, for the link layer stats polling interval
+     *                   in milliseconds.
+     *                   To set a fixed interval, use a positive value.
+     *                   For automatic handling of the interval, use value 0
+     * @throws UnsupportedOperationException if the API is not supported on this SDK version.
+     * @throws SecurityException if the caller does not have permission.
+     * @throws IllegalArgumentException if input is invalid.
+     * @hide
+     */
+    @SystemApi
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    @RequiresPermission(android.Manifest.permission.MANAGE_WIFI_NETWORK_SELECTION)
+    public void setLinkLayerStatsPollingInterval(@IntRange (from = 0) int intervalMs) {
+        try {
+            mService.setLinkLayerStatsPollingInterval(intervalMs);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Get the link layer stats polling interval, in milliseconds.
+     *
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return current
+     *                        link layer stats polling interval in milliseconds.
+     *
+     * @throws UnsupportedOperationException if the API is not supported on this SDK version.
+     * @throws SecurityException if the caller does not have permission.
+     * @throws NullPointerException if the caller provided invalid inputs.
+     * @hide
+     */
+    @SystemApi
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    @RequiresPermission(android.Manifest.permission.MANAGE_WIFI_NETWORK_SELECTION)
+    public void getLinkLayerStatsPollingInterval(@NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Integer> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            mService.getLinkLayerStatsPollingInterval(
+                    new IIntegerListener.Stub() {
+                        @Override
+                        public void onResult(int value) {
+                            Binder.clearCallingIdentity();
+                            executor.execute(() -> {
+                                resultsCallback.accept(value);
+                            });
+                        }
+                    });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * This API allows a privileged application to set Multi-Link Operation mode.
+     *
+     * Multi-link operation (MLO) will allow Wi-Fi devices to operate on multiple links at the same
+     * time through a single connection, aiming to support applications that require lower latency,
+     * and higher capacity. Chip vendors have algorithms that run on the chip to use available links
+     * based on incoming traffic and various inputs. This API allows system application to give a
+     * suggestion to such algorithms on its preference using {@link MloMode}.
+     *
+     *
+     * @param mode Refer {@link MloMode} for supported modes.
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return {@code Boolean} indicating
+     *                        whether the MLO mode is successfully set or not.
+     * @throws IllegalArgumentException if mode value is not in {@link MloMode}.
+     * @throws NullPointerException if the caller provided a null input.
+     * @throws SecurityException if caller does not have the required permissions.
+     * @throws UnsupportedOperationException if the set operation is not supported.
+     * @hide
+     */
+    @SystemApi
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    @RequiresPermission(MANAGE_WIFI_NETWORK_SELECTION)
+    public void setMloMode(@MloMode int mode, @NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Boolean> resultsCallback) {
+
+        if (mode < MLO_MODE_DEFAULT || mode > MLO_MODE_LOW_POWER) {
+            throw new IllegalArgumentException("invalid mode: " + mode);
+        }
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            mService.setMloMode(mode, new IBooleanListener.Stub() {
+                @Override
+                public void onResult(boolean value) {
+                    Binder.clearCallingIdentity();
+                    executor.execute(() -> {
+                        resultsCallback.accept(value);
+                    });
+                }
+            });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * This API allows a privileged application to get Multi-Link Operation mode. Refer
+     * {@link WifiManager#setMloMode(int)} for more details.
+     *
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return current MLO mode. Returns
+     *                        {@link MloMode#MLO_MODE_DEFAULT} if information is not available,
+     *                        e.g. if the driver/firmware doesn't provide this information.
+     * @throws NullPointerException if the caller provided a null input.
+     * @throws SecurityException if caller does not have the required permissions.
+     * @throws UnsupportedOperationException if the set operation is not supported.
+     * @hide
+     */
+    @SystemApi
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    @RequiresPermission(MANAGE_WIFI_NETWORK_SELECTION)
+    public void getMloMode(@NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Integer> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            mService.getMloMode(new IIntegerListener.Stub() {
+                @Override
+                public void onResult(int value) {
+                    Binder.clearCallingIdentity();
+                    executor.execute(() -> {
+                        resultsCallback.accept(value);
+                    });
+                }
+            });
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }

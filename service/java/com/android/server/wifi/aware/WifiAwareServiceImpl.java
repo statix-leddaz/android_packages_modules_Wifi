@@ -16,6 +16,9 @@
 
 package com.android.server.wifi.aware;
 
+import static android.net.wifi.aware.Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128;
+import static android.net.wifi.aware.Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_256;
+
 import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_VERBOSE_LOGGING_ENABLED;
 
 import android.Manifest;
@@ -23,6 +26,7 @@ import android.annotation.NonNull;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.net.wifi.IBooleanListener;
+import android.net.wifi.IIntegerListener;
 import android.net.wifi.IListListener;
 import android.net.wifi.WifiManager;
 import android.net.wifi.aware.AwareParams;
@@ -391,6 +395,53 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
     }
 
     @Override
+    public void setMasterPreference(int clientId, IBinder binder, int mp) {
+        int uid = getMockableCallingUid();
+        enforceClientValidity(uid, clientId);
+        if (binder == null) {
+            throw new IllegalArgumentException("Binder must not be null");
+        }
+        if (!mWifiPermissionsUtil.checkConfigOverridePermission(uid)) {
+            throw new SecurityException("setMasterPreference requires "
+                    + "OVERRIDE_WIFI_CONFIG permission");
+        }
+
+        if (mp < 0) {
+            throw new IllegalArgumentException(
+                    "Master Preference specification must be non-negative");
+        }
+        if (mp == 1 || mp == 255 || mp > 255) {
+            throw new IllegalArgumentException("Master Preference specification must not "
+                    + "exceed 255 or use 1 or 255 (reserved values)");
+        }
+
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "setMasterPreference: uid=" + uid + ", clientId=" + clientId);
+        }
+
+        mStateManager.setMasterPreference(clientId, mp);
+    }
+
+    @Override
+    public void getMasterPreference(int clientId, IBinder binder, IIntegerListener listener) {
+        int uid = getMockableCallingUid();
+        enforceClientValidity(uid, clientId);
+        if (binder == null) {
+            throw new IllegalArgumentException("Binder must not be null");
+        }
+        if (!mWifiPermissionsUtil.checkConfigOverridePermission(uid)) {
+            throw new SecurityException("getMasterPreference requires "
+                    + "OVERRIDE_WIFI_CONFIG permission");
+        }
+
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "getMasterPreference: uid=" + uid + ", clientId=" + clientId);
+        }
+        mStateManager.getMasterPreference(clientId, listener);
+    }
+
+
+    @Override
     public void terminateSession(int clientId, int sessionId) {
         enforceAccessPermission();
         enforceChangePermission();
@@ -574,7 +625,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
 
     @Override
     public void initiateNanPairingSetupRequest(int clientId, int sessionId, int peerId,
-            String password, String pairingDeviceAlias) {
+            String password, String pairingDeviceAlias, int cipherSuite) {
         enforceAccessPermission();
         enforceChangePermission();
         if (!mStateManager.getCharacteristics().isAwarePairingSupported()) {
@@ -585,6 +636,11 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
             throw new IllegalArgumentException(
                     "initiateNanPairingRequest: invalid pairingDeviceAlias - must be non-null");
         }
+        if (cipherSuite != WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128
+                && cipherSuite != WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_256) {
+            throw new IllegalArgumentException(
+                    "initiateNanPairingRequest: cipher suite is invalid");
+        }
         int uid = getMockableCallingUid();
         enforceClientValidity(uid, clientId);
         if (mVerboseLoggingEnabled) {
@@ -593,12 +649,13 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
                             + ", clientId=" + clientId + ", peerId=" + peerId);
         }
         mStateManager.initiateNanPairingSetupRequest(clientId, sessionId, peerId, password,
-                pairingDeviceAlias);
+                pairingDeviceAlias, cipherSuite);
     }
 
     @Override
     public void responseNanPairingSetupRequest(int clientId, int sessionId, int peerId,
-            int requestId, String password, String pairingDeviceAlias, boolean accept) {
+            int requestId, String password, String pairingDeviceAlias, boolean accept,
+            int cipherSuite) {
         enforceAccessPermission();
         enforceChangePermission();
         if (!mStateManager.getCharacteristics().isAwarePairingSupported()) {
@@ -611,6 +668,11 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
                         "responseNanPairingSetupRequest: invalid pairingDeviceAlias - "
                                 + "must be non-null");
             }
+            if (cipherSuite != WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128
+                    && cipherSuite != WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_256) {
+                throw new IllegalArgumentException(
+                        "responseNanPairingSetupRequest: cipher suite is invalid");
+            }
         }
         int uid = getMockableCallingUid();
         enforceClientValidity(uid, clientId);
@@ -620,7 +682,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
                             + ", clientId=" + clientId + ", peerId=" + peerId);
         }
         mStateManager.responseNanPairingSetupRequest(clientId, sessionId, peerId, requestId,
-                password, pairingDeviceAlias, accept);
+                password, pairingDeviceAlias, accept, cipherSuite);
     }
 
     @Override
