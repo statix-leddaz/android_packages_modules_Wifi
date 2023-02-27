@@ -816,6 +816,7 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiInjector.getSsidTranslator().handleBootCompleted();
             mWifiInjector.getPasspointManager().handleBootCompleted();
             mWifiInjector.getInterfaceConflictManager().handleBootCompleted();
+            mWifiInjector.getHalDeviceManager().handleBootCompleted();
             // HW capabilities is ready after boot completion.
             if (!mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()) {
                 mWifiConfigManager.updateTrustOnFirstUseFlag(isTrustOnFirstUseSupported());
@@ -7402,6 +7403,19 @@ public class WifiServiceImpl extends BaseWifiService {
         return policyIdSet.size() == policyIds.length;
     }
 
+    private void rejectAllQosPolicies(
+            List<QosPolicyParams> policyParamsList, IListListener listener) {
+        try {
+            List<Integer> statusList = new ArrayList<>();
+            for (QosPolicyParams policy : policyParamsList) {
+                statusList.add(WifiManager.QOS_REQUEST_STATUS_FAILURE_UNKNOWN);
+            }
+            listener.onResult(statusList);
+        } catch (RemoteException e) {
+            Log.e(TAG, e.getMessage());
+        }
+    }
+
     /**
      * See {@link WifiManager#addQosPolicies(List, Executor, Consumer)}.
      */
@@ -7412,8 +7426,6 @@ public class WifiServiceImpl extends BaseWifiService {
             @NonNull IListListener listener) {
         if (!SdkLevel.isAtLeastU()) {
             throw new UnsupportedOperationException("SDK level too old");
-        } else if (!isApplicationQosPolicyFeatureEnabled()) {
-            throw new UnsupportedOperationException("addQosPolicy is disabled on this device");
         }
 
         int uid = Binder.getCallingUid();
@@ -7427,6 +7439,12 @@ public class WifiServiceImpl extends BaseWifiService {
         Objects.requireNonNull(binder, "binder cannot be null");
         Objects.requireNonNull(listener, "listener cannot be null");
 
+        if (!isApplicationQosPolicyFeatureEnabled()) {
+            Log.i(TAG, "addQosPolicies is disabled on this device");
+            rejectAllQosPolicies(policyParamsList, listener);
+            return;
+        }
+
         if (policyParamsList.size() == 0
                 || policyParamsList.size() > WifiManager.getMaxNumberOfPoliciesPerQosRequest()
                 || !policyIdsAreUnique(policyParamsList)) {
@@ -7434,16 +7452,8 @@ public class WifiServiceImpl extends BaseWifiService {
         }
 
         mWifiThreadRunner.post(() -> {
-            try {
-                // TODO: Add an implementation for this API.
-                List<Integer> statusList = new ArrayList<>();
-                for (QosPolicyParams policy : policyParamsList) {
-                    statusList.add(WifiManager.QOS_REQUEST_STATUS_FAILURE_UNKNOWN);
-                }
-                listener.onResult(statusList);
-            } catch (RemoteException e) {
-                Log.e(TAG, e.getMessage());
-            }
+            // TODO: Add an implementation for this API.
+            rejectAllQosPolicies(policyParamsList, listener);
         });
     }
 
@@ -7456,7 +7466,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (!SdkLevel.isAtLeastU()) {
             throw new UnsupportedOperationException("SDK level too old");
         } else if (!isApplicationQosPolicyFeatureEnabled()) {
-            Log.i(TAG, "removeQosPolicy is disabled on this device");
+            Log.i(TAG, "removeQosPolicies is disabled on this device");
             return;
         }
         int uid = Binder.getCallingUid();
