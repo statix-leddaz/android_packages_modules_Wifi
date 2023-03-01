@@ -2914,6 +2914,9 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         if (isConfigValidAsGroup(config)) {
                             mAutonomousGroup = false;
                             mWifiNative.p2pStopFind();
+                            if (mVerboseLoggingEnabled) {
+                                logd("FAST_CONNECTION GC band freq: " + config.groupOwnerBand);
+                            }
                             if (mWifiNative.p2pGroupAdd(config, true)) {
                                 mWifiP2pMetrics.startConnectionEvent(
                                         P2pConnectionEvent.CONNECTION_FAST,
@@ -3095,6 +3098,9 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         boolean ret = false;
                         if (config != null) {
                             if (isConfigValidAsGroup(config)) {
+                                if (mVerboseLoggingEnabled) {
+                                    logd("FAST_CONNECTION GO band freq: " + config.groupOwnerBand);
+                                }
                                 mWifiP2pMetrics.startConnectionEvent(
                                         P2pConnectionEvent.CONNECTION_FAST,
                                         config, GroupEvent.GROUP_OWNER, uid);
@@ -3329,6 +3335,20 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         // Stop discovery will clear pending TX action and cause disconnection.
                         replyToMessage(message, WifiP2pManager.STOP_DISCOVERY_FAILED,
                                 WifiP2pManager.BUSY);
+                        break;
+                    case WifiP2pManager.START_LISTEN:
+                        replyToMessage(message, WifiP2pManager.START_LISTEN_FAILED,
+                                WifiP2pManager.BUSY);
+                        break;
+                    case WifiP2pManager.STOP_LISTEN:
+                        if (mVerboseLoggingEnabled) {
+                            logd(getName() + " stop listen mode");
+                        }
+                        if (mWifiNative.p2pExtListen(false, 0, 0)) {
+                            replyToMessage(message, WifiP2pManager.STOP_LISTEN_SUCCEEDED);
+                        } else {
+                            replyToMessage(message, WifiP2pManager.STOP_LISTEN_FAILED);
+                        }
                         break;
                     case WifiP2pManager.CANCEL_CONNECT:
                         // Do a supplicant p2p_cancel which only cancels an ongoing
