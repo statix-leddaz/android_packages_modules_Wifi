@@ -308,8 +308,9 @@ public class WifiInjector {
                         mFrameworkFacade, mContext);
         // Modules interacting with Native.
         mHalDeviceManager = new HalDeviceManager(mContext, mClock, this, wifiHandler);
-        mInterfaceConflictManager = new InterfaceConflictManager(mContext, mFrameworkFacade,
-                mHalDeviceManager, mWifiThreadRunner, mWifiDialogManager);
+        mInterfaceConflictManager = new InterfaceConflictManager(this, mContext, mFrameworkFacade,
+                mHalDeviceManager, mWifiThreadRunner, mWifiDialogManager, new LocalLog(
+                mContext.getSystemService(ActivityManager.class).isLowRamDevice() ? 128 : 256));
         mWifiVendorHal = new WifiVendorHal(mContext, mHalDeviceManager, wifiHandler, mWifiGlobals,
                 mSsidTranslator);
         mSupplicantStaIfaceHal = new SupplicantStaIfaceHal(
@@ -427,7 +428,8 @@ public class WifiInjector {
                 mWifiCarrierInfoManager, mMacAddressUtil, mWifiPermissionsUtil);
         PasspointNetworkNominateHelper nominateHelper =
                 new PasspointNetworkNominateHelper(mPasspointManager, mWifiConfigManager,
-                        mConnectivityLocalLog, mWifiCarrierInfoManager, mContext.getResources());
+                        mConnectivityLocalLog, mWifiCarrierInfoManager, mContext.getResources(),
+                        mClock);
         mPasspointManager.setPasspointNetworkNominateHelper(nominateHelper);
         mSavedNetworkNominator = new SavedNetworkNominator(
                 mWifiConfigManager, nominateHelper, mConnectivityLocalLog, mWifiCarrierInfoManager,
@@ -759,7 +761,7 @@ public class WifiInjector {
             @NonNull ActiveModeManager.SoftApRole role,
             boolean verboseLoggingEnabled) {
         return new SoftApManager(mContext, mWifiHandlerThread.getLooper(), mFrameworkFacade,
-                mWifiNative, mCoexManager, makeBatteryManager(), mInterfaceConflictManager,
+                mWifiNative, mCoexManager, mInterfaceConflictManager,
                 listener, callback, mWifiApConfigStore,
                 config, mWifiMetrics, mSarManager, mWifiDiagnostics,
                 new SoftApNotifier(mContext, mFrameworkFacade, mWifiNotificationManager),
