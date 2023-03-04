@@ -2864,8 +2864,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             Pair<String, String> p = mWifiScoreCard.getL2KeyAndGroupHint(mWifiInfo);
             if (!p.equals(mLastL2KeyAndGroupHint)) {
                 final MacAddress currentBssid = getMacAddressFromBssidString(mWifiInfo.getBSSID());
+                final WifiConfiguration config = getConnectedWifiConfigurationInternal();
                 final Layer2Information l2Information = new Layer2Information(
-                        p.first, p.second, currentBssid);
+                        p.first, p.second, currentBssid, config.creatorUid);
                 // Update current BSSID on IpClient side whenever l2Key and groupHint
                 // pair changes (i.e. the initial connection establishment or L2 roaming
                 // happened). If we have COMPLETED the roaming to a different BSSID, start
@@ -6942,7 +6943,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         final String groupHint = mLastL2KeyAndGroupHint != null
                 ? mLastL2KeyAndGroupHint.second : null;
         final Layer2Information layer2Info = new Layer2Information(l2Key, groupHint,
-                currentBssid);
+                currentBssid, config.creatorUid);
 
         if (isFilsConnection) {
             stopIpClient();
