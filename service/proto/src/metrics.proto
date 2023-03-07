@@ -2984,6 +2984,12 @@ message P2pConnectionEvent {
 
     // New connection request is issued before ending previous connecting request.
     CLF_NEW_CONNECTION_ATTEMPT = 7;
+
+    // Group has been removed
+    CLF_GROUP_REMOVED = 8;
+
+    // Creating group failed
+    CLF_CREATE_GROUP_FAILED = 9;
   }
 
   // WPS method.
@@ -3046,6 +3052,12 @@ message P2pConnectionEvent {
 
   // STA mode channel frequency. 0 means unknown.
   optional int32 sta_frequency_mhz = 9;
+
+  // The uid of the app that initiates the connection.
+  optional int32 uid = 10;
+
+  // if the country code is in the world mode
+  optional bool is_country_code_world_mode = 11;
 }
 
 // GroupEvent tracking group information from GroupStarted to GroupRemoved.

@@ -55,8 +55,7 @@
     <string name="ok" msgid="847575529546290102">"OK"</string>
     <string name="wifi_p2p_invitation_sent_title" msgid="6552639940428040869">"მოწვევა გაგზავნილია"</string>
     <string name="wifi_p2p_invitation_to_connect_title" msgid="8917157937652519251">"მოწვევა დასაკავშირებლად"</string>
-    <!-- no translation found for wifi_p2p_invitation_seconds_remaining (8939173828247053616) -->
-    <skip />
+    <string name="wifi_p2p_invitation_seconds_remaining" msgid="4214101104506918344">"{0,plural, =1{დათანხმება # წამში.}other{დათანხმება # წამში.}}"</string>
     <string name="wifi_p2p_from_message" msgid="5921308150192756898">"გამგზავნი:"</string>
     <string name="wifi_p2p_to_message" msgid="3809923305696994787">"მიმღები:"</string>
     <string name="wifi_p2p_enter_pin_message" msgid="5200220251738047620">"შეიყვანეთ საჭირო PIN:"</string>
@@ -165,7 +164,7 @@
     <string name="wifi_network_disabled_by_admin_message" msgid="7830360441333155462">"<xliff:g id="SSID">%1$s</xliff:g> გათიშულია თქვენი ადმინისტრატორის მიერ."</string>
     <string name="wifi_network_disabled_by_admin_button" msgid="3350310756265122689">"დახურვა"</string>
     <string name="wifi_enabled_apm_first_time_title" msgid="4814302384637588804">"Wi‑Fi ჩართულია თვითმფრინავის რეჟიმში"</string>
-    <string name="wifi_enabled_apm_first_time_message" msgid="3804474326110512024">"თუ Wi‑Fi ჩართული გექნებათ, ის ჩართული დარჩება, როდესაც შემდეგ თვითმფრინავის რეჟიმში იქნებით"</string>
+    <string name="wifi_enabled_apm_first_time_message" msgid="5443101896157496353">"თუ Wi‑Fi-ს ჩართულს დატოვებთ, თქვენი ტელეფონი დაიმახსოვრებს და ჩართულს დატოვებს, როდესაც შემდგომში თვითმფრინავის რეჟიმში იქნებით"</string>
     <string name="apm_enabled_first_time_title" msgid="2534167413190488009">"Wi‑Fi კვლავ ჩართულია"</string>
-    <string name="apm_enabled_first_time_message" msgid="8381594447227021365">"თქვენს ტელეფონს ემახსოვრება, რომ Wi‑Fi ჩართული უნდა იყოს თვითმფრინავის რეჟიმში. ამის შესაცვლელად გამორთეთ Wi‑Fi."</string>
+    <string name="apm_enabled_first_time_message" msgid="4753441005253327841">"თქვენს ტელეფონს ემახსოვრება, რომ Wi‑Fi ჩართული უნდა იყოს თვითმფრინავის რეჟიმში. Wi‑Fi if-ის გამორთვა, თუ არ გსურთ ჩართული დატოვოთ."</string>
 </resources>

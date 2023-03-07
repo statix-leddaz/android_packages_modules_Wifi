@@ -206,7 +206,10 @@ public class DeviceConfigFacade {
     private int mTrafficStatsThresholdMaxKbyte;
     private int mBandwidthEstimatorLargeTimeConstantSec;
     private boolean mInterfaceFailureBugreportEnabled;
+    private boolean mP2pFailureBugreportEnabled;
     private boolean mApmEnhancementEnabled;
+    private boolean mOobPseudonymEnabled;
+    private boolean mSoftwarePnoEnabled;
 
     public DeviceConfigFacade(Context context, Handler handler, WifiMetrics wifiMetrics) {
         mContext = context;
@@ -380,9 +383,14 @@ public class DeviceConfigFacade {
                 DEFAULT_BANDWIDTH_ESTIMATOR_TIME_CONSTANT_LARGE_SEC);
         mInterfaceFailureBugreportEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "interface_failure_bugreport_enabled", false);
+        mP2pFailureBugreportEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "p2p_failure_bugreport_enabled", false);
         mApmEnhancementEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "apm_enhancement_enabled", false);
-
+        mOobPseudonymEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "oob_pseudonym_enabled", false);
+        mSoftwarePnoEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "software_pno_enabled", false);
     }
 
     private Set<String> getUnmodifiableSetQuoted(String key) {
@@ -806,11 +814,32 @@ public class DeviceConfigFacade {
     }
 
     /**
+     * Gets the feature flag for reporting p2p setup failure
+     */
+    public boolean isP2pFailureBugreportEnabled() {
+        return mP2pFailureBugreportEnabled;
+    }
+
+    /**
      * Gets the feature flag for APM enhancement
      */
     public boolean isApmEnhancementEnabled() {
         // reads the value set by Bluetooth device config for APM enhancement feature flag
         return Settings.Global.getInt(
                 mContext.getContentResolver(), "apm_enhancement_enabled", 0) == 1;
+    }
+
+    /**
+     * Gets the feature flag for the OOB pseudonym of EAP-SIM/AKA/AKA'
+     */
+    public boolean isOobPseudonymEnabled() {
+        return mOobPseudonymEnabled;
+    }
+
+    /**
+     * Gets the feature flag for Software PNO
+     */
+    public boolean isSoftwarePnoEnabled() {
+        return mSoftwarePnoEnabled;
     }
 }

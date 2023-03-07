@@ -55,8 +55,7 @@
     <string name="ok" msgid="847575529546290102">"ОК"</string>
     <string name="wifi_p2p_invitation_sent_title" msgid="6552639940428040869">"Приглашение отправлено"</string>
     <string name="wifi_p2p_invitation_to_connect_title" msgid="8917157937652519251">"Приглашение к подключению"</string>
-    <!-- no translation found for wifi_p2p_invitation_seconds_remaining (8939173828247053616) -->
-    <skip />
+    <string name="wifi_p2p_invitation_seconds_remaining" msgid="4214101104506918344">"{0,plural, =1{Осталась # секунда.}one{Осталась # секунда.}few{Осталось # секунды.}many{Осталось # секунд.}other{Осталось # секунды.}}"</string>
     <string name="wifi_p2p_from_message" msgid="5921308150192756898">"От:"</string>
     <string name="wifi_p2p_to_message" msgid="3809923305696994787">"Кому:"</string>
     <string name="wifi_p2p_enter_pin_message" msgid="5200220251738047620">"Введите PIN-код:"</string>
@@ -165,7 +164,7 @@
     <string name="wifi_network_disabled_by_admin_message" msgid="7830360441333155462">"Администратор отключил функцию \"<xliff:g id="SSID">%1$s</xliff:g>\"."</string>
     <string name="wifi_network_disabled_by_admin_button" msgid="3350310756265122689">"Закрыть"</string>
     <string name="wifi_enabled_apm_first_time_title" msgid="4814302384637588804">"Wi‑Fi будет включен в режиме полета"</string>
-    <string name="wifi_enabled_apm_first_time_message" msgid="3804474326110512024">"Если оставить Wi-Fi включенным, в следующий раз он не будет автоматически отключен в режиме полета."</string>
+    <string name="wifi_enabled_apm_first_time_message" msgid="5443101896157496353">"Если не отключить функцию Wi-Fi, в следующий раз она останется включенной в режиме полета."</string>
     <string name="apm_enabled_first_time_title" msgid="2534167413190488009">"Функция Wi‑Fi остается включенной"</string>
-    <string name="apm_enabled_first_time_message" msgid="8381594447227021365">"Wi‑Fi останется включенным в режиме полета. Отключить Wi-Fi можно в любой момент."</string>
+    <string name="apm_enabled_first_time_message" msgid="4753441005253327841">"Функция Wi‑Fi останется включенной в режиме полета. Вы можете отключить ее, если хотите."</string>
 </resources>
