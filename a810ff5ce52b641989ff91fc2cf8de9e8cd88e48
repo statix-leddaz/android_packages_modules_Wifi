@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "89475a46_db6534b8",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1406251
+      },
+      "writtenOn": "2023-03-08T11:59:56Z",
+      "side": 1,
+      "message": "Hey Sunil, this CL looks very similar to one change you had before, i.e try to do NUD probe after completing the association post roaming. Previous CL introduced side effect which resulted in the L2key wasn\u0027t updated on time, then device cannot find the cached lease by L2key when it roams to a different subnet. Is it possible to hit the similar issue for this change?",
+      "revId": "a810ff5ce52b641989ff91fc2cf8de9e8cd88e48",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
