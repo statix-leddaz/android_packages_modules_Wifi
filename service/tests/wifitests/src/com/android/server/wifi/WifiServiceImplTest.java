@@ -51,6 +51,7 @@ import static android.net.wifi.WifiManager.WIFI_AP_STATE_FAILED;
 import static android.net.wifi.WifiManager.WIFI_STATE_DISABLED;
 import static android.net.wifi.WifiScanner.WIFI_BAND_24_GHZ;
 import static android.net.wifi.WifiScanner.WIFI_BAND_5_GHZ;
+import static android.os.Process.WIFI_UID;
 
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_LOCAL_ONLY;
@@ -126,6 +127,7 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
+import android.hardware.wifi.WifiStatusCode;
 import android.net.DhcpInfo;
 import android.net.DhcpOption;
 import android.net.DhcpResultsParcelable;
@@ -138,6 +140,7 @@ import android.net.wifi.IActionListener;
 import android.net.wifi.IBooleanListener;
 import android.net.wifi.ICoexCallback;
 import android.net.wifi.IDppCallback;
+import android.net.wifi.IIntegerListener;
 import android.net.wifi.IInterfaceCreationInfoCallback;
 import android.net.wifi.ILastCallerListener;
 import android.net.wifi.IListListener;
@@ -157,7 +160,9 @@ import android.net.wifi.ISuggestionUserApprovalStatusListener;
 import android.net.wifi.ITrafficStateCallback;
 import android.net.wifi.IWifiConnectedNetworkScorer;
 import android.net.wifi.IWifiNetworkSelectionConfigListener;
+import android.net.wifi.IWifiNetworkStateChangedListener;
 import android.net.wifi.IWifiVerboseLoggingStatusChangedListener;
+import android.net.wifi.QosPolicyParams;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.SoftApCapability;
@@ -304,11 +309,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
     private static final String TEST_SSID = "Sid's Place";
     private static final String TEST_SSID_WITH_QUOTES = "\"" + TEST_SSID + "\"";
     private static final String TEST_BSSID = "01:02:03:04:05:06";
+    private static final String TEST_IP = "192.168.49.5";
     private static final String TEST_PACKAGE = "package";
     private static final int TEST_NETWORK_ID = 567;
     private static final WorkSource TEST_SETTINGS_WORKSOURCE = new WorkSource();
     private static final int TEST_SUB_ID = 1;
     private static final byte[] TEST_OUI = new byte[]{0x01, 0x02, 0x03};
+    private static final int TEST_LINK_LAYER_STATS_POLLING_INTERVAL_MS = 1000;
 
     private SoftApInfo mTestSoftApInfo;
     private List<SoftApInfo> mTestSoftApInfoList;
@@ -390,6 +397,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Mock WifiScoreCard mWifiScoreCard;
     @Mock WifiHealthMonitor mWifiHealthMonitor;
     @Mock PasspointManager mPasspointManager;
+    @Mock DeviceConfigFacade mDeviceConfigFacade;
     @Mock IDppCallback mDppCallback;
     @Mock ILocalOnlyHotspotCallback mLohsCallback;
     @Mock ICoexCallback mCoexCallback;
@@ -439,6 +447,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Mock ScoringParams mScoringParams;
 
     @Captor ArgumentCaptor<Intent> mIntentCaptor;
+    @Captor ArgumentCaptor<List> mListCaptor;
 
     @Rule
     // For frameworks
@@ -534,6 +543,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mWifiInjector.getWifiConfigManager()).thenReturn(mWifiConfigManager);
         when(mWifiInjector.getWifiBlocklistMonitor()).thenReturn(mWifiBlocklistMonitor);
         when(mWifiInjector.getPasspointManager()).thenReturn(mPasspointManager);
+        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfigFacade);
         when(mActiveModeWarden.getPrimaryClientModeManager()).thenReturn(mClientModeManager);
         when(mClientModeManager.getInterfaceName()).thenReturn(WIFI_IFACE_NAME);
         when(mWifiInjector.getWifiScoreCard()).thenReturn(mWifiScoreCard);
@@ -1559,6 +1569,29 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mWifiServiceImpl.unregisterSubsystemRestartCallback(mSubsystemRestartCallback);
         mLooper.dispatchAll();
         verify(mActiveModeWarden).unregisterSubsystemRestartCallback(mSubsystemRestartCallback);
+    }
+
+    @Test
+    public void testAddWifiNetworkStateChangedListener() throws Exception {
+        IWifiNetworkStateChangedListener testListener =
+                mock(IWifiNetworkStateChangedListener.class);
+
+        // Test success case
+        mWifiServiceImpl.addWifiNetworkStateChangedListener(testListener);
+        mLooper.dispatchAll();
+        verify(mActiveModeWarden).addWifiNetworkStateChangedListener(testListener);
+
+        // Expect exception for null listener
+        assertThrows(IllegalArgumentException.class,
+                () -> mWifiServiceImpl.addWifiNetworkStateChangedListener(null));
+
+        // Expect exception when caller has no permission
+        doThrow(new SecurityException()).when(mContext)
+                .enforceCallingOrSelfPermission(eq(android.Manifest.permission.NETWORK_SETTINGS),
+                        eq("WifiService"));
+        assertThrows(SecurityException.class,
+                () -> mWifiServiceImpl.addWifiNetworkStateChangedListener(testListener));
+        verify(mActiveModeWarden).addWifiNetworkStateChangedListener(testListener);
     }
 
     /**
@@ -2953,7 +2986,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 mWifiServiceImpl.getConfiguredNetworks(TEST_PACKAGE, TEST_FEATURE_ID, false);
         mLooper.stopAutoDispatchAndIgnoreExceptions();
 
-        verify(mWifiConfigManager).getSavedNetworks(eq(Process.WIFI_UID));
+        verify(mWifiConfigManager).getSavedNetworks(eq(WIFI_UID));
         WifiConfigurationTestUtil.assertConfigurationsEqualForBackup(
                 TEST_WIFI_CONFIGURATION_LIST, configs.getList());
     }
@@ -9087,6 +9120,85 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mWifiServiceImpl.enableTdlsWithMacAddress(TEST_BSSID, false);
         mLooper.dispatchAll();
         verify(mClientModeManager).enableTdls(TEST_BSSID, false);
+        verify(mLastCallerInfoManager).put(eq(WifiManager.API_SET_TDLS_ENABLED_WITH_MAC_ADDRESS),
+                anyInt(), anyInt(), anyInt(), anyString(), eq(false));
+    }
+
+    @Test
+    public void testEnabledTdlsWithMacAddressCallback() throws RemoteException {
+        IBooleanListener listener = mock(IBooleanListener.class);
+        InOrder inOrder = inOrder(listener);
+
+        when(mClientModeManager.enableTdls(TEST_BSSID, true)).thenReturn(true);
+        mWifiServiceImpl.enableTdlsWithRemoteMacAddress(TEST_BSSID, true, listener);
+        mLooper.dispatchAll();
+        inOrder.verify(listener).onResult(true);
+
+        when(mClientModeManager.enableTdls(TEST_BSSID, false)).thenReturn(false);
+        mWifiServiceImpl.enableTdlsWithRemoteMacAddress(TEST_BSSID, false, listener);
+        mLooper.dispatchAll();
+        inOrder.verify(listener).onResult(false);
+        verify(mLastCallerInfoManager)
+                .put(eq(WifiManager.API_SET_TDLS_ENABLED_WITH_MAC_ADDRESS),
+                anyInt(), anyInt(), anyInt(), anyString(), eq(false));
+    }
+
+    @Test
+    public void testEnabledTdlsWithIpAddressCallback() throws RemoteException {
+        IBooleanListener listener = mock(IBooleanListener.class);
+        InOrder inOrder = inOrder(listener);
+
+        when(mClientModeManager.enableTdlsWithRemoteIpAddress(TEST_IP, true))
+                .thenReturn(true);
+        mWifiServiceImpl.enableTdlsWithRemoteIpAddress(TEST_IP, true, listener);
+        mLooper.dispatchAll();
+        inOrder.verify(listener).onResult(true);
+
+        when(mClientModeManager.enableTdlsWithRemoteIpAddress(TEST_IP, false))
+                .thenReturn(false);
+        mWifiServiceImpl.enableTdlsWithRemoteIpAddress(TEST_IP, false, listener);
+        mLooper.dispatchAll();
+        inOrder.verify(listener).onResult(false);
+        verify(mLastCallerInfoManager)
+                .put(eq(WifiManager.API_SET_TDLS_ENABLED),
+                        anyInt(), anyInt(), anyInt(), anyString(), eq(false));
+    }
+
+    @Test
+    public void testIsTdlsOperationCurrentlyAvailable() throws RemoteException {
+        IBooleanListener listener = mock(IBooleanListener.class);
+        InOrder inOrder = inOrder(listener);
+
+        when(mClientModeManager.isTdlsOperationCurrentlyAvailable()).thenReturn(true);
+        mWifiServiceImpl.isTdlsOperationCurrentlyAvailable(listener);
+        mLooper.dispatchAll();
+        inOrder.verify(listener).onResult(true);
+
+        when(mClientModeManager.isTdlsOperationCurrentlyAvailable()).thenReturn(false);
+        mWifiServiceImpl.isTdlsOperationCurrentlyAvailable(listener);
+        mLooper.dispatchAll();
+        inOrder.verify(listener).onResult(false);
+    }
+
+    @Test
+    public void testGetMaxSupportedConcurrentTdlsSessions() throws RemoteException {
+        assumeTrue(SdkLevel.isAtLeastU());
+        IIntegerListener listener = mock(IIntegerListener.class);
+
+        when(mClientModeManager.getMaxSupportedConcurrentTdlsSessions()).thenReturn(5);
+        mWifiServiceImpl.getMaxSupportedConcurrentTdlsSessions(listener);
+        mLooper.dispatchAll();
+        verify(listener).onResult(5);
+    }
+
+    @Test
+    public void testGetNumberOfEnabledTdlsSessions() throws RemoteException {
+        IIntegerListener listener = mock(IIntegerListener.class);
+
+        when(mClientModeManager.getNumberOfEnabledTdlsSessions()).thenReturn(3);
+        mWifiServiceImpl.getNumberOfEnabledTdlsSessions(listener);
+        mLooper.dispatchAll();
+        verify(listener).onResult(3);
     }
 
     /**
@@ -10636,7 +10748,11 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mHalDeviceManager.reportImpactToCreateIface(interfaceToCreateInternal, true, ws))
                 .thenReturn(null)
                 .thenReturn(Collections.emptyList())
-                .thenReturn(List.of(Pair.create(HalDeviceManager.HDM_CREATE_IFACE_P2P, wsOther)));
+                .thenReturn(List.of(Pair.create(HalDeviceManager.HDM_CREATE_IFACE_P2P, wsOther)))
+                .thenReturn(List.of(Pair.create(HalDeviceManager.HDM_CREATE_IFACE_NAN,
+                        new WorkSource(WIFI_UID))));
+        mWifiServiceImpl.reportCreateInterfaceImpact(TEST_PACKAGE_NAME, interfaceToCreate, true,
+                mockCallback);
         mWifiServiceImpl.reportCreateInterfaceImpact(TEST_PACKAGE_NAME, interfaceToCreate, true,
                 mockCallback);
         mWifiServiceImpl.reportCreateInterfaceImpact(TEST_PACKAGE_NAME, interfaceToCreate, true,
@@ -10644,9 +10760,9 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mWifiServiceImpl.reportCreateInterfaceImpact(TEST_PACKAGE_NAME, interfaceToCreate, true,
                 mockCallback);
         mLooper.dispatchAll();
-        verify(mHalDeviceManager, times(3)).reportImpactToCreateIface(
+        verify(mHalDeviceManager, times(4)).reportImpactToCreateIface(
                 interfaceToCreateInternal, true, ws);
-        verify(mockCallback, times(3)).onResults(boolCaptor.capture(), intArrayCaptor.capture(),
+        verify(mockCallback, times(4)).onResults(boolCaptor.capture(), intArrayCaptor.capture(),
                 stringArrayCaptor.capture());
         verify(mPackageManager).makeUidVisible(TEST_UID, OTHER_TEST_UID);
 
@@ -10660,12 +10776,20 @@ public class WifiServiceImplTest extends WifiBaseTest {
         assertEquals(0, intArrayCaptor.getAllValues().get(1).length);
         assertEquals(0, stringArrayCaptor.getAllValues().get(1).length);
 
-        // result 2: success with no side effects
+        // result 2: success with side effects
         assertTrue(boolCaptor.getAllValues().get(2));
         assertEquals(1, intArrayCaptor.getAllValues().get(2).length);
         assertEquals(WifiManager.WIFI_INTERFACE_TYPE_DIRECT,
                 intArrayCaptor.getAllValues().get(2)[0]);
         assertArrayEquals(packagesOther, stringArrayCaptor.getAllValues().get(2));
+
+        // result 2: success with side effects of empty packages
+        assertTrue(boolCaptor.getAllValues().get(3));
+        assertEquals(1, intArrayCaptor.getAllValues().get(3).length);
+        assertEquals(WifiManager.WIFI_INTERFACE_TYPE_AWARE,
+                intArrayCaptor.getAllValues().get(3)[0]);
+        assertEquals(1, stringArrayCaptor.getAllValues().get(3).length);
+        assertNull(stringArrayCaptor.getAllValues().get(3)[0]);
     }
 
     @Test
@@ -10928,5 +11052,241 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 new ScanResult(WifiSsid.fromUtf8Text(TEST_SSID), TEST_SSID, TEST_BSSID, 1234, 0,
                         TEST_CAP, -70, 5805, 1024, 22, 33, 20, 0, 0, true));
         return scanResults;
+    }
+
+    private void enableQosPolicyFeature() {
+        when(mDeviceConfigFacade.isApplicationQosPolicyApiEnabled()).thenReturn(true);
+        when(mResources.getBoolean(
+                R.bool.config_wifiApplicationCentricQosPolicyFeatureEnabled))
+                .thenReturn(true);
+        when(mWifiNative.isSupplicantAidlServiceVersionAtLeast(eq(2))).thenReturn(true);
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt()))
+                .thenReturn(true);
+    }
+
+    private List<QosPolicyParams> createQosPolicyParamsList(int size, boolean uniqueIds) {
+        List<QosPolicyParams> policyParamsList = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            int policyId = uniqueIds ? i + 2 : 5;
+            policyParamsList.add(new QosPolicyParams.Builder(
+                    policyId, QosPolicyParams.DIRECTION_DOWNLINK)
+                    .setUserPriority(QosPolicyParams.USER_PRIORITY_VIDEO_LOW)
+                    .build());
+        }
+        return policyParamsList;
+    }
+
+    /**
+     * Verify that addQosPolicies works correctly.
+     */
+    @Test
+    public void testAddQosPoliciesSuccess() throws RemoteException {
+        assumeTrue(SdkLevel.isAtLeastU());
+        enableQosPolicyFeature();
+
+        List<QosPolicyParams> paramsList = createQosPolicyParamsList(5, true);
+        IBinder binder = mock(IBinder.class);
+        IListListener listener = mock(IListListener.class);
+        mWifiServiceImpl.addQosPolicies(paramsList, binder, TEST_PACKAGE_NAME, listener);
+
+        // TODO: Update once the implementation exists.
+        mLooper.dispatchAll();
+        verify(listener).onResult(any());
+    }
+
+    /**
+     * Verify the expected error cases in addQosPolicies.
+     */
+    @Test
+    public void testAddQosPoliciesError() throws RemoteException {
+        assumeTrue(SdkLevel.isAtLeastU());
+        enableQosPolicyFeature();
+        List<QosPolicyParams> paramsList = createQosPolicyParamsList(5, true);
+        IBinder binder = mock(IBinder.class);
+        IListListener listener = mock(IListListener.class);
+
+        // Feature disabled
+        when(mDeviceConfigFacade.isApplicationQosPolicyApiEnabled()).thenReturn(false);
+        mWifiServiceImpl.addQosPolicies(paramsList, binder, TEST_PACKAGE_NAME, listener);
+        enableQosPolicyFeature();
+
+        verify(listener).onResult(mListCaptor.capture());
+        List<Integer> statusList = mListCaptor.getValue();
+        for (Integer status : statusList) {
+            assertEquals(WifiManager.QOS_REQUEST_STATUS_FAILURE_UNKNOWN, (int) status);
+        }
+
+        // Null argument
+        assertThrows(NullPointerException.class, () ->
+                mWifiServiceImpl.addQosPolicies(null, binder, TEST_PACKAGE_NAME, listener));
+        assertThrows(NullPointerException.class, () ->
+                mWifiServiceImpl.addQosPolicies(paramsList, null, TEST_PACKAGE_NAME, listener));
+        assertThrows(NullPointerException.class, () ->
+                mWifiServiceImpl.addQosPolicies(paramsList, binder, TEST_PACKAGE_NAME, null));
+
+        // Invalid QoS policy params list
+        List<QosPolicyParams> emptyList = createQosPolicyParamsList(0, true);
+        List<QosPolicyParams> largeList = createQosPolicyParamsList(
+                WifiManager.getMaxNumberOfPoliciesPerQosRequest() + 1, true);
+        List<QosPolicyParams> duplicatePolicyList = createQosPolicyParamsList(5, false);
+        assertThrows(IllegalArgumentException.class, () ->
+                mWifiServiceImpl.addQosPolicies(emptyList, binder, TEST_PACKAGE_NAME, listener));
+        assertThrows(IllegalArgumentException.class, () ->
+                mWifiServiceImpl.addQosPolicies(largeList, binder, TEST_PACKAGE_NAME, listener));
+        assertThrows(IllegalArgumentException.class, () ->
+                mWifiServiceImpl.addQosPolicies(
+                        duplicatePolicyList, binder, TEST_PACKAGE_NAME, listener));
+    }
+
+    /**
+     * Verify that removeQosPolicies works correctly.
+     */
+    @Test
+    public void testRemoveQosPoliciesSuccess() throws RemoteException {
+        assumeTrue(SdkLevel.isAtLeastU());
+        enableQosPolicyFeature();
+        // TODO: Update once the implementation exists.
+        int[] policyIds = new int[]{1, 2, 3};
+        mWifiServiceImpl.removeQosPolicies(policyIds, TEST_PACKAGE_NAME);
+    }
+
+    /**
+     * Verify the expected error cases in removeQosPolicies.
+     */
+    @Test
+    public void testRemoveQosPoliciesError() {
+        assumeTrue(SdkLevel.isAtLeastU());
+        enableQosPolicyFeature();
+
+        // Invalid policy ID list
+        int[] emptyPolicyIdList = new int[0];
+        int[] largePolicyIdList = new int[WifiManager.getMaxNumberOfPoliciesPerQosRequest() + 1];
+        int[] duplicatePolicyIdList = new int[] {1, 2, 2};
+        assertThrows(NullPointerException.class, () ->
+                mWifiServiceImpl.removeQosPolicies(null, TEST_PACKAGE_NAME));
+        assertThrows(IllegalArgumentException.class, () ->
+                mWifiServiceImpl.removeQosPolicies(emptyPolicyIdList, TEST_PACKAGE_NAME));
+        assertThrows(IllegalArgumentException.class, () ->
+                mWifiServiceImpl.removeQosPolicies(largePolicyIdList, TEST_PACKAGE_NAME));
+        assertThrows(IllegalArgumentException.class, () ->
+                mWifiServiceImpl.removeQosPolicies(duplicatePolicyIdList, TEST_PACKAGE_NAME));
+    }
+
+    /**
+     * Verify that removeAllQosPolicies works correctly.
+     */
+    @Test
+    public void testRemoveAllQosPolicies() {
+        assumeTrue(SdkLevel.isAtLeastU());
+        enableQosPolicyFeature();
+        // TODO: Update once the implementation exists.
+        mWifiServiceImpl.removeAllQosPolicies(TEST_PACKAGE_NAME);
+    }
+
+    /**
+     * Verify if set / get link layer stats polling interval works correctly
+     */
+    @Test
+    public void testSetAndGetLinkLayerStatsPollingInterval() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        mWifiServiceImpl.setLinkLayerStatsPollingInterval(
+                TEST_LINK_LAYER_STATS_POLLING_INTERVAL_MS);
+        mLooper.dispatchAll();
+        verify(mClientModeManager).setLinkLayerStatsPollingInterval(
+                eq(TEST_LINK_LAYER_STATS_POLLING_INTERVAL_MS));
+
+        IIntegerListener listener = mock(IIntegerListener.class);
+        when(mWifiGlobals.getPollRssiIntervalMillis()).thenReturn(
+                TEST_LINK_LAYER_STATS_POLLING_INTERVAL_MS);
+        mWifiServiceImpl.getLinkLayerStatsPollingInterval(listener);
+        mLooper.dispatchAll();
+        verify(listener).onResult(TEST_LINK_LAYER_STATS_POLLING_INTERVAL_MS);
+    }
+
+    /**
+     * Test exceptions for set / get link layer stats polling interval
+     */
+    @Test
+    public void testSetAndGetLinkLayerStatsPollingIntervalThrowsExceptions() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        // Verify IllegalArgumentException for negative interval
+        assertThrows(IllegalArgumentException.class,
+                () -> mWifiServiceImpl.setLinkLayerStatsPollingInterval(
+                        -TEST_LINK_LAYER_STATS_POLLING_INTERVAL_MS));
+        // Verify NullPointerException for null listener
+        assertThrows(NullPointerException.class,
+                () -> mWifiServiceImpl.getLinkLayerStatsPollingInterval(null));
+        // Verify SecurityException when the caller does not have permission
+        when(mContext.checkCallingOrSelfPermission(android.Manifest.permission
+                .MANAGE_WIFI_NETWORK_SELECTION)).thenReturn(PackageManager.PERMISSION_DENIED);
+        assertThrows(SecurityException.class,
+                () -> mWifiServiceImpl.setLinkLayerStatsPollingInterval(
+                        TEST_LINK_LAYER_STATS_POLLING_INTERVAL_MS));
+        IIntegerListener listener = mock(IIntegerListener.class);
+        assertThrows(SecurityException.class,
+                () -> mWifiServiceImpl.getLinkLayerStatsPollingInterval(listener));
+    }
+
+    /**
+     * Verify {@link WifiServiceImpl#setMloMode(int)}.
+     */
+    @Test
+    public void testSetMloMode() throws RemoteException {
+        // Android U+ only.
+        assumeTrue(SdkLevel.isAtLeastU());
+        // Mock listener.
+        IBooleanListener listener = mock(IBooleanListener.class);
+        InOrder inOrder = inOrder(listener);
+
+        // Verify permission.
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(false);
+        assertThrows(SecurityException.class,
+                () -> mWifiServiceImpl.setMloMode(WifiManager.MLO_MODE_DEFAULT, listener));
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt())).thenReturn(
+                true);
+
+        // Verify setMloMode() success.
+        mWifiThreadRunner.prepareForAutoDispatch();
+        when(mWifiNative.setMloMode(eq(WifiManager.MLO_MODE_LOW_POWER))).thenReturn(
+                WifiStatusCode.SUCCESS);
+        mWifiServiceImpl.setMloMode(WifiManager.MLO_MODE_LOW_POWER, listener);
+        mLooper.dispatchAll();
+        inOrder.verify(listener).onResult(true);
+
+        // Verify setMloMode() failure case.
+        mWifiThreadRunner.prepareForAutoDispatch();
+        mLooper.startAutoDispatch();
+        when(mWifiNative.setMloMode(eq(WifiManager.MLO_MODE_HIGH_THROUGHPUT))).thenReturn(
+                WifiStatusCode.ERROR_INVALID_ARGS);
+        mWifiServiceImpl.setMloMode(WifiManager.MLO_MODE_HIGH_THROUGHPUT, listener);
+        mLooper.dispatchAll();
+        inOrder.verify(listener).onResult(false);
+    }
+
+    /**
+     * Verify {@link WifiServiceImpl#getMloMode()}.
+     */
+    @Test
+    public void testGetMloMode() throws RemoteException {
+        // Android U+ only.
+        assumeTrue(SdkLevel.isAtLeastU());
+        // Mock listener.
+        IIntegerListener listener = mock(IIntegerListener.class);
+        InOrder inOrder = inOrder(listener);
+
+        // Verify permission.
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt())).thenReturn(
+                false);
+        assertThrows(SecurityException.class,
+                () -> mWifiServiceImpl.getMloMode(listener));
+        when(mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(anyInt())).thenReturn(
+                true);
+
+        // Verify getMloMode() success.
+        when(mWifiNative.getMloMode()).thenReturn(WifiManager.MLO_MODE_LOW_POWER);
+        mWifiServiceImpl.getMloMode(listener);
+        mLooper.dispatchAll();
+        inOrder.verify(listener).onResult(WifiManager.MLO_MODE_LOW_POWER);
     }
 }

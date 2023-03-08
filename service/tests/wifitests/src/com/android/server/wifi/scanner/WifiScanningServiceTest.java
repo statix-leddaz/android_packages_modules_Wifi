@@ -30,9 +30,12 @@ import static com.android.server.wifi.ScanTestUtil.computeSingleScanNativeSettin
 import static com.android.server.wifi.ScanTestUtil.computeSingleScanNativeSettingsWithChannelHelper;
 import static com.android.server.wifi.ScanTestUtil.createRequest;
 import static com.android.server.wifi.ScanTestUtil.createSingleScanNativeSettingsForChannels;
+import static com.android.server.wifi.scanner.WifiScanningServiceImpl.WifiPnoScanStateMachine.SwPnoScanState.SW_PNO_ALARM_INTENT_ACTION;
+import static com.android.server.wifi.scanner.WifiScanningServiceImpl.WifiPnoScanStateMachine.SwPnoScanState.SW_PNO_UPPER_BOUND_ALARM_INTENT_ACTION;
 import static com.android.server.wifi.scanner.WifiScanningServiceImpl.WifiSingleScanStateMachine.CACHED_SCAN_RESULTS_MAX_AGE_IN_MILLIS;
 import static com.android.server.wifi.scanner.WifiScanningServiceImpl.WifiSingleScanStateMachine.EMERGENCY_SCAN_END_INDICATION_ALARM_TAG;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -42,9 +45,11 @@ import static org.junit.Assume.assumeTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
@@ -60,10 +65,13 @@ import static org.mockito.Mockito.when;
 import android.Manifest;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.app.test.MockAnswerUtil.AnswerWithArguments;
 import android.app.test.TestAlarmManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
 import android.net.wifi.IWifiScannerListener;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
@@ -78,10 +86,12 @@ import android.os.test.TestLooper;
 import android.util.ArraySet;
 import android.util.Pair;
 
+import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.SmallTest;
 
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.Clock;
+import com.android.server.wifi.DeviceConfigFacade;
 import com.android.server.wifi.FakeWifiLog;
 import com.android.server.wifi.FrameworkFacade;
 import com.android.server.wifi.MockResources;
@@ -94,6 +104,7 @@ import com.android.server.wifi.WifiNative;
 import com.android.server.wifi.proto.nano.WifiMetricsProto;
 import com.android.server.wifi.util.LastCallerInfoManager;
 import com.android.server.wifi.util.WifiPermissionsUtil;
+import com.android.wifi.resources.R;
 
 import org.junit.After;
 import org.junit.Before;
@@ -107,7 +118,9 @@ import org.mockito.Spy;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -129,6 +142,10 @@ public class WifiScanningServiceTest extends WifiBaseTest {
     private static final WifiScanner.ScanData PLACEHOLDER_SCAN_DATA =
             new WifiScanner.ScanData(0, 0, new ScanResult[0]);
 
+    private final int mSwPnoMobilityIterations = 3;
+    private final int mSwPnoFastIterations = 3;
+    private final int mSwPnoSlowIterations = 10;
+
     @Mock Context mContext;
     TestAlarmManager mAlarmManager;
     @Mock WifiScannerImpl mWifiScannerImpl0;
@@ -145,23 +162,45 @@ public class WifiScanningServiceTest extends WifiBaseTest {
     @Mock WifiMetrics.ScanMetrics mScanMetrics;
     @Mock WifiManager mWifiManager;
     @Mock LastCallerInfoManager mLastCallerInfoManager;
+    @Mock DeviceConfigFacade mDeviceConfigFacade;
     PresetKnownBandsChannelHelper mChannelHelper0;
     PresetKnownBandsChannelHelper mChannelHelper1;
     TestLooper mLooper;
     WifiScanningServiceImpl mWifiScanningServiceImpl;
     private Bundle mExtras = new Bundle();
+    MockResources mResources = new MockResources();
+    Context mInstContext = InstrumentationRegistry.getContext();
+    BroadcastReceiver mSwPnoBroadcastReceiver = null;
+    int mSwPnoIterationCount = 0;
+    ArrayList<Intent> mSwPnoIntentsQueue = new ArrayList<>();
 
     @Before
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
-
         mAlarmManager = new TestAlarmManager();
         when(mContext.getSystemService(Context.ALARM_SERVICE))
                 .thenReturn(mAlarmManager.getAlarmManager());
+        when(mContext.getSystemService(AlarmManager.class))
+                .thenReturn(mAlarmManager.getAlarmManager());
         when(mContext.getSystemService(WifiManager.class)).thenReturn(mWifiManager);
-        when(mContext.getResources()).thenReturn(new MockResources());
+        doAnswer(inv -> {
+            final BroadcastReceiver br = inv.getArgument(0);
+            registerSwPnoBroadcastReceiver(br);
+            return null;
+        }).when(mContext).registerReceiver(any(BroadcastReceiver.class), any(), any(), any());
+
+        mResources.setInteger(R.integer.config_wifiSwPnoMobilityStateTimerIterations,
+                mSwPnoMobilityIterations);
+        mResources.setInteger(R.integer.config_wifiSwPnoFastTimerIterations, mSwPnoFastIterations);
+        mResources.setInteger(R.integer.config_wifiSwPnoSlowTimerIterations, mSwPnoSlowIterations);
+        mResources.setBoolean(R.bool.config_wifiSwPnoEnabled, true);
+
+        when(mContext.getResources()).thenReturn(mResources);
         when(mWifiInjector.getWifiPermissionsUtil())
                 .thenReturn(mWifiPermissionsUtil);
+        when(mContext.getUser()).thenReturn(mInstContext.getUser());
+        when(mContext.getPackageName()).thenReturn(mInstContext.getPackageName());
+
 
         mChannelHelper0 = new PresetKnownBandsChannelHelper(
                 new int[]{2412, 2450},
@@ -204,6 +243,7 @@ public class WifiScanningServiceTest extends WifiBaseTest {
                 eq(Build.VERSION_CODES.UPSIDE_DOWN_CAKE),
                 anyInt())).thenReturn(true);
         WifiLocalServices.removeServiceForTest(WifiScannerInternal.class);
+        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfigFacade);
         mWifiScanningServiceImpl = new WifiScanningServiceImpl(mContext, mLooper.getLooper(),
                 mWifiScannerImplFactory, mBatteryStats, mWifiInjector);
     }
@@ -353,6 +393,17 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         order.verify(wifiScannerImpl).startSingleScan(scanSettingsCaptor.capture(),
                 scanEventHandlerCaptor.capture());
         assertNativeScanSettingsEquals(expected, scanSettingsCaptor.getValue());
+        return scanEventHandlerCaptor.getValue();
+    }
+
+    private WifiNative.ScanEventHandler verifyStartSwPnoForImpl(
+            WifiScannerImpl wifiScannerImpl, InOrder order) {
+        ArgumentCaptor<WifiNative.ScanSettings> scanSettingsCaptor =
+                ArgumentCaptor.forClass(WifiNative.ScanSettings.class);
+        ArgumentCaptor<WifiNative.ScanEventHandler> scanEventHandlerCaptor =
+                ArgumentCaptor.forClass(WifiNative.ScanEventHandler.class);
+        order.verify(wifiScannerImpl).startSingleScan(scanSettingsCaptor.capture(),
+                scanEventHandlerCaptor.capture());
         return scanEventHandlerCaptor.getValue();
     }
 
@@ -772,6 +823,61 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         assertEquals(WifiScanner.WIFI_RNR_NOT_NEEDED,
                 requestSettings.getRnrSetting());
         assertEquals(false, nativeSettings.enable6GhzRnr);
+        doSuccessfulSingleScan(requestSettings, nativeSettings,
+                ScanResults.create(0, WifiScanner.WIFI_BAND_ALL, new int[0]));
+    }
+
+    /**
+     * Do a single scan with null vendor IEs, and verify getVendorIes() and nativeSettings.vendorIes
+     * returning correct values.
+     */
+    @Test
+    public void sendSingleScanRequestWithNullVendorIes() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastU());
+        WifiScanner.ScanSettings requestSettings = createRequest(WifiScanner.WIFI_BAND_ALL, 0,
+                0, 20, WifiScanner.REPORT_EVENT_AFTER_EACH_SCAN);
+        WifiNative.ScanSettings nativeSettings = computeSingleScanNativeSettings(requestSettings);
+        assertEquals(0, requestSettings.getVendorIes().size());
+        assertEquals(null, nativeSettings.vendorIes);
+        doSuccessfulSingleScan(requestSettings, nativeSettings,
+                ScanResults.create(0, WifiScanner.WIFI_BAND_ALL, new int[0]));
+    }
+
+    /**
+     * Do a single scan with nonnull vendor IEs, and verify getVendorIes() and
+     * nativeSettings.vendorIes returning same values.
+     */
+    @Test
+    public void sendSingleScanRequestWithNonNullVendorIes() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastU());
+        WifiScanner.ScanSettings requestSettings = createRequest(WifiScanner.WIFI_BAND_ALL, 0,
+                0, 20, WifiScanner.REPORT_EVENT_AFTER_EACH_SCAN);
+        List<ScanResult.InformationElement> vendorIesList = new ArrayList<>();
+        ScanResult.InformationElement vendorIe1 = new ScanResult.InformationElement(221, 0,
+                new byte[]{0x00, 0x50, (byte) 0xf2, 0x08, 0x11, 0x22, 0x33});
+        ScanResult.InformationElement vendorIe2 = new ScanResult.InformationElement(221, 0,
+                new byte[]{0x00, 0x50, (byte) 0xf2, 0x08, (byte) 0xaa, (byte) 0xbb, (byte) 0xcc});
+        vendorIesList.add(vendorIe1);
+        vendorIesList.add(vendorIe2);
+        requestSettings.setVendorIes(vendorIesList);
+
+        WifiNative.ScanSettings nativeSettings = computeSingleScanNativeSettings(requestSettings);
+        byte[] nativeSettingsVendorIes =
+                new byte[WifiScanner.WIFI_IE_HEAD_LEN + vendorIe1.bytes.length
+                        + WifiScanner.WIFI_IE_HEAD_LEN + vendorIe2.bytes.length];
+        int index = 0;
+        nativeSettingsVendorIes[index] = (byte) vendorIe1.id;
+        nativeSettingsVendorIes[index + 1] = (byte) vendorIe1.bytes.length;
+        System.arraycopy(vendorIe1.bytes, 0, nativeSettingsVendorIes,
+                index + WifiScanner.WIFI_IE_HEAD_LEN,
+                vendorIe1.bytes.length);
+        index += WifiScanner.WIFI_IE_HEAD_LEN + vendorIe1.bytes.length;
+        nativeSettingsVendorIes[index] = (byte) vendorIe2.id;
+        nativeSettingsVendorIes[index + 1] = (byte) vendorIe2.bytes.length;
+        System.arraycopy(vendorIe2.bytes, 0, nativeSettingsVendorIes,
+                index + WifiScanner.WIFI_IE_HEAD_LEN,
+                vendorIe2.bytes.length);
+        assertArrayEquals(nativeSettingsVendorIes, nativeSettings.vendorIes);
         doSuccessfulSingleScan(requestSettings, nativeSettings,
                 ScanResults.create(0, WifiScanner.WIFI_BAND_ALL, new int[0]));
     }
@@ -1673,6 +1779,129 @@ public class WifiScanningServiceTest extends WifiBaseTest {
                 "results=" + results3.getRawScanResults().length);
     }
 
+    @Test
+    public void sendMultipleSingleScanRequestWithVendorIesWhilePreviousScanRunningAndMerge()
+            throws Exception {
+        assumeTrue(SdkLevel.isAtLeastU());
+        ScanResults results2412 =
+                ScanResults.create(0, WifiScanner.WIFI_BAND_UNSPECIFIED, 2412, 2412, 2412);
+        ScanResults results2450 = ScanResults.create(0, WifiScanner.WIFI_BAND_UNSPECIFIED, 2450);
+        ScanResults results5175 = ScanResults.create(0, WifiScanner.WIFI_BAND_UNSPECIFIED, 5175);
+        ScanResults results1and3 =
+                ScanResults.merge(WifiScanner.WIFI_BAND_UNSPECIFIED, results2412, results2450);
+        ScanResults results2and4 =
+                ScanResults.merge(WifiScanner.WIFI_BAND_UNSPECIFIED, results2450, results5175);
+
+        WifiScanner.ScanSettings requestSettings1 = createRequest(channelsToSpec(2412, 2450), 0,
+                0, 20, WifiScanner.REPORT_EVENT_AFTER_EACH_SCAN);
+        requestSettings1.type = WifiScanner.SCAN_TYPE_LOW_LATENCY;
+        WorkSource workSource1 = new WorkSource(1121);
+        ScanResults results1 = results1and3;
+
+        WifiScanner.ScanSettings requestSettings2 = createRequest(channelsToSpec(2450, 5175), 0,
+                0, 20, WifiScanner.REPORT_EVENT_AFTER_EACH_SCAN);
+        requestSettings2.type = WifiScanner.SCAN_TYPE_HIGH_ACCURACY;
+        List<ScanResult.InformationElement> vendorIesList2 = new ArrayList<>();
+        ScanResult.InformationElement vendorIe21 = new ScanResult.InformationElement(221, 0,
+                new byte[]{0x00, 0x50, (byte) 0xf2, 0x08, 0x11, 0x22, 0x33});
+        ScanResult.InformationElement vendorIe22 = new ScanResult.InformationElement(221, 0,
+                new byte[255]);
+        vendorIesList2.add(vendorIe21);
+        vendorIesList2.add(vendorIe22);
+        requestSettings2.setVendorIes(vendorIesList2);
+        WorkSource workSource2 = new WorkSource(Binder.getCallingUid());
+        ScanResults results2 = results2and4;
+
+        WifiScanner.ScanSettings requestSettings3 = createRequest(channelsToSpec(2412), 0,
+                0, 20, WifiScanner.REPORT_EVENT_AFTER_EACH_SCAN);
+        requestSettings3.type = WifiScanner.SCAN_TYPE_LOW_POWER;
+        WorkSource workSource3 = new WorkSource(2292);
+        ScanResults results3 = results2412;
+
+        WifiScanner.ScanSettings requestSettings4 = createRequest(channelsToSpec(5175), 0,
+                0, 20, WifiScanner.REPORT_EVENT_AFTER_EACH_SCAN);
+        requestSettings4.type = WifiScanner.SCAN_TYPE_HIGH_ACCURACY;
+        List<ScanResult.InformationElement> vendorIesList4 = new ArrayList<>();
+        ScanResult.InformationElement vendorIe41 = new ScanResult.InformationElement(221, 0,
+                new byte[]{0x00, 0x50, (byte) 0xf2, 0x08, (byte) 0xaa, (byte) 0xbb, (byte) 0xcc});
+        ScanResult.InformationElement vendorIe42 = new ScanResult.InformationElement(221, 0,
+                new byte[238]);
+        vendorIesList4.add(vendorIe41);
+        vendorIesList4.add(vendorIe42);
+        requestSettings4.setVendorIes(vendorIesList4);
+        WorkSource workSource4 = new WorkSource(Binder.getCallingUid());
+        ScanResults results4 = results5175;
+
+        startServiceAndLoadDriver();
+        when(mWifiScannerImpl0.startSingleScan(any(WifiNative.ScanSettings.class),
+                any(WifiNative.ScanEventHandler.class))).thenReturn(true);
+
+        TestClient client = new TestClient();
+        InOrder nativeOrder = inOrder(mWifiScannerImpl0);
+        client.sendSingleScanRequest(requestSettings1, workSource1);
+        mLooper.dispatchAll();
+        WifiNative.ScanEventHandler eventHandler1 = verifyStartSingleScan(nativeOrder,
+                computeSingleScanNativeSettings(requestSettings1));
+        client.verifySuccessfulResponse();
+        verify(mBatteryStats).reportWifiScanStartedFromSource(eq(workSource1));
+
+        // Queue scan 2 (will not run because previous is in progress)
+        client.sendSingleScanRequest(requestSettings2, null);
+        mLooper.dispatchAll();
+        client.verifySuccessfulResponse();
+
+        // Queue scan 3 (will be merged into the active scan)
+        client.sendSingleScanRequest(requestSettings3, workSource3);
+        mLooper.dispatchAll();
+        client.verifySuccessfulResponse();
+
+        // Queue scan 4 (will be merged into the pending scan)
+        client.sendSingleScanRequest(requestSettings4, null);
+        mLooper.dispatchAll();
+        client.verifySuccessfulResponse();
+
+        // dispatch scan 1 and 3 results
+        when(mWifiScannerImpl0.getLatestSingleScanResults()).thenReturn(results1and3.getScanData());
+        eventHandler1.onScanStatus(WifiNative.WIFI_SCAN_RESULTS_AVAILABLE);
+
+        mLooper.dispatchAll();
+        verifyMultipleSingleScanResults(client, results1, client, results3);
+        // only the requests know at the beginning of the scan get blamed
+        verify(mBatteryStats).reportWifiScanStoppedFromSource(eq(workSource1));
+        verify(mBatteryStats).reportWifiScanStartedFromSource(eq(workSource2));
+
+        // now that the first scan completed we expect the second and fourth ones to start
+        // vendorIes had been merged
+        vendorIesList2.add(vendorIe41);
+        requestSettings2.setVendorIes(vendorIesList2);
+        WifiNative.ScanEventHandler eventHandler2 = verifyStartSingleScan(nativeOrder,
+                computeSingleScanNativeSettings(requestSettings2));
+
+        // dispatch scan 2 and 4 results
+        when(mWifiScannerImpl0.getLatestSingleScanResults()).thenReturn(results2and4.getScanData());
+        eventHandler2.onScanStatus(WifiNative.WIFI_SCAN_RESULTS_AVAILABLE);
+
+        mLooper.dispatchAll();
+        verifyMultipleSingleScanResults(client, results2, client, results4);
+        verify(mWifiMetrics, times(4)).incrementOneshotScanCount();
+        verify(mWifiMetrics, times(2)).incrementScanReturnEntry(
+                WifiMetricsProto.WifiLog.SCAN_SUCCESS, 2);
+        verify(mBatteryStats).reportWifiScanStoppedFromSource(eq(workSource2));
+
+        assertDumpContainsRequestLog("addSingleScanRequest");
+        assertDumpContainsRequestLog("addSingleScanRequest");
+        assertDumpContainsRequestLog("addSingleScanRequest");
+        assertDumpContainsRequestLog("addSingleScanRequest");
+        assertDumpContainsCallbackLog("singleScanResults",
+                "results=" + results1.getRawScanResults().length);
+        assertDumpContainsCallbackLog("singleScanResults",
+                "results=" + results2.getRawScanResults().length);
+        assertDumpContainsCallbackLog("singleScanResults",
+                "results=" + results3.getRawScanResults().length);
+        assertDumpContainsCallbackLog("singleScanResults",
+                "results=" + results4.getRawScanResults().length);
+    }
+
     /**
      * Verify that WifiService provides a way to get the most recent SingleScan results.
      */
@@ -2274,6 +2503,178 @@ public class WifiScanningServiceTest extends WifiBaseTest {
         }
         mLooper.dispatchAll();
     }
+
+    private void expectSwPnoScan(InOrder order, WifiScannerImpl wifiScannerImpl) {
+        mLooper.dispatchAll();
+        WifiNative.ScanEventHandler eventHandler = verifyStartSwPnoForImpl(wifiScannerImpl, order);
+        eventHandler.onScanStatus(WifiNative.WIFI_SCAN_RESULTS_AVAILABLE);
+        mLooper.dispatchAll();
+    }
+
+    /**
+     * Tests wificond SW PNO scan. This ensures that the PNO scan results are plumbed back to the
+     * client as a PNO network found event. Furthermore, verify that a second PNO request is
+     * neglected while the previous one is being processed.
+     */
+    @Test
+    public void testSuccessfulSwPnoScan() throws Exception {
+        startServiceAndLoadDriver();
+        mLooper.dispatchAll();
+
+        mResources.setInteger(R.integer.config_wifiSwPnoFastTimerMs, 10);
+        mResources.setInteger(R.integer.config_wifiSwPnoSlowTimerMs, 60);
+
+        when(mWifiScannerImpl0.isHwPnoSupported(anyBoolean())).thenReturn(false);
+        when(mWifiScannerImpl0.startSingleScan(any(WifiNative.ScanSettings.class),
+                any(WifiNative.ScanEventHandler.class))).thenReturn(true);
+        when(mDeviceConfigFacade.isSoftwarePnoEnabled()).thenReturn(true);
+
+        TestClient client = new TestClient();
+
+        InOrder order = inOrder(client.listener, mWifiScannerImpl0);
+
+        ScanResults scanResults = createScanResultsForPno();
+        Pair<WifiScanner.ScanSettings, WifiNative.ScanSettings> scanSettings =
+                createScanSettingsForHwPno();
+        Pair<WifiScanner.PnoSettings, WifiNative.PnoSettings> pnoSettings =
+                createPnoSettings(scanResults);
+
+        when(mWifiScannerImpl0.getLatestSingleScanResults())
+                .thenReturn(scanResults.getScanData());
+
+        client.sendPnoScanRequest(scanSettings.first, pnoSettings.first);
+        mLooper.dispatchAll();
+        order.verify(client.listener).onSuccess();
+        expectSwPnoScan(order, mWifiScannerImpl0);
+
+        //Verify that a second PNO request is neglected while a previous one is being processed
+        client.sendPnoScanRequest(scanSettings.first, pnoSettings.first);
+        mLooper.dispatchAll();
+        order.verify(client.listener).onFailure(eq(WifiScanner.REASON_DUPLICATE_REQEUST),
+                anyString());
+    }
+
+    void mockBroadcastReceived(Intent intent) {
+        mSwPnoIterationCount++;
+        mSwPnoBroadcastReceiver.onReceive(mContext, intent);
+        mLooper.dispatchAll();
+    }
+
+    void registerSwPnoBroadcastReceiver(BroadcastReceiver br) {
+        mSwPnoBroadcastReceiver = br;
+    }
+
+    /**
+     * Tests that the Sw PNO state machine correctly iterates through all the scheduled PNO scans.
+     */
+    @Test
+    public void testSwPnoScanIterations() throws Exception {
+        mResources.setInteger(R.integer.config_wifiSwPnoFastTimerMs, 3000);
+        mResources.setInteger(R.integer.config_wifiSwPnoSlowTimerMs, 2000);
+        mSwPnoIterationCount = 0;
+
+        startServiceAndLoadDriver();
+        mLooper.dispatchAll();
+
+        // During the first mSwPnoMobilityIterations + mSwPnoFastIterations, the only timer
+        // scheduled is the exact one, that broadcasts a SW_PNO_ALARM_INTENT_ACTION when it fires
+        // Afterwards, both exact and inexact timers can fire for the remaining mSwPnoSlowIterations
+        // iterations. We simulate the randomness of the order in which the timers are fired.
+        doAnswer(inv -> {
+            if (mSwPnoIterationCount < (mSwPnoMobilityIterations + mSwPnoFastIterations)) {
+                mSwPnoIntentsQueue.add(new Intent(SW_PNO_ALARM_INTENT_ACTION));
+            } else {
+                mSwPnoIntentsQueue.add(new Intent(SW_PNO_UPPER_BOUND_ALARM_INTENT_ACTION));
+            }
+            return null;
+        }).when(mAlarmManager.getAlarmManager()).setExactAndAllowWhileIdle(
+                eq(AlarmManager.ELAPSED_REALTIME_WAKEUP), anyLong(),
+                any(PendingIntent.class));
+
+        doAnswer(inv -> {
+            mSwPnoIntentsQueue.add(new Intent(SW_PNO_ALARM_INTENT_ACTION));
+            return null;
+        }).when(mAlarmManager.getAlarmManager()).setWindow(
+                eq(AlarmManager.ELAPSED_REALTIME), anyLong(), anyLong(),
+                any(PendingIntent.class));
+
+        when(mWifiScannerImpl0.isHwPnoSupported(anyBoolean())).thenReturn(false);
+        when(mWifiScannerImpl0.startSingleScan(any(WifiNative.ScanSettings.class),
+                any(WifiNative.ScanEventHandler.class))).thenReturn(true);
+        when(mDeviceConfigFacade.isSoftwarePnoEnabled()).thenReturn(true);
+
+        TestClient client = new TestClient();
+
+        InOrder order = inOrder(client.listener, mWifiScannerImpl0);
+
+        ScanResults scanResults = createScanResultsForPno();
+        Pair<WifiScanner.ScanSettings, WifiNative.ScanSettings> scanSettings =
+                createScanSettingsForHwPno();
+        Pair<WifiScanner.PnoSettings, WifiNative.PnoSettings> pnoSettings =
+                createPnoSettings(scanResults);
+
+        when(mWifiScannerImpl0.getLatestSingleScanResults())
+                .thenReturn(scanResults.getScanData());
+
+        client.sendPnoScanRequest(scanSettings.first, pnoSettings.first);
+        mLooper.dispatchAll();
+        order.verify(client.listener).onSuccess();
+        expectSwPnoScan(order, mWifiScannerImpl0);
+
+        for (int iteration = 0; iteration < mSwPnoFastIterations + mSwPnoSlowIterations
+                + mSwPnoMobilityIterations; iteration++) {
+            ArrayList<Intent> tempList = mSwPnoIntentsQueue;
+            mSwPnoIntentsQueue = new ArrayList<>();
+            Collections.shuffle(tempList);
+            for (int intentIdx = 0; intentIdx < tempList.size(); intentIdx++) {
+                mockBroadcastReceived(tempList.get(intentIdx));
+            }
+            expectSwPnoScan(order, mWifiScannerImpl0);
+        }
+
+        // Finally, after the last iteration, no more scans should be performed
+        if (!mSwPnoIntentsQueue.isEmpty()) {
+            for (int j = 0; j < mSwPnoIntentsQueue.size(); j++) {
+                mockBroadcastReceived(mSwPnoIntentsQueue.get(j));
+            }
+        }
+        order.verify(mWifiScannerImpl0, never()).startSingleScan(any(), any());
+    }
+
+    /**
+     * verify that SW PNO scan fails if invilid configs are provided
+     */
+    @Test
+    public void testFailedSwPnoScanInvalidConfigs() throws Exception {
+        startServiceAndLoadDriver();
+        mLooper.dispatchAll();
+
+        mResources.setInteger(R.integer.config_wifiSwPnoFastTimerMs, 0);
+        mResources.setInteger(R.integer.config_wifiSwPnoFastTimerIterations, 0);
+        when(mWifiScannerImpl0.isHwPnoSupported(anyBoolean())).thenReturn(false);
+        when(mWifiScannerImpl0.startSingleScan(any(WifiNative.ScanSettings.class),
+                any(WifiNative.ScanEventHandler.class))).thenReturn(true);
+        when(mDeviceConfigFacade.isSoftwarePnoEnabled()).thenReturn(true);
+
+        TestClient client = new TestClient();
+
+        InOrder order = inOrder(client.listener, mWifiScannerImpl0);
+
+        ScanResults scanResults = createScanResultsForPno();
+        Pair<WifiScanner.ScanSettings, WifiNative.ScanSettings> scanSettings =
+                createScanSettingsForHwPno();
+        Pair<WifiScanner.PnoSettings, WifiNative.PnoSettings> pnoSettings =
+                createPnoSettings(scanResults);
+
+        when(mWifiScannerImpl0.getLatestSingleScanResults())
+                .thenReturn(scanResults.getScanData());
+
+        client.sendPnoScanRequest(scanSettings.first, pnoSettings.first);
+        mLooper.dispatchAll();
+        order.verify(client.listener).onFailure(eq(WifiScanner.REASON_INVALID_REQUEST),
+                anyString());
+    }
+
 
     /**
      * Tests wificond PNO scan. This ensures that the PNO scan results are plumbed back to the

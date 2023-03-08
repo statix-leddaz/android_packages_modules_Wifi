@@ -187,37 +187,39 @@ public interface IWifiNanIface {
      * @param channel            The channel on which to set up the data-path.
      * @param peer               The MAC address of the peer to create a connection with.
      * @param interfaceName      The interface on which to create the data connection.
-     * @param isOutOfBand Is the data-path out-of-band (i.e. without a corresponding Aware discovery
-     *                    session).
-     * @param appInfo Arbitrary binary blob transmitted to the peer.
-     * @param capabilities The capabilities of the firmware.
-     * @param securityConfig Security config to encrypt the data-path
+     * @param isOutOfBand        Is the data-path out-of-band (i.e. without a corresponding Aware
+     *                           discovery
+     *                           session).
+     * @param appInfo            Arbitrary binary blob transmitted to the peer.
+     * @param capabilities       The capabilities of the firmware.
+     * @param securityConfig     Security config to encrypt the data-path
      */
     boolean initiateDataPath(short transactionId, int peerId, int channelRequestType,
             int channel, MacAddress peer, String interfaceName,
             boolean isOutOfBand, byte[] appInfo, Capabilities capabilities,
-            WifiAwareDataPathSecurityConfig securityConfig);
+            WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId);
 
     /**
      * Responds to a data request from a peer. Security is provided by either PMK or Passphrase (not
      * both) - if both are null then an open (unencrypted) link is set up.
      *
-     * @param transactionId Transaction ID for the transaction - used in the async callback to
-     *                      match with the original request.
-     * @param accept Accept (true) or reject (false) the original call.
-     * @param ndpId The NDP (Aware data path) ID. Obtained from the request callback.
-     * @param interfaceName The interface on which the data path will be setup. Obtained from the
-     *                      request callback.
-     * @param appInfo Arbitrary binary blob transmitted to the peer.
-     * @param isOutOfBand Is the data-path out-of-band (i.e. without a corresponding Aware discovery
-     *                    session).
-     * @param capabilities The capabilities of the firmware.
+     * @param transactionId  Transaction ID for the transaction - used in the async callback to
+     *                       match with the original request.
+     * @param accept         Accept (true) or reject (false) the original call.
+     * @param ndpId          The NDP (Aware data path) ID. Obtained from the request callback.
+     * @param interfaceName  The interface on which the data path will be setup. Obtained from the
+     *                       request callback.
+     * @param appInfo        Arbitrary binary blob transmitted to the peer.
+     * @param isOutOfBand    Is the data-path out-of-band (i.e. without a corresponding Aware
+     *                       discovery
+     *                       session).
+     * @param capabilities   The capabilities of the firmware.
      * @param securityConfig Security config to encrypt the data-path
      */
     boolean respondToDataPathRequest(short transactionId, boolean accept, int ndpId,
             String interfaceName, byte[] appInfo,
             boolean isOutOfBand, Capabilities capabilities,
-            WifiAwareDataPathSecurityConfig securityConfig);
+            WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId);
 
     /**
      * Terminate an existing data-path (does not delete the interface).
@@ -230,37 +232,48 @@ public interface IWifiNanIface {
 
     /**
      * Response to a NAN pairing request for this from this session
-     * @param transactionId Transaction ID for the transaction - used in the
-     *            async callback to match with the original request.
-     * @param pairingId The id of the current pairing session
-     * @param accept True if accpect, false otherwise
-     * @param password credential for the pairing setup
-     * @param requestType Setup or verification
+     *
+     * @param transactionId      Transaction ID for the transaction - used in the
+     *                           async callback to match with the original request.
+     * @param pairingId          The id of the current pairing session
+     * @param accept             True if accpect, false otherwise
      * @param pairingIdentityKey NAN identity key
-     * @param pmk credential for the pairing verification
-     * @param akm Key exchange method is used for pairing
+     * @param requestType        Setup or verification
+     * @param pmk                credential for the pairing verification
+     * @param password           credential for the pairing setup
+     * @param akm                Key exchange method is used for pairing
      * @return True if the request send succeed.
      */
     boolean respondToPairingRequest(short transactionId, int pairingId, boolean accept,
             byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-            String password, int akm);
+            String password, int akm, int cipherSuite);
 
     /**
      * Initiate a NAN pairing request for this publish/subscribe session
-     * @param transactionId Transaction ID for the transaction - used in the
-     *            async callback to match with the original request.
-     * @param peerId ID of the peer. Obtained through previous communication (a
-     *            match indication).
-     * @param password credential for the pairing setup
-     * @param requestType Setup or verification
+     *
+     * @param transactionId      Transaction ID for the transaction - used in the
+     *                           async callback to match with the original request.
+     * @param peerId             ID of the peer. Obtained through previous communication (a
+     *                           match indication).
      * @param pairingIdentityKey NAN identity key
-     * @param pmk credential for the pairing verification
-     * @param akm Key exchange method is used for pairing
+     * @param requestType        Setup or verification
+     * @param pmk                credential for the pairing verification
+     * @param password           credential for the pairing setup
+     * @param akm                Key exchange method is used for pairing
      * @return True if the request send succeed.
      */
     boolean initiateNanPairingRequest(short transactionId, int peerId, MacAddress peer,
             byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-            String password, int akm);
+            String password, int akm, int cipherSuite);
+
+    /**
+     * Terminate an existing pairing setup
+     *
+     * @param transactionId Transaction ID for the transaction - used in the async callback to
+     *                      match with the original request.
+     * @param pairingId The id of the pairing session
+     */
+    boolean endPairing(short transactionId, int pairingId);
 
     /**
      * Initiate a bootstrapping request for this publish/subscribe session

@@ -154,6 +154,7 @@ public class WifiConnectivityManager {
     private final WifiContext mContext;
     private final WifiConfigManager mConfigManager;
     private final WifiCarrierInfoManager mWifiCarrierInfoManager;
+    private final WifiCountryCode mWifiCountryCode;
     private final WifiNetworkSuggestionsManager mWifiNetworkSuggestionsManager;
     private final WifiConnectivityHelper mConnectivityHelper;
     private final WifiNetworkSelector mNetworkSelector;
@@ -571,7 +572,7 @@ public class WifiConnectivityManager {
                 mWifiBlocklistMonitor.tryEnablingBlockedBssids(scanDetails);
         for (ScanDetail scanDetail : enabledDetails) {
             WifiConfiguration config = mConfigManager.getSavedNetworkForScanDetail(scanDetail);
-            if (config != null) {
+            if (config != null && config.getNetworkSelectionStatus().isNetworkTemporaryDisabled()) {
                 mConfigManager.updateNetworkSelectionStatus(config.networkId,
                         WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
             }
@@ -607,6 +608,7 @@ public class WifiConnectivityManager {
             handleScanResultsWithNoCandidate(handleScanResultsListener);
             return;
         }
+
         // We have an oem paid/private network request and device supports STA + STA, check if there
         // are oem paid/private suggestions.
         if ((mOemPaidConnectionAllowed || mOemPrivateConnectionAllowed)
@@ -623,7 +625,7 @@ public class WifiConnectivityManager {
             if (!secondaryCmmCandidates.isEmpty()) {
                 handleCandidatesFromScanResultsUsingSecondaryCmmIfAvailable(
                         listenerName, primaryCmmCandidates, secondaryCmmCandidates,
-                        handleScanResultsListener);
+                        handleScanResultsListener, scanDetails);
                 return;
             }
             // intentional fallthrough: No oem paid/private suggestions, fallback to legacy flow.
@@ -640,7 +642,7 @@ public class WifiConnectivityManager {
         }
 
         handleCandidatesFromScanResultsForPrimaryCmmUsingMbbIfAvailable(
-                listenerName, candidates, handleScanResultsListener);
+                listenerName, candidates, handleScanResultsListener, scanDetails);
     }
 
     /**
@@ -651,7 +653,8 @@ public class WifiConnectivityManager {
             @NonNull String listenerName,
             @NonNull List<WifiCandidates.Candidate> primaryCmmCandidates,
             @NonNull List<WifiCandidates.Candidate> secondaryCmmCandidates,
-            @NonNull HandleScanResultsListener handleScanResultsListener) {
+            @NonNull HandleScanResultsListener handleScanResultsListener,
+            @NonNull List<ScanDetail> scanDetails) {
         // Perform network selection among secondary candidates. Create a new copy.
         WifiConfiguration secondaryCmmCandidate =
                 mNetworkSelector.selectNetwork(secondaryCmmCandidates);
@@ -664,7 +667,8 @@ public class WifiConnectivityManager {
                     listenerName,
                     Stream.concat(primaryCmmCandidates.stream(), secondaryCmmCandidates.stream())
                             .collect(Collectors.toList()),
-                    handleScanResultsListener);
+                    handleScanResultsListener,
+                    scanDetails);
             return;
         }
         String secondaryCmmCandidateBssid =
@@ -683,7 +687,8 @@ public class WifiConnectivityManager {
                     listenerName,
                     Stream.concat(primaryCmmCandidates.stream(), secondaryCmmCandidates.stream())
                             .collect(Collectors.toList()),
-                    handleScanResultsListener);
+                    handleScanResultsListener,
+                    scanDetails);
             return;
         }
 
@@ -708,7 +713,8 @@ public class WifiConnectivityManager {
                                 Stream.concat(primaryCmmCandidates.stream(),
                                         secondaryCmmCandidates.stream())
                                         .collect(Collectors.toList()),
-                                handleScanResultsListener);
+                                handleScanResultsListener,
+                                scanDetails);
                         return;
                     }
                     // Don't use make before break for these connection requests.
@@ -740,7 +746,8 @@ public class WifiConnectivityManager {
      */
     private void handleCandidatesFromScanResultsForPrimaryCmmUsingMbbIfAvailable(
             @NonNull String listenerName, @NonNull List<WifiCandidates.Candidate> candidates,
-            @NonNull HandleScanResultsListener handleScanResultsListener) {
+            @NonNull HandleScanResultsListener handleScanResultsListener,
+            @NonNull List<ScanDetail> scanDetails) {
         WifiConfiguration candidate = mNetworkSelector.selectNetwork(candidates);
         if (candidate != null) {
             localLog(listenerName + ":  WNS candidate-" + candidate.SSID);
@@ -754,6 +761,7 @@ public class WifiConnectivityManager {
                     secondaryCcm.disconnect();
                 }
             }
+            mWifiCountryCode.updateCountryCodeFromScanResults(scanDetails, candidate);
             connectToNetworkForPrimaryCmmUsingMbbIfAvailable(candidate);
             handleScanResultsWithCandidate(handleScanResultsListener);
         } else {
@@ -1268,7 +1276,8 @@ public class WifiConnectivityManager {
             ExternalPnoScanRequestManager externalPnoScanRequestManager,
             @NonNull SsidTranslator ssidTranslator,
             WifiPermissionsUtil wifiPermissionsUtil,
-            WifiCarrierInfoManager wifiCarrierInfoManager) {
+            WifiCarrierInfoManager wifiCarrierInfoManager,
+            WifiCountryCode wifiCountryCode) {
         mContext = context;
         mScoringParams = scoringParams;
         mConfigManager = configManager;
@@ -1297,6 +1306,7 @@ public class WifiConnectivityManager {
         mSsidTranslator = ssidTranslator;
         mWifiPermissionsUtil = wifiPermissionsUtil;
         mWifiCarrierInfoManager = wifiCarrierInfoManager;
+        mWifiCountryCode = wifiCountryCode;
 
         // Listen for screen state change events.
         // TODO: We should probably add a shared broadcast receiver in the wifi stack which
@@ -2236,6 +2246,10 @@ public class WifiConnectivityManager {
         pnoSettings.min5GHzRssi = mScoringParams.getEntryRssi(ScanResult.BAND_5_GHZ_START_FREQ_MHZ);
         pnoSettings.min24GHzRssi = mScoringParams.getEntryRssi(
                 ScanResult.BAND_24_GHZ_START_FREQ_MHZ);
+        pnoSettings.scanIterations = mContext.getResources()
+                .getInteger(R.integer.config_wifiPnoScanIterations);
+        pnoSettings.scanIntervalMultiplier = mContext.getResources()
+                .getInteger(R.integer.config_wifiPnoScanIntervalMultiplier);
 
         // Initialize scan settings
         ScanSettings scanSettings = new ScanSettings();
@@ -2253,6 +2267,11 @@ public class WifiConnectivityManager {
     private @NonNull List<WifiConfiguration> getAllScanOptimizationNetworks() {
         List<WifiConfiguration> networks = mConfigManager.getSavedNetworks(-1);
         networks.addAll(mWifiNetworkSuggestionsManager.getAllScanOptimizationSuggestionNetworks());
+        if (mDeviceConfigFacade.includePasspointSsidsInPnoScans()) {
+            networks.addAll(mPasspointManager.getWifiConfigsForPasspointProfilesWithSsids());
+            networks.addAll(mWifiNetworkSuggestionsManager
+                    .getAllPasspointScanOptimizationSuggestionNetworks());
+        }
         // remove all saved but never connected, auto-join disabled, or network selection disabled
         // networks.
         networks.removeIf(config -> !config.allowAutojoin
@@ -2379,8 +2398,11 @@ public class WifiConnectivityManager {
     // Set up watchdog timer
     private void scheduleWatchdogTimer() {
         localLog("scheduleWatchdogTimer");
+        int alarmType = mContext.getResources().getBoolean(
+                R.bool.config_wifiPnoWatchdogCanWakeUp) ? AlarmManager.ELAPSED_REALTIME_WAKEUP
+                : AlarmManager.ELAPSED_REALTIME;
 
-        mAlarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+        mAlarmManager.set(alarmType,
                             mClock.getElapsedSinceBootMillis() + mContext.getResources().getInteger(
                                     R.integer.config_wifiPnoWatchdogIntervalMs),
                             WATCHDOG_TIMER_TAG,
@@ -2787,7 +2809,9 @@ public class WifiConnectivityManager {
         // Reset BSSID of last connection attempt and kick off
         // the watchdog timer if entering disconnected state.
         if (mWifiState == WIFI_STATE_DISCONNECTED) {
-            scheduleWatchdogTimer();
+            if (!SdkLevel.isAtLeastU()) {
+                scheduleWatchdogTimer();
+            }
             // Switch to the disconnected scanning schedule
             setSingleScanningSchedule(mDisconnectedSingleScanScheduleSec);
             setSingleScanningType(mDisconnectedSingleScanType);
@@ -3053,8 +3077,11 @@ public class WifiConnectivityManager {
      */
     private void retrieveWifiScanner() {
         if (mScanner != null) return;
-        mScanner = Objects.requireNonNull(WifiLocalServices.getService(WifiScannerInternal.class),
-                "Got a null instance of WifiScanner!");
+        mScanner = WifiLocalServices.getService(WifiScannerInternal.class);
+        if (mScanner == null) {
+            Log.wtf(TAG, "Got a null instance of WifiScanner!");
+            return;
+        }
         // Register for all single scan results
         mScanner.registerScanListener(mInternalAllSingleScanListener);
     }

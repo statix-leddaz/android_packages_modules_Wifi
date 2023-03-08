@@ -215,7 +215,6 @@ public class DeviceConfigFacadeTest extends WifiBaseTest {
                 mDeviceConfigFacade.getMinConfirmationDurationSendHighScoreMs());
         assertEquals(DeviceConfigFacade.DEFAULT_RSSI_THRESHOLD_NOT_SEND_LOW_SCORE_TO_CS_DBM,
                 mDeviceConfigFacade.getRssiThresholdNotSendLowScoreToCsDbm());
-        assertEquals(false, mDeviceConfigFacade.allowNonPersistentMacRandomizationOnOpenSsids());
         assertEquals(DeviceConfigFacade.DEFAULT_TRAFFIC_STATS_THRESHOLD_MAX_KB,
                 mDeviceConfigFacade.getTrafficStatsThresholdMaxKbyte());
         assertEquals(DeviceConfigFacade.DEFAULT_BANDWIDTH_ESTIMATOR_TIME_CONSTANT_LARGE_SEC,
@@ -227,6 +226,7 @@ public class DeviceConfigFacadeTest extends WifiBaseTest {
         assertEquals(false, mDeviceConfigFacade.isOobPseudonymEnabled());
         assertEquals(false, mDeviceConfigFacade.isApplicationQosPolicyApiEnabled());
         assertEquals(false, mDeviceConfigFacade.isAdjustPollRssiIntervalEnabled());
+        assertEquals(false, mDeviceConfigFacade.includePasspointSsidsInPnoScans());
     }
 
     /**
@@ -343,9 +343,6 @@ public class DeviceConfigFacadeTest extends WifiBaseTest {
                 anyInt())).thenReturn(1000);
         when(DeviceConfig.getInt(anyString(), eq("rssi_threshold_not_send_low_score_to_cs_dbm"),
                 anyInt())).thenReturn(-70);
-        when(DeviceConfig.getBoolean(anyString(),
-                eq("allow_enhanced_mac_randomization_on_open_ssids"),
-                anyBoolean())).thenReturn(true);
         when(DeviceConfig.getInt(anyString(), eq("traffic_stats_threshold_max_kbyte"),
                 anyInt())).thenReturn(5000);
         when(DeviceConfig.getInt(anyString(), eq("bandwidth_estimator_time_constant_large_sec"),
@@ -367,6 +364,8 @@ public class DeviceConfigFacadeTest extends WifiBaseTest {
         when(DeviceConfig.getBoolean(anyString(), eq("application_qos_policy_api_enabled"),
                 anyBoolean())).thenReturn(true);
         when(DeviceConfig.getBoolean(anyString(), eq("adjust_poll_rssi_interval_enabled"),
+                anyBoolean())).thenReturn(true);
+        when(DeviceConfig.getBoolean(anyString(), eq("include_passpoint_ssids_in_pno_scans"),
                 anyBoolean())).thenReturn(true);
         mOnPropertiesChangedListenerCaptor.getValue().onPropertiesChanged(null);
 
@@ -430,7 +429,6 @@ public class DeviceConfigFacadeTest extends WifiBaseTest {
         assertEquals(4000, mDeviceConfigFacade.getMinConfirmationDurationSendLowScoreMs());
         assertEquals(1000, mDeviceConfigFacade.getMinConfirmationDurationSendHighScoreMs());
         assertEquals(-70, mDeviceConfigFacade.getRssiThresholdNotSendLowScoreToCsDbm());
-        assertEquals(true, mDeviceConfigFacade.allowNonPersistentMacRandomizationOnOpenSsids());
         assertEquals(5000, mDeviceConfigFacade.getTrafficStatsThresholdMaxKbyte());
         assertEquals(30, mDeviceConfigFacade.getBandwidthEstimatorLargeTimeConstantSec());
         assertEquals(true, mDeviceConfigFacade.isInterfaceFailureBugreportEnabled());
@@ -440,5 +438,6 @@ public class DeviceConfigFacadeTest extends WifiBaseTest {
         assertEquals(true, mDeviceConfigFacade.isOobPseudonymEnabled());
         assertEquals(true, mDeviceConfigFacade.isApplicationQosPolicyApiEnabled());
         assertEquals(true, mDeviceConfigFacade.isAdjustPollRssiIntervalEnabled());
+        assertEquals(true, mDeviceConfigFacade.includePasspointSsidsInPnoScans());
     }
 }

@@ -291,6 +291,16 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public void addWifiNetworkStateChangedListener(IWifiNetworkStateChangedListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void removeWifiNetworkStateChangedListener(IWifiNetworkStateChangedListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void restartWifiSubsystem() {
         throw new UnsupportedOperationException();
     }
@@ -525,7 +535,34 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public void enableTdlsWithRemoteIpAddress(String remoteIPAddress, boolean enable,
+            @NonNull IBooleanListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void enableTdlsWithMacAddress(String remoteMacAddress, boolean enable) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void enableTdlsWithRemoteMacAddress(String remoteMacAddress, boolean enable,
+            @NonNull IBooleanListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void isTdlsOperationCurrentlyAvailable(@NonNull IBooleanListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getMaxSupportedConcurrentTdlsSessions(@NonNull IIntegerListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getNumberOfEnabledTdlsSessions(@NonNull IIntegerListener listener) {
         throw new UnsupportedOperationException();
     }
 
@@ -956,13 +993,13 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
-    public void addQosPolicy(@NonNull QosPolicyParams policyParams, @NonNull IBinder binder,
-            @NonNull String packageName, @NonNull IIntegerListener listener) {
+    public void addQosPolicies(@NonNull List<QosPolicyParams> policyParamsList,
+            @NonNull IBinder binder, @NonNull String packageName, @NonNull IListListener listener) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public void removeQosPolicy(int policyId, @NonNull String packageName) {
+    public void removeQosPolicies(@NonNull int[] policyIdList, @NonNull String packageName) {
         throw new UnsupportedOperationException();
     }
 
@@ -982,4 +1019,25 @@ public class BaseWifiService extends IWifiManager.Stub {
             String packageName) {
         throw new UnsupportedOperationException();
     }
+
+    @Override
+    public void setLinkLayerStatsPollingInterval(int intervalMs) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getLinkLayerStatsPollingInterval(@NonNull IIntegerListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void setMloMode(@WifiManager.MloMode int mode, IBooleanListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getMloMode(IIntegerListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
 }

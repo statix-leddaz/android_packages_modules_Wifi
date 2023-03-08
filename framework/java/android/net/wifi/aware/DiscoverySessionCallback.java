@@ -321,10 +321,9 @@ public class DiscoverySessionCallback {
      *
      * @param peerHandle The pairing peer handle.
      * @param alias      This is the paired device alias set by the caller.
-     *                   {@link DiscoverySession#initiatePairingRequest(PeerHandle, String, String)}
+     *                   {@link DiscoverySession#initiatePairingRequest(PeerHandle, String, int, String)}
      *                   or
-     *                   {@link DiscoverySession#respondToPairingRequest(int, PeerHandle, String,
-     *                   String)}
+     *                   {@link DiscoverySession#acceptPairingRequest(int, PeerHandle, String, int, String)}
      */
     public void onPairingSetupSucceeded(@NonNull PeerHandle peerHandle,
             @NonNull String alias) {
@@ -345,10 +344,9 @@ public class DiscoverySessionCallback {
      *
      * @param peerHandle The pairing peer handle
      * @param alias      This is the paired device alias set by the caller.
-     *                   {@link DiscoverySession#initiatePairingRequest(PeerHandle, String, String)}
+     *                   {@link DiscoverySession#initiatePairingRequest(PeerHandle, String, int, String)}
      *                   or
-     *                   {@link DiscoverySession#respondToPairingRequest(int, PeerHandle, String,
-     *                   String)}
+     *                   {@link DiscoverySession#acceptPairingRequest(int, PeerHandle, String, int, String)}
      */
     public void onPairingVerificationSucceed(@NonNull PeerHandle peerHandle,
             @NonNull String alias){
@@ -369,10 +367,9 @@ public class DiscoverySessionCallback {
      * The follow-up out-of-band bootstrapping can start
      *
      * @param peerHandle The bootstrapping peer handle
-     * @param accept True if the bootstrapping method is accepted by the peer, false otherwise
-     * @param method The bootstrapping method accept by the peer
+     * @param method     The bootstrapping method accept by the peer
      */
-    public void onBootstrappingSucceeded(@NonNull PeerHandle peerHandle, boolean accept,
+    public void onBootstrappingSucceeded(@NonNull PeerHandle peerHandle,
             @AwarePairingConfig.BootstrappingMethod int method){
 
     }

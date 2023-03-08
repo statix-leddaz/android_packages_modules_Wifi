@@ -23,6 +23,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.hardware.wifi.WifiStatusCode;
 import android.net.MacAddress;
 import android.net.apf.ApfCapabilities;
 import android.net.wifi.ScanResult;
@@ -1848,6 +1849,35 @@ public class WifiVendorHal {
             WifiStaIface iface = getStaIface(ifaceName);
             if (iface == null) return false;
             return iface.setDtimMultiplier(multiplier);
+        }
+    }
+
+    /**
+     * Set the Multi-Link Operation mode.
+     *
+     * @param mode Multi-Link operation mode {@link android.net.wifi.WifiManager.MloMode}.
+     * @return {@code true} if success, otherwise {@code false}.
+     */
+    public @WifiStatusCode int setMloMode(@WifiManager.MloMode int mode) {
+        synchronized (sLock) {
+            if (mWifiChip == null) return WifiStatusCode.ERROR_WIFI_CHIP_INVALID;
+            return mWifiChip.setMloMode(mode);
+        }
+    }
+
+    /**
+     * Enable/disable the feature of allowing current STA-connected channel for WFA GO, SAP and
+     * Aware when the regulatory allows.
+     *
+     * @param enableIndoorChannel enable or disable indoor channel.
+     * @param enableDfsChannel    enable or disable DFS channel.
+     * @return true if the operation succeeded, false if there is an error in Hal.
+     */
+    public boolean enableStaChannelForPeerNetwork(boolean enableIndoorChannel,
+            boolean enableDfsChannel) {
+        synchronized (sLock) {
+            if (mWifiChip == null) return false;
+            return mWifiChip.enableStaChannelForPeerNetwork(enableIndoorChannel, enableDfsChannel);
         }
     }
 }

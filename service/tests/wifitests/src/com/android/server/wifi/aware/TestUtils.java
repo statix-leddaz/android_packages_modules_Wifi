@@ -107,7 +107,7 @@ public class TestUtils {
         public boolean initiateDataPath(short transactionId, int peerId, int channelRequestType,
                 int channel, byte[] peer, String interfaceName,
                 boolean isOutOfBand, byte[] appInfo, Capabilities capabilities,
-                WifiAwareDataPathSecurityConfig securityConfig) {
+                WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId) {
             addTransactionId(transactionId);
             return true;
         }
@@ -115,7 +115,7 @@ public class TestUtils {
         public boolean respondToDataPathRequest(short transactionId, boolean accept, int ndpId,
                 String interfaceName, byte[] appInfo,
                 boolean isOutOfBand, Capabilities capabilities,
-                WifiAwareDataPathSecurityConfig securityConfig) {
+                WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId) {
             addTransactionId(transactionId);
             return true;
         }
@@ -127,14 +127,14 @@ public class TestUtils {
 
         public boolean respondToPairingRequest(short transactionId, int pairingId, boolean accept,
                 byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-                String password, int akm) {
+                String password, int akm, int cipherSuite) {
             addTransactionId(transactionId);
             return true;
         }
 
         public boolean initiatePairing(short transactionId, int peerId, byte[] peer,
                 byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-                String password, int akm) {
+                String password, int akm, int cipherSuite) {
             addTransactionId(transactionId);
             return true;
         }

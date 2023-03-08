@@ -241,6 +241,18 @@ public class WifiScanner {
     public @interface RnrSetting {}
 
     /**
+     * Maximum length in bytes of all vendor specific information elements (IEs) allowed to set.
+     * @hide
+     */
+    public static final int WIFI_SCANNER_SETTINGS_VENDOR_ELEMENTS_MAX_LEN = 512;
+
+    /**
+     * Information Element head: id (1 byte) + length (1 byte)
+     * @hide
+     */
+    public static final int WIFI_IE_HEAD_LEN = 2;
+
+    /**
      * Generic action callback invocation interface
      *  @hide
      */
@@ -479,6 +491,14 @@ public class WifiScanner {
         @NonNull
         @RequiresPermission(android.Manifest.permission.NETWORK_STACK)
         public final List<HiddenNetwork> hiddenNetworks = new ArrayList<>();
+
+        /**
+         * vendor IEs -- list of ScanResult.InformationElement, configured by App
+         * see {@link #setVendorIes(List)}
+         */
+        @NonNull
+        private List<ScanResult.InformationElement> mVendorIes = new ArrayList<>();
+
         /**
          * period of background scan; in millisecond, 0 => single shot scan
          * @deprecated Background scan support has always been hardware vendor dependent. This
@@ -638,6 +658,51 @@ public class WifiScanner {
             return mRnrSetting;
         }
 
+        /**
+         * Set vendor IEs in scan probe req.
+         *
+         * @param vendorIes List of ScanResult.InformationElement configured by App.
+         */
+        @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        public void setVendorIes(@NonNull List<ScanResult.InformationElement> vendorIes) {
+            if (!SdkLevel.isAtLeastU()) {
+                throw new UnsupportedOperationException();
+            }
+
+            mVendorIes.clear();
+            int totalBytes = 0;
+            for (ScanResult.InformationElement e : vendorIes) {
+                if (e.id != ScanResult.InformationElement.EID_VSA) {
+                    throw new IllegalArgumentException("received InformationElement which is not "
+                            + "a Vendor Specific IE (VSIE). VSIEs have an ID = ScanResult"
+                            + ".InformationElement.EID_VSA.");
+                }
+                if (e.bytes == null || e.bytes.length > 0xff) {
+                    throw new IllegalArgumentException("received InformationElement whose payload "
+                            + "is null or size is greater than 255.");
+                }
+                // The total bytes of an IE is EID (1 byte) + length (1 byte) + payload length.
+                totalBytes += WIFI_IE_HEAD_LEN + e.bytes.length;
+                if (totalBytes > WIFI_SCANNER_SETTINGS_VENDOR_ELEMENTS_MAX_LEN) {
+                    throw new IllegalArgumentException(
+                            "received InformationElement whose total size is greater than "
+                                    + WIFI_SCANNER_SETTINGS_VENDOR_ELEMENTS_MAX_LEN + ".");
+                }
+            }
+            mVendorIes.addAll(vendorIes);
+        }
+
+        /**
+         * See {@link #setVendorIes(List)}
+         */
+        @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        public @NonNull List<ScanResult.InformationElement> getVendorIes() {
+            if (!SdkLevel.isAtLeastU()) {
+                throw new UnsupportedOperationException();
+            }
+            return mVendorIes;
+        }
+
         /** Implement the Parcelable interface {@hide} */
         public int describeContents() {
             return 0;
@@ -672,9 +737,10 @@ public class WifiScanner {
             for (HiddenNetwork hiddenNetwork : hiddenNetworks) {
                 dest.writeString(hiddenNetwork.ssid);
             }
+            dest.writeTypedList(mVendorIes);
         }
 
-        /** Implement the Parcelable interface {@hide} */
+        /** Implement the Parcelable interface */
         public static final @NonNull Creator<ScanSettings> CREATOR =
                 new Creator<ScanSettings>() {
                     public ScanSettings createFromParcel(Parcel in) {
@@ -707,6 +773,8 @@ public class WifiScanner {
                             String ssid = in.readString();
                             settings.hiddenNetworks.add(new HiddenNetwork(ssid));
                         }
+                        in.readTypedList(settings.mVendorIes,
+                                ScanResult.InformationElement.CREATOR);
                         return settings;
                     }
 
@@ -1069,6 +1137,10 @@ public class WifiScanner {
         public int min24GHzRssi;
         /** Minimum 6GHz RSSI for a BSSID to be considered */
         public int min6GHzRssi;
+        /** Iterations of Pno scan */
+        public int scanIterations;
+        /** Multiplier of Pno scan interval */
+        public int scanIntervalMultiplier;
         /** Pno Network filter list */
         public PnoNetwork[] networkList;
 
@@ -1083,6 +1155,8 @@ public class WifiScanner {
             dest.writeInt(min5GHzRssi);
             dest.writeInt(min24GHzRssi);
             dest.writeInt(min6GHzRssi);
+            dest.writeInt(scanIterations);
+            dest.writeInt(scanIntervalMultiplier);
             if (networkList != null) {
                 dest.writeInt(networkList.length);
                 for (int i = 0; i < networkList.length; i++) {
@@ -1105,6 +1179,8 @@ public class WifiScanner {
                         settings.min5GHzRssi = in.readInt();
                         settings.min24GHzRssi = in.readInt();
                         settings.min6GHzRssi = in.readInt();
+                        settings.scanIterations = in.readInt();
+                        settings.scanIntervalMultiplier = in.readInt();
                         int numNetworks = in.readInt();
                         settings.networkList = new PnoNetwork[numNetworks];
                         for (int i = 0; i < numNetworks; i++) {
@@ -1537,6 +1613,20 @@ public class WifiScanner {
             throw e.rethrowFromSystemServer();
         } finally {
             removeListener(listener);
+        }
+    }
+
+    /**
+     * Enable verbose logging. For internal use by wifi framework only.
+     * @param enabled whether verbose logging is enabled
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.NETWORK_SETTINGS)
+    public void enableVerboseLogging(boolean enabled) {
+        try {
+            mService.enableVerboseLogging(enabled);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 

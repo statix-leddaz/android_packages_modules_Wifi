@@ -577,6 +577,7 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
     /**
      * Initiates setting up a data-path between device and peer. Security is provided by either
      * PMK or Passphrase (not both) - if both are null then an open (unencrypted) link is set up.
+     *
      * @param transactionId      Transaction ID for the transaction - used in the async callback to
      *                           match with the original request.
      * @param peerId             ID of the peer ID to associate the data path with. A value of 0
@@ -587,16 +588,17 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
      * @param channel            The channel on which to set up the data-path.
      * @param peer               The MAC address of the peer to create a connection with.
      * @param interfaceName      The interface on which to create the data connection.
-     * @param isOutOfBand Is the data-path out-of-band (i.e. without a corresponding Aware discovery
-     *                    session).
-     * @param appInfo Arbitrary binary blob transmitted to the peer.
-     * @param capabilities The capabilities of the firmware.
-     * @param securityConfig Security config to encrypt the data-path
+     * @param isOutOfBand        Is the data-path out-of-band (i.e. without a corresponding Aware
+     *                           discovery
+     *                           session).
+     * @param appInfo            Arbitrary binary blob transmitted to the peer.
+     * @param capabilities       The capabilities of the firmware.
+     * @param securityConfig     Security config to encrypt the data-path
      */
     public boolean initiateDataPath(short transactionId, int peerId, int channelRequestType,
             int channel, byte[] peer, String interfaceName,
             boolean isOutOfBand, byte[] appInfo, Capabilities capabilities,
-            WifiAwareDataPathSecurityConfig securityConfig) {
+            WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId) {
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "initiateDataPath: transactionId=" + transactionId + ", peerId=" + peerId
                     + ", channelRequestType=" + channelRequestType + ", channel=" + channel
@@ -616,7 +618,8 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
         try {
             MacAddress peerMac = MacAddress.fromBytes(peer);
             return iface.initiateDataPath(transactionId, peerId, channelRequestType, channel,
-                    peerMac, interfaceName, isOutOfBand, appInfo, capabilities, securityConfig);
+                    peerMac, interfaceName, isOutOfBand, appInfo, capabilities, securityConfig,
+                    pubSubId);
         } catch (IllegalArgumentException e) {
             Log.e(TAG, "Invalid peer mac received: " + Arrays.toString(peer));
             return false;
@@ -626,22 +629,24 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
     /**
      * Responds to a data request from a peer. Security is provided by either PMK or Passphrase (not
      * both) - if both are null then an open (unencrypted) link is set up.
-     * @param transactionId Transaction ID for the transaction - used in the async callback to
-     *                      match with the original request.
-     * @param accept Accept (true) or reject (false) the original call.
-     * @param ndpId The NDP (Aware data path) ID. Obtained from the request callback.
-     * @param interfaceName The interface on which the data path will be setup. Obtained from the
-*                      request callback.
-     * @param appInfo Arbitrary binary blob transmitted to the peer.
-     * @param isOutOfBand Is the data-path out-of-band (i.e. without a corresponding Aware discovery
-*                    session).
-     * @param capabilities The capabilities of the firmware.
+     *
+     * @param transactionId  Transaction ID for the transaction - used in the async callback to
+     *                       match with the original request.
+     * @param accept         Accept (true) or reject (false) the original call.
+     * @param ndpId          The NDP (Aware data path) ID. Obtained from the request callback.
+     * @param interfaceName  The interface on which the data path will be setup. Obtained from the
+     *                       request callback.
+     * @param appInfo        Arbitrary binary blob transmitted to the peer.
+     * @param isOutOfBand    Is the data-path out-of-band (i.e. without a corresponding Aware
+     *                       discovery
+     *                       session).
+     * @param capabilities   The capabilities of the firmware.
      * @param securityConfig Security config to encrypt the data-path
      */
     public boolean respondToDataPathRequest(short transactionId, boolean accept, int ndpId,
             String interfaceName, byte[] appInfo,
             boolean isOutOfBand, Capabilities capabilities,
-            WifiAwareDataPathSecurityConfig securityConfig) {
+            WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId) {
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "respondToDataPathRequest: transactionId=" + transactionId + ", accept="
                     + accept + ", int ndpId=" + ndpId + ", interfaceName=" + interfaceName
@@ -656,7 +661,7 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
             return false;
         }
         return iface.respondToDataPathRequest(transactionId, accept, ndpId, interfaceName, appInfo,
-                isOutOfBand, capabilities, securityConfig);
+                isOutOfBand, capabilities, securityConfig, pubSubId);
     }
 
     /**
@@ -681,21 +686,43 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
     }
 
     /**
+     * Terminate an existing pairing setup
+     *
+     * @param transactionId Transaction ID for the transaction - used in the async callback to
+     *                      match with the original request.
+     * @param pairId The id of the pairing session
+     */
+    public boolean endPairing(short transactionId, int pairId) {
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "endPairing: transactionId=" + transactionId + ", ndpId=" + pairId);
+        }
+        recordTransactionId(transactionId);
+
+        WifiNanIface iface = mHal.getWifiNanIface();
+        if (iface == null) {
+            Log.e(TAG, "endDataPath: null interface");
+            return false;
+        }
+        return iface.endPairing(transactionId, pairId);
+    }
+
+    /**
      * Initiate a NAN pairing request for this publish/subscribe session
-     * @param transactionId Transaction ID for the transaction - used in the
-     *            async callback to match with the original request.
-     * @param peerId ID of the peer. Obtained through previous communication (a
-     *            match indication).
-     * @param password credential for the pairing setup
-     * @param requestType Setup or verification
+     *
+     * @param transactionId      Transaction ID for the transaction - used in the
+     *                           async callback to match with the original request.
+     * @param peerId             ID of the peer. Obtained through previous communication (a
+     *                           match indication).
      * @param pairingIdentityKey NAN identity key
-     * @param pmk credential for the pairing verification
-     * @param akm Key exchange method is used for pairing
+     * @param requestType        Setup or verification
+     * @param pmk                credential for the pairing verification
+     * @param password           credential for the pairing setup
+     * @param akm                Key exchange method is used for pairing
      * @return True is the request send succeed.
      */
     public boolean initiatePairing(short transactionId, int peerId, byte[] peer,
             byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-            String password, int akm) {
+            String password, int akm, int cipherSuite) {
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "initiatePairing: transactionId=" + transactionId + ", peerId=" + peerId
                     + ", requestType=" + requestType + ", enablePairingCache=" + enablePairingCache
@@ -711,8 +738,8 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
 
         try {
             MacAddress peerMac = MacAddress.fromBytes(peer);
-            return iface.initiatePairing(transactionId, peerId, peerMac,
-                    pairingIdentityKey, enablePairingCache, requestType, pmk, password, akm);
+            return iface.initiatePairing(transactionId, peerId, peerMac, pairingIdentityKey,
+                    enablePairingCache, requestType, pmk, password, akm, cipherSuite);
         } catch (IllegalArgumentException e) {
             Log.e(TAG, "Invalid peer mac received: " + Arrays.toString(peer));
             return false;
@@ -721,20 +748,21 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
 
     /**
      * Response to a NAN pairing request for this from this session
-     * @param transactionId Transaction ID for the transaction - used in the
-     *            async callback to match with the original request.
-     * @param pairingId The id of the current pairing session
-     * @param accept True if accpect, false otherwise
-     * @param password credential for the pairing setup
-     * @param requestType Setup or verification
+     *
+     * @param transactionId      Transaction ID for the transaction - used in the
+     *                           async callback to match with the original request.
+     * @param pairingId          The id of the current pairing session
+     * @param accept             True if accpect, false otherwise
      * @param pairingIdentityKey NAN identity key
-     * @param pmk credential for the pairing verification
-     * @param akm Key exchange method is used for pairing
+     * @param requestType        Setup or verification
+     * @param pmk                credential for the pairing verification
+     * @param password           credential for the pairing setup
+     * @param akm                Key exchange method is used for pairing
      * @return True is the request send succeed.
      */
     public boolean respondToPairingRequest(short transactionId, int pairingId, boolean accept,
             byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-            String password, int akm) {
+            String password, int akm, int cipherSuite) {
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "respondToDataPathRequest: transactionId=" + transactionId + ", accept="
                     + accept + ", int pairingId=" + pairingId
@@ -748,8 +776,8 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
             Log.e(TAG, "respondToDataPathRequest: null interface");
             return false;
         }
-        return iface.respondToPairingRequest(transactionId, pairingId, accept,
-                pairingIdentityKey, enablePairingCache, requestType, pmk, password, akm);
+        return iface.respondToPairingRequest(transactionId, pairingId, accept, pairingIdentityKey,
+                enablePairingCache, requestType, pmk, password, akm, cipherSuite);
     }
 
     /**

@@ -45,7 +45,30 @@ import java.util.NoSuchElementException;
 public final class WifiUsabilityStatsEntry implements Parcelable {
     private static final String TAG = "WifiUsabilityStatsEntry";
 
-    /** {@hide} */
+    /** @hide */
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef(prefix = {"LINK_STATE_"}, value = {
+            LINK_STATE_UNKNOWN,
+            LINK_STATE_NOT_IN_USE,
+            LINK_STATE_IN_USE})
+    public @interface LinkState {}
+
+    /** Chip does not support reporting the state of the link. */
+    public static final int LINK_STATE_UNKNOWN = 0;
+    /**
+     * Link has not been in use since last report. It is placed in power save. All management,
+     * control and data frames for the MLO connection are carried over other links. In this state
+     * the link will not listen to beacons even in DTIM period and does not perform any
+     * GTK/IGTK/BIGTK updates but remains associated.
+     */
+    public static final int LINK_STATE_NOT_IN_USE = 1;
+    /**
+     * Link is in use. In presence of traffic, it is set to be power active. When the traffic
+     * stops, the link will go into power save mode and will listen for beacons every DTIM period.
+     */
+    public static final int LINK_STATE_IN_USE = 2;
+
+    /** @hide */
     @Retention(RetentionPolicy.SOURCE)
     @IntDef(prefix = {"PROBE_STATUS_"}, value = {
             PROBE_STATUS_UNKNOWN,
@@ -626,6 +649,8 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
     public static final class LinkStats implements Parcelable {
         /** Link identifier (0 to 14) */
         private final int mLinkId;
+        /** Link state as listed {@link LinkState} */
+        private final @LinkState int mState;
         /** Radio identifier */
         private final int mRadioId;
         /** The RSSI (in dBm) at the sample time */
@@ -654,6 +679,7 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
         /** @hide */
         public LinkStats() {
             mLinkId = MloLink.INVALID_MLO_LINK_ID;
+            mState = LINK_STATE_UNKNOWN;
             mRssi = WifiInfo.INVALID_RSSI;
             mRadioId = RadioStats.INVALID_RADIO_ID;
             mTxLinkSpeedMbps = WifiInfo.LINK_SPEED_UNKNOWN;
@@ -686,11 +712,12 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
          * @param contentionTimeStats         Data packet contention time statistics.
          * @param rateStats                   Rate information.
          */
-        public LinkStats(int linkId, int radioId, int rssi, int txLinkSpeedMpbs,
+        public LinkStats(int linkId, int state, int radioId, int rssi, int txLinkSpeedMpbs,
                 int rxLinkSpeedMpbs, long totalTxSuccess, long totalTxRetries, long totalTxBad,
                 long totalRxSuccess, long totalBeaconRx, int timeSliceDutyCycleInPercent,
                 ContentionTimeStats[] contentionTimeStats, RateStats[] rateStats) {
             this.mLinkId = linkId;
+            this.mState = state;
             this.mRadioId = radioId;
             this.mRssi = rssi;
             this.mTxLinkSpeedMbps = txLinkSpeedMpbs;
@@ -713,6 +740,7 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
         @Override
         public void writeToParcel(@NonNull Parcel dest, int flags) {
             dest.writeInt(mLinkId);
+            dest.writeInt(mState);
             dest.writeInt(mRadioId);
             dest.writeInt(mRssi);
             dest.writeInt(mTxLinkSpeedMbps);
@@ -732,7 +760,7 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
         public static final Creator<LinkStats> CREATOR =
                 new Creator<>() {
                     public LinkStats createFromParcel(Parcel in) {
-                        return new LinkStats(in.readInt(), in.readInt(), in.readInt(),
+                        return new LinkStats(in.readInt(), in.readInt(), in.readInt(), in.readInt(),
                                 in.readInt(), in.readInt(), in.readLong(), in.readLong(),
                                 in.readLong(), in.readLong(), in.readLong(), in.readInt(),
                                 in.createTypedArray(ContentionTimeStats.CREATOR),
@@ -889,12 +917,29 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
         return result;
     }
 
+    /**
+     * Get link state. Refer {@link LinkState}.
+     *
+     * @param linkId Identifier of the link.
+     * @return Link state.
+     * @throws NoSuchElementException if linkId is invalid.
+     */
+    public @LinkState int getLinkState(int linkId) {
+        if (mLinkStats.contains(linkId)) return mLinkStats.get(linkId).mState;
+        throw new NoSuchElementException("linkId is invalid - " + linkId);
+    }
+
     /** Absolute milliseconds from device boot when these stats were sampled */
     public long getTimeStampMillis() {
         return mTimeStampMillis;
     }
 
-    /** The RSSI (in dBm) at the sample time */
+    /**
+     * The RSSI (in dBm) at the sample time. In case of Multi Link Operation (MLO), returned RSSI is
+     * the highest of all associated links.
+     *
+     * @return the RSSI.
+     */
     public int getRssi() {
         return mRssi;
     }
@@ -923,7 +968,11 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
         throw new NoSuchElementException("linkId is invalid - " + linkId);
     }
 
-    /** Link speed at the sample time in Mbps */
+    /** Link speed at the sample time in Mbps. In case of Multi Link Operation (MLO), returned value
+     *  is the current link speed of the associated link with the highest RSSI.
+     *
+     * @return Link speed in Mpbs or {@link WifiInfo#LINK_SPEED_UNKNOWN} if link speed is unknown.
+     */
     public int getLinkSpeedMbps() {
         return mLinkSpeedMbps;
     }
@@ -932,7 +981,8 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
      * Tx Link speed of the link at the sample time in Mbps.
      *
      * @param linkId Identifier of the link.
-     * @return Transmit link speed in Mpbs.
+     * @return Transmit link speed in Mpbs or {@link WifiInfo#LINK_SPEED_UNKNOWN} if link speed
+     * is unknown.
      * @throws NoSuchElementException if linkId is invalid.
      */
     public int getTxLinkSpeedMbps(int linkId) {
@@ -940,7 +990,13 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
         throw new NoSuchElementException("linkId is invalid - " + linkId);
     }
 
-    /** The total number of tx success counted from the last radio chip reset */
+    /**
+     * The total number of tx success counted from the last radio chip reset.  In case of Multi
+     * Link Operation (MLO), the returned value is the sum of total number of tx success on all
+     * associated links.
+     *
+     * @return total tx success count.
+     */
     public long getTotalTxSuccess() {
         return mTotalTxSuccess;
     }
@@ -957,7 +1013,13 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
         throw new NoSuchElementException("linkId is invalid - " + linkId);
     }
 
-    /** The total number of MPDU data packet retries counted from the last radio chip reset */
+    /**
+     * The total number of MPDU data packet retries counted from the last radio chip reset. In
+     * case of Multi Link Operation (MLO), the returned value is the sum of total number of MPDU
+     * data packet retries on all associated links.
+     *
+     * @return total tx retries count.
+     */
     public long getTotalTxRetries() {
         return mTotalTxRetries;
     }
@@ -975,7 +1037,13 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
         throw new NoSuchElementException("linkId is invalid - " + linkId);
     }
 
-    /** The total number of tx bad counted from the last radio chip reset */
+    /**
+     * The total number of tx bad counted from the last radio chip reset. In case of Multi Link
+     * Operation (MLO), the returned value is the sum of total number of tx bad on all associated
+     * links.
+     *
+     * @return total tx bad count.
+     */
     public long getTotalTxBad() {
         return mTotalTxBad;
     }
@@ -992,7 +1060,13 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
         throw new NoSuchElementException("linkId is invalid - " + linkId);
     }
 
-    /** The total number of rx success counted from the last radio chip reset */
+    /**
+     * The total number of rx success counted from the last radio chip reset. In case of Multi
+     * Link Operation (MLO), the returned value is the sum of total number of rx success on all
+     * associated links.
+     *
+     * @return total rx success count.
+     */
     public long getTotalRxSuccess() {
         return mTotalRxSuccess;
     }
@@ -1066,7 +1140,13 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
         return mTotalRadioOnFreqTimeMillis;
     }
 
-    /** The total number of beacons received from the last radio chip reset */
+    /**
+     * The total number of beacons received from the last radio chip reset. In case of Multi Link
+     * Operation (MLO), the returned value is the beacons received on the associated link with
+     * the highest RSSI.
+     *
+     * @return total beacons received.
+     */
     public long getTotalBeaconRx() {
         return mTotalBeaconRx;
     }
@@ -1098,7 +1178,13 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
         return mProbeMcsRateSinceLastUpdate;
     }
 
-    /** Rx link speed at the sample time in Mbps */
+    /**
+     * Rx link speed at the sample time in Mbps. In case of Multi Link Operation (MLO), returned
+     * value is the receive link speed of the associated link with the highest RSSI.
+     *
+     * @return Receive link speed in Mbps or {@link WifiInfo#LINK_SPEED_UNKNOWN} if link speed
+     * is unknown.
+     */
     public int getRxLinkSpeedMbps() {
         return mRxLinkSpeedMbps;
     }
@@ -1107,7 +1193,8 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
      * Rx Link speed of the link at the sample time in Mbps.
      *
      * @param linkId Identifier of the link.
-     * @return Receive link speed in Mbps.
+     * @return Receive link speed in Mbps or {@link WifiInfo#LINK_SPEED_UNKNOWN} if link speed
+     * is unknown.
      * @throws NoSuchElementException if linkId is invalid.
      */
     public int getRxLinkSpeedMbps(int linkId) {
@@ -1117,9 +1204,11 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
 
     /**
      * Duty cycle of the connection.
-     * if this connection is being served using time slicing on a radio with one or more interfaces
+     * If this connection is being served using time slicing on a radio with one or more interfaces
      * (i.e MCC), then this method returns the duty cycle assigned to this interface in percent.
      * If no concurrency or not using time slicing during concurrency (i.e SCC or DBS), set to 100.
+     * In case of Multi Link Operation (MLO), returned value is the duty cycle of the associated
+     * link with the highest RSSI.
      *
      * @return duty cycle in percent if known.
      * @throws NoSuchElementException if the duty cycle is unknown (not provided by the HAL).
@@ -1133,9 +1222,10 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
 
     /**
      * Duty cycle of the connection for a link.
-     * if this connection is being served using time slicing on a radio with one or more interfaces
-     * (i.e MCC), then this method returns the duty cycle assigned to this interface in percent.
-     * If no concurrency or not using time slicing during concurrency (i.e SCC or DBS), set to 100.
+     * If this connection is being served using time slicing on a radio with one or more interfaces
+     * (i.e MCC) and links, then this method returns the duty cycle assigned to this interface in
+     * percent for the link. If no concurrency or not using time slicing during concurrency (i.e SCC
+     * or DBS), set to 100.
      *
      * @param linkId Identifier of the link.
      * @return duty cycle in percent if known.
@@ -1153,7 +1243,10 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
     }
 
     /**
-     * Data packet contention time statistics for Access Category.
+     * Data packet contention time statistics for Access Category. In case of Multi Link
+     * Operation (MLO), the returned value is the contention stats of the associated link with the
+     * highest RSSI.
+     *
      * @param ac The access category, see {@link WmeAccessCategory}.
      * @return The contention time statistics, see {@link ContentionTimeStats}
      */
@@ -1194,7 +1287,9 @@ public final class WifiUsabilityStatsEntry implements Parcelable {
 
     /**
      * Rate information and statistics, which are ordered by preamble, modulation and coding scheme
-     * (MCS), and number of spatial streams (NSS).
+     * (MCS), and number of spatial streams (NSS). In case of Multi Link Operation (MLO), the
+     * returned rate information is that of the associated link with the highest RSSI.
+     *
      * @return A list of rate statistics in the form of a list of {@link RateStats} objects.
      *         Depending on the link type, the list is created following the order of:
      *         - HT (IEEE Std 802.11-2020, Section 19): LEGACY rates (1Mbps, ..., 54Mbps),

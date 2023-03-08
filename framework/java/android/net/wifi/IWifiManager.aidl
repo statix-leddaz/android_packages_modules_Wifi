@@ -37,6 +37,7 @@ import android.net.wifi.ILocalOnlyConnectionStatusListener;
 import android.net.wifi.INetworkRequestMatchCallback;
 import android.net.wifi.IOnWifiActivityEnergyInfoListener;
 import android.net.wifi.IOnWifiDriverCountryCodeChangedListener;
+import android.net.wifi.IWifiNetworkStateChangedListener;
 import android.net.wifi.IOnWifiUsabilityStatsListener;
 import android.net.wifi.IPnoScanResultsCallback;
 import android.net.wifi.IScanResultsCallback;
@@ -167,6 +168,10 @@ interface IWifiManager
     void unregisterDriverCountryCodeChangedListener(
             in IOnWifiDriverCountryCodeChangedListener listener);
 
+    void addWifiNetworkStateChangedListener(in IWifiNetworkStateChangedListener listener);
+
+    void removeWifiNetworkStateChangedListener(in IWifiNetworkStateChangedListener listener);
+
     String getCountryCode(in String packageName, in String featureId);
 
     void setOverrideCountryCode(String country);
@@ -254,7 +259,17 @@ interface IWifiManager
 
     void enableTdls(String remoteIPAddress, boolean enable);
 
+    void enableTdlsWithRemoteIpAddress(String remoteIPAddress, boolean enable, in IBooleanListener listener);
+
     void enableTdlsWithMacAddress(String remoteMacAddress, boolean enable);
+
+    void enableTdlsWithRemoteMacAddress(String remoteMacAddress, boolean enable, in IBooleanListener listener);
+
+    void isTdlsOperationCurrentlyAvailable(in IBooleanListener listener);
+
+    void getMaxSupportedConcurrentTdlsSessions(in IIntegerListener callback);
+
+    void getNumberOfEnabledTdlsSessions(in IIntegerListener callback);
 
     String getCurrentNetworkWpsNfcConfigurationToken();
 
@@ -426,9 +441,17 @@ interface IWifiManager
 
     int getMaxNumberOfChannelsPerRequest();
 
-    void addQosPolicy(in QosPolicyParams policyParams, in IBinder binder, String packageName, in IIntegerListener callback);
+    void addQosPolicies(in List<QosPolicyParams> policyParamsList, in IBinder binder, String packageName, in IListListener callback);
 
-    void removeQosPolicy(int policyId, String packageName);
+    void removeQosPolicies(in int[] policyIdList, String packageName);
 
     void removeAllQosPolicies(String packageName);
+
+    void setLinkLayerStatsPollingInterval(int intervalMs);
+
+    void getLinkLayerStatsPollingInterval(in IIntegerListener listener);
+
+    void setMloMode(int mode, in IBooleanListener listener);
+
+    void getMloMode(in IIntegerListener listener);
 }

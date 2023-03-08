@@ -26,10 +26,12 @@ import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_NATIVE_SUPPOR
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.hardware.wifi.WifiStatusCode;
 import android.net.MacAddress;
 import android.net.TrafficStats;
 import android.net.apf.ApfCapabilities;
 import android.net.wifi.CoexUnsafeChannel;
+import android.net.wifi.QosPolicyParams;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.SoftApConfiguration;
@@ -126,6 +128,7 @@ public class WifiNative {
     private MockWifiServiceUtil mMockWifiModem = null;
     private InterfaceObserverInternal mInterfaceObserver;
     private InterfaceEventCallback mInterfaceListener;
+    private @WifiManager.MloMode int mCachedMloMode = WifiManager.MLO_MODE_DEFAULT;
 
     public WifiNative(WifiVendorHal vendorHal,
                       SupplicantStaIfaceHal staIfaceHal, HostapdHal hostapdHal,
@@ -1326,6 +1329,12 @@ public class WifiNative {
 
             iface.featureSet = getSupportedFeatureSetInternal(iface.name);
             updateSupportedBandForStaInternal(iface);
+
+            //TODO(b/269664218): we will enable it during startHal()
+            mWifiVendorHal.enableStaChannelForPeerNetwork(mContext.getResources().getBoolean(
+                            R.bool.config_wifiEnableStaIndoorChannelForPeerNetwork),
+                    mContext.getResources().getBoolean(
+                            R.bool.config_wifiEnableStaDfsChannelForPeerNetwork));
             return iface.name;
         }
     }
@@ -1675,11 +1684,12 @@ public class WifiNative {
      * @param freqs list of frequencies to scan for, if null scan all supported channels.
      * @param hiddenNetworkSSIDs List of hidden networks to be scanned for.
      * @param enable6GhzRnr whether Reduced Neighbor Report should be enabled for 6Ghz scanning.
+     * @param vendorIes Byte array of vendor IEs
      * @return Returns true on success.
      */
     public int scan(
             @NonNull String ifaceName, @WifiAnnotations.ScanType int scanType, Set<Integer> freqs,
-            List<String> hiddenNetworkSSIDs, boolean enable6GhzRnr) {
+            List<String> hiddenNetworkSSIDs, boolean enable6GhzRnr, byte[] vendorIes) {
         int scanRequestStatus = WifiScanner.REASON_SUCCEEDED;
         boolean scanStatus = true;
         List<byte[]> hiddenNetworkSsidsArrays = new ArrayList<>();
@@ -1699,6 +1709,8 @@ public class WifiNative {
             extraScanningParams.putBoolean(WifiNl80211Manager.SCANNING_PARAM_ENABLE_6GHZ_RNR,
                     enable6GhzRnr);
             if (SdkLevel.isAtLeastU()) {
+                extraScanningParams.putByteArray(WifiNl80211Manager.EXTRA_SCANNING_PARAM_VENDOR_IES,
+                        vendorIes);
                 scanRequestStatus = mWifiCondManager.startScan2(ifaceName, scanType, freqs,
                         hiddenNetworkSsidsArrays, extraScanningParams);
             } else {
@@ -1810,6 +1822,11 @@ public class WifiNative {
             List<NativeScanResult> nativeResults) {
         ArrayList<ScanDetail> results = new ArrayList<>();
         for (NativeScanResult result : nativeResults) {
+            if (result.getSsid().length > 32) {
+                Log.e(TAG, "Invalid SSID length (> 32 bytes): "
+                        + Arrays.toString(result.getSsid()));
+                continue;
+            }
             WifiSsid originalSsid = WifiSsid.fromBytes(result.getSsid());
             MacAddress bssidMac = result.getBssid();
             if (bssidMac == null) {
@@ -2418,14 +2435,17 @@ public class WifiNative {
      * @param ifaceName Name of the interface.
      * @param macAddr MAC Address of the peer.
      * @param enable true to start discovery and setup, false to teardown.
+     * @return true if request is sent successfully, false otherwise.
      */
-    public void startTdls(@NonNull String ifaceName, String macAddr, boolean enable) {
+    public boolean startTdls(@NonNull String ifaceName, String macAddr, boolean enable) {
+        boolean ret = true;
         if (enable) {
             mSupplicantStaIfaceHal.initiateTdlsDiscover(ifaceName, macAddr);
-            mSupplicantStaIfaceHal.initiateTdlsSetup(ifaceName, macAddr);
+            ret = mSupplicantStaIfaceHal.initiateTdlsSetup(ifaceName, macAddr);
         } else {
-            mSupplicantStaIfaceHal.initiateTdlsTeardown(ifaceName, macAddr);
+            ret = mSupplicantStaIfaceHal.initiateTdlsTeardown(ifaceName, macAddr);
         }
+        return ret;
     }
 
     /**
@@ -3052,6 +3072,16 @@ public class WifiNative {
         mSupplicantStaIfaceHal.registerDppCallback(dppEventCallback);
     }
 
+    /**
+     * Check whether the Supplicant AIDL service is running at least the expected version.
+     *
+     * @param expectedVersion Version number to check.
+     * @return true if the AIDL service is available and >= the expected version, false otherwise.
+     */
+    public boolean isSupplicantAidlServiceVersionAtLeast(int expectedVersion) {
+        return mSupplicantStaIfaceHal.isAidlServiceVersionAtLeast(expectedVersion);
+    }
+
     /********************************************************
      * Vendor HAL operations
      ********************************************************/
@@ -3195,6 +3225,7 @@ public class WifiNative {
         /* Not used for bg scans. Only works for single scans. */
         public HiddenNetwork[] hiddenNetworks;
         public BucketSettings[] buckets;
+        public byte[] vendorIes;
     }
 
     /**
@@ -3250,6 +3281,8 @@ public class WifiNative {
         public int min24GHzRssi;
         public int min6GHzRssi;
         public int periodInMs;
+        public int scanIterations;
+        public int scanIntervalMultiplier;
         public boolean isConnected;
         public PnoNetwork[] networkList;
 
@@ -3260,6 +3293,10 @@ public class WifiNative {
             nativePnoSettings.setMin2gRssiDbm(min24GHzRssi);
             nativePnoSettings.setMin5gRssiDbm(min5GHzRssi);
             nativePnoSettings.setMin6gRssiDbm(min6GHzRssi);
+            if (SdkLevel.isAtLeastU()) {
+                nativePnoSettings.setScanIterations(scanIterations);
+                nativePnoSettings.setScanIntervalMultiplier(scanIntervalMultiplier);
+            }
 
             List<android.net.wifi.nl80211.PnoNetwork> pnoNetworks = new ArrayList<>();
             if (networkList != null) {
@@ -3637,6 +3674,8 @@ public class WifiNative {
         public int maxNumberTxSpatialStreams;
         public int maxNumberRxSpatialStreams;
         public boolean is11bMode;
+        /** Indicates the AP support for TID-to-link mapping negotiation. */
+        public boolean apTidToLinkMapNegotiationSupported;
         ConnectionCapabilities() {
             wifiStandard = ScanResult.WIFI_STANDARD_UNKNOWN;
             channelBandwidth = ScanResult.CHANNEL_WIDTH_20MHZ;
@@ -3701,16 +3740,21 @@ public class WifiNative {
      * Class to represent a connection MLO Link
      */
     public static class ConnectionMloLink {
-        private int mLinkId;
-        private MacAddress mStaMacAddress;
-        private BitSet mTidsUplinkMap;
-        private BitSet mTidsDownlinkMap;
+        private final int mLinkId;
+        private final MacAddress mStaMacAddress;
+        private final BitSet mTidsUplinkMap;
+        private final BitSet mTidsDownlinkMap;
+        private final MacAddress mApMacAddress;
+        private final int mFrequencyMHz;
 
-        ConnectionMloLink(int id, MacAddress mac, byte tidsUplink, byte tidsDownlink) {
+        ConnectionMloLink(int id, MacAddress staMacAddress, MacAddress apMacAddress,
+                byte tidsUplink, byte tidsDownlink, int frequencyMHz) {
             mLinkId = id;
-            mStaMacAddress = mac;
+            mStaMacAddress = staMacAddress;
+            mApMacAddress = apMacAddress;
             mTidsDownlinkMap = BitSet.valueOf(new byte[] { tidsDownlink });
             mTidsUplinkMap = BitSet.valueOf(new byte[] { tidsUplink });
+            mFrequencyMHz = frequencyMHz;
         };
 
         /**
@@ -3761,12 +3805,30 @@ public class WifiNative {
         }
 
         /**
-         * Get link address.
+         * Get link STA MAC address.
          *
          * @return link mac address.
          */
-        public MacAddress getMacAddress() {
+        public MacAddress getStaMacAddress() {
             return mStaMacAddress;
+        }
+
+        /**
+         * Get link AP MAC address.
+         *
+         * @return MAC address.
+         */
+        public MacAddress getApMacAddress() {
+            return mApMacAddress;
+        }
+
+        /**
+         * Get link frequency in MHz.
+         *
+         * @return frequency in Mhz.
+         */
+        public int getFrequencyMHz() {
+            return mFrequencyMHz;
         }
     }
 
@@ -3775,7 +3837,8 @@ public class WifiNative {
      */
     public static class ConnectionMloLinksInfo {
         public ConnectionMloLink[] links;
-
+        public MacAddress apMldMacAddress;
+        public int apMloLinkId;
         ConnectionMloLinksInfo() {
             // Nothing for now
         }
@@ -4592,6 +4655,70 @@ public class WifiNative {
     }
 
     /**
+     * Send a set of QoS SCS policy add requests to the AP.
+     *
+     * Immediate response will indicate which policies were sent to the AP, and which were
+     * rejected immediately by the supplicant. If any requests were sent to the AP, the AP's
+     * response will arrive later in the onQosPolicyResponseForScs callback.
+     *
+     * @param ifaceName Name of the interface.
+     * @param policies List of policies that the caller is requesting to add.
+     * @return List of responses for each policy in the request, or null if an error occurred.
+     *         Status code will be one of
+     *         {@link SupplicantStaIfaceHal.QosPolicyScsRequestStatusCode}.
+     */
+    List<SupplicantStaIfaceHal.QosPolicyStatus> addQosPolicyRequestForScs(
+            @NonNull String ifaceName, @NonNull List<QosPolicyParams> policies) {
+        return mSupplicantStaIfaceHal.addQosPolicyRequestForScs(ifaceName, policies);
+    }
+
+    /**
+     * Request the removal of specific QoS policies for SCS.
+     *
+     * Immediate response will indicate which policies were sent to the AP, and which were
+     * rejected immediately by the supplicant. If any requests were sent to the AP, the AP's
+     * response will arrive later in the onQosPolicyResponseForScs callback.
+     *
+     * @param ifaceName Name of the interface.
+     * @param policyIds List of policy IDs for policies that should be removed.
+     * @return List of responses for each policy in the request, or null if an error occurred.
+     *         Status code will be one of
+     *         {@link SupplicantStaIfaceHal.QosPolicyScsRequestStatusCode}.
+     */
+    List<SupplicantStaIfaceHal.QosPolicyStatus> removeQosPolicyForScs(
+            @NonNull String ifaceName, @NonNull List<Byte> policyIds) {
+        return mSupplicantStaIfaceHal.removeQosPolicyForScs(ifaceName, policyIds);
+    }
+
+    /**
+     * Request the removal of all QoS policies for SCS.
+     *
+     * Immediate response will indicate which policies were sent to the AP, and which were
+     * rejected immediately by the supplicant. If any requests were sent to the AP, the AP's
+     * response will arrive later in the onQosPolicyResponseForScs callback.
+     *
+     * @param ifaceName Name of the interface.
+     * @return List of responses for each policy in the request, or null if an error occurred.
+     *         Status code will be one of
+     *         {@link SupplicantStaIfaceHal.QosPolicyScsRequestStatusCode}.
+     */
+    List<SupplicantStaIfaceHal.QosPolicyStatus> removeAllQosPoliciesForScs(
+            @NonNull String ifaceName) {
+        return mSupplicantStaIfaceHal.removeAllQosPoliciesForScs(ifaceName);
+    }
+
+    /**
+     * Register a callback to receive notifications for QoS SCS transactions.
+     * Callback should only be registered once.
+     *
+     * @param callback {@link SupplicantStaIfaceHal.QosScsResponseCallback} to register.
+     */
+    public void registerQosScsResponseCallback(
+            @NonNull SupplicantStaIfaceHal.QosScsResponseCallback callback) {
+        mSupplicantStaIfaceHal.registerQosScsResponseCallback(callback);
+    }
+
+    /**
      * Generate DPP credential for network access
      *
      * @param ifaceName Name of the interface.
@@ -4633,6 +4760,24 @@ public class WifiNative {
                 Log.e(TAG, "Fail to notify wificond country code changed to " + countryCode
                         + "because exception happened:" + re);
             }
+        }
+    }
+
+    /**
+     *  Return the maximum number of TDLS sessions supported by the device.
+     *  @return -1 if the information is not available on the device
+     */
+    public int getMaxSupportedConcurrentTdlsSessions(@NonNull String ifaceName) {
+        synchronized (mLock) {
+            Iface iface = mIfaceMgr.getIface(ifaceName);
+            if (iface == null) {
+                Log.e(TAG, "Failed to get the TDLS peer count, interface not found: "
+                        + ifaceName);
+                return -1;
+            }
+            // TODO b/262591976 call into HalDeviceManager and get the info from chip capabilities
+            // (IWifiChip#getWifiChipCapabilities()
+            return -1;
         }
     }
 
@@ -4765,5 +4910,27 @@ public class WifiNative {
      */
     public boolean setDtimMultiplier(String ifaceName, int multiplier) {
         return mWifiVendorHal.setDtimMultiplier(ifaceName, multiplier);
+    }
+
+    /**
+     * Set Multi-Link Operation mode.
+     *
+     * @param mode Multi-Link Operation mode {@link android.net.wifi.WifiManager.MloMode}.
+     * @return {@link WifiStatusCode#SUCCESS} if success, otherwise error code.
+     */
+    public @WifiStatusCode int setMloMode(@WifiManager.MloMode int mode) {
+        @WifiStatusCode  int errorCode = mWifiVendorHal.setMloMode(mode);
+        // If set is success, cache it.
+        if (errorCode == WifiStatusCode.SUCCESS) mCachedMloMode = mode;
+        return errorCode;
+    }
+
+    /**
+     * Get Multi-Link Operation mode.
+     *
+     * @return Current Multi-Link Operation mode {@link android.net.wifi.WifiManager.MloMode}.
+     */
+    public @WifiManager.MloMode int getMloMode() {
+        return mCachedMloMode;
     }
 }

@@ -202,7 +202,6 @@ public class DeviceConfigFacade {
     private int mMinConfirmationDurationSendLowScoreMs;
     private int mMinConfirmationDurationSendHighScoreMs;
     private int mRssiThresholdNotSendLowScoreToCsDbm;
-    private boolean mAllowNonPersistentMacRandomizationOnOpenSsids;
     private int mTrafficStatsThresholdMaxKbyte;
     private int mBandwidthEstimatorLargeTimeConstantSec;
     private boolean mInterfaceFailureBugreportEnabled;
@@ -213,6 +212,8 @@ public class DeviceConfigFacade {
     private boolean mOobPseudonymEnabled;
     private boolean mApplicationQosPolicyApiEnabled;
     private boolean mAdjustPollRssiIntervalEnabled;
+    private boolean mSoftwarePnoEnabled;
+    private boolean mIncludePasspointSsidsInPnoScans;
 
     public DeviceConfigFacade(Context context, Handler handler, WifiMetrics wifiMetrics) {
         mContext = context;
@@ -377,8 +378,6 @@ public class DeviceConfigFacade {
         mRssiThresholdNotSendLowScoreToCsDbm = DeviceConfig.getInt(NAMESPACE,
                 "rssi_threshold_not_send_low_score_to_cs_dbm",
                 DEFAULT_RSSI_THRESHOLD_NOT_SEND_LOW_SCORE_TO_CS_DBM);
-        mAllowNonPersistentMacRandomizationOnOpenSsids = DeviceConfig.getBoolean(NAMESPACE,
-                "allow_enhanced_mac_randomization_on_open_ssids", false);
         mTrafficStatsThresholdMaxKbyte = DeviceConfig.getInt(NAMESPACE,
                 "traffic_stats_threshold_max_kbyte", DEFAULT_TRAFFIC_STATS_THRESHOLD_MAX_KB);
         mBandwidthEstimatorLargeTimeConstantSec = DeviceConfig.getInt(NAMESPACE,
@@ -400,6 +399,10 @@ public class DeviceConfigFacade {
                 "application_qos_policy_api_enabled", false);
         mAdjustPollRssiIntervalEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "adjust_poll_rssi_interval_enabled", false);
+        mSoftwarePnoEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "software_pno_enabled", false);
+        mIncludePasspointSsidsInPnoScans = DeviceConfig.getBoolean(NAMESPACE,
+                "include_passpoint_ssids_in_pno_scans", false);
     }
 
     private Set<String> getUnmodifiableSetQuoted(String key) {
@@ -795,13 +798,6 @@ public class DeviceConfigFacade {
     }
 
     /**
-     * Gets whether non-persistent MAC randomization should be allowed on open networks.
-     */
-    public boolean allowNonPersistentMacRandomizationOnOpenSsids() {
-        return mAllowNonPersistentMacRandomizationOnOpenSsids;
-    }
-
-    /**
      * Gets traffic stats maximum threshold in KByte
      */
     public int getTrafficStatsThresholdMaxKbyte() {
@@ -871,5 +867,19 @@ public class DeviceConfigFacade {
      */
     public boolean isAdjustPollRssiIntervalEnabled() {
         return mAdjustPollRssiIntervalEnabled;
+    }
+
+    /**
+     * Gets the feature flag for Software PNO
+     */
+    public boolean isSoftwarePnoEnabled() {
+        return mSoftwarePnoEnabled;
+    }
+
+    /**
+     * Gets the feature flag indicating whether Passpoint SSIDs should be included in PNO scans.
+     */
+    public boolean includePasspointSsidsInPnoScans() {
+        return mIncludePasspointSsidsInPnoScans;
     }
 }

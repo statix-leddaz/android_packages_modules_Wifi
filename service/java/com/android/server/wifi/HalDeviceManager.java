@@ -86,12 +86,12 @@ public class HalDeviceManager {
     @VisibleForTesting
     public static final int START_HAL_RETRY_TIMES = 3;
 
+    private final WifiContext mContext;
     private final Clock mClock;
     private final WifiInjector mWifiInjector;
     private final Handler mEventHandler;
     private WifiHal mWifiHal;
     private WifiDeathRecipient mIWifiDeathRecipient;
-    private boolean mWifiUserApprovalRequiredForD2dInterfacePriority;
     private boolean mIsConcurrencyComboLoadedFromDriver;
     private boolean mWaitForDestroyedListeners;
     private ArrayMap<WifiHal.WifiInterface, SoftApManager> mSoftApManagers = new ArrayMap<>();
@@ -137,10 +137,7 @@ public class HalDeviceManager {
     // public API
     public HalDeviceManager(WifiContext context, Clock clock, WifiInjector wifiInjector,
             Handler handler) {
-        Resources res = context.getResources();
-        mWifiUserApprovalRequiredForD2dInterfacePriority =
-                res.getBoolean(R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority);
-        mWaitForDestroyedListeners = res.getBoolean(R.bool.config_wifiWaitForDestroyedListeners);
+        mContext = context;
         mClock = clock;
         mWifiInjector = wifiInjector;
         mEventHandler = handler;
@@ -449,15 +446,15 @@ public class HalDeviceManager {
             WifiChipInfo info = getChipInfo(iface);
             if (info == null) return false;
             // If there is no radio combination information, cache it.
-            if (info.radioCombinationMatrix == null) {
+            if (info.radioCombinations == null) {
                 WifiChip chip = getChip(iface);
                 if (chip == null) return false;
 
-                info.radioCombinationMatrix = getChipSupportedRadioCombinationsMatrix(chip);
-                info.radioCombinationLookupTable = convertRadioCombinationMatrixToLookupTable(
-                        info.radioCombinationMatrix);
+                info.radioCombinations = getChipSupportedRadioCombinations(chip);
+                info.radioCombinationLookupTable = convertRadioCombinationsToLookupTable(
+                        info.radioCombinations);
                 if (mDbg) {
-                    Log.d(TAG, "radioCombinationMatrix=" + info.radioCombinationMatrix
+                    Log.d(TAG, "radioCombinations=" + info.radioCombinations
                             + "radioCombinationLookupTable=" + info.radioCombinationLookupTable);
                 }
             }
@@ -958,7 +955,7 @@ public class HalDeviceManager {
         // returned by WifiChip.getXxxIfaceNames.
         public WifiIfaceInfo[][] ifaces = new WifiIfaceInfo[CREATE_TYPES_BY_PRIORITY.length][];
         public long chipCapabilities;
-        public WifiChip.WifiRadioCombinationMatrix radioCombinationMatrix = null;
+        public List<WifiChip.WifiRadioCombination> radioCombinations = null;
         public SparseBooleanArray radioCombinationLookupTable = new SparseBooleanArray();
 
         @Override
@@ -1914,9 +1911,6 @@ public class HalDeviceManager {
      * interface request from |existingRequestorWsPriority|.
      *
      * Rule:
-     *  - If |mWifiUserApprovalRequiredForD2dInterfacePriority| is true, AND
-     *    |newRequestorWsPriority| > PRIORITY_BG, AND |requestedCreateType| is
-     *    HDM_CREATE_IFACE_P2P or HDM_CREATE_IFACE_NAN, then YES
      *  - If |newRequestorWsPriority| > |existingRequestorWsPriority|, then YES.
      *  - If they are at the same priority level, then
      *      - If both are privileged and not for the same interface type, then YES.
@@ -2680,12 +2674,12 @@ public class HalDeviceManager {
         return -1;
     }
 
-    private static SparseBooleanArray convertRadioCombinationMatrixToLookupTable(
-            WifiChip.WifiRadioCombinationMatrix matrix) {
+    private static SparseBooleanArray convertRadioCombinationsToLookupTable(
+            List<WifiChip.WifiRadioCombination> combinations) {
         SparseBooleanArray lookupTable = new SparseBooleanArray();
-        if (matrix == null) return lookupTable;
+        if (combinations == null) return lookupTable;
 
-        for (WifiChip.WifiRadioCombination combination : matrix.radioCombinations) {
+        for (WifiChip.WifiRadioCombination combination : combinations) {
             int bandMask = 0;
             for (WifiChip.WifiRadioConfiguration config : combination.radioConfigurations) {
                 bandMask |= config.bandInfo;
@@ -2721,19 +2715,27 @@ public class HalDeviceManager {
     }
 
     /**
-     * Get the supported radio combination matrix.
+     * Get the supported radio combinations.
      *
      * This is called after creating an interface and need at least v1.6 HAL.
      *
      * @param wifiChip WifiChip
-     * @return Wifi radio combinmation matrix
+     * @return List of supported Wifi radio combinations
      */
-    private WifiChip.WifiRadioCombinationMatrix getChipSupportedRadioCombinationsMatrix(
+    private List<WifiChip.WifiRadioCombination> getChipSupportedRadioCombinations(
             @NonNull WifiChip wifiChip) {
         synchronized (mLock) {
             if (wifiChip == null) return null;
-            return wifiChip.getSupportedRadioCombinationsMatrix();
+            return wifiChip.getSupportedRadioCombinations();
         }
+    }
+
+    /**
+     * Initialization after boot completes to get boot-dependent resources.
+     */
+    public void handleBootCompleted() {
+        Resources res = mContext.getResources();
+        mWaitForDestroyedListeners = res.getBoolean(R.bool.config_wifiWaitForDestroyedListeners);
     }
 
     /**

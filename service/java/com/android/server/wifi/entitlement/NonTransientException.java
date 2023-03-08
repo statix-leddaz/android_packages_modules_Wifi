@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-package android.net.wifi.aware;
+package com.android.server.wifi.entitlement;
 
 /**
- * Interface for IWifiAwarePairedDevicesListener.
- *
- * @hide
+ * The exception for non-transient failure like AKA authentication failed, forbidden request,
+ * unsupported operation by this server etc.
  */
-oneway interface IWifiAwarePairedDevicesListener
-{
-    void onResult(in List<String> value);
+public class NonTransientException extends Exception {
+    public NonTransientException(String message) {
+        super(message);
+    }
 }

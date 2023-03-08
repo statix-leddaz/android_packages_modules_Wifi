@@ -25,6 +25,7 @@ import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_VERBOSE_LOGGI
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.BroadcastOptions;
 import android.content.AttributionSource;
@@ -360,6 +361,9 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     // remember if we were in a scan when it had to be stopped
     private boolean mDiscoveryPostponed = false;
 
+    // Track whether we are in p2p listen. This is used to avoid sending duplicate broadcasts
+    private boolean mListenStarted;
+
     // Track whether DISALLOW_WIFI_DIRECT user restriction has been set
     private boolean mIsP2pDisallowedByAdmin = false;
 
@@ -566,6 +570,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 case WifiP2pManager.REQUEST_ONGOING_PEER_CONFIG:
                 case WifiP2pManager.REQUEST_P2P_STATE:
                 case WifiP2pManager.REQUEST_DISCOVERY_STATE:
+                case WifiP2pManager.GET_LISTEN_STATE:
                 case WifiP2pManager.REQUEST_NETWORK_INFO:
                 case WifiP2pManager.UPDATE_CHANNEL_INFO:
                 case WifiP2pManager.REQUEST_DEVICE_INFO:
@@ -995,6 +1000,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         pw.println("mAutonomousGroup " + mAutonomousGroup);
         pw.println("mJoinExistingGroup " + mJoinExistingGroup);
         pw.println("mDiscoveryStarted " + mDiscoveryStarted);
+        pw.println("mListenStarted " + mListenStarted);
         pw.println("mDetailedState " + mDetailedState);
         pw.println("mTemporarilyDisconnectedWifi " + mTemporarilyDisconnectedWifi);
         pw.println("mServiceDiscReqId " + mServiceDiscReqId);
@@ -1309,6 +1315,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     return "TETHER_INTERFACE_STATE_CHANGED";
                 case UPDATE_P2P_DISALLOWED_CHANNELS:
                     return "UPDATE_P2P_DISALLOWED_CHANNELS";
+                case WifiP2pManager.ADD_EXTERNAL_APPROVER:
+                    return "WifiP2pManager.ADD_EXTERNAL_APPROVER";
                 case WifiP2pManager.ADD_LOCAL_SERVICE:
                     return "WifiP2pManager.ADD_LOCAL_SERVICE";
                 case WifiP2pManager.ADD_SERVICE_REQUEST:
@@ -1329,6 +1337,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     return "WifiP2pManager.DISCOVER_PEERS";
                 case WifiP2pManager.DISCOVER_SERVICES:
                     return "WifiP2pManager.DISCOVER_SERVICES";
+                case WifiP2pManager.EXTERNAL_APPROVER_ATTACH:
+                    return "WifiP2pManager.EXTERNAL_APPROVER_ATTACH";
                 case WifiP2pManager.FACTORY_RESET:
                     return "WifiP2pManager.FACTORY_RESET";
                 case WifiP2pManager.GET_HANDOVER_REQUEST:
@@ -1337,6 +1347,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     return "WifiP2pManager.GET_HANDOVER_SELECT";
                 case WifiP2pManager.INITIATOR_REPORT_NFC_HANDOVER:
                     return "WifiP2pManager.INITIATOR_REPORT_NFC_HANDOVER";
+                case WifiP2pManager.REMOVE_EXTERNAL_APPROVER:
+                    return "WifiP2pManager.REMOVE_EXTERNAL_APPROVER";
                 case WifiP2pManager.REMOVE_GROUP:
                     return "WifiP2pManager.REMOVE_GROUP";
                 case WifiP2pManager.REMOVE_LOCAL_SERVICE:
@@ -1349,6 +1361,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     return "WifiP2pManager.REQUEST_DEVICE_INFO";
                 case WifiP2pManager.REQUEST_DISCOVERY_STATE:
                     return "WifiP2pManager.REQUEST_DISCOVERY_STATE";
+                case WifiP2pManager.GET_LISTEN_STATE:
+                    return "WifiP2pManager.GET_LISTEN_STATE";
                 case WifiP2pManager.REQUEST_GROUP_INFO:
                     return "WifiP2pManager.REQUEST_GROUP_INFO";
                 case WifiP2pManager.REQUEST_NETWORK_INFO:
@@ -1365,6 +1379,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     return "WifiP2pManager.RESPONDER_REPORT_NFC_HANDOVER";
                 case WifiP2pManager.SET_CHANNEL:
                     return "WifiP2pManager.SET_CHANNEL";
+                case WifiP2pManager.SET_CONNECTION_REQUEST_RESULT:
+                    return "WifiP2pManager.SET_CONNECTION_REQUEST_RESULT";
                 case WifiP2pManager.SET_DEVICE_NAME:
                     return "WifiP2pManager.SET_DEVICE_NAME";
                 case WifiP2pManager.SET_ONGOING_PEER_CONFIG:
@@ -1599,6 +1615,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 // does not need active P2P.
                 case WifiP2pManager.REQUEST_P2P_STATE:
                 case WifiP2pManager.REQUEST_DISCOVERY_STATE:
+                case WifiP2pManager.GET_LISTEN_STATE:
                 case WifiP2pManager.REQUEST_NETWORK_INFO:
                 case WifiP2pManager.REQUEST_CONNECTION_INFO:
                 case WifiP2pManager.REQUEST_GROUP_INFO:
@@ -1859,6 +1876,35 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                                 ? WifiP2pManager.WIFI_P2P_DISCOVERY_STARTED
                                 : WifiP2pManager.WIFI_P2P_DISCOVERY_STOPPED);
                         break;
+                    case WifiP2pManager.GET_LISTEN_STATE: {
+                        String packageName = getCallingPkgName(message.sendingUid, message.replyTo);
+                        if (packageName == null) {
+                            replyToMessage(message, WifiP2pManager.GET_LISTEN_STATE_FAILED);
+                            break;
+                        }
+                        int uid = message.sendingUid;
+                        Bundle extras = message.getData()
+                                .getBundle(WifiP2pManager.EXTRA_PARAM_KEY_BUNDLE);
+                        boolean hasPermission;
+                        if (isPlatformOrTargetSdkLessThanT(packageName, uid)) {
+                            hasPermission = mWifiPermissionsUtil.checkCanAccessWifiDirect(
+                                    packageName,
+                                    getCallingFeatureId(message.sendingUid, message.replyTo),
+                                    uid, true);
+                        } else {
+                            hasPermission = checkNearbyDevicesPermission(uid, packageName,
+                                    extras, "GET_LISTEN_STATE", message.obj);
+                        }
+                        if (!hasPermission) {
+                            replyToMessage(message, WifiP2pManager.GET_LISTEN_STATE_FAILED);
+                            break;
+                        }
+                        replyToMessage(message, WifiP2pManager.RESPONSE_GET_LISTEN_STATE,
+                                mListenStarted
+                                        ? WifiP2pManager.WIFI_P2P_LISTEN_STARTED
+                                        : WifiP2pManager.WIFI_P2P_LISTEN_STOPPED);
+                        break;
+                    }
                     case WifiP2pManager.REQUEST_NETWORK_INFO:
                         replyToMessage(message, WifiP2pManager.RESPONSE_NETWORK_INFO,
                                 makeNetworkInfo());
@@ -2832,6 +2878,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                                 mContext.getResources().getInteger(
                                         R.integer.config_wifiP2pExtListenIntervalMs))) {
                             replyToMessage(message, WifiP2pManager.START_LISTEN_SUCCEEDED);
+                            sendP2pListenChangedBroadcast(true);
                         } else {
                             replyToMessage(message, WifiP2pManager.START_LISTEN_FAILED);
                         }
@@ -2843,6 +2890,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         if (mVerboseLoggingEnabled) logd(getName() + " stop listen mode");
                         if (mWifiNative.p2pExtListen(false, 0, 0)) {
                             replyToMessage(message, WifiP2pManager.STOP_LISTEN_SUCCEEDED);
+                            sendP2pListenChangedBroadcast(false);
                         } else {
                             replyToMessage(message, WifiP2pManager.STOP_LISTEN_FAILED);
                         }
@@ -2904,6 +2952,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             @Override
             public void exit() {
                 sendP2pDiscoveryChangedBroadcast(false);
+                sendP2pListenChangedBroadcast(false);
                 mUserListenChannel = 0;
                 mUserOperatingChannel = 0;
                 mCoexUnsafeChannels.clear();
@@ -2972,6 +3021,9 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         if (isConfigValidAsGroup(config)) {
                             mAutonomousGroup = false;
                             mWifiNative.p2pStopFind();
+                            if (mVerboseLoggingEnabled) {
+                                logd("FAST_CONNECTION GC band freq: " + config.groupOwnerBand);
+                            }
                             if (mWifiNative.p2pGroupAdd(config, true)) {
                                 mWifiP2pMetrics.startConnectionEvent(
                                         P2pConnectionEvent.CONNECTION_FAST,
@@ -3160,6 +3212,9 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         boolean ret = false;
                         if (config != null) {
                             if (isConfigValidAsGroup(config)) {
+                                if (mVerboseLoggingEnabled) {
+                                    logd("FAST_CONNECTION GO band freq: " + config.groupOwnerBand);
+                                }
                                 mWifiP2pMetrics.startConnectionEvent(
                                         P2pConnectionEvent.CONNECTION_FAST,
                                         config, GroupEvent.GROUP_OWNER, uid);
@@ -3260,6 +3315,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                                 mContext.getResources().getInteger(
                                         R.integer.config_wifiP2pExtListenIntervalMs))) {
                             replyToMessage(message, WifiP2pManager.START_LISTEN_SUCCEEDED);
+                            sendP2pListenChangedBroadcast(true);
                         } else {
                             replyToMessage(message, WifiP2pManager.START_LISTEN_FAILED);
                         }
@@ -3271,6 +3327,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         if (mVerboseLoggingEnabled) logd(getName() + " stop listen mode");
                         if (mWifiNative.p2pExtListen(false, 0, 0)) {
                             replyToMessage(message, WifiP2pManager.STOP_LISTEN_SUCCEEDED);
+                            sendP2pListenChangedBroadcast(false);
                         } else {
                             replyToMessage(message, WifiP2pManager.STOP_LISTEN_FAILED);
                         }
@@ -3401,6 +3458,20 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         // Stop discovery will clear pending TX action and cause disconnection.
                         replyToMessage(message, WifiP2pManager.STOP_DISCOVERY_FAILED,
                                 WifiP2pManager.BUSY);
+                        break;
+                    case WifiP2pManager.START_LISTEN:
+                        replyToMessage(message, WifiP2pManager.START_LISTEN_FAILED,
+                                WifiP2pManager.BUSY);
+                        break;
+                    case WifiP2pManager.STOP_LISTEN:
+                        if (mVerboseLoggingEnabled) {
+                            logd(getName() + " stop listen mode");
+                        }
+                        if (mWifiNative.p2pExtListen(false, 0, 0)) {
+                            replyToMessage(message, WifiP2pManager.STOP_LISTEN_SUCCEEDED);
+                        } else {
+                            replyToMessage(message, WifiP2pManager.STOP_LISTEN_FAILED);
+                        }
                         break;
                     case WifiP2pManager.CANCEL_CONNECT:
                         // Do a supplicant p2p_cancel which only cancels an ongoing
@@ -4185,6 +4256,12 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         }
 
                         byte[] goInterfaceMacAddress = mGroup.interfaceAddress;
+                        if (goInterfaceMacAddress == null) {
+                            setWifiP2pInfoOnGroupFormationWithInetAddress(null);
+                            sendP2pConnectionChangedBroadcast();
+                            break;
+                        }
+
                         byte[] goIpv6Address = MacAddress.fromBytes(goInterfaceMacAddress)
                                 .getLinkLocalIpv6FromEui48Mac().getAddress();
                         try {
@@ -4611,6 +4688,22 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             mContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
         }
 
+        private void sendP2pListenChangedBroadcast(boolean started) {
+            if (mListenStarted == started) return;
+
+            mListenStarted = started;
+            if (mVerboseLoggingEnabled) logd("wifi p2p listen change broadcast " + started);
+
+            final Intent intent = new Intent(WifiP2pManager.ACTION_WIFI_P2P_LISTEN_STATE_CHANGED);
+            intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
+            intent.putExtra(WifiP2pManager.EXTRA_LISTEN_STATE, started
+                    ? WifiP2pManager.WIFI_P2P_LISTEN_STARTED :
+                    WifiP2pManager.WIFI_P2P_LISTEN_STOPPED);
+            sendBroadcastMultiplePermissions(intent);
+        }
+
+        // TODO(b/193460475): Remove when tooling supports SystemApi to public API.
+        @SuppressLint("NewApi")
         private void sendBroadcastMultiplePermissions(Intent intent) {
             Context context = mContext.createContextAsUser(UserHandle.ALL, 0);
             String[] permissions = RECEIVER_PERMISSIONS_FOR_BROADCAST;
@@ -5319,7 +5412,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             }
             config.groupOwnerIntent = selectGroupOwnerIntentIfNecessary(config);
             boolean action;
-            if (triggerType == P2P_CONNECT_TRIGGER_INVITATION_REQ) {
+            if (triggerType == P2P_CONNECT_TRIGGER_INVITATION_REQ
+                    || config.isJoinExistingGroup()) {
                 // The group owner won't report it is a Group Owner always.
                 // If this is called from the invitation path, the sender should be in
                 // a group, and the target should be a group owner.
@@ -5357,7 +5451,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             // The group owner won't report it is a Group Owner always.
             // If this is called from the invitation path, the sender should be in
             // a group, and the target should be a group owner.
-            boolean join = dev.isGroupOwner() || isInvited;
+            boolean join = dev.isGroupOwner() || isInvited
+                    || config.isJoinExistingGroup();
             String ssid = mWifiNative.p2pGetSsid(dev.deviceAddress);
             if (mVerboseLoggingEnabled) logd("target ssid is " + ssid + " join:" + join);
 

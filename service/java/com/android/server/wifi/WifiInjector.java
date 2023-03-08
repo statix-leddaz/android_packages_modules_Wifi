@@ -18,6 +18,7 @@ package com.android.server.wifi;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.SuppressLint;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.AppOpsManager;
@@ -319,7 +320,7 @@ public class WifiInjector {
                 mSsidTranslator);
         mSupplicantStaIfaceHal = new SupplicantStaIfaceHal(
                 mContext, mWifiMonitor, mFrameworkFacade, wifiHandler, mClock, mWifiMetrics,
-                mWifiGlobals, mSsidTranslator);
+                mWifiGlobals, mSsidTranslator, this);
         mHostapdHal = new HostapdHal(mContext, wifiHandler);
         mWifiCondManager = (WifiNl80211Manager) mContext.getSystemService(
                 Context.WIFI_NL80211_SERVICE);
@@ -328,7 +329,7 @@ public class WifiInjector {
                 mWifiMonitor, mPropertyService, mWifiMetrics,
                 wifiHandler, new Random(), mBuildProperties, this);
         mWifiP2pMonitor = new WifiP2pMonitor();
-        mSupplicantP2pIfaceHal = new SupplicantP2pIfaceHal(mWifiP2pMonitor, mWifiGlobals);
+        mSupplicantP2pIfaceHal = new SupplicantP2pIfaceHal(mWifiP2pMonitor, mWifiGlobals, this);
         mWifiP2pNative = new WifiP2pNative(mWifiCondManager, mWifiNative, mWifiMetrics,
                 mWifiVendorHal, mSupplicantP2pIfaceHal, mHalDeviceManager, mPropertyService);
         SubscriptionManager subscriptionManager =
@@ -480,6 +481,8 @@ public class WifiInjector {
         mMultiInternetManager = new MultiInternetManager(mActiveModeWarden, mFrameworkFacade,
                 mContext, mCmiMonitor, mSettingsStore, wifiHandler, mClock);
         mExternalPnoScanRequestManager = new ExternalPnoScanRequestManager(wifiHandler, mContext);
+        mCountryCode = new WifiCountryCode(mContext, mActiveModeWarden, mWifiP2pMetrics,
+                mCmiMonitor, mWifiNative, mSettingsConfigStore, mClock, mWifiPermissionsUtil);
         mWifiConnectivityManager = new WifiConnectivityManager(
                 mContext, mScoringParams, mWifiConfigManager,
                 mWifiNetworkSuggestionsManager, mWifiNetworkSelector,
@@ -489,10 +492,8 @@ public class WifiInjector {
                 mWifiChannelUtilizationScan, mPasspointManager, mMultiInternetManager,
                 mDeviceConfigFacade, mActiveModeWarden, mFrameworkFacade, mWifiGlobals,
                 mExternalPnoScanRequestManager, mSsidTranslator, mWifiPermissionsUtil,
-                mWifiCarrierInfoManager);
+                mWifiCarrierInfoManager, mCountryCode);
         mMboOceController = new MboOceController(makeTelephonyManager(), mActiveModeWarden);
-        mCountryCode = new WifiCountryCode(mContext, mActiveModeWarden,
-                mCmiMonitor, mWifiNative, mSettingsConfigStore);
         mConnectionFailureNotifier = new ConnectionFailureNotifier(
                 mContext, mFrameworkFacade, mWifiConfigManager,
                 mWifiConnectivityManager, wifiHandler,
@@ -769,8 +770,7 @@ public class WifiInjector {
             @NonNull ActiveModeManager.SoftApRole role,
             boolean verboseLoggingEnabled) {
         return new SoftApManager(mContext, mWifiHandlerThread.getLooper(), mFrameworkFacade,
-                mWifiNative, this,
-                mCoexManager, makeBatteryManager(), mInterfaceConflictManager,
+                mWifiNative, this, mCoexManager, mInterfaceConflictManager,
                 listener, callback, mWifiApConfigStore,
                 config, mWifiMetrics, mSarManager, mWifiDiagnostics,
                 new SoftApNotifier(mContext, mFrameworkFacade, mWifiNotificationManager),
@@ -1111,6 +1111,8 @@ public class WifiInjector {
     /**
      * Creates a BroadcastOptions.
      */
+    // TODO(b/193460475): Remove when tooling supports SystemApi to public API.
+    @SuppressLint("NewApi")
     public BroadcastOptions makeBroadcastOptions() {
         return BroadcastOptions.makeBasic();
     }
