@@ -168,6 +168,7 @@ public class OsuLoginActivity extends Activity {
         webSettings.setSupportZoom(true);
         webSettings.setBuiltInZoomControls(true);
         webSettings.setDisplayZoomControls(false);
+        webSettings.setAllowContentAccess(false);
         mProgressBar = findViewById(R.id.progress_bar);
         mWebView.setWebViewClient(new OsuWebViewClient());
         mWebView.setWebChromeClient(new WebChromeClient() {
