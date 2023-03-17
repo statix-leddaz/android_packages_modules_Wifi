@@ -33,6 +33,24 @@
       "message": "Please pick \n https://partner-android.googlesource.com/platform/packages/modules/Wifi/+/2f9cec2a7cca93fb26b1a90976e988611a8f98ab\n \n https://partner-android.googlesource.com/platform/packages/modules/Wifi/+/507d8e19a535d612dd40d84958fb1a5d73e19249 - revert of previous fix + new change\n \n Now we are updating the Layer 2 information after supplicant sends CTRL-EVENT-CONNECTED(after the key exchange)",
       "revId": "a810ff5ce52b641989ff91fc2cf8de9e8cd88e48",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "cff7bcb5_8a8ac496",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1391574
+      },
+      "writtenOn": "2023-03-17T02:15:41Z",
+      "side": 1,
+      "message": "The issue will be fixed by the new changes.",
+      "parentUuid": "89475a46_db6534b8",
+      "revId": "a810ff5ce52b641989ff91fc2cf8de9e8cd88e48",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
