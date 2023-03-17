@@ -16,6 +16,23 @@
       "message": "Hey Sunil, this CL looks very similar to one change you had before, i.e try to do NUD probe after completing the association post roaming. Previous CL introduced side effect which resulted in the L2key wasn\u0027t updated on time, then device cannot find the cached lease by L2key when it roams to a different subnet. Is it possible to hit the similar issue for this change?",
       "revId": "a810ff5ce52b641989ff91fc2cf8de9e8cd88e48",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "38fe4af9_803b9174",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1391574
+      },
+      "writtenOn": "2023-03-17T02:14:16Z",
+      "side": 1,
+      "message": "Please pick \n https://partner-android.googlesource.com/platform/packages/modules/Wifi/+/2f9cec2a7cca93fb26b1a90976e988611a8f98ab\n \n https://partner-android.googlesource.com/platform/packages/modules/Wifi/+/507d8e19a535d612dd40d84958fb1a5d73e19249 - revert of previous fix + new change\n \n Now we are updating the Layer 2 information after supplicant sends CTRL-EVENT-CONNECTED(after the key exchange)",
+      "revId": "a810ff5ce52b641989ff91fc2cf8de9e8cd88e48",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
