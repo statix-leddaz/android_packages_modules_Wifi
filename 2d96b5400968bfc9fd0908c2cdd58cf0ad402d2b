@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "ce0da3e8_b456b0ef",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiConfigManagerTest.java",
+        "patchSetId": 5
+      },
+      "lineNbr": 2223,
+      "author": {
+        "id": 1391574
+      },
+      "writtenOn": "2023-03-21T01:38:03Z",
+      "side": 1,
+      "message": "What is the purpose of this change ?",
+      "revId": "2d96b5400968bfc9fd0908c2cdd58cf0ad402d2b",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
