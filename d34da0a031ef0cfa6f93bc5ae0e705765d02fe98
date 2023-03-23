@@ -1,0 +1,38 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "d73e7ebc_475dd27f",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 2867,
+      "author": {
+        "id": 1957754
+      },
+      "writtenOn": "2023-03-23T17:14:16Z",
+      "side": 1,
+      "message": "This call will fail if config is returned as null",
+      "revId": "d34da0a031ef0cfa6f93bc5ae0e705765d02fe98",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "8ca7037c_0dd505bb",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 3732,
+      "author": {
+        "id": 1957754
+      },
+      "writtenOn": "2023-03-23T17:14:16Z",
+      "side": 1,
+      "message": "This method can return null",
+      "revId": "d34da0a031ef0cfa6f93bc5ae0e705765d02fe98",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
