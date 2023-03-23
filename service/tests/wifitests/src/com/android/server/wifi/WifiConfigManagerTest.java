@@ -318,10 +318,11 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         when(wifiContext.getPackageManager()).thenReturn(mPackageManager);
         when(mPackageManager.getPackagesHoldingPermissions(any(String[].class), anyInt()))
                 .thenReturn(Collections.emptyList());
+        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfigFacade);
         mWifiCarrierInfoManager = spy(new WifiCarrierInfoManager(mTelephonyManager,
                 mSubscriptionManager, mWifiInjector, mock(FrameworkFacade.class),
                 wifiContext, mock(WifiConfigStore.class), mock(Handler.class),
-                mWifiMetrics, mClock));
+                mWifiMetrics, mClock, mock(WifiPseudonymManager.class)));
         mLruConnectionTracker = new LruConnectionTracker(100, mContext);
 
         when(mWifiInjector.getClock()).thenReturn(mClock);
@@ -333,7 +334,6 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         when(mWifiInjector.getWifiScoreCard()).thenReturn(mWifiScoreCard);
         when(mWifiInjector.getWifiPermissionsUtil()).thenReturn(mWifiPermissionsUtil);
         when(mWifiInjector.getFrameworkFacade()).thenReturn(mFrameworkFacade);
-        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfigFacade);
         when(mWifiInjector.getMacAddressUtil()).thenReturn(mMacAddressUtil);
         when(mWifiInjector.getBuildProperties()).thenReturn(mBuildProperties);
 
@@ -7901,6 +7901,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
         config.enterpriseConfig.setCaPath(null);
         config.enterpriseConfig.setDomainSuffixMatch(null);
+        assertFalse(config.enterpriseConfig.isUserApproveNoCaCert());
 
         // Verify operation fails
         NetworkUpdateResult result = addNetworkToWifiConfigManager(config);
@@ -7911,7 +7912,11 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(true);
 
         // Verify operation succeeds
-        assertTrue(addNetworkToWifiConfigManager(config).isSuccess());
+        NetworkUpdateResult res = addNetworkToWifiConfigManager(config);
+        assertTrue(res.isSuccess());
+        config = mWifiConfigManager.getConfiguredNetwork(res.getNetworkId());
+        assertNotNull(config);
+        assertTrue(config.enterpriseConfig.isUserApproveNoCaCert());
     }
 
     /**
