@@ -2864,9 +2864,19 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             Pair<String, String> p = mWifiScoreCard.getL2KeyAndGroupHint(mWifiInfo);
             if (!p.equals(mLastL2KeyAndGroupHint)) {
                 final MacAddress currentBssid = getMacAddressFromBssidString(mWifiInfo.getBSSID());
+                WifiConfiguration config = getConnectedWifiConfigurationInternal();
+                if (config == null) {
+                    // special case for IP reachability lost which happens right after linked network
+                    // roaming. The linked network roaming reset the mLastNetworkId which results in
+                    // the connected configuration to be null.
+                    config = getConnectingWifiConfigurationInternal();
+                    if (config == null) {
+                        return ;
+                    }
+                }
+
                 final Layer2Information l2Information = new Layer2Information(
-                        p.first, p.second, currentBssid);
-                // Update current BSSID on IpClient side whenever l2Key and groupHint
+                        p.first, p.second, currentBssid, config.creatorUid);
                 // pair changes (i.e. the initial connection establishment or L2 roaming
                 // happened). If we have COMPLETED the roaming to a different BSSID, start
                 // doing DNAv4/DNAv6 -style probing for on-link neighbors of interest (e.g.
@@ -6942,7 +6952,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         final String groupHint = mLastL2KeyAndGroupHint != null
                 ? mLastL2KeyAndGroupHint.second : null;
         final Layer2Information layer2Info = new Layer2Information(l2Key, groupHint,
-                currentBssid);
+                currentBssid, config.creatorUid);
 
         if (isFilsConnection) {
             stopIpClient();
