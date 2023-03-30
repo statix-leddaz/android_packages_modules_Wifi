@@ -31,8 +31,4 @@ oneway interface IWifiConnectedNetworkScorer
     void onStop(int sessionId);
 
     void onSetScoreUpdateObserver(IScoreUpdateObserver observerImpl);
-
-    void onNetworkSwitchAccepted(int sessionId, int targetNetworkId, String targetBssid);
-
-    void onNetworkSwitchRejected(int sessionId, int targetNetworkId, String targetBssid);
 }

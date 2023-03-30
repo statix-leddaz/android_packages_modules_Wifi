@@ -16,7 +16,6 @@
 
 package com.android.server.wifi.util;
 
-import android.annotation.NonNull;
 import android.net.wifi.util.HexEncoding;
 import android.text.TextUtils;
 import android.util.Log;
@@ -51,47 +50,37 @@ public class CertificateSubjectInfo {
      * @param subject the subject string
      * @return CertificateSubjectInfo object if the subject is valid; otherwise, null.
      */
-    public static CertificateSubjectInfo parse(@NonNull String subject) {
-        if (subject == null) return null;
+    public static CertificateSubjectInfo parse(String subject) {
         CertificateSubjectInfo info = new CertificateSubjectInfo();
-        info.rawData = subject;
+        info.rawData = unescapeString(subject);
+        if (null == info.rawData) return null;
 
-        // Split the Subject line ignoring escaped commas
-        final String regex = "(?<!\\\\),";
-        String[] parts = info.rawData.split(regex);
-
+        String[] parts = info.rawData.split(",");
         for (String s : parts) {
-            // Unescape escaped characters
-            s = unescapeString(s);
-            if (s == null) return null;
-            if (s.startsWith(COMMON_NAME_PREFIX) && TextUtils.isEmpty(info.commonName)) {
+            if (s.startsWith(COMMON_NAME_PREFIX)) {
                 info.commonName = s.substring(COMMON_NAME_PREFIX.length());
-            } else if (s.startsWith(ORGANIZATION_PREFIX) && TextUtils.isEmpty(info.organization)) {
+            } else if (s.startsWith(ORGANIZATION_PREFIX)) {
                 info.organization = s.substring(ORGANIZATION_PREFIX.length());
-            } else if (s.startsWith(LOCATION_PREFIX) && TextUtils.isEmpty(info.location)) {
+            } else if (s.startsWith(LOCATION_PREFIX)) {
                 info.location = s.substring(LOCATION_PREFIX.length());
-            } else if (s.startsWith(STATE_PREFIX) && TextUtils.isEmpty(info.state)) {
+            } else if (s.startsWith(STATE_PREFIX)) {
                 info.state = s.substring(STATE_PREFIX.length());
-            } else if (s.startsWith(COUNTRY_PREFIX) && TextUtils.isEmpty(info.country)) {
+            } else if (s.startsWith(COUNTRY_PREFIX)) {
                 info.country = s.substring(COUNTRY_PREFIX.length());
-            } else if (s.startsWith(EMAILADDRESS_OID_PREFIX) && TextUtils.isEmpty(info.email)) {
+            } else if (s.startsWith(EMAILADDRESS_OID_PREFIX)) {
                 String hexStr = s.substring(EMAILADDRESS_OID_PREFIX.length());
                 try {
                     info.email = new String(
                             HexEncoding.decode(hexStr.toCharArray(), false),
                             StandardCharsets.UTF_8);
                 } catch (IllegalArgumentException ex) {
-                    Log.w(TAG, "Failed to decode email: " + ex);
+                    Log.w(TAG, "failed to decode email: " + ex);
                 }
             } else {
-                Log.d(TAG, "Ignore an unknown or duplicate subject RDN: " + s);
+                Log.d(TAG, "Unhandled subject info: " + s);
             }
         }
-        if (TextUtils.isEmpty(info.commonName)) {
-            Log.e(TAG, "Parsed an invalid certificate without a common name");
-            return null;
-        }
-        return info;
+        return TextUtils.isEmpty(info.commonName) ? null : info;
     }
 
     /**
@@ -111,7 +100,7 @@ public class CertificateSubjectInfo {
             }
             // An illegal escaped character is founded.
             if (isEscaped && escapees.indexOf(c) == -1) {
-                Log.e(TAG, "Unable to unescape string: " + s);
+                Log.d(TAG, "Unable to unescape string: " + s);
                 return null;
             }
             res.append(c);
@@ -119,7 +108,7 @@ public class CertificateSubjectInfo {
         }
         // There is a trailing '\' without a escaped character.
         if (isEscaped) {
-            Log.e(TAG, "Unable to unescape string: " + s);
+            Log.d(TAG, "Unable to unescape string: " + s);
             return null;
         }
         return res.toString();

@@ -20,12 +20,10 @@ import static com.android.server.wifi.WifiNetworkSelector.NetworkNominator.NOMIN
 
 import android.annotation.NonNull;
 import android.net.wifi.ScanResult;
-import android.net.wifi.WifiContext;
 import android.util.Log;
 
 import com.android.server.wifi.WifiCandidates.Candidate;
 import com.android.server.wifi.WifiCandidates.ScoredCandidate;
-import com.android.wifi.resources.R;
 
 import java.util.Collection;
 
@@ -48,7 +46,6 @@ final class ThroughputScorer implements WifiCandidates.CandidateScorer {
      */
     public static final int TOP_TIER_BASE_SCORE = 1_000_000;
 
-    private final WifiContext mWifiContext;
     private final ScoringParams mScoringParams;
 
     // config_wifi_framework_RSSI_SCORE_OFFSET
@@ -75,8 +72,7 @@ final class ThroughputScorer implements WifiCandidates.CandidateScorer {
 
     private static final boolean USE_USER_CONNECT_CHOICE = true;
 
-    ThroughputScorer(WifiContext wifiContext, ScoringParams scoringParams) {
-        mWifiContext = wifiContext;
+    ThroughputScorer(ScoringParams scoringParams) {
         mScoringParams = scoringParams;
     }
 
@@ -176,9 +172,7 @@ final class ThroughputScorer implements WifiCandidates.CandidateScorer {
             score = 0;
         }
 
-        if (candidate.getLastSelectionWeight() > 0.0 && (mWifiContext.getResources().getBoolean(
-                R.bool.config_wifiThroughputScorerBoostForRecentlyUserSelectedNetwork)
-                        || !candidate.isUserSelected())) {
+        if (candidate.getLastSelectionWeight() > 0.0) {
             // Put a recently-selected network in a tier above everything else,
             // but include rssi and throughput contributions for BSSID selection.
             score = TOP_TIER_BASE_SCORE + rssiBaseScore + throughputBonusScore;

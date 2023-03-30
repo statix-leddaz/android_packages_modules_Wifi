@@ -24,12 +24,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.when;
 
-import android.content.res.Resources;
 import android.net.MacAddress;
 import android.net.wifi.ScanResult;
-import android.net.wifi.WifiContext;
 import android.net.wifi.WifiNetworkSelectionConfig;
 import android.util.SparseArray;
 
@@ -40,7 +37,6 @@ import com.android.net.module.util.MacAddressUtils;
 import com.android.server.wifi.WifiCandidates.Candidate;
 import com.android.server.wifi.WifiCandidates.CandidateScorer;
 import com.android.server.wifi.WifiCandidates.ScoredCandidate;
-import com.android.wifi.resources.R;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -48,8 +44,6 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,8 +58,6 @@ import java.util.List;
 @SmallTest
 @RunWith(Parameterized.class)
 public class CandidateScorerTest extends WifiBaseTest {
-    static @Mock WifiContext sContext;
-    @Mock Resources mResources;
 
     @Parameters(name = "{index}: {0}")
     public static List<Object[]> listOfObjectArraysBecauseJUnitMadeUs() {
@@ -97,7 +89,7 @@ public class CandidateScorerTest extends WifiBaseTest {
         ans.add(new Object[]{
                 "Throughput Scorer",
                 ThroughputScorer.THROUGHPUT_SCORER_DEFAULT_EXPID,
-                new ThroughputScorer(sContext, sp),
+                new ThroughputScorer(sp),
                 sp});
 
         return ans;
@@ -127,14 +119,9 @@ public class CandidateScorerTest extends WifiBaseTest {
      */
     @Before
     public void setUp() throws Exception {
-        MockitoAnnotations.initMocks(this);
-        when(sContext.getResources()).thenReturn(mResources);
-        when(mResources.getBoolean(
-                R.bool.config_wifiThroughputScorerBoostForRecentlyUserSelectedNetwork))
-                .thenReturn(true);
         if (mExpectedExpId == ThroughputScorer.THROUGHPUT_SCORER_DEFAULT_EXPID) {
             mScoringParams = spy(new ScoringParams());
-            mCandidateScorer = new ThroughputScorer(sContext, mScoringParams);
+            mCandidateScorer = new ThroughputScorer(mScoringParams);
             ((ThroughputScorer) mCandidateScorer).enableVerboseLogging(true);
         }
         mScoringParams.update("");
