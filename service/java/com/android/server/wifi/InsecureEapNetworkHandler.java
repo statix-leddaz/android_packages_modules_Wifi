@@ -18,7 +18,6 @@ package com.android.server.wifi;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -32,17 +31,23 @@ import android.net.wifi.WifiContext;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.os.Handler;
 import android.text.TextUtils;
+import android.text.format.DateFormat;
 import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
+import com.android.internal.util.HexDump;
 import com.android.server.wifi.util.CertificateSubjectInfo;
-import com.android.server.wifi.util.NativeUtil;
 import com.android.wifi.resources.R;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.StringJoiner;
 
 /** This class is used to handle insecure EAP networks. */
 public class InsecureEapNetworkHandler {
@@ -61,13 +66,7 @@ public class InsecureEapNetworkHandler {
     static final String EXTRA_PENDING_CERT_SSID =
             "com.android.server.wifi.ClientModeImpl.EXTRA_PENDING_CERT_SSID";
 
-    @VisibleForTesting
-    static final String NOTIFICATION_WAITING_TIMER_TAG =
-            "InsecureEapNetworkHandler Notification Waiting";
-    // If a notification is not responded in time, disconnect from the network
-    // to allow connecting to other networks.
-    @VisibleForTesting
-    static final long NOTIFICATION_WAITING_TIME_MS = 10 * 1000;
+    static final String TOFU_ANONYMOUS_IDENTITY = "anonymous";
 
     private final String mCaCertHelpLink;
     private final WifiContext mContext;
@@ -81,26 +80,6 @@ public class InsecureEapNetworkHandler {
     private final InsecureEapNetworkHandlerCallbacks mCallbacks;
     private final String mInterfaceName;
     private final Handler mHandler;
-    private final Clock mClock;
-    private final AlarmManager mAlarmManager;
-    private final AlarmManager.OnAlarmListener mNotificationWaitingTimerListener =
-            new AlarmManager.OnAlarmListener() {
-                public void onAlarm() {
-                    if (null == mCurrentTofuConfig) return;
-                    // Disconnect this network to avoid staying at connecting state.
-                    // Once the user accepts this via notification, this network could
-                    // be auto-connected.
-                    mWifiConfigManager.updateNetworkSelectionStatus(mCurrentTofuConfig.networkId,
-                            WifiConfiguration.NetworkSelectionStatus
-                            .DISABLED_BY_WIFI_MANAGER);
-
-                    // If the connecting network is changed, do not need to disconnect
-                    // the network anymore.
-                    if (null == mConnectingConfig) return;
-                    if (mConnectingConfig.networkId != mCurrentTofuConfig.networkId) return;
-                    mWifiNative.disconnect(mInterfaceName);
-                }
-            };
 
     // The latest connecting configuration from the caller, it is updated on calling
     // prepareConnection() always. This is used to ensure that current TOFU config is aligned
@@ -125,6 +104,7 @@ public class InsecureEapNetworkHandler {
     private List<X509Certificate> mServerCertChain = new ArrayList<>();
     private WifiDialogManager.DialogHandle mTofuAlertDialog = null;
     private boolean mIsCertNotificationReceiverRegistered = false;
+    private String mServerCertHash = null;
 
     BroadcastReceiver mCertNotificationReceiver = new BroadcastReceiver() {
         @Override
@@ -150,8 +130,6 @@ public class InsecureEapNetworkHandler {
             @NonNull FrameworkFacade facade,
             @NonNull WifiNotificationManager notificationManager,
             @NonNull WifiDialogManager wifiDialogManager,
-            @NonNull Clock clock,
-            @NonNull AlarmManager alarmManager,
             boolean isTrustOnFirstUseSupported,
             boolean isInsecureEnterpriseConfigurationAllowed,
             @NonNull InsecureEapNetworkHandlerCallbacks callbacks,
@@ -163,8 +141,6 @@ public class InsecureEapNetworkHandler {
         mFacade = facade;
         mNotificationManager = notificationManager;
         mWifiDialogManager = wifiDialogManager;
-        mClock = clock;
-        mAlarmManager = alarmManager;
         mIsTrustOnFirstUseSupported = isTrustOnFirstUseSupported;
         mIsInsecureEnterpriseConfigurationAllowed = isInsecureEnterpriseConfigurationAllowed;
         mCallbacks = callbacks;
@@ -175,10 +151,12 @@ public class InsecureEapNetworkHandler {
     }
 
     /**
-     * Prepare data for a new connection.
+     * Prepare TOFU data for a new connection.
      *
-     * Prepare data if this is an Enterprise configuration, which
+     * Prepare TOFU data if this is an Enterprise configuration, which
      * uses Server Cert, without a valid Root CA certificate or user approval.
+     * If TOFU is supported and enabled, this method will also clear the user credentials in the
+     * initial connection to the server.
      *
      * @param config the running wifi configuration.
      */
@@ -196,7 +174,7 @@ public class InsecureEapNetworkHandler {
                 + ", isTofuEnabled=" + entConfig.isTrustOnFirstUseEnabled()
                 + ", isUserApprovedNoCaCert=" + entConfig.isUserApproveNoCaCert());
         // If TOFU is not supported or insecure EAP network is allowed without TOFU enabled,
-        // return to skip the dialog if this network is approved before.
+        // skip the entire TOFU logic if this network was approved earlier by the user.
         if (entConfig.isUserApproveNoCaCert()) {
             if (!mIsTrustOnFirstUseSupported) return;
             if (mIsInsecureEnterpriseConfigurationAllowed
@@ -205,14 +183,42 @@ public class InsecureEapNetworkHandler {
             }
         }
 
+        if (mIsTrustOnFirstUseSupported && (entConfig.isTrustOnFirstUseEnabled()
+                || !mIsInsecureEnterpriseConfigurationAllowed)) {
+            /**
+             * Clear the user credentials from this copy of the configuration object.
+             * Supplicant will start the phase-1 TLS session to acquire the server certificate chain
+             * which will be provided to the framework. Then since the callbacks for identity and
+             * password requests are not populated, it will fail the connection and disconnect.
+             * This will allow the user to review the certificates at their own pace, and a
+             * reconnection would automatically take place with full verification of the chain once
+             * they approve.
+             */
+            if (config.enterpriseConfig.getEapMethod() == WifiEnterpriseConfig.Eap.TTLS
+                    || config.enterpriseConfig.getEapMethod() == WifiEnterpriseConfig.Eap.PEAP) {
+                config.enterpriseConfig.setPhase2Method(WifiEnterpriseConfig.Phase2.NONE);
+                config.enterpriseConfig.setIdentity(null);
+                if (TextUtils.isEmpty(config.enterpriseConfig.getAnonymousIdentity())) {
+                    /**
+                     * If anonymous identity was not provided, use "anonymous" to prevent any
+                     * untrusted server from tracking real user identities.
+                     */
+                    config.enterpriseConfig.setAnonymousIdentity(TOFU_ANONYMOUS_IDENTITY);
+                }
+                config.enterpriseConfig.setPassword(null);
+            }
+        }
         mCurrentTofuConfig = config;
         mServerCertChain.clear();
         dismissDialogAndNotification();
         registerCertificateNotificationReceiver();
-        // Remove cached PMK in the framework and supplicant to avoid
-        // skipping the EAP flow.
-        clearNativeData();
-        Log.d(TAG, "Remove native cached data and networks for TOFU.");
+
+        if (useTrustOnFirstUse()) {
+            // Remove cached PMK in the framework and supplicant to avoid skipping the EAP flow
+            // only when TOFU is in use.
+            clearNativeData();
+            Log.d(TAG, "Remove native cached data and networks for TOFU.");
+        }
     }
 
     /**
@@ -230,50 +236,70 @@ public class InsecureEapNetworkHandler {
      * @param ssid the target network SSID.
      * @param depth the depth of this cert. The Root CA should be 0 or
      *        a positive number, and the server cert is 0.
-     * @param cert a certificate from the server.
+     * @param certInfo a certificate info object from the server.
      * @return true if the cert is cached; otherwise, false.
      */
     public boolean addPendingCertificate(@NonNull String ssid, int depth,
-            @NonNull X509Certificate cert) {
+            @NonNull CertificateEventInfo certInfo) {
         String configProfileKey = mCurrentTofuConfig != null
                 ? mCurrentTofuConfig.getProfileKey() : "null";
-        Log.d(TAG, "setPendingCertificate: " + "ssid=" + ssid + " depth=" + depth
+        Log.d(TAG, "addPendingCertificate: " + "ssid=" + ssid + " depth=" + depth
+                + " certHash=" + (certInfo == null ? "<none>" : certInfo.getCertHash())
                 + " current config=" + configProfileKey);
         if (TextUtils.isEmpty(ssid)) return false;
         if (null == mCurrentTofuConfig) return false;
         if (!TextUtils.equals(ssid, mCurrentTofuConfig.SSID)) return false;
-        if (null == cert) return false;
+        if (null == certInfo) return false;
         if (depth < 0) return false;
 
-        if (!mServerCertChain.contains(cert)) {
-            mServerCertChain.add(cert);
+        // If TOFU is not supported return immediately, although this should not happen since
+        // the caller code flow is only active when TOFU is supported.
+        if (!mIsTrustOnFirstUseSupported) return false;
+
+        // If insecure configurations are allowed and this configuration is configured with
+        // "Do not validate" (i.e. TOFU is disabled), skip loading the certificates (no need for
+        // them anyway) and don't disconnect the network.
+        if (mIsInsecureEnterpriseConfigurationAllowed
+                && !mCurrentTofuConfig.enterpriseConfig.isTrustOnFirstUseEnabled()) {
+            Log.d(TAG, "Certificates are not required for this connection");
+            return false;
+        }
+
+        if (depth == 0) {
+            // Disable network selection upon receiving the server certificate
+            putNetworkOnHold();
+        }
+
+        if (!mServerCertChain.contains(certInfo.getCert())) {
+            mServerCertChain.add(certInfo.getCert());
         }
 
         // 0 is the tail, i.e. the server cert.
         if (depth == 0 && null == mPendingServerCert) {
-            mPendingServerCert = cert;
+            mPendingServerCert = certInfo.getCert();
             Log.d(TAG, "Pending server certificate: " + mPendingServerCert);
             mPendingServerCertSubjectInfo = CertificateSubjectInfo.parse(
-                    cert.getSubjectX500Principal().getName());
+                    certInfo.getCert().getSubjectX500Principal().getName());
             if (null == mPendingServerCertSubjectInfo) {
                 Log.e(TAG, "CA cert has no valid subject.");
                 return false;
             }
             mPendingServerCertIssuerInfo = CertificateSubjectInfo.parse(
-                    cert.getIssuerX500Principal().getName());
+                    certInfo.getCert().getIssuerX500Principal().getName());
             if (null == mPendingServerCertIssuerInfo) {
                 Log.e(TAG, "CA cert has no valid issuer.");
                 return false;
             }
+            mServerCertHash = certInfo.getCertHash();
         }
 
         // Root or intermediate cert.
         if (depth < mPendingRootCaCertDepth) {
-            Log.d(TAG, "Ignore intermediate cert." + cert);
+            Log.d(TAG, "Ignore intermediate cert." + certInfo.getCert());
             return true;
         }
         mPendingRootCaCertDepth = depth;
-        mPendingRootCaCert = cert;
+        mPendingRootCaCert = certInfo.getCert();
         Log.d(TAG, "Pending Root CA certificate: " + mPendingRootCaCert);
         return true;
     }
@@ -296,91 +322,41 @@ public class InsecureEapNetworkHandler {
      * cert from the server, just mark this network is approved by the user.
      *
      * @param isUserSelected indicates that this connection is triggered by a user.
-     * @return true if the user approval is needed; otherwise, false.
+     * @return true if user approval dialog is displayed and the network is pending.
      */
     public boolean startUserApprovalIfNecessary(boolean isUserSelected) {
         if (null == mConnectingConfig || null == mCurrentTofuConfig) return false;
         if (mConnectingConfig.networkId != mCurrentTofuConfig.networkId) return false;
 
         // If Trust On First Use is supported and insecure enterprise configuration
-        // is not allowed, TOFU must be used for an Enterprise network without certs.
+        // is not allowed, TOFU must be used for an Enterprise network without certs. This should
+        // not happen because the TOFU flag will be set during boot if these conditions are met.
         if (mIsTrustOnFirstUseSupported && !mIsInsecureEnterpriseConfigurationAllowed
                 && !mCurrentTofuConfig.enterpriseConfig.isTrustOnFirstUseEnabled()) {
-            Log.d(TAG, "Trust On First Use is not enabled.");
-            handleError(mCurrentTofuConfig.SSID);
-            return true;
+            Log.e(TAG, "Upgrade insecure connection to TOFU.");
+            mCurrentTofuConfig.enterpriseConfig.enableTrustOnFirstUse(true);
         }
 
         if (useTrustOnFirstUse()) {
             if (null == mPendingRootCaCert) {
-                Log.d(TAG, "No valid CA cert for TLS-based connection.");
+                Log.e(TAG, "No valid CA cert for TLS-based connection.");
                 handleError(mCurrentTofuConfig.SSID);
-                return true;
-            } else if (null == mPendingServerCert) {
-                Log.d(TAG, "No valid Server cert for TLS-based connection.");
+                return false;
+            }
+            if (null == mPendingServerCert) {
+                Log.e(TAG, "No valid Server cert for TLS-based connection.");
                 handleError(mCurrentTofuConfig.SSID);
-                return true;
-            } else if (!isServerCertChainValid()) {
-                Log.d(TAG, "Server cert chain is invalid.");
-                String title = mContext.getString(R.string.wifi_tofu_invalid_cert_chain_title,
-                        mCurrentTofuConfig.SSID);
-                String message = mContext.getString(R.string.wifi_tofu_invalid_cert_chain_message);
-                String okButtonText = mContext.getString(
-                        R.string.wifi_tofu_invalid_cert_chain_ok_text);
-
-                handleError(mCurrentTofuConfig.SSID);
-
-                if (TextUtils.isEmpty(title) || TextUtils.isEmpty(message)) return true;
-
-                if (isUserSelected) {
-                    mTofuAlertDialog = mWifiDialogManager.createLegacySimpleDialog(
-                        title,
-                        message,
-                        null /* positiveButtonText */,
-                        null /* negativeButtonText */,
-                        okButtonText,
-                        new WifiDialogManager.SimpleDialogCallback() {
-                            @Override
-                            public void onPositiveButtonClicked() {
-                                // Not used.
-                            }
-
-                            @Override
-                            public void onNegativeButtonClicked() {
-                                // Not used.
-                            }
-
-                            @Override
-                            public void onNeutralButtonClicked() {
-                                // Not used.
-                            }
-
-                            @Override
-                            public void onCancelled() {
-                                // Not used.
-                            }
-                        },
-                        new WifiThreadRunner(mHandler));
-                    mTofuAlertDialog.launchDialog();
-                } else {
-                    Notification.Builder builder = mFacade.makeNotificationBuilder(mContext,
-                            WifiService.NOTIFICATION_NETWORK_ALERTS)
-                            .setSmallIcon(
-                                    Icon.createWithResource(mContext.getWifiOverlayApkPkgName(),
-                                    com.android.wifi.resources.R
-                                            .drawable.stat_notify_wifi_in_range))
-                            .setContentTitle(title)
-                            .setContentText(message)
-                            .setStyle(new Notification.BigTextStyle().bigText(message))
-                            .setColor(mContext.getResources().getColor(
-                                        android.R.color.system_notification_accent_color));
-                    mNotificationManager.notify(SystemMessage.NOTE_SERVER_CA_CERTIFICATE,
-                            builder.build());
-                }
-                return true;
+                return false;
+            }
+            if (!isServerCertChainValid()) {
+                Log.e(TAG, "Server cert chain is invalid.");
+                String ssid = mCurrentTofuConfig.SSID;
+                handleError(ssid);
+                createCertificateErrorNotification(isUserSelected, ssid);
+                return false;
             }
         } else if (mIsInsecureEnterpriseConfigurationAllowed) {
-            Log.i(TAG, "networks without the server cert are allowed, skip it.");
+            Log.i(TAG, "Insecure networks without a Root CA cert are allowed.");
             return false;
         }
 
@@ -395,21 +371,114 @@ public class InsecureEapNetworkHandler {
         return true;
     }
 
-    private boolean isServerCertChainValid() {
-        if (mServerCertChain.size() == 0) return false;
+    /**
+     * Create a notification or a dialog when a server certificate is invalid
+     */
+    private void createCertificateErrorNotification(boolean isUserSelected, String ssid) {
+        String title = mContext.getString(R.string.wifi_tofu_invalid_cert_chain_title, ssid);
+        String message = mContext.getString(R.string.wifi_tofu_invalid_cert_chain_message);
+        String okButtonText = mContext.getString(
+                R.string.wifi_tofu_invalid_cert_chain_ok_text);
 
+        if (TextUtils.isEmpty(title) || TextUtils.isEmpty(message)) return;
+
+        if (isUserSelected) {
+            mTofuAlertDialog = mWifiDialogManager.createLegacySimpleDialog(
+                    title,
+                    message,
+                    null /* positiveButtonText */,
+                    null /* negativeButtonText */,
+                    okButtonText,
+                    new WifiDialogManager.SimpleDialogCallback() {
+                        @Override
+                        public void onPositiveButtonClicked() {
+                            // Not used.
+                        }
+
+                        @Override
+                        public void onNegativeButtonClicked() {
+                            // Not used.
+                        }
+
+                        @Override
+                        public void onNeutralButtonClicked() {
+                            // Not used.
+                        }
+
+                        @Override
+                        public void onCancelled() {
+                            // Not used.
+                        }
+                    },
+                    new WifiThreadRunner(mHandler));
+            mTofuAlertDialog.launchDialog();
+        } else {
+            Notification.Builder builder = mFacade.makeNotificationBuilder(mContext,
+                            WifiService.NOTIFICATION_NETWORK_ALERTS)
+                    .setSmallIcon(
+                            Icon.createWithResource(mContext.getWifiOverlayApkPkgName(),
+                                    com.android.wifi.resources.R
+                                            .drawable.stat_notify_wifi_in_range))
+                    .setContentTitle(title)
+                    .setContentText(message)
+                    .setStyle(new Notification.BigTextStyle().bigText(message))
+                    .setColor(mContext.getResources().getColor(
+                            android.R.color.system_notification_accent_color));
+            mNotificationManager.notify(SystemMessage.NOTE_SERVER_CA_CERTIFICATE,
+                    builder.build());
+        }
+    }
+
+    /**
+     * Disable network selection, disconnect if necessary, and clear PMK cache
+     */
+    private void putNetworkOnHold() {
+        // Disable network selection upon receiving the server certificate
+        mWifiConfigManager.updateNetworkSelectionStatus(mCurrentTofuConfig.networkId,
+                WifiConfiguration.NetworkSelectionStatus
+                        .DISABLED_BY_WIFI_MANAGER);
+
+        // Force disconnect and clear PMK cache to avoid supplicant reconnection
+        mWifiNative.disconnect(mInterfaceName);
+        clearNativeData();
+    }
+
+    private boolean isServerCertChainValid() {
+        int depth = mServerCertChain.size();
+        Log.d(TAG, "Checking certificate chain with a total depth of " + depth + ":");
+        if (depth == 0) {
+            Log.e(TAG, "No certificate chain provided by the server.");
+            return false;
+        }
         X509Certificate parentCert = null;
         for (X509Certificate cert: mServerCertChain) {
             String subject = cert.getSubjectX500Principal().getName();
             String issuer = cert.getIssuerX500Principal().getName();
             boolean isCa = cert.getBasicConstraints() >= 0;
-            Log.d(TAG, "Subject: " + subject + ", Issuer: " + issuer + ", isCA: " + isCa);
+            Log.d(TAG, "Subject: " + subject + ", Issuer: " + issuer + ", isCA: " + isCa
+                    + ", depth: " + (depth - 1));
 
             if (parentCert == null) {
-                // The root cert, it should be a CA cert or a self-signed cert.
+                // Special handling for a cert chain of size 1
+                if (mServerCertChain.size() == 1) {
+                    // The only valid case for TLS is a self-signed Root CA
+                    if (!isCa || !subject.equals(issuer)) {
+                        // A misconfigured cert chain, use server certificate pinning instead
+                        Log.d(TAG, "Misconfigured cert chain, use server cert pinning");
+                        break;
+                    }
+                    Log.d(TAG, "Found a valid Root CA cert, reset current cert hash value");
+                    mServerCertHash = null;
+                    break;
+                }
+                // The root cert must be a CA cert or a self-signed cert.
                 if (!isCa && !subject.equals(issuer)) {
-                    Log.e(TAG, "The root cert is not a CA cert or a self-signed cert.");
+                    Log.e(TAG, "The Root cert is not a CA cert or a self-signed cert.");
                     return false;
+                }
+                if (subject.equals(issuer)) {
+                    Log.d(TAG, "Found a valid Root CA cert, reset current cert hash value");
+                    mServerCertHash = null;
                 }
             } else {
                 // The issuer of intermediate cert of the leaf cert should be
@@ -420,6 +489,10 @@ public class InsecureEapNetworkHandler {
                 }
             }
             parentCert = cert;
+            depth--;
+        }
+        if (mServerCertHash != null) {
+            Log.i(TAG, "Using server certificate pinning");
         }
         return true;
     }
@@ -462,32 +535,34 @@ public class InsecureEapNetworkHandler {
                 return;
             }
             if (!mWifiConfigManager.updateCaCertificate(
-                    mCurrentTofuConfig.networkId, mPendingRootCaCert, mPendingServerCert)) {
+                    mCurrentTofuConfig.networkId, mPendingRootCaCert, mPendingServerCert,
+                    mServerCertHash)) {
                 // The user approved this network,
                 // keep the connection regardless of the result.
                 Log.e(TAG, "Cannot update CA cert to network " + mCurrentTofuConfig.getProfileKey()
                         + ", CA cert = " + mPendingRootCaCert);
             }
         }
-        mWifiConfigManager.updateNetworkSelectionStatus(mCurrentTofuConfig.networkId,
+        int networkId = mCurrentTofuConfig.networkId;
+        mWifiConfigManager.updateNetworkSelectionStatus(networkId,
                 WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
         dismissDialogAndNotification();
         clearInternalData();
 
-        if (null != mCallbacks) mCallbacks.onAccept(ssid);
+        if (null != mCallbacks) mCallbacks.onAccept(ssid, networkId);
     }
 
     @VisibleForTesting
     void handleReject(@NonNull String ssid) {
         if (!isConnectionValid(ssid)) return;
+        boolean disconnectRequired = !useTrustOnFirstUse();
 
         mWifiConfigManager.updateNetworkSelectionStatus(mCurrentTofuConfig.networkId,
                 WifiConfiguration.NetworkSelectionStatus.DISABLED_BY_WIFI_MANAGER);
         dismissDialogAndNotification();
         clearInternalData();
-        clearNativeData();
-
-        if (null != mCallbacks) mCallbacks.onReject(ssid);
+        if (disconnectRequired) clearNativeData();
+        if (null != mCallbacks) mCallbacks.onReject(ssid, disconnectRequired);
     }
 
     private void handleError(@Nullable String ssid) {
@@ -542,19 +617,16 @@ public class InsecureEapNetworkHandler {
                         R.string.wifi_ca_cert_dialog_message_organization_text,
                         mPendingServerCertSubjectInfo.organization));
             }
-            if (!TextUtils.isEmpty(mPendingServerCertSubjectInfo.email)) {
+            final Date expiration = mPendingServerCert.getNotAfter();
+            if (expiration != null) {
                 contentBuilder.append(mContext.getString(
-                        R.string.wifi_ca_cert_dialog_message_contact_text,
-                        mPendingServerCertSubjectInfo.email));
+                        R.string.wifi_ca_cert_dialog_message_expiration_text,
+                        DateFormat.getMediumDateFormat(mContext).format(expiration)));
             }
-            byte[] signature = mPendingServerCert.getSignature();
-            if (signature != null) {
-                String signatureString = NativeUtil.hexStringFromByteArray(signature);
-                if (signatureString.length() > 16) {
-                    signatureString = signatureString.substring(0, 16);
-                }
+            final String fingerprint = getDigest(mPendingServerCert, "SHA256");
+            if (!TextUtils.isEmpty(fingerprint)) {
                 contentBuilder.append(mContext.getString(
-                        R.string.wifi_ca_cert_dialog_message_signature_name_text, signatureString));
+                        R.string.wifi_ca_cert_dialog_message_signature_name_text, fingerprint));
             }
             message = contentBuilder.toString();
         } else {
@@ -582,6 +654,7 @@ public class InsecureEapNetworkHandler {
                         if (mCurrentTofuConfig == null) {
                             return;
                         }
+                        Log.d(TAG, "User accepted the server certificate");
                         handleAccept(mCurrentTofuConfig.SSID);
                     }
 
@@ -590,6 +663,7 @@ public class InsecureEapNetworkHandler {
                         if (mCurrentTofuConfig == null) {
                             return;
                         }
+                        Log.d(TAG, "User rejected the server certificate");
                         handleReject(mCurrentTofuConfig.SSID);
                     }
 
@@ -599,6 +673,7 @@ public class InsecureEapNetworkHandler {
                         if (mCurrentTofuConfig == null) {
                             return;
                         }
+                        Log.d(TAG, "User input neutral");
                         handleReject(mCurrentTofuConfig.SSID);
                     }
 
@@ -607,6 +682,7 @@ public class InsecureEapNetworkHandler {
                         if (mCurrentTofuConfig == null) {
                             return;
                         }
+                        Log.d(TAG, "User input canceled");
                         handleReject(mCurrentTofuConfig.SSID);
                     }
                 },
@@ -677,11 +753,6 @@ public class InsecureEapNetworkHandler {
             builder.addAction(rejectAction).addAction(acceptAction);
         }
         mNotificationManager.notify(SystemMessage.NOTE_SERVER_CA_CERTIFICATE, builder.build());
-
-        mAlarmManager.cancel(mNotificationWaitingTimerListener);
-        mAlarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                mClock.getElapsedSinceBootMillis() + NOTIFICATION_WAITING_TIME_MS,
-                NOTIFICATION_WAITING_TIMER_TAG, mNotificationWaitingTimerListener, mHandler);
     }
 
     private void dismissDialogAndNotification() {
@@ -690,7 +761,6 @@ public class InsecureEapNetworkHandler {
             mTofuAlertDialog.dismissDialog();
             mTofuAlertDialog = null;
         }
-        mAlarmManager.cancel(mNotificationWaitingTimerListener);
     }
 
     private void clearInternalData() {
@@ -700,6 +770,7 @@ public class InsecureEapNetworkHandler {
         mPendingServerCertSubjectInfo = null;
         mPendingServerCertIssuerInfo = null;
         mCurrentTofuConfig = null;
+        mServerCertHash = null;
     }
 
     private void clearNativeData() {
@@ -737,20 +808,50 @@ public class InsecureEapNetworkHandler {
         return true;
     }
 
+    @VisibleForTesting
+    static String getDigest(X509Certificate x509Certificate, String algorithm) {
+        if (x509Certificate == null) {
+            return "";
+        }
+        try {
+            byte[] bytes = x509Certificate.getEncoded();
+            MessageDigest md = MessageDigest.getInstance(algorithm);
+            byte[] digest = md.digest(bytes);
+            return fingerprint(digest);
+        } catch (CertificateEncodingException ignored) {
+            return "";
+        } catch (NoSuchAlgorithmException ignored) {
+            return "";
+        }
+    }
+
+    private static String fingerprint(byte[] bytes) {
+        if (bytes == null) {
+            return "";
+        }
+        StringJoiner sj = new StringJoiner(":");
+        for (byte b : bytes) {
+            sj.add(HexDump.toHexString(b));
+        }
+        return sj.toString();
+    }
+
     /** The callbacks object to notify the consumer. */
     public static class InsecureEapNetworkHandlerCallbacks {
         /**
          * When a certificate is accepted, this callback is called.
          *
          * @param ssid SSID of the network.
+         * @param networkId  network ID
          */
-        public void onAccept(@NonNull String ssid) {}
+        public void onAccept(@NonNull String ssid, int networkId) {}
         /**
          * When a certificate is rejected, this callback is called.
          *
          * @param ssid SSID of the network.
+         * @param disconnectRequired Set to true if the network is currently connected
          */
-        public void onReject(@NonNull String ssid) {}
+        public void onReject(@NonNull String ssid, boolean disconnectRequired) {}
         /**
          * When there are no valid data to handle this insecure EAP network,
          * this callback is called.

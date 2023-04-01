@@ -81,6 +81,7 @@ import android.util.Pair;
 import androidx.test.filters.SmallTest;
 
 import com.android.server.wifi.Clock;
+import com.android.server.wifi.DeviceConfigFacade;
 import com.android.server.wifi.FakeKeys;
 import com.android.server.wifi.FrameworkFacade;
 import com.android.server.wifi.MacAddressUtil;
@@ -95,6 +96,7 @@ import com.android.server.wifi.WifiKeyStore;
 import com.android.server.wifi.WifiMetrics;
 import com.android.server.wifi.WifiNative;
 import com.android.server.wifi.WifiNetworkSuggestionsManager;
+import com.android.server.wifi.WifiPseudonymManager;
 import com.android.server.wifi.WifiSettingsStore;
 import com.android.server.wifi.hotspot2.anqp.ANQPElement;
 import com.android.server.wifi.hotspot2.anqp.Constants.ANQPElementType;
@@ -219,6 +221,7 @@ public class PasspointManagerTest extends WifiBaseTest {
     @Mock WifiNetworkSuggestionsManager mWifiNetworkSuggestionsManager;
     @Mock MacAddressUtil mMacAddressUtil;
     @Mock WifiPermissionsUtil mWifiPermissionsUtil;
+    @Mock DeviceConfigFacade mDeviceConfigFacade;
 
     Handler mHandler;
     TestLooper mLooper;
@@ -244,6 +247,7 @@ public class PasspointManagerTest extends WifiBaseTest {
     @Before
     public void setUp() throws Exception {
         initMocks(this);
+        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfigFacade);
         when(mObjectFactory.makeAnqpCache(mClock)).thenReturn(mAnqpCache);
         when(mObjectFactory.makeANQPRequestManager(any(), eq(mClock)))
                 .thenReturn(mAnqpRequestManager);
@@ -274,7 +278,8 @@ public class PasspointManagerTest extends WifiBaseTest {
         mHandler = new Handler(mLooper.getLooper());
         mWifiCarrierInfoManager = new WifiCarrierInfoManager(mTelephonyManager,
                 mSubscriptionManager, mWifiInjector, mock(FrameworkFacade.class),
-                mock(WifiContext.class), mWifiConfigStore, mHandler, mWifiMetrics, mClock);
+                mock(WifiContext.class), mWifiConfigStore, mHandler, mWifiMetrics, mClock,
+                mock(WifiPseudonymManager.class));
         verify(mSubscriptionManager).addOnSubscriptionsChangedListener(any(),
                 mSubscriptionsCaptor.capture());
         mManager = new PasspointManager(mContext, mWifiInjector, mHandler, mWifiNative,

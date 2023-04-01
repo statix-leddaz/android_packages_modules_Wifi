@@ -1463,6 +1463,10 @@ public class WifiConfigManager {
             }
             Log.w(TAG, "Insecure Enterprise network " + config.SSID
                     + " configured by Settings/SUW");
+
+            // Implicit user approval, when creating an insecure connection which is allowed
+            // in the configuration of the device
+            newInternalConfig.enterpriseConfig.setUserApproveNoCaCert(true);
         }
 
         // Update the keys for saved enterprise networks. For Passpoint, the certificates
@@ -1514,11 +1518,6 @@ public class WifiConfigManager {
                         existingInternalConfig, newInternalConfig);
         if (hasCredentialChanged) {
             newInternalConfig.getNetworkSelectionStatus().setHasEverConnected(false);
-        }
-
-        // Ensure that the user approve flag is set to false for a new network.
-        if (newNetwork && config.isEnterprise()) {
-            config.enterpriseConfig.setUserApproveNoCaCert(false);
         }
 
         // Add it to our internal map. This will replace any existing network configuration for
@@ -4151,16 +4150,17 @@ public class WifiConfigManager {
     }
 
     /**
-     * This method updates the Root CA certifiate and the domain name of the
+     * This method updates the Root CA certificate and the domain name of the
      * server in the internal network.
      *
      * @param networkId networkId corresponding to the network to be updated.
      * @param caCert Root CA certificate to be updated.
      * @param serverCert Server certificate to be updated.
+     * @param certHash Server certificate hash (for TOFU case with no Root CA)
      * @return true if updating Root CA certificate successfully; otherwise, false.
      */
     public boolean updateCaCertificate(int networkId, @NonNull X509Certificate caCert,
-            @NonNull X509Certificate serverCert) {
+            @NonNull X509Certificate serverCert, String certHash) {
         WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
         if (internalConfig == null) {
             Log.e(TAG, "No network for network ID " + networkId);
@@ -4183,7 +4183,7 @@ public class WifiConfigManager {
             return false;
         }
         CertificateSubjectInfo serverCertInfo = CertificateSubjectInfo.parse(
-                serverCert.getSubjectDN().getName());
+                serverCert.getSubjectX500Principal().getName());
         if (null == serverCertInfo) {
             Log.e(TAG, "Invalid Server CA cert subject");
             return false;
@@ -4192,11 +4192,15 @@ public class WifiConfigManager {
         WifiConfiguration newConfig = new WifiConfiguration(internalConfig);
         try {
             if (newConfig.enterpriseConfig.isTrustOnFirstUseEnabled()) {
-                newConfig.enterpriseConfig.setCaCertificateForTrustOnFirstUse(caCert);
-                // setCaCertificate will mark that this CA certifiate should be removed on
-                // removing this configuration.
+                if (TextUtils.isEmpty(certHash)) {
+                    newConfig.enterpriseConfig.setCaCertificateForTrustOnFirstUse(caCert);
+                } else {
+                    newConfig.enterpriseConfig.setServerCertificateHash(certHash);
+                }
                 newConfig.enterpriseConfig.enableTrustOnFirstUse(false);
             } else {
+                // setCaCertificate will mark that this CA certificate should be removed on
+                // removing this configuration.
                 newConfig.enterpriseConfig.setCaCertificate(caCert);
             }
         } catch (IllegalArgumentException ex) {
@@ -4218,7 +4222,7 @@ public class WifiConfigManager {
             newConfig.enterpriseConfig.setDomainSuffixMatch(serverCertInfo.commonName);
         }
         newConfig.enterpriseConfig.setUserApproveNoCaCert(false);
-        // Trigger an update to install CA certifiate and the corresponding configuration.
+        // Trigger an update to install CA certificate and the corresponding configuration.
         NetworkUpdateResult result = addOrUpdateNetwork(newConfig, internalConfig.creatorUid);
         if (!result.isSuccess()) {
             Log.e(TAG, "Failed to install CA cert for network " + internalConfig.SSID);
