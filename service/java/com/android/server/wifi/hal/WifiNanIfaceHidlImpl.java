@@ -82,15 +82,6 @@ public class WifiNanIfaceHidlImpl implements IWifiNanIface {
     }
 
     /**
-     * See comments for {@link IWifiNanIface#getNanIface()}
-     *
-     * TODO: Remove this API. Will only be used temporarily until HalDeviceManager is refactored.
-     */
-    public android.hardware.wifi.V1_0.IWifiNanIface getNanIface() {
-        return mWifiNanIface;
-    }
-
-    /**
      * See comments for {@link IWifiNanIface#registerFrameworkCallback(WifiNanIface.Callback)}
      */
     public boolean registerFrameworkCallback(WifiNanIface.Callback callback) {
@@ -211,14 +202,13 @@ public class WifiNanIfaceHidlImpl implements IWifiNanIface {
     }
 
     /**
-     * See comments for {@link IWifiNanIface#initiateDataPath(short, int, int, int, MacAddress,
-     *                         String, boolean, byte[], Capabilities,
-     *                         WifiAwareDataPathSecurityConfig)}
+     * See comments for
+     * {@link IWifiNanIface#initiateDataPath(short, int, int, int, MacAddress, String, boolean, byte[], Capabilities, WifiAwareDataPathSecurityConfig, byte)}
      */
     public boolean initiateDataPath(short transactionId, int peerId, int channelRequestType,
             int channel, MacAddress peer, String interfaceName,
             boolean isOutOfBand, byte[] appInfo, Capabilities capabilities,
-            WifiAwareDataPathSecurityConfig securityConfig) {
+            WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId) {
         final String methodStr = "initiateDataPath";
         return validateAndCall(methodStr, false,
                 () -> initiateDataPathInternal(methodStr, transactionId, peerId, channelRequestType,
@@ -227,12 +217,12 @@ public class WifiNanIfaceHidlImpl implements IWifiNanIface {
     }
 
     /**
-     * See comments for {@link IWifiNanIface#respondToDataPathRequest(short, boolean, int, String,
-     *                         byte[], boolean, Capabilities, WifiAwareDataPathSecurityConfig)}
+     * See comments for
+     * {@link IWifiNanIface#respondToDataPathRequest(short, boolean, int, String, byte[], boolean, Capabilities, WifiAwareDataPathSecurityConfig, byte)}
      */
     public boolean respondToDataPathRequest(short transactionId, boolean accept, int ndpId,
             String interfaceName, byte[] appInfo, boolean isOutOfBand, Capabilities capabilities,
-            WifiAwareDataPathSecurityConfig securityConfig) {
+            WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId) {
         final String methodStr = "respondToDataPathRequest";
         return validateAndCall(methodStr, false,
                 () -> respondToDataPathRequestInternal(methodStr, transactionId, accept, ndpId,
@@ -251,20 +241,25 @@ public class WifiNanIfaceHidlImpl implements IWifiNanIface {
     @Override
     public boolean respondToPairingRequest(short transactionId, int pairingId, boolean accept,
             byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-            String password, int akm) {
+            String password, int akm, int cipherSuite) {
         return false;
     }
 
     @Override
     public boolean initiateNanPairingRequest(short transactionId, int peerId, MacAddress peer,
             byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-            String password, int akm) {
+            String password, int akm, int cipherSuite) {
+        return false;
+    }
+
+    @Override
+    public boolean endPairing(short transactionId, int pairingId) {
         return false;
     }
 
     @Override
     public boolean initiateNanBootstrappingRequest(short transactionId, int peerId, MacAddress peer,
-            int method) {
+            int method, byte[] cookie) {
         return false;
     }
 

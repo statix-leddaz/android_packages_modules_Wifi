@@ -17,7 +17,6 @@
 package android.net.wifi.aware;
 
 import android.annotation.NonNull;
-import android.annotation.Nullable;
 import android.annotation.SystemApi;
 
 import java.util.List;
@@ -100,7 +99,7 @@ public class DiscoverySessionCallback {
      * @hide
      */
     @SystemApi
-    public void onSessionSuspendSuccess() {
+    public void onSessionSuspendSucceeded() {
         /* empty */
     }
 
@@ -127,7 +126,7 @@ public class DiscoverySessionCallback {
      * @hide
      */
     @SystemApi
-    public void onSessionResumeSuccess() {
+    public void onSessionResumeSucceeded() {
         /* empty */
     }
 
@@ -308,7 +307,8 @@ public class DiscoverySessionCallback {
     }
 
     /**
-     * Callback indicate that a pairing request is received from peer.
+     * Callback indicating that a pairing request is received from peer.
+     *
      * @param peerHandle The peer's handle where the request is from
      * @param requestId The ID of the Aware pairing session
      */
@@ -317,40 +317,69 @@ public class DiscoverySessionCallback {
     }
 
     /**
-     * Callback indicate that a pairing setup process is finished.
-     * @param peerHandle The peer's handle of the device pairing process with
-     * @param accept True is the pairing is success, false otherwise
-     * @param alias If accept is true, this is the paired device alias set by the caller.
-     * {@link DiscoverySession#initiatePairingRequest(PeerHandle, String, String)} or
-     * {@link DiscoverySession#respondToPairingRequest(int, PeerHandle, boolean, String, String)}
+     * Callback indicating that a pairing setup process succeeded.
+     *
+     * @param peerHandle The pairing peer handle.
+     * @param alias      This is the paired device alias set by the caller.
+     *                   {@link DiscoverySession#initiatePairingRequest(PeerHandle, String, int, String)}
+     *                   or
+     *                   {@link DiscoverySession#acceptPairingRequest(int, PeerHandle, String, int, String)}
      */
-    public void onPairingSetupConfirmed(@NonNull PeerHandle peerHandle, boolean accept,
-            @Nullable String alias) {
+    public void onPairingSetupSucceeded(@NonNull PeerHandle peerHandle,
+            @NonNull String alias) {
 
     }
 
     /**
-     * Callback indicate that a pairing verification process is finished.
-     * @param peerHandle The peer's handle of the device pairing process with
-     * @param accept True is the pairing is success, false otherwise
-     * @param alias If accept is true, this is the paired device alias set by the caller.
-     * {@link DiscoverySession#initiatePairingRequest(PeerHandle, String, String)} or
-     * {@link DiscoverySession#respondToPairingRequest(int, PeerHandle, boolean, String, String)}
+     * Callback indicating that a pairing setup process failed.
+     *
+     * @param peerHandle The pairing peer handle.
      */
-    public void onPairingVerificationConfirmed(@NonNull PeerHandle peerHandle, boolean accept,
-            @Nullable String alias){
+    public void onPairingSetupFailed(@NonNull PeerHandle peerHandle) {
 
     }
 
     /**
-     * Callback indicate that a Bootstrapping method negotiation process is finished.
+     * Callback indicating that a pairing verification process succeeded.
+     *
+     * @param peerHandle The pairing peer handle
+     * @param alias      This is the paired device alias set by the caller.
+     *                   {@link DiscoverySession#initiatePairingRequest(PeerHandle, String, int, String)}
+     *                   or
+     *                   {@link DiscoverySession#acceptPairingRequest(int, PeerHandle, String, int, String)}
+     */
+    public void onPairingVerificationSucceed(@NonNull PeerHandle peerHandle,
+            @NonNull String alias){
+
+    }
+
+    /**
+     * Callback indicating that a pairing verification process failed.
+     *
+     * @param peerHandle The pairing peer handle
+     */
+    public void onPairingVerificationFailed(@NonNull PeerHandle peerHandle) {
+
+    }
+
+    /**
+     * Callback indicating that a Bootstrapping method negotiation succeeded.
      * The follow-up out-of-band bootstrapping can start
-     * @param peerHandle The peer's handle of the device bootstrapping negotiated with
-     * @param accept True is the bootstrapping method is accepted by the peer, false otherwise
-     * @param method The bootstrapping method accept by the peer
+     *
+     * @param peerHandle The bootstrapping peer handle
+     * @param method     The bootstrapping method accept by the peer
      */
-    public void onBootstrappingConfirmed(@NonNull PeerHandle peerHandle, boolean accept,
+    public void onBootstrappingSucceeded(@NonNull PeerHandle peerHandle,
             @AwarePairingConfig.BootstrappingMethod int method){
+
+    }
+
+    /**
+     * Callback indicating that a Bootstrapping method negotiation failed.
+     *
+     * @param peerHandle The bootstrapping peer handle
+     */
+    public void onBootstrappingFailed(@NonNull PeerHandle peerHandle) {
 
     }
 }

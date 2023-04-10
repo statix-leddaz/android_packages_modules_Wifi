@@ -177,6 +177,8 @@ public class WifiNativeTest extends WifiBaseTest {
             new WifiNative.PnoSettings() {{
                 isConnected = false;
                 periodInMs = 6000;
+                scanIterations = 3;
+                scanIntervalMultiplier = 3;
                 networkList = new WifiNative.PnoNetwork[2];
                 networkList[0] = new WifiNative.PnoNetwork();
                 networkList[1] = new WifiNative.PnoNetwork();
@@ -267,6 +269,7 @@ public class WifiNativeTest extends WifiBaseTest {
     @Mock WifiSettingsConfigStore mSettingsConfigStore;
     @Mock private SoftApManager mSoftApManager;
     @Mock private SsidTranslator mSsidTranslator;
+    @Mock private WifiGlobals mWifiGlobals;
     @Mock DeviceConfigFacade mDeviceConfigFacade;
 
     ArgumentCaptor<WifiNl80211Manager.ScanEventCallback> mScanCallbackCaptor =
@@ -311,6 +314,7 @@ public class WifiNativeTest extends WifiBaseTest {
         when(mWifiInjector.getSettingsConfigStore()).thenReturn(mSettingsConfigStore);
         when(mWifiInjector.getContext()).thenReturn(mContext);
         when(mWifiInjector.getSsidTranslator()).thenReturn(mSsidTranslator);
+        when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
         mResources = getMockResources();
         mResources.setBoolean(R.bool.config_wifiNetworkCentricQosPolicyFeatureEnabled, false);
         when(mContext.getResources()).thenReturn(mResources);
@@ -326,6 +330,7 @@ public class WifiNativeTest extends WifiBaseTest {
                 mWifiVendorHal, mStaIfaceHal, mHostapdHal, mWificondControl,
                 mWifiMonitor, mPropertyService, mWifiMetrics,
                 mHandler, mRandom, mBuildProperties, mWifiInjector);
+        mWifiNative.enableVerboseLogging(true, true);
         mWifiNative.initialize();
     }
 
@@ -872,10 +877,10 @@ public class WifiNativeTest extends WifiBaseTest {
      */
     @Test
     public void testScan() throws Exception {
-        // This test will not run if the device has SDK level S or later
+        // This test will NOT run if the device has SDK level S or later
         assumeFalse(SdkLevel.isAtLeastS());
         mWifiNative.scan(WIFI_IFACE_NAME, WifiScanner.SCAN_TYPE_HIGH_ACCURACY, SCAN_FREQ_SET,
-                SCAN_HIDDEN_NETWORK_SSID_SET, false);
+                SCAN_HIDDEN_NETWORK_SSID_SET, false, null);
         ArgumentCaptor<List<byte[]>> ssidSetCaptor = ArgumentCaptor.forClass(List.class);
         verify(mWificondControl).startScan(
                 eq(WIFI_IFACE_NAME), eq(WifiScanner.SCAN_TYPE_HIGH_ACCURACY),
@@ -890,10 +895,12 @@ public class WifiNativeTest extends WifiBaseTest {
      */
     @Test
     public void testScanWithBundle() throws Exception {
-        // This test will only run if the device has SDK level S and later.
-        assumeTrue(SdkLevel.isAtLeastS());
+        assumeTrue(SdkLevel.isAtLeastU());
+        byte[] vendorIes =
+                new byte[]{(byte) 0xdd, 0x7, 0x00, 0x50, (byte) 0xf2, 0x08, 0x11, 0x22, 0x33,
+                        (byte) 0xdd, 0x7, 0x00, 0x50, (byte) 0xf2, 0x08, 0x44, 0x55, 0x66};
         mWifiNative.scan(WIFI_IFACE_NAME, WifiScanner.SCAN_TYPE_HIGH_ACCURACY, SCAN_FREQ_SET,
-                SCAN_HIDDEN_NETWORK_SSID_SET, true);
+                SCAN_HIDDEN_NETWORK_SSID_SET, true, vendorIes);
         ArgumentCaptor<List<byte[]>> ssidSetCaptor = ArgumentCaptor.forClass(List.class);
         ArgumentCaptor<Bundle> bundleCaptor = ArgumentCaptor.forClass(Bundle.class);
         if (SdkLevel.isAtLeastU()) {
@@ -909,6 +916,8 @@ public class WifiNativeTest extends WifiBaseTest {
         assertArrayEquals(ssidSet.toArray(), SCAN_HIDDEN_NETWORK_BYTE_SSID_SET.toArray());
         Bundle bundle = bundleCaptor.getValue();
         assertTrue(bundle.getBoolean(WifiNl80211Manager.SCANNING_PARAM_ENABLE_6GHZ_RNR));
+        assertArrayEquals(vendorIes,
+                bundle.getByteArray(WifiNl80211Manager.EXTRA_SCANNING_PARAM_VENDOR_IES));
     }
 
     /**
@@ -972,6 +981,21 @@ public class WifiNativeTest extends WifiBaseTest {
             assertEquals(mockScanResults.get(i).getTsf(),
                     returnedScanResults.get(i).getScanResult().timestamp);
         }
+    }
+
+    /**
+     * Verifies that getScanResults() can parse NativeScanResult from wificond correctly,
+     */
+    @Test
+    public void testGetScanResultsWithInvalidSsidLength() {
+        // Mock the returned array of NativeScanResult.
+        List<NativeScanResult> mockScanResults = Arrays.asList(createMockNativeScanResult());
+        for (NativeScanResult scanResult : mockScanResults) {
+            scanResult.ssid = Arrays.copyOf(scanResult.ssid, 33);
+        }
+        when(mWificondControl.getScanResults(anyString(), anyInt())).thenReturn(mockScanResults);
+
+        assertEquals(0, mWifiNative.getScanResults(WIFI_IFACE_NAME).size());
     }
 
     /**
@@ -1569,5 +1593,13 @@ public class WifiNativeTest extends WifiBaseTest {
     public void testIsSoftApInstanceDiedHandlerSupported() throws Exception {
         mWifiNative.isSoftApInstanceDiedHandlerSupported();
         verify(mHostapdHal).isSoftApInstanceDiedHandlerSupported();
+    }
+
+    @Test
+    public void testEnableStaChannelForPeerNetworkWithOverride() throws Exception {
+        mResources.setBoolean(R.bool.config_wifiEnableStaIndoorChannelForPeerNetwork, true);
+        mResources.setBoolean(R.bool.config_wifiEnableStaDfsChannelForPeerNetwork, true);
+        mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE);
+        verify(mWifiVendorHal).enableStaChannelForPeerNetwork(true, true);
     }
 }

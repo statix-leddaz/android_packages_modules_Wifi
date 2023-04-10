@@ -31,6 +31,7 @@ import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Resources;
 import android.net.wifi.WifiManager;
 import android.os.BatteryStatsManager;
 import android.os.Binder;
@@ -44,9 +45,9 @@ import androidx.test.filters.SmallTest;
 
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.util.WifiPermissionsUtil;
+import com.android.wifi.resources.R;
 
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
@@ -93,6 +94,7 @@ public class WifiLockManagerTest extends WifiBaseTest {
     TestLooper mLooper;
     Handler mHandler;
     @Captor ArgumentCaptor<BroadcastReceiver> mBroadcastReceiverCaptor;
+    @Mock Resources mResources;
 
     /**
      * Method to setup a WifiLockManager for the tests.
@@ -119,6 +121,10 @@ public class WifiLockManagerTest extends WifiBaseTest {
         when(mClientModeManager2.getRole()).thenReturn(ROLE_CLIENT_SECONDARY_TRANSIENT);
         /* Test with High perf lock deprecated. */
         when(mDeviceConfigFacade.isHighPerfLockDeprecated()).thenReturn(true);
+        /* Test the default behavior: config_wifiLowLatencyLockDisableChipPowerSave = true */
+        when(mContext.getResources()).thenReturn(mResources);
+        when(mResources.getBoolean(
+                R.bool.config_wifiLowLatencyLockDisableChipPowerSave)).thenReturn(true);
 
         mWifiLockManager = new WifiLockManager(mContext, mBatteryStats,
                 mActiveModeWarden, mFrameworkFacade, mHandler, mClock, mWifiMetrics,
@@ -144,8 +150,12 @@ public class WifiLockManagerTest extends WifiBaseTest {
     private void captureUidImportanceListener() {
         ArgumentCaptor<ActivityManager.OnUidImportanceListener> uidImportanceListener =
                 ArgumentCaptor.forClass(ActivityManager.OnUidImportanceListener.class);
-
-        verify(mActivityManager).addOnUidImportanceListener(uidImportanceListener.capture(),
+        /**
+         * {@link WifiLockManager#registerUidImportanceTransitions()} is adding listeners for
+         * foreground to background and foreground service to background transitions.
+         */
+        verify(mActivityManager, times(2)).addOnUidImportanceListener(
+                uidImportanceListener.capture(),
                 anyInt());
         mUidImportanceListener = uidImportanceListener.getValue();
         assertNotNull(mUidImportanceListener);
@@ -379,9 +389,10 @@ public class WifiLockManagerTest extends WifiBaseTest {
     /**
      * Checks that WorkChains are preserved when merged WorkSources are created.
      */
-    @Ignore ("b/262126813")
     @Test
     public void createMergedworkSourceWithChainsShouldSucceed() throws Exception {
+        // Test with High perf lock.
+        when(mDeviceConfigFacade.isHighPerfLockDeprecated()).thenReturn(false);
         acquireWifiLockSuccessful(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "", mBinder, mWorkSource);
         acquireWifiLockSuccessful(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "", mBinder2,
                 mChainedWorkSource);
@@ -394,9 +405,10 @@ public class WifiLockManagerTest extends WifiBaseTest {
     /**
      * A smoke test for acquiring, updating and releasing WifiLocks with chained WorkSources.
      */
-    @Ignore("b/262126813")
     @Test
     public void smokeTestLockLifecycleWithChainedWorkSource() throws Exception {
+        // Test with High perf lock.
+        when(mDeviceConfigFacade.isHighPerfLockDeprecated()).thenReturn(false);
         acquireWifiLockSuccessful(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "", mBinder,
                 mChainedWorkSource);
 
@@ -544,9 +556,10 @@ public class WifiLockManagerTest extends WifiBaseTest {
      * Test when acquiring two hi-perf locks, then releasing them.
      * WifiLockManager calls to disable/enable power save mechanism only once.
      */
-    @Ignore("b/262126813")
     @Test
     public void testHiPerfLockAcquireReleaseTwice() throws Exception {
+        // Test with High perf lock.
+        when(mDeviceConfigFacade.isHighPerfLockDeprecated()).thenReturn(false);
         InOrder inOrder = inOrder(mClientModeManager);
         when(mClientModeManager.setPowerSave(eq(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK),
                 anyBoolean())).thenReturn(true);
@@ -763,9 +776,10 @@ public class WifiLockManagerTest extends WifiBaseTest {
     /**
      * Test when forcing hi-perf mode, and aquire/release of hi-perf locks
      */
-    @Ignore("b/262126813")
     @Test
     public void testForceHiPerfAcqRelHiPerf() throws Exception {
+        // Test with High perf lock.
+        when(mDeviceConfigFacade.isHighPerfLockDeprecated()).thenReturn(false);
         when(mClientModeManager.setPowerSave(eq(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK),
                 anyBoolean())).thenReturn(true);
         InOrder inOrder = inOrder(mClientModeManager);
@@ -849,9 +863,10 @@ public class WifiLockManagerTest extends WifiBaseTest {
      * Test if a foreground app acquires a low-latency lock, and screen is on,
      * then that lock becomes the strongest lock even with presence of other locks.
      */
-    @Ignore ("b/262126813")
     @Test
     public void testForegroundAppAcquireLowLatencyScreenOn() throws Exception {
+        // Test with High perf lock.
+        when(mDeviceConfigFacade.isHighPerfLockDeprecated()).thenReturn(false);
         // Set screen on, and app foreground
         setScreenState(true);
         when(mActivityManager.getUidImportance(anyInt())).thenReturn(
@@ -890,7 +905,8 @@ public class WifiLockManagerTest extends WifiBaseTest {
     public void testForegroundAppAcquireLowLatencyScreenOffExemption() throws Exception {
         // Set screen off, and app is foreground
         setScreenState(false);
-        when(mWifiPermissionsUtil.checkEnterCarModePrioritized(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.checkRequestCompanionProfileAutomotiveProjectionPermission(
+                anyInt())).thenReturn(true);
         when(mActivityManager.getUidImportance(anyInt())).thenReturn(
                 ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND);
         // Acquire the lock.
@@ -927,7 +943,8 @@ public class WifiLockManagerTest extends WifiBaseTest {
     public void testBackgroundAppAcquireLowLatencyScreenOnExemption() throws Exception {
         // Set screen on, and app is foreground service.
         setScreenState(true);
-        when(mWifiPermissionsUtil.checkEnterCarModePrioritized(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.checkRequestCompanionProfileAutomotiveProjectionPermission(
+                anyInt())).thenReturn(true);
         when(mActivityManager.getUidImportance(anyInt())).thenReturn(
                 ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE);
         // Acquire the lock.
@@ -1202,9 +1219,10 @@ public class WifiLockManagerTest extends WifiBaseTest {
      * then, hi-perf is active when app is in background , while low-latency
      * is active when app is in foreground (and screen on).
      */
-    @Ignore ("b/262126813")
     @Test
     public void testLatencyHiPerfLocks() throws Exception {
+        // Test with High perf lock.
+        when(mDeviceConfigFacade.isHighPerfLockDeprecated()).thenReturn(false);
         // Initially, set screen on, and app background
         setScreenState(true);
         when(mFrameworkFacade.isAppForeground(any(), anyInt())).thenReturn(false);
@@ -1252,9 +1270,10 @@ public class WifiLockManagerTest extends WifiBaseTest {
      * Test when forcing low-latency mode, that it overrides apps requests
      * until it is no longer forced.
      */
-    @Ignore ("b/262126813")
     @Test
     public void testForceLowLatency() throws Exception {
+        // Test with High perf lock.
+        when(mDeviceConfigFacade.isHighPerfLockDeprecated()).thenReturn(false);
         when(mClientModeManager.setLowLatencyMode(anyBoolean())).thenReturn(true);
         when(mClientModeManager.setPowerSave(eq(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK),
                 anyBoolean())).thenReturn(true);
@@ -1805,5 +1824,41 @@ public class WifiLockManagerTest extends WifiBaseTest {
         assertNotNull(broadcastReceiver);
         Intent intent = new Intent(screenOn  ? ACTION_SCREEN_ON : ACTION_SCREEN_OFF);
         broadcastReceiver.onReceive(mContext, intent);
+    }
+
+    /**
+     * Verify that low latency indeed skip calling chip power save with the overlay setting,
+     * config_wifiLowLatencyLockDisableChipPowerSave = false.
+     */
+    @Test
+    public void testLowLatencyDisableChipPowerSave() throws Exception {
+        // config_wifiLowLatencyLockDisableChipPowerSave = false.
+        when(mResources.getBoolean(
+                R.bool.config_wifiLowLatencyLockDisableChipPowerSave)).thenReturn(false);
+        // Set screen on, app foreground.
+        setScreenState(true);
+        when(mActivityManager.getUidImportance(anyInt())).thenReturn(
+                ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND);
+        when(mClientModeManager.setLowLatencyMode(anyBoolean())).thenReturn(true);
+        when(mClientModeManager.setPowerSave(eq(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK),
+                anyBoolean())).thenReturn(false);
+        when(mClientModeManager.getSupportedFeatures())
+                .thenReturn((long) WifiManager.WIFI_FEATURE_LOW_LATENCY);
+
+        InOrder inOrder = inOrder(mClientModeManager);
+
+        acquireWifiLockSuccessful(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "",
+                mBinder, mWorkSource);
+        assertEquals(WifiManager.WIFI_MODE_FULL_LOW_LATENCY,
+                mWifiLockManager.getStrongestLockMode());
+        assertTrue(mWifiLockManager.forceLowLatencyMode(true));
+        assertEquals(WifiManager.WIFI_MODE_FULL_LOW_LATENCY,
+                mWifiLockManager.getStrongestLockMode());
+        inOrder.verify(mClientModeManager).setLowLatencyMode(true);
+        // Make sure ConcreteClientModeManager#setPowerSave is never called.
+        inOrder.verify(mClientModeManager, never()).setPowerSave(
+                ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+                false);
+
     }
 }

@@ -32,6 +32,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -217,11 +218,14 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         WifiInjector wifiInjector = mock(WifiInjector.class);
         when(wifiInjector.getActiveModeWarden()).thenReturn(mActiveModeWarden);
         when(wifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
+        when(wifiInjector.getDppManager()).thenReturn(mDppManager);
         lenient().when(WifiInjector.getInstance()).thenReturn(wifiInjector);
         when(mSsidTranslator.getAllPossibleOriginalSsids(any())).thenAnswer(
                 (Answer<List<WifiSsid>>) invocation -> Arrays.asList(invocation.getArgument(0),
                         WifiSsid.fromString(UNTRANSLATED_HEX_SSID))
         );
+        when(mWifiDialogManager.createSimpleDialog(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(mDialogHandle);
     }
 
     private void setUpResources(MockResources resources) {
@@ -262,6 +266,9 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
                 LOW_RSSI_NETWORK_RETRY_MAX_DELAY_SEC);
         resources.setBoolean(R.bool.config_wifiEnable6ghzPscScanning, true);
         resources.setBoolean(R.bool.config_wifiUseHalApiToDisableFwRoaming, true);
+        resources.setInteger(R.integer.config_wifiPnoScanIterations, EXPECTED_PNO_ITERATIONS);
+        resources.setInteger(R.integer.config_wifiPnoScanIntervalMultiplier,
+                EXPECTED_PNO_MULTIPLIER);
     }
 
     /**
@@ -317,6 +324,10 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     @Mock private SsidTranslator mSsidTranslator;
     @Mock private WifiPermissionsUtil mWifiPermissionsUtil;
     @Mock private WifiCarrierInfoManager mWifiCarrierInfoManager;
+    @Mock private WifiCountryCode mWifiCountryCode;
+    @Mock private DppManager mDppManager;
+    @Mock private WifiDialogManager mWifiDialogManager;
+    @Mock private WifiDialogManager.DialogHandle mDialogHandle;
     @Mock WifiCandidates.Candidate mCandidate1;
     @Mock WifiCandidates.Candidate mCandidate2;
     @Mock WifiCandidates.Candidate mCandidate3;
@@ -333,6 +344,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     @Captor ArgumentCaptor<BroadcastReceiver> mBroadcastReceiverCaptor;
     @Captor ArgumentCaptor<MultiInternetManager.ConnectionStatusListener>
             mMultiInternetConnectionStatusListenerCaptor;
+    @Captor ArgumentCaptor<WifiDialogManager.SimpleDialogCallback> mSimpleDialogCallbackCaptor;
     private MockitoSession mSession;
     private MockResources mResources;
 
@@ -386,6 +398,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     private static final int LOW_RSSI_NETWORK_RETRY_MAX_DELAY_SEC = 80;
     private static final int SCAN_TRIGGER_TIMES = 7;
     private static final long NETWORK_CHANGE_TRIGGER_PNO_THROTTLE_MS = 3000; // 3 seconds
+    private static final int EXPECTED_PNO_ITERATIONS = 3;
+    private static final int EXPECTED_PNO_MULTIPLIER = 4;
     private static final int TEST_FREQUENCY_2G = 2412;
     private static final int TEST_FREQUENCY_5G = 5262;
 
@@ -597,7 +611,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
                 mLocalLog, mWifiScoreCard, mWifiBlocklistMonitor, mWifiChannelUtilization,
                 mPasspointManager, mMultiInternetManager, mDeviceConfigFacade, mActiveModeWarden,
                 mFacade, mWifiGlobals, mExternalPnoScanRequestManager, mSsidTranslator,
-                mWifiPermissionsUtil, mWifiCarrierInfoManager);
+                mWifiPermissionsUtil, mWifiCarrierInfoManager, mWifiCountryCode,
+                mWifiDialogManager);
         mLooper.dispatchAll();
         verify(mActiveModeWarden, atLeastOnce()).registerModeChangeCallback(
                 mModeChangeCallbackCaptor.capture());
@@ -1927,6 +1942,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
      */
     @Test
     public void watchdogBitePnoBadIncrementsMetrics() {
+        assumeFalse(SdkLevel.isAtLeastU());
         // Set screen to off
         setScreenState(false);
 
@@ -1951,6 +1967,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
      */
     @Test
     public void watchdogBitePnoGoodIncrementsMetrics() {
+        assumeFalse(SdkLevel.isAtLeastU());
+
         // Qns returns no candidate after watchdog single scan.
         when(mWifiNS.selectNetwork(any())).thenReturn(null);
 
@@ -1972,6 +1990,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
     @Test
     public void testNetworkConnectionCancelWatchdogTimer() {
+        assumeFalse(SdkLevel.isAtLeastU());
+
         // Set screen to off
         setScreenState(false);
 
@@ -1988,6 +2008,59 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         // Verify the watchdog alarm has been canceled
         assertFalse(mAlarmManager.isPending(WifiConnectivityManager.WATCHDOG_TIMER_TAG));
+    }
+
+    /**
+     * Verify that the PNO Watchdog timer is not started in U+
+     */
+    @Test
+    public void testWatchdogTimerNotStartedInUPlus() {
+        assumeTrue(SdkLevel.isAtLeastU());
+
+        // Set screen to off
+        setScreenState(false);
+
+        // Set WiFi to disconnected state to trigger PNO scan
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        mLooper.dispatchAll();
+        // Verify the watchdog alarm has been set
+        assertFalse(mAlarmManager.isPending(WifiConnectivityManager.WATCHDOG_TIMER_TAG));
+    }
+
+    /**
+     * Verify whether the PNO Watchdog timer can wake the system up according to the config flag
+     */
+    @Test
+    public void testWatchdogTimerCanWakeUp() {
+        assumeFalse(SdkLevel.isAtLeastU());
+        mResources.setBoolean(R.bool.config_wifiPnoWatchdogCanWakeUp,
+                true);
+
+        // Set screen to off
+        setScreenState(false);
+
+        // Set WiFi to disconnected state to trigger PNO scan
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        mLooper.dispatchAll();
+        // Verify the watchdog alarm has been set
+        verify(mAlarmManager.getAlarmManager()).set(eq(AlarmManager.ELAPSED_REALTIME_WAKEUP),
+                anyLong(), anyString(), any(), any());
+
+        mResources.setBoolean(R.bool.config_wifiPnoWatchdogCanWakeUp,
+                false);
+
+        // Set WiFi to disconnected state to trigger PNO scan
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        mLooper.dispatchAll();
+        // Verify the watchdog alarm has been set
+        verify(mAlarmManager.getAlarmManager()).set(eq(AlarmManager.ELAPSED_REALTIME),
+                anyLong(), anyString(), any(), any());
     }
 
     /**
@@ -3894,6 +3967,173 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     }
 
     /**
+     * Verifies that if R.bool.config_wifiAskUserBeforeSwitchingFromUserSelectedNetwork is true,
+     * then we switch away from a user-connected network only after the user accepts the dialog.
+     */
+    @Test
+    public void testUserApprovedNetworkSwitch() {
+        mResources.setBoolean(
+                R.bool.config_wifiAskUserBeforeSwitchingFromUserSelectedNetwork, true);
+
+        // Start off connected to a user-selected network.
+        setWifiStateConnected();
+        WifiConfiguration config = new WifiConfiguration();
+        config.networkId = TEST_CONNECTED_NETWORK_ID;
+        config.setIsUserSelected(true);
+        when(mPrimaryClientModeManager.getConnectedWifiConfiguration()).thenReturn(config);
+
+        // Request a single scan to trigger network selection.
+        ScanSettings settings = new ScanSettings();
+        WifiScannerInternal.ScanListener scanListener = new WifiScannerInternal.ScanListener(mock(
+                WifiScanner.ScanListener.class), mTestHandler);
+        mWifiScanner.startScan(settings, scanListener);
+        mLooper.dispatchAll();
+
+        // Verify dialog was launched and we haven't started the connection.
+        verify(mWifiDialogManager).createSimpleDialog(any(), any(), any(), any(), any(),
+                mSimpleDialogCallbackCaptor.capture(), any());
+        verify(mDialogHandle).launchDialog();
+        verify(mPrimaryClientModeManager, never()).startConnectToNetwork(
+                CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+
+        // Accept the dialog.
+        mSimpleDialogCallbackCaptor.getValue().onPositiveButtonClicked();
+
+        // Now we connect.
+        verify(mPrimaryClientModeManager).startConnectToNetwork(
+                CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+    }
+
+    /**
+     * Verifies that if R.bool.config_wifiAskUserBeforeSwitchingFromUserSelectedNetwork is true,
+     * then we don't switch away from a user-connected network if the user rejects the dialog.
+     */
+    @Test
+    public void testUserRejectedNetworkSwitch() {
+        mResources.setBoolean(
+                R.bool.config_wifiAskUserBeforeSwitchingFromUserSelectedNetwork, true);
+
+        // Start off connected to a user-selected network.
+        setWifiStateConnected();
+        WifiConfiguration config = new WifiConfiguration();
+        config.networkId = TEST_CONNECTED_NETWORK_ID;
+        config.setIsUserSelected(true);
+        when(mPrimaryClientModeManager.getConnectedWifiConfiguration()).thenReturn(config);
+
+        // Request a single scan to trigger network selection.
+        ScanSettings settings = new ScanSettings();
+        WifiScannerInternal.ScanListener scanListener = new WifiScannerInternal.ScanListener(mock(
+                WifiScanner.ScanListener.class), mTestHandler);
+        mWifiScanner.startScan(settings, scanListener);
+        mLooper.dispatchAll();
+
+        // Verify dialog was launched, and we haven't started the connection.
+        verify(mWifiDialogManager).createSimpleDialog(any(), any(), any(), any(), any(),
+                mSimpleDialogCallbackCaptor.capture(), any());
+        verify(mDialogHandle).launchDialog();
+        verify(mPrimaryClientModeManager, never()).startConnectToNetwork(
+                CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+
+        // Reject the dialog.
+        mSimpleDialogCallbackCaptor.getValue().onNegativeButtonClicked();
+
+        // No connection.
+        verify(mPrimaryClientModeManager, never()).startConnectToNetwork(
+                CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+
+        // Trigger another scan and verify we don't show any more dialogs.
+        mWifiScanner.startScan(settings, scanListener);
+        mLooper.dispatchAll();
+        verify(mWifiDialogManager, times(1)).createSimpleDialog(any(), any(), any(), any(), any(),
+                mSimpleDialogCallbackCaptor.capture(), any());
+        verify(mDialogHandle, times(1)).launchDialog();
+        verify(mPrimaryClientModeManager, never()).startConnectToNetwork(
+                CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+
+        // Disconnect and reconnect. Now we should show the dialog again.
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        setWifiStateConnected();
+        when(mPrimaryClientModeManager.getConnectedWifiConfiguration()).thenReturn(config);
+        mWifiScanner.startScan(settings, scanListener);
+        mLooper.dispatchAll();
+        verify(mWifiDialogManager, times(2)).createSimpleDialog(any(), any(), any(), any(), any(),
+                mSimpleDialogCallbackCaptor.capture(), any());
+        verify(mDialogHandle, times(2)).launchDialog();
+        verify(mPrimaryClientModeManager, never()).startConnectToNetwork(
+                CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+    }
+
+    /**
+     * Verifies that the network switch dialog is updated when the candidate changes or the dialog
+     * is requested to be dismissed.
+     */
+    @Test
+    public void testNetworkSwitchDialogUpdated() {
+        mResources.setBoolean(
+                R.bool.config_wifiAskUserBeforeSwitchingFromUserSelectedNetwork, true);
+
+        // Start off connected to a user-selected network.
+        setWifiStateConnected();
+        WifiConfiguration config = new WifiConfiguration();
+        config.networkId = TEST_CONNECTED_NETWORK_ID;
+        config.setIsUserSelected(true);
+        when(mPrimaryClientModeManager.getConnectedWifiConfiguration()).thenReturn(config);
+
+        // Request a single scan to trigger network selection.
+        ScanSettings settings = new ScanSettings();
+        WifiScannerInternal.ScanListener scanListener = new WifiScannerInternal.ScanListener(mock(
+                WifiScanner.ScanListener.class), mTestHandler);
+        mWifiScanner.startScan(settings, scanListener);
+        mLooper.dispatchAll();
+
+        // Verify dialog was launched, and we haven't started the connection.
+        verify(mWifiDialogManager).createSimpleDialog(any(), any(), any(), any(), any(),
+                mSimpleDialogCallbackCaptor.capture(), any());
+        verify(mDialogHandle).launchDialog();
+        verify(mPrimaryClientModeManager, never()).startConnectToNetwork(
+                CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+
+        // Same candidate should not refresh the dialog
+        mWifiScanner.startScan(settings, scanListener);
+        mLooper.dispatchAll();
+        verify(mWifiDialogManager).createSimpleDialog(any(), any(), any(), any(), any(),
+                mSimpleDialogCallbackCaptor.capture(), any());
+        verify(mDialogHandle).launchDialog();
+        verify(mPrimaryClientModeManager, never()).startConnectToNetwork(
+                CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+
+        // Different candidate should refresh the dialog
+        mCandidateWifiConfig1.networkId++;
+        mWifiScanner.startScan(settings, scanListener);
+        mLooper.dispatchAll();
+        verify(mDialogHandle).dismissDialog();
+        verify(mWifiDialogManager, times(2)).createSimpleDialog(any(), any(), any(), any(), any(),
+                mSimpleDialogCallbackCaptor.capture(), any());
+        verify(mDialogHandle, times(2)).launchDialog();
+        verify(mPrimaryClientModeManager, never()).startConnectToNetwork(
+                CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+
+        // Dismiss request should dismiss the dialog
+        mWifiConnectivityManager.resetNetworkSwitchDialog();
+        verify(mDialogHandle, times(2)).dismissDialog();
+
+        // Disconnect should dismiss the dialog
+        mWifiScanner.startScan(settings, scanListener);
+        mLooper.dispatchAll();
+        verify(mWifiDialogManager, times(3)).createSimpleDialog(any(), any(), any(), any(), any(),
+                mSimpleDialogCallbackCaptor.capture(), any());
+        verify(mDialogHandle, times(3)).launchDialog();
+        verify(mPrimaryClientModeManager, never()).startConnectToNetwork(
+                CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        verify(mDialogHandle, times(3)).dismissDialog();
+    }
+
+    /**
      *  Verify that a forced connectivity scan waits for full band scan
      *  results.
      *
@@ -3979,13 +4219,13 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     @Test
     public void verifyBlocklistRefreshedAfterScanResults() {
         WifiConfiguration disabledConfig = WifiConfigurationTestUtil.createPskNetwork();
+        disabledConfig.getNetworkSelectionStatus().setNetworkSelectionStatus(
+                WifiConfiguration.NetworkSelectionStatus.NETWORK_SELECTION_TEMPORARY_DISABLED);
         List<ScanDetail> mockScanDetails = new ArrayList<>();
         mockScanDetails.add(mock(ScanDetail.class));
         when(mWifiBlocklistMonitor.tryEnablingBlockedBssids(any())).thenReturn(mockScanDetails);
         when(mWifiConfigManager.getSavedNetworkForScanDetail(any())).thenReturn(
                 disabledConfig);
-
-        when(mWifiConnectivityHelper.isFirmwareRoamingSupported()).thenReturn(true);
 
         InOrder inOrder = inOrder(mWifiBlocklistMonitor, mWifiConfigManager);
         // Force a connectivity scan
@@ -3995,6 +4235,35 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         mLooper.dispatchAll();
         inOrder.verify(mWifiBlocklistMonitor).tryEnablingBlockedBssids(any());
         inOrder.verify(mWifiConfigManager).updateNetworkSelectionStatus(disabledConfig.networkId,
+                WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
+        inOrder.verify(mWifiBlocklistMonitor).updateAndGetBssidBlocklistForSsids(anySet());
+    }
+
+    /**
+     *  Verify that a blocklisted BSSID becomes available only after
+     *  BSSID_BLOCKLIST_EXPIRE_TIME_MS, but will not re-enable a permanently disabled
+     *  WifiConfiguration.
+     */
+    @Test
+    public void verifyBlocklistRefreshedAfterScanResultsButIgnorePermanentlyDisabledConfigs() {
+        WifiConfiguration disabledConfig = WifiConfigurationTestUtil.createPskNetwork();
+        disabledConfig.getNetworkSelectionStatus().setNetworkSelectionStatus(
+                WifiConfiguration.NetworkSelectionStatus.NETWORK_SELECTION_PERMANENTLY_DISABLED);
+        List<ScanDetail> mockScanDetails = new ArrayList<>();
+        mockScanDetails.add(mock(ScanDetail.class));
+        when(mWifiBlocklistMonitor.tryEnablingBlockedBssids(any())).thenReturn(mockScanDetails);
+        when(mWifiConfigManager.getSavedNetworkForScanDetail(any())).thenReturn(
+                disabledConfig);
+
+        InOrder inOrder = inOrder(mWifiBlocklistMonitor, mWifiConfigManager);
+        // Force a connectivity scan
+        inOrder.verify(mWifiBlocklistMonitor, never())
+                .updateAndGetBssidBlocklistForSsids(anySet());
+        mWifiConnectivityManager.forceConnectivityScan(WIFI_WORK_SOURCE);
+        mLooper.dispatchAll();
+        inOrder.verify(mWifiBlocklistMonitor).tryEnablingBlockedBssids(any());
+        inOrder.verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(
+                disabledConfig.networkId,
                 WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
         inOrder.verify(mWifiBlocklistMonitor).updateAndGetBssidBlocklistForSsids(anySet());
     }
@@ -4656,10 +4925,15 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         ArgumentCaptor<ScanSettings> scanSettingsCaptor = ArgumentCaptor.forClass(
                 ScanSettings.class);
+        ArgumentCaptor<PnoSettings> pnoSettingsCaptor = ArgumentCaptor.forClass(
+                PnoSettings.class);
         InOrder inOrder = inOrder(mWifiScanner);
 
-        inOrder.verify(mWifiScanner).startPnoScan(scanSettingsCaptor.capture(), any(), any());
+        inOrder.verify(mWifiScanner).startPnoScan(scanSettingsCaptor.capture(),
+                pnoSettingsCaptor.capture(), any());
         assertEquals(interval, scanSettingsCaptor.getValue().periodInMs);
+        assertEquals(EXPECTED_PNO_ITERATIONS, pnoSettingsCaptor.getValue().scanIterations);
+        assertEquals(EXPECTED_PNO_MULTIPLIER, pnoSettingsCaptor.getValue().scanIntervalMultiplier);
     }
 
     /**
@@ -5380,6 +5654,40 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         verify(mWifiNS).getCandidatesFromScan(any(), any(),
                 eq(expectedCmmStates), anyBoolean(), anyBoolean(), anyBoolean(), any(),
                 anyBoolean());
+    }
+
+    /**
+     * Verify that scan results are ignored when DPP is in progress and
+     * Connected MAC Randomization enabled.
+     */
+    @Test
+    public void testIgnoreScanResultWhenDppInProgress() {
+        // Enable MAC randomization and set DPP session in progress
+        when(mWifiGlobals.isConnectedMacRandomizationEnabled()).thenReturn(true);
+        when(mDppManager.isSessionInProgress()).thenReturn(true);
+
+        // Set WiFi to disconnected state to trigger scan
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        mLooper.dispatchAll();
+
+        // Verify there is no connection due to scan result being ignored
+        verify(mPrimaryClientModeManager, never()).startConnectToNetwork(
+                CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
+
+        // Set DPP session to no longer in progress
+        when(mDppManager.isSessionInProgress()).thenReturn(false);
+
+        // Set WiFi to disconnected state to trigger scan
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        mLooper.dispatchAll();
+
+        // Verify a candidate is found this time.
+        verify(mPrimaryClientModeManager).startConnectToNetwork(
+                CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
     }
 
     private void setWifiEnabled(boolean enable) {

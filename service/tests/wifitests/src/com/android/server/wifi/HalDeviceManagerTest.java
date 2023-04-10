@@ -32,6 +32,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeFalse;
 import static org.junit.Assume.assumeTrue;
@@ -98,6 +99,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -141,6 +143,7 @@ public class HalDeviceManagerTest extends WifiBaseTest {
     private class HalDeviceManagerSpy extends HalDeviceManager {
         HalDeviceManagerSpy() {
             super(mContext, mClock, mWifiInjector, mHandler);
+            enableVerboseLogging(true);
         }
 
         @Override
@@ -194,6 +197,7 @@ public class HalDeviceManagerTest extends WifiBaseTest {
                 .thenReturn(mWaitForDestroyedListeners);
 
         mDut = new HalDeviceManagerSpy();
+        mDut.handleBootCompleted();
     }
 
     /**
@@ -3285,19 +3289,16 @@ public class HalDeviceManagerTest extends WifiBaseTest {
     }
 
     private WifiInterface setupDbsSupportTest(ChipMockBase testChip, int onlyChipMode,
-            ImmutableList<ArrayList<Integer>> radioCombinationMatrix) throws Exception {
+            ImmutableList<ArrayList<Integer>> radioCombinations) throws Exception {
         List<WifiChip.WifiRadioCombination> combos = new ArrayList<>();
-        for (ArrayList<Integer> comb : radioCombinationMatrix) {
+        for (ArrayList<Integer> comb : radioCombinations) {
             List<WifiChip.WifiRadioConfiguration> configs = new ArrayList<>();
             for (Integer b : comb) {
                 configs.add(new WifiChip.WifiRadioConfiguration(b, 0));
             }
             combos.add(new WifiChip.WifiRadioCombination(new ArrayList<>(configs)));
         }
-        WifiChip.WifiRadioCombinationMatrix matrix =
-                new WifiChip.WifiRadioCombinationMatrix(combos);
-
-        testChip.chipSupportedRadioCombinationsMatrix = matrix;
+        testChip.chipSupportedRadioCombinations = combos;
 
         testChip.initialize();
         mInOrder = inOrder(mWifiMock, testChip.chip, mManagerStatusListenerMock);
@@ -3345,11 +3346,11 @@ public class HalDeviceManagerTest extends WifiBaseTest {
     @Test
     public void test24g5gDbsSupport() throws Exception {
         TestChipV6 testChip = new TestChipV6();
-        ImmutableList<ArrayList<Integer>> radioCombinationMatrix = ImmutableList.of(
+        ImmutableList<ArrayList<Integer>> radioCombinations = ImmutableList.of(
                 new ArrayList(Arrays.asList(
                         WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_5_GHZ)));
         WifiInterface iface = setupDbsSupportTest(testChip, TestChipV6.CHIP_MODE_ID,
-                radioCombinationMatrix);
+                radioCombinations);
 
         assertTrue(mDut.is24g5gDbsSupported(iface));
         assertFalse(mDut.is5g6gDbsSupported(iface));
@@ -3361,11 +3362,11 @@ public class HalDeviceManagerTest extends WifiBaseTest {
     @Test
     public void test5g6gDbsSupport() throws Exception {
         TestChipV6 testChip = new TestChipV6();
-        ImmutableList<ArrayList<Integer>> radioCombinationMatrix = ImmutableList.of(
+        ImmutableList<ArrayList<Integer>> radioCombinations = ImmutableList.of(
                 new ArrayList(Arrays.asList(
                         WifiScanner.WIFI_BAND_5_GHZ, WifiScanner.WIFI_BAND_6_GHZ)));
         WifiInterface iface = setupDbsSupportTest(testChip, TestChipV6.CHIP_MODE_ID,
-                radioCombinationMatrix);
+                radioCombinations);
 
         assertFalse(mDut.is24g5gDbsSupported(iface));
         assertTrue(mDut.is5g6gDbsSupported(iface));
@@ -3377,16 +3378,62 @@ public class HalDeviceManagerTest extends WifiBaseTest {
     @Test
     public void test24g5gAnd5g6gDbsSupport() throws Exception {
         TestChipV6 testChip = new TestChipV6();
-        ImmutableList<ArrayList<Integer>> radioCombinationMatrix = ImmutableList.of(
+        ImmutableList<ArrayList<Integer>> radioCombinations = ImmutableList.of(
                 new ArrayList(Arrays.asList(
                         WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_5_GHZ)),
                 new ArrayList(Arrays.asList(
                         WifiScanner.WIFI_BAND_5_GHZ, WifiScanner.WIFI_BAND_6_GHZ)));
         WifiInterface iface = setupDbsSupportTest(testChip, TestChipV6.CHIP_MODE_ID,
-                radioCombinationMatrix);
+                radioCombinations);
 
         assertTrue(mDut.is24g5gDbsSupported(iface));
         assertTrue(mDut.is5g6gDbsSupported(iface));
+    }
+
+    /**
+     * Validate band combinations supported by the chip.
+     */
+    @Test
+    public void testBandCombinations() throws Exception {
+        // Prepare the chip configuration.
+        // e.g. supported band combination for this test case.
+        //          2.4
+        //          5
+        //          6
+        //          2.4 x 5
+        //          2.4 x 6
+        //          5 x 6
+        //          5 x 5  (SBS)
+        TestChipV6 testChip = new TestChipV6();
+        ImmutableList<ArrayList<Integer>> radioCombinationMatrix = ImmutableList.of(
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_6_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_6_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ, WifiScanner.WIFI_BAND_6_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ, WifiScanner.WIFI_BAND_5_GHZ)));
+        WifiInterface iface = setupDbsSupportTest(testChip, TestChipV6.CHIP_MODE_ID,
+                radioCombinationMatrix);
+        // Test all valid combinations.
+        for (List<Integer> supportedBands:mDut.getSupportedBandCombinations(iface)) {
+            // Test the list returned is unmodifiable.
+            assertThrows(UnsupportedOperationException.class,
+                    () -> supportedBands.addAll(Collections.emptyList()));
+            // shuffle the list to check the order.
+            List<Integer> bands = new ArrayList<>(supportedBands);
+            Collections.shuffle(bands);
+            assertTrue(mDut.isBandCombinationSupported(iface, bands));
+        }
+        // Test invalid combinations.
+        assertFalse(mDut.isBandCombinationSupported(iface,
+                Arrays.asList(WifiScanner.WIFI_BAND_6_GHZ, WifiScanner.WIFI_BAND_6_GHZ)));
+        assertFalse(mDut.isBandCombinationSupported(iface,
+                Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_24_GHZ)));
     }
 
     /**
@@ -4290,16 +4337,16 @@ public class HalDeviceManagerTest extends WifiBaseTest {
         }
     }
 
-    private class GetSupportedRadioCombinationsMatrixAnswer
+    private class GetSupportedRadioCombinationsAnswer
             extends MockAnswerUtil.AnswerWithArguments {
         private ChipMockBase mChipMockBase;
 
-        GetSupportedRadioCombinationsMatrixAnswer(ChipMockBase chipMockBase) {
+        GetSupportedRadioCombinationsAnswer(ChipMockBase chipMockBase) {
             mChipMockBase = chipMockBase;
         }
 
-        public WifiChip.WifiRadioCombinationMatrix answer() {
-            return mChipMockBase.chipSupportedRadioCombinationsMatrix;
+        public List<WifiChip.WifiRadioCombination> answer() {
+            return mChipMockBase.chipSupportedRadioCombinations;
         }
     }
 
@@ -4356,7 +4403,7 @@ public class HalDeviceManagerTest extends WifiBaseTest {
         public int chipModeIdValidForRtt = -1; // single chip mode ID where RTT can be created
         public long chipCapabilities = 0L;
         public boolean allowGetCapsBeforeIfaceCreated = true;
-        public WifiChip.WifiRadioCombinationMatrix chipSupportedRadioCombinationsMatrix = null;
+        public List<WifiChip.WifiRadioCombination> chipSupportedRadioCombinations = null;
         public Map<Integer, ArrayList<String>> interfaceNames = new HashMap<>();
         public Map<Integer, Map<String, WifiInterface>> interfacesByName = new HashMap<>();
         public Map<String, ArrayList<String>> bridgedApInstancesByName = new HashMap<>();
@@ -4413,8 +4460,8 @@ public class HalDeviceManagerTest extends WifiBaseTest {
                     .when(chip).createRttController();
             when(mRttControllerMock.setup()).thenReturn(true);
             when(mRttControllerMock.validate()).thenReturn(true);
-            doAnswer(new GetSupportedRadioCombinationsMatrixAnswer(this))
-                    .when(chip).getSupportedRadioCombinationsMatrix();
+            doAnswer(new GetSupportedRadioCombinationsAnswer(this))
+                    .when(chip).getSupportedRadioCombinations();
         }
 
         void onChipConfigured() {

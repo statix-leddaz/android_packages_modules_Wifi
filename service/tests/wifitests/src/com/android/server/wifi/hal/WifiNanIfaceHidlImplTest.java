@@ -48,6 +48,7 @@ import android.net.wifi.aware.WifiAwareDataPathSecurityConfig;
 import android.os.RemoteException;
 import android.util.Pair;
 
+import com.android.server.wifi.WifiBaseTest;
 import com.android.server.wifi.aware.Capabilities;
 
 import org.junit.Before;
@@ -60,7 +61,7 @@ import org.mockito.MockitoAnnotations;
 
 import java.util.ArrayList;
 
-public class WifiNanIfaceHidlImplTest {
+public class WifiNanIfaceHidlImplTest extends WifiBaseTest {
     @Mock IWifiNanIface mIWifiNanIface;
     @Mock android.hardware.wifi.V1_2.IWifiNanIface mIWifiNanIface12Mock;
 
@@ -105,7 +106,7 @@ public class WifiNanIfaceHidlImplTest {
         mIsInterface12 = false;
 
         mDut = new MockableWifiNanIface(mIWifiNanIface);
-        CAP.supportedCipherSuites = WIFI_AWARE_CIPHER_SUITE_NCS_SK_128
+        CAP.supportedDataPathCipherSuites = WIFI_AWARE_CIPHER_SUITE_NCS_SK_128
                 | WIFI_AWARE_CIPHER_SUITE_NCS_SK_256;
     }
 
@@ -621,7 +622,7 @@ public class WifiNanIfaceHidlImplTest {
         }
 
         mDut.initiateDataPath(tid, peerId, channelRequestType, channel, peer, interfaceName,
-                isOutOfBand, appInfo, CAP, securityConfig);
+                isOutOfBand, appInfo, CAP, securityConfig, (byte) 0);
 
         verify(mIWifiNanIface).initiateDataPathRequest(eq(tid), captor.capture());
 
@@ -695,7 +696,7 @@ public class WifiNanIfaceHidlImplTest {
         }
 
         mDut.respondToDataPathRequest(tid, accept, ndpId, interfaceName,
-                appInfo, isOutOfBand, CAP, securityConfig);
+                appInfo, isOutOfBand, CAP, securityConfig, (byte) 0);
 
         verify(mIWifiNanIface).respondToDataPathIndicationRequest(eq(tid), captor.capture());
 

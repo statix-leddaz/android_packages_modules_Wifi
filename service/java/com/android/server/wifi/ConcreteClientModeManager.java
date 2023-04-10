@@ -35,6 +35,7 @@ import android.net.wifi.WifiAnnotations;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiManager.DeviceMobilityState;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.nl80211.DeviceWiphyCapabilities;
@@ -63,6 +64,7 @@ import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
 import com.android.modules.utils.HandlerExecutor;
 import com.android.server.wifi.WifiNative.InterfaceCallback;
+import com.android.server.wifi.WifiNative.InterfaceEventCallback;
 import com.android.server.wifi.WifiNative.RxFateReport;
 import com.android.server.wifi.WifiNative.TxFateReport;
 import com.android.server.wifi.util.ActionListenerWrapper;
@@ -716,6 +718,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
         public static final int CMD_INTERFACE_DESTROYED = 4;
         public static final int CMD_INTERFACE_DOWN = 5;
         public static final int CMD_SWITCH_TO_SCAN_ONLY_MODE_CONTINUE = 6;
+        public static final int CMD_INTERFACE_ADDED = 7;
         private final State mIdleState;
         private final State mStartedState;
         private final State mScanOnlyModeState;
@@ -727,6 +730,39 @@ public class ConcreteClientModeManager implements ClientModeManager {
 
         @Nullable
         private StateMachineObituary mObituary = null;
+
+        private final InterfaceEventCallback mWifiNativeInterfaceEventCallback =
+                new InterfaceEventCallback() {
+
+            boolean mEnabling = false;
+
+            @Override
+            public void onInterfaceLinkStateChanged(String ifaceName, boolean isLinkUp) {
+                Log.d("InterfaceEventCallback",
+                        "onInterfaceLinkStateChanged, ifaceName=" + ifaceName + " up="
+                                + isLinkUp + " CurrentState=" + getCurrentStateName());
+                if (isLinkUp) {
+                    mEnabling = false;
+                }
+            }
+
+            @Override
+            public void onInterfaceAdded(String ifaceName) {
+                Log.d("InterfaceEventCallback",
+                        "onInterfaceAdded, ifaceName=" + ifaceName
+                                + " CurrentState=" + getCurrentStateName());
+                if (mStateMachine.getCurrentState() == null) {
+                    Log.d(TAG, "StateMachine not active, trigger ifaceAddedDetected");
+                    mSelfRecovery.trigger(SelfRecovery.REASON_IFACE_ADDED);
+                } else if (!mEnabling) {
+                    Log.d("InterfaceEventCallback", "send CMD_INTERFACE_ADDED");
+                    mStateMachine.sendMessage(CMD_INTERFACE_ADDED);
+                    mEnabling = true;
+                } else {
+                    Log.d("InterfaceEventCallback", "wifi already in the start");
+                }
+            }
+        };
 
         private final InterfaceCallback mWifiNativeInterfaceCallback = new InterfaceCallback() {
             @Override
@@ -950,6 +986,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
                             mModeListener.onStartFailure(ConcreteClientModeManager.this);
                             break;
                         }
+                        mWifiNative.setWifiNativeInterfaceEventCallback(
+                                mWifiNativeInterfaceEventCallback);
                         if (roleChangeInfo.role instanceof ClientConnectivityRole) {
                             sendMessage(CMD_SWITCH_TO_CONNECT_MODE, roleChangeInfo);
                             transitionTo(mStartedState);
@@ -957,6 +995,10 @@ public class ConcreteClientModeManager implements ClientModeManager {
                             mScanRoleChangeInfoToSetOnTransition = roleChangeInfo;
                             transitionTo(mScanOnlyModeState);
                         }
+                        break;
+                    case CMD_INTERFACE_ADDED:
+                        Log.d(getTag(), "IdleState received CMD_INTERFACE_ADDED");
+                        mSelfRecovery.trigger(SelfRecovery.REASON_IFACE_ADDED);
                         break;
                     default:
                         Log.d(getTag(), getName() + ", received an invalid message: " + message);
@@ -1364,6 +1406,16 @@ public class ConcreteClientModeManager implements ClientModeManager {
     }
 
     @Override
+    public void onDeviceMobilityStateUpdated(@DeviceMobilityState int newState) {
+        getClientMode().onDeviceMobilityStateUpdated(newState);
+    }
+
+    @Override
+    public void setLinkLayerStatsPollingInterval(int newIntervalMs) {
+        getClientMode().setLinkLayerStatsPollingInterval(newIntervalMs);
+    }
+
+    @Override
     public boolean setWifiConnectedNetworkScorer(
             IBinder binder, IWifiConnectedNetworkScorer scorer) {
         return getClientMode().setWifiConnectedNetworkScorer(binder, scorer);
@@ -1372,6 +1424,16 @@ public class ConcreteClientModeManager implements ClientModeManager {
     @Override
     public void clearWifiConnectedNetworkScorer() {
         getClientMode().clearWifiConnectedNetworkScorer();
+    }
+
+    @Override
+    public void onNetworkSwitchAccepted(int targetNetworkId, String targetBssid) {
+        getClientMode().onNetworkSwitchAccepted(targetNetworkId, targetBssid);
+    }
+
+    @Override
+    public void onNetworkSwitchRejected(int targetNetworkId, String targetBssid) {
+        getClientMode().onNetworkSwitchRejected(targetNetworkId, targetBssid);
     }
 
     @Override
@@ -1422,8 +1484,28 @@ public class ConcreteClientModeManager implements ClientModeManager {
     }
 
     @Override
-    public void enableTdls(String remoteMacAddress, boolean enable) {
-        getClientMode().enableTdls(remoteMacAddress, enable);
+    public boolean enableTdls(String remoteMacAddress, boolean enable) {
+        return getClientMode().enableTdls(remoteMacAddress, enable);
+    }
+
+    @Override
+    public boolean enableTdlsWithRemoteIpAddress(String remoteIpAddress, boolean enable) {
+        return getClientMode().enableTdlsWithRemoteIpAddress(remoteIpAddress, enable);
+    }
+
+    @Override
+    public boolean isTdlsOperationCurrentlyAvailable() {
+        return getClientMode().isTdlsOperationCurrentlyAvailable();
+    }
+
+    @Override
+    public int getMaxSupportedConcurrentTdlsSessions() {
+        return getClientMode().getMaxSupportedConcurrentTdlsSessions();
+    }
+
+    @Override
+    public int getNumberOfEnabledTdlsSessions() {
+        return getClientMode().getNumberOfEnabledTdlsSessions();
     }
 
     @Override

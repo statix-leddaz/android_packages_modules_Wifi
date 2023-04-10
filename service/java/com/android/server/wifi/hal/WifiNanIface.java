@@ -329,16 +329,6 @@ public class WifiNanIface implements WifiHal.WifiInterface {
     }
 
     /**
-     * See comments for {@link IWifiNanIface#getNanIface()}
-     *
-     * TODO: Remove this API. Will only be used temporarily until HalDeviceManager is refactored.
-     */
-    public android.hardware.wifi.V1_0.IWifiNanIface getNanIface() {
-        return validateAndCall("getNanIface", null,
-                () -> mWifiNanIface.getNanIface());
-    }
-
-    /**
      * See comments for {@link IWifiNanIface#registerFrameworkCallback(Callback)}
      */
     public boolean registerFrameworkCallback(Callback cb) {
@@ -448,31 +438,31 @@ public class WifiNanIface implements WifiHal.WifiInterface {
     }
 
     /**
-     * See comments for {@link IWifiNanIface#initiateDataPath(short, int, int, int, MacAddress,
-     *                         String, boolean, byte[], Capabilities,
-     *                         WifiAwareDataPathSecurityConfig)}
+     * See comments for
+     * {@link IWifiNanIface#initiateDataPath(short, int, int, int, MacAddress, String, boolean, byte[], Capabilities, WifiAwareDataPathSecurityConfig, byte)}
      */
     public boolean initiateDataPath(short transactionId, int peerId, int channelRequestType,
             int channel, MacAddress peer, String interfaceName,
             boolean isOutOfBand, byte[] appInfo, Capabilities capabilities,
-            WifiAwareDataPathSecurityConfig securityConfig) {
+            WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId) {
         return validateAndCall("initiateDataPath", false,
                 () -> mWifiNanIface.initiateDataPath(transactionId, peerId, channelRequestType,
                         channel, peer, interfaceName, isOutOfBand, appInfo, capabilities,
-                        securityConfig));
+                        securityConfig, pubSubId));
     }
 
     /**
-     * See comments for {@link IWifiNanIface#respondToDataPathRequest(short, boolean, int, String,
-     *                         byte[], boolean, Capabilities, WifiAwareDataPathSecurityConfig)}
+     * See comments for
+     * {@link IWifiNanIface#respondToDataPathRequest(short, boolean, int, String, byte[], boolean, Capabilities, WifiAwareDataPathSecurityConfig, byte)}
      */
     public boolean respondToDataPathRequest(short transactionId, boolean accept, int ndpId,
             String interfaceName, byte[] appInfo,
             boolean isOutOfBand, Capabilities capabilities,
-            WifiAwareDataPathSecurityConfig securityConfig) {
+            WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId) {
         return validateAndCall("respondToDataPathRequest", false,
                 () -> mWifiNanIface.respondToDataPathRequest(transactionId, accept, ndpId,
-                        interfaceName, appInfo, isOutOfBand, capabilities, securityConfig));
+                        interfaceName, appInfo, isOutOfBand, capabilities, securityConfig,
+                        pubSubId));
     }
 
     /**
@@ -484,34 +474,44 @@ public class WifiNanIface implements WifiHal.WifiInterface {
     }
 
     /**
-     * {@link IWifiNanIface#initiateNanPairingRequest(short, int, MacAddress, byte[], boolean, int, byte[], String, int)}
+     * {@link IWifiNanIface#initiateNanPairingRequest(short, int, MacAddress, byte[], boolean, int, byte[], String, int, int)}
      */
     public boolean initiatePairing(short transactionId, int peerId, MacAddress peer,
             byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-            String password, int akm) {
+            String password, int akm, int cipherSuite) {
         return validateAndCall("initiatePairing", false,
                 () -> mWifiNanIface.initiateNanPairingRequest(transactionId, peerId, peer,
-                        pairingIdentityKey, enablePairingCache, requestType, pmk, password, akm));
+                        pairingIdentityKey, enablePairingCache, requestType, pmk, password, akm,
+                        cipherSuite));
     }
 
     /**
-     * {@link IWifiNanIface#respondToPairingRequest(short, int, boolean, byte[], boolean, int, byte[], String, int)}
+     * {@link IWifiNanIface#endPairing(short, int)}
+     */
+    public boolean endPairing(short transactionId, int pairingId) {
+        return validateAndCall("initiatePairing", false,
+                () -> mWifiNanIface.endPairing(transactionId, pairingId));
+    }
+
+    /**
+     * {@link IWifiNanIface#respondToPairingRequest(short, int, boolean, byte[], boolean, int, byte[], String, int, int)}
      */
     public boolean respondToPairingRequest(short transactionId, int pairingId, boolean accept,
             byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-            String password, int akm) {
+            String password, int akm, int cipherSuite) {
         return validateAndCall("respondToPairingRequest", false,
                 () -> mWifiNanIface.respondToPairingRequest(transactionId, pairingId, accept,
-                        pairingIdentityKey, enablePairingCache, requestType, pmk, password, akm));
+                        pairingIdentityKey, enablePairingCache, requestType, pmk, password, akm,
+                        cipherSuite));
     }
     /**
-     * {@link IWifiNanIface#initiateNanBootstrappingRequest(short, int, MacAddress, int)}
+     * {@link IWifiNanIface#initiateNanBootstrappingRequest(short, int, MacAddress, int, byte[])}
      */
     public boolean initiateBootstrapping(short transactionId, int peerId, MacAddress peer,
-            int method) {
+            int method, byte[] cookie) {
         return validateAndCall("initiateBootstrapping", false,
                 () -> mWifiNanIface.initiateNanBootstrappingRequest(transactionId, peerId, peer,
-                        method));
+                        method, cookie));
     }
     /**
      * {@link IWifiNanIface#respondToNanBootstrappingRequest(short, int, boolean)}
@@ -676,6 +676,13 @@ public class WifiNanIface implements WifiHal.WifiInterface {
         void notifyResumeResponse(short id, int status);
 
         /**
+         * Invoked in response to a pairing termination request.
+         * @param id ID corresponding to the original request.
+         * @param status Status the operation (see {@link NanStatusCode}).
+         */
+        void notifyTerminatePairingResponse(short id, int status);
+
+        /**
          * Indicates that a cluster event has been received.
          * @param eventType Type of the cluster event (see {@link NanClusterEventType}).
          * @param addr MAC Address associated with the corresponding event.
@@ -831,6 +838,13 @@ public class WifiNanIface implements WifiHal.WifiInterface {
         /**
          * Indicates that the bootstrapping is finished
          */
-        void eventBootstrappingConfirm(int pairingId, boolean accept, int reason);
+        void eventBootstrappingConfirm(int pairingId, int responseCode, int reason,
+                int comebackDelay, byte[] cookie);
+
+        /**
+         * Indicates that the suspension mode has changed, i.e., the device has entered or exited
+         * the suspension mode
+         */
+        void eventSuspensionModeChanged(boolean isSuspended);
     }
 }

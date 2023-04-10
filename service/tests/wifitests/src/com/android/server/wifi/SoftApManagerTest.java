@@ -197,6 +197,7 @@ public class SoftApManagerTest extends WifiBaseTest {
     @Mock BatteryManager mBatteryManager;
     @Mock InterfaceConflictManager mInterfaceConflictManager;
     @Mock WifiInjector mWifiInjector;
+    @Mock WifiCountryCode mWifiCountryCode;
     @Mock LocalLog mLocalLog;
 
     final ArgumentCaptor<WifiNative.InterfaceCallback> mWifiNativeInterfaceCallbackCaptor =
@@ -316,6 +317,7 @@ public class SoftApManagerTest extends WifiBaseTest {
                 .thenReturn(mAlarmManager.getAlarmManager());
         when(mContext.getResources()).thenReturn(mResources);
         when(mContext.getWifiOverlayApkPkgName()).thenReturn("test.com.android.wifi.resources");
+        when(mContext.registerReceiver(any(), any())).thenReturn(new Intent());
 
         when(mResources.getInteger(R.integer.config_wifiFrameworkSoftApShutDownTimeoutMilliseconds))
                 .thenReturn((int) TEST_DEFAULT_SHUTDOWN_TIMEOUT_MILLIS);
@@ -353,6 +355,7 @@ public class SoftApManagerTest extends WifiBaseTest {
                 .thenReturn(mPrimaryWifiInfo);
         when(mWifiNative.forceClientDisconnect(any(), any(), anyInt())).thenReturn(true);
         when(mWifiInjector.getWifiHandlerLocalLog()).thenReturn(mLocalLog);
+        when(mWifiInjector.getWifiCountryCode()).thenReturn(mWifiCountryCode);
         when(mContext.getResources()).thenReturn(mResources);
 
         // Init Test SoftAp infos
@@ -402,7 +405,6 @@ public class SoftApManagerTest extends WifiBaseTest {
         SoftApManager newSoftApManager = new SoftApManager(
                 mContext, mLooper.getLooper(), mFrameworkFacade, mWifiNative, mWifiInjector,
                 mCoexManager,
-                mBatteryManager,
                 mInterfaceConflictManager,
                 mListener,
                 mCallback,
@@ -2358,6 +2360,28 @@ public class SoftApManagerTest extends WifiBaseTest {
         ArgumentCaptor<SoftApConfiguration> configCaptor =
                 ArgumentCaptor.forClass(SoftApConfiguration.class);
         order.verify(mCallback).onStateChanged(WifiManager.WIFI_AP_STATE_ENABLING, 0);
+        if (mResources.getBoolean(R.bool.config_wifiDriverSupportedNl80211RegChangedEvent)) {
+            // Don't start SoftAP before driver country code change.
+            verify(mWifiNative, never()).startSoftAp(any(), any(), anyBoolean(), any());
+
+            ArgumentCaptor<WifiCountryCode.ChangeListener> changeListenerCaptor =
+                    ArgumentCaptor.forClass(WifiCountryCode.ChangeListener.class);
+            verify(mWifiCountryCode).registerListener(changeListenerCaptor.capture());
+            changeListenerCaptor.getValue()
+                    .onDriverCountryCodeChanged("Not the country code we want.");
+            mLooper.dispatchAll();
+
+            // Ignore country code changes that don't match what we set.
+            verify(mWifiNative, never()).startSoftAp(any(), any(), anyBoolean(), any());
+
+            // Now notify the correct country code.
+            changeListenerCaptor.getValue()
+                    .onDriverCountryCodeChanged(softApConfig.getCountryCode());
+            mLooper.dispatchAll();
+            verify(mWifiCountryCode).unregisterListener(changeListenerCaptor.getValue());
+            assertThat(mSoftApManager.getSoftApModeConfiguration().getCapability().getCountryCode())
+                    .isEqualTo(softApConfig.getCountryCode());
+        }
         order.verify(mWifiNative).startSoftAp(eq(TEST_INTERFACE_NAME),
                 configCaptor.capture(),
                 eq(softApConfig.getTargetMode() ==  WifiManager.IFACE_IP_MODE_TETHERED),
@@ -3418,6 +3442,37 @@ public class SoftApManagerTest extends WifiBaseTest {
     }
 
     @Test
+    public void testWaitForDriverCountryCode() throws Exception {
+        when(mResources.getBoolean(
+                R.bool.config_wifiDriverSupportedNl80211RegChangedEvent)).thenReturn(true);
+        SoftApModeConfiguration apConfig =
+                new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
+                        mTestSoftApCapability, "Not " + TEST_COUNTRY_CODE);
+        startSoftApAndVerifyEnabled(apConfig);
+    }
+
+    @Test
+    public void testWaitForDriverCountryCodeTimedOut() throws Exception {
+        when(mResources.getBoolean(
+                R.bool.config_wifiDriverSupportedNl80211RegChangedEvent)).thenReturn(true);
+        SoftApModeConfiguration apConfig =
+                new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
+                        mTestSoftApCapability, "Not" + TEST_COUNTRY_CODE);
+        mSoftApManager = createSoftApManager(apConfig, ROLE_SOFTAP_TETHERED);
+        ArgumentCaptor<WifiCountryCode.ChangeListener> changeListenerCaptor =
+                ArgumentCaptor.forClass(WifiCountryCode.ChangeListener.class);
+        verify(mWifiCountryCode).registerListener(changeListenerCaptor.capture());
+        verify(mWifiNative, never()).startSoftAp(any(), any(), anyBoolean(), any());
+
+        // Trigger the timeout
+        mLooper.moveTimeForward(10_000);
+        mLooper.dispatchAll();
+
+        verify(mWifiNative).startSoftAp(any(), any(), anyBoolean(), any());
+        verify(mWifiCountryCode).unregisterListener(changeListenerCaptor.getValue());
+    }
+
+    @Test
     public void testUpdateCountryCodeWhenConfigDisabled() throws Exception {
         when(mResources.getBoolean(R.bool.config_wifiSoftApDynamicCountryCodeUpdateSupported))
                 .thenReturn(false);
@@ -3529,7 +3584,7 @@ public class SoftApManagerTest extends WifiBaseTest {
     }
 
     @Test
-    public void testSchedulesTimeoutTimerWhenChargingChanged() throws Exception {
+    public void testSchedulesTimeoutTimerWhenPluggedChanged() throws Exception {
         assumeTrue(SdkLevel.isAtLeastT());
         when(mResources.getBoolean(R.bool
                   .config_wifiFrameworkSoftApDisableBridgedModeShutdownIdleInstanceWhenCharging))
@@ -3553,10 +3608,10 @@ public class SoftApManagerTest extends WifiBaseTest {
                 mSoftApManager.mSoftApTimeoutMessageMap.get(TEST_INTERFACE_NAME);
         verify(mContext).registerReceiver(mBroadcastReceiverCaptor.capture(),
                 argThat((IntentFilter filter) ->
-                        filter.hasAction(Intent.ACTION_POWER_CONNECTED)
-                                && filter.hasAction(Intent.ACTION_POWER_DISCONNECTED)));
+                        filter.hasAction(Intent.ACTION_BATTERY_CHANGED)));
         mBroadcastReceiverCaptor.getValue().onReceive(mContext,
-                new Intent(Intent.ACTION_POWER_CONNECTED));
+                new Intent(Intent.ACTION_BATTERY_CHANGED)
+                    .putExtra(BatteryManager.EXTRA_PLUGGED, BatteryManager.BATTERY_PLUGGED_USB));
         mLooper.dispatchAll();
         // Verify whole SAP timer is canceled at this point
         verify(mAlarmManager.getAlarmManager(), never()).cancel(
@@ -3567,7 +3622,8 @@ public class SoftApManagerTest extends WifiBaseTest {
                 eq(mSoftApManager.mSoftApTimeoutMessageMap.get(TEST_SECOND_INSTANCE_NAME)));
 
         mBroadcastReceiverCaptor.getValue().onReceive(mContext,
-                new Intent(Intent.ACTION_POWER_DISCONNECTED));
+                new Intent(Intent.ACTION_BATTERY_CHANGED)
+                        .putExtra(BatteryManager.EXTRA_PLUGGED, 0));
         mLooper.dispatchAll();
         // Verify tethered instance timer is NOT re-scheduled (Keep 2 times)
         verify(mAlarmManager.getAlarmManager(), times(2)).setExact(anyInt(), anyLong(),

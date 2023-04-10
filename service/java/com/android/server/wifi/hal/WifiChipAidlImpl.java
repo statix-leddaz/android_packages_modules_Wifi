@@ -22,8 +22,9 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.hardware.wifi.IWifiApIface;
-import android.hardware.wifi.IWifiChip.ChipCapabilityMask;
+import android.hardware.wifi.IWifiChip.ChannelCategoryMask;
 import android.hardware.wifi.IWifiChip.CoexRestriction;
+import android.hardware.wifi.IWifiChip.FeatureSetMask;
 import android.hardware.wifi.IWifiChip.LatencyMode;
 import android.hardware.wifi.IWifiChip.MultiStaUseCase;
 import android.hardware.wifi.IWifiChip.TxPowerScenario;
@@ -37,13 +38,14 @@ import android.hardware.wifi.IfaceConcurrencyType;
 import android.hardware.wifi.IfaceType;
 import android.hardware.wifi.WifiAntennaMode;
 import android.hardware.wifi.WifiBand;
+import android.hardware.wifi.WifiChipCapabilities;
 import android.hardware.wifi.WifiDebugHostWakeReasonStats;
 import android.hardware.wifi.WifiDebugRingBufferFlags;
 import android.hardware.wifi.WifiDebugRingBufferStatus;
 import android.hardware.wifi.WifiIfaceMode;
 import android.hardware.wifi.WifiRadioCombination;
-import android.hardware.wifi.WifiRadioCombinationMatrix;
 import android.hardware.wifi.WifiRadioConfiguration;
+import android.hardware.wifi.WifiStatusCode;
 import android.hardware.wifi.WifiUsableChannel;
 import android.net.wifi.CoexUnsafeChannel;
 import android.net.wifi.WifiAvailableChannel;
@@ -374,22 +376,22 @@ public class WifiChipAidlImpl implements IWifiChip {
     private WifiChip.Response<Long> getCapabilitiesInternal(String methodStr) {
         // getCapabilities uses the same logic in AIDL, regardless of whether the call
         // happens before or after any interfaces have been created.
-        WifiChip.Response<Long> capsResp = new WifiChip.Response<>(0L);
+        WifiChip.Response<Long> featuresResp = new WifiChip.Response<>(0L);
         synchronized (mLock) {
             try {
-                if (!checkIfaceAndLogFailure(methodStr)) return capsResp;
-                long halCaps = mWifiChip.getCapabilities();
-                capsResp.setValue(halToFrameworkChipCapabilityMask(halCaps));
-                capsResp.setStatusCode(WifiHal.WIFI_STATUS_SUCCESS);
+                if (!checkIfaceAndLogFailure(methodStr)) return featuresResp;
+                long halFeatureSet = mWifiChip.getFeatureSet();
+                featuresResp.setValue(halToFrameworkChipFeatureSet(halFeatureSet));
+                featuresResp.setStatusCode(WifiHal.WIFI_STATUS_SUCCESS);
             } catch (RemoteException e) {
                 handleRemoteException(e, methodStr);
-                capsResp.setStatusCode(WifiHal.WIFI_STATUS_ERROR_REMOTE_EXCEPTION);
+                featuresResp.setStatusCode(WifiHal.WIFI_STATUS_ERROR_REMOTE_EXCEPTION);
             } catch (ServiceSpecificException e) {
                 handleServiceSpecificException(e, methodStr);
                 // TODO: convert to framework status code once WifiHalAidlImpl exists
-                capsResp.setStatusCode(e.errorCode);
+                featuresResp.setStatusCode(e.errorCode);
             }
-            return capsResp;
+            return featuresResp;
         }
     }
 
@@ -608,18 +610,36 @@ public class WifiChipAidlImpl implements IWifiChip {
     }
 
     /**
-     * See comments for {@link IWifiChip#getSupportedRadioCombinationsMatrix()}
+     * See comments for {@link IWifiChip#getSupportedRadioCombinations()}
      */
     @Override
     @Nullable
-    public WifiChip.WifiRadioCombinationMatrix getSupportedRadioCombinationsMatrix() {
-        final String methodStr = "getSupportedRadioCombinationsMatrix";
+    public List<WifiChip.WifiRadioCombination> getSupportedRadioCombinations() {
+        final String methodStr = "getSupportedRadioCombinations";
         synchronized (mLock) {
             try {
                 if (!checkIfaceAndLogFailure(methodStr)) return null;
-                WifiRadioCombinationMatrix halMatrix =
-                        mWifiChip.getSupportedRadioCombinationsMatrix();
-                return halToFrameworkRadioCombinationMatrix(halMatrix);
+                WifiRadioCombination[] halCombos = mWifiChip.getSupportedRadioCombinations();
+                return halToFrameworkRadioCombinations(halCombos);
+            } catch (RemoteException e) {
+                handleRemoteException(e, methodStr);
+            } catch (ServiceSpecificException e) {
+                handleServiceSpecificException(e, methodStr);
+            }
+            return null;
+        }
+    }
+
+    /**
+     * See comments for {@link IWifiChip#getWifiChipCapabilities()}
+     */
+    public WifiChip.WifiChipCapabilities getWifiChipCapabilities() {
+        final String methodStr = "getWifiChipCapabilities";
+        synchronized (mLock) {
+            try {
+                if (!checkIfaceAndLogFailure(methodStr)) return null;
+                WifiChipCapabilities halCapab = mWifiChip.getWifiChipCapabilities();
+                return halToFrameworkWifiChipCapabilities(halCapab);
             } catch (RemoteException e) {
                 handleRemoteException(e, methodStr);
             } catch (ServiceSpecificException e) {
@@ -854,26 +874,6 @@ public class WifiChipAidlImpl implements IWifiChip {
     }
 
     /**
-     * See comments for {@link IWifiChip#resetTxPowerScenario()}
-     */
-    @Override
-    public boolean resetTxPowerScenario() {
-        final String methodStr = "resetTxPowerScenario";
-        synchronized (mLock) {
-            try {
-                if (!checkIfaceAndLogFailure(methodStr)) return false;
-                mWifiChip.resetTxPowerScenario();
-                return true;
-            } catch (RemoteException e) {
-                handleRemoteException(e, methodStr);
-            } catch (ServiceSpecificException e) {
-                handleServiceSpecificException(e, methodStr);
-            }
-            return false;
-        }
-    }
-
-    /**
      * See comments for {@link IWifiChip#selectTxPowerScenario(SarInfo)}
      */
     @Override
@@ -1072,6 +1072,34 @@ public class WifiChipAidlImpl implements IWifiChip {
             try {
                 if (!checkIfaceAndLogFailure(methodStr)) return false;
                 mWifiChip.triggerSubsystemRestart();
+                return true;
+            } catch (RemoteException e) {
+                handleRemoteException(e, methodStr);
+            } catch (ServiceSpecificException e) {
+                handleServiceSpecificException(e, methodStr);
+            }
+            return false;
+        }
+    }
+
+    /**
+     * See comments for {@link IWifiChip#enableStaChannelForPeerNetwork(boolean, boolean)}
+     */
+    @Override
+    public boolean enableStaChannelForPeerNetwork(boolean enableIndoorChannel,
+            boolean enableDfsChannel) {
+        final String methodStr = "enableStaChannelForPeerNetwork";
+        synchronized (mLock) {
+            try {
+                if (!checkIfaceAndLogFailure(methodStr)) return false;
+                int halChannelCategoryEnableFlag = 0;
+                if (enableIndoorChannel) {
+                    halChannelCategoryEnableFlag |= ChannelCategoryMask.INDOOR_CHANNEL;
+                }
+                if (enableDfsChannel) {
+                    halChannelCategoryEnableFlag |= ChannelCategoryMask.DFS_CHANNEL;
+                }
+                mWifiChip.enableStaChannelForPeerNetwork(halChannelCategoryEnableFlag);
                 return true;
             } catch (RemoteException e) {
                 handleRemoteException(e, methodStr);
@@ -1476,27 +1504,30 @@ public class WifiChipAidlImpl implements IWifiChip {
     }
 
     @VisibleForTesting
-    protected static long halToFrameworkChipCapabilityMask(long halCaps) {
-        long frameworkCaps = 0;
-        if (bitmapContains(halCaps, ChipCapabilityMask.SET_TX_POWER_LIMIT)) {
-            frameworkCaps |= WifiManager.WIFI_FEATURE_TX_POWER_LIMIT;
+    protected static long halToFrameworkChipFeatureSet(long halFeatureSet) {
+        long features = 0;
+        if (bitmapContains(halFeatureSet, FeatureSetMask.SET_TX_POWER_LIMIT)) {
+            features |= WifiManager.WIFI_FEATURE_TX_POWER_LIMIT;
         }
-        if (bitmapContains(halCaps, ChipCapabilityMask.D2D_RTT)) {
-            frameworkCaps |= WifiManager.WIFI_FEATURE_D2D_RTT;
+        if (bitmapContains(halFeatureSet, FeatureSetMask.D2D_RTT)) {
+            features |= WifiManager.WIFI_FEATURE_D2D_RTT;
         }
-        if (bitmapContains(halCaps, ChipCapabilityMask.D2AP_RTT)) {
-            frameworkCaps |= WifiManager.WIFI_FEATURE_D2AP_RTT;
+        if (bitmapContains(halFeatureSet, FeatureSetMask.D2AP_RTT)) {
+            features |= WifiManager.WIFI_FEATURE_D2AP_RTT;
         }
-        if (bitmapContains(halCaps, ChipCapabilityMask.SET_LATENCY_MODE)) {
-            frameworkCaps |= WifiManager.WIFI_FEATURE_LOW_LATENCY;
+        if (bitmapContains(halFeatureSet, FeatureSetMask.SET_LATENCY_MODE)) {
+            features |= WifiManager.WIFI_FEATURE_LOW_LATENCY;
         }
-        if (bitmapContains(halCaps, ChipCapabilityMask.P2P_RAND_MAC)) {
-            frameworkCaps |= WifiManager.WIFI_FEATURE_P2P_RAND_MAC;
+        if (bitmapContains(halFeatureSet, FeatureSetMask.P2P_RAND_MAC)) {
+            features |= WifiManager.WIFI_FEATURE_P2P_RAND_MAC;
         }
-        if (bitmapContains(halCaps, ChipCapabilityMask.WIGIG)) {
-            frameworkCaps |= WifiManager.WIFI_FEATURE_INFRA_60G;
+        if (bitmapContains(halFeatureSet, FeatureSetMask.WIGIG)) {
+            features |= WifiManager.WIFI_FEATURE_INFRA_60G;
         }
-        return frameworkCaps;
+        if (bitmapContains(halFeatureSet, FeatureSetMask.T2LM_NEGOTIATION)) {
+            features |= WifiManager.WIFI_FEATURE_T2LM_NEGOTIATION;
+        }
+        return features;
     }
 
     private static int halToFrameworkWifiBand(int halBand) {
@@ -1576,13 +1607,19 @@ public class WifiChipAidlImpl implements IWifiChip {
         return new WifiChip.ChipConcurrencyCombinationLimit(halLimit.maxIfaces, frameworkTypes);
     }
 
-    private static WifiChip.WifiRadioCombinationMatrix halToFrameworkRadioCombinationMatrix(
-            WifiRadioCombinationMatrix halMatrix) {
+    private static List<WifiChip.WifiRadioCombination> halToFrameworkRadioCombinations(
+            WifiRadioCombination[] halCombos) {
         List<WifiChip.WifiRadioCombination> frameworkCombos = new ArrayList<>();
-        for (WifiRadioCombination combo : halMatrix.radioCombinations) {
+        for (WifiRadioCombination combo : halCombos) {
             frameworkCombos.add(halToFrameworkRadioCombination(combo));
         }
-        return new WifiChip.WifiRadioCombinationMatrix(frameworkCombos);
+        return frameworkCombos;
+    }
+
+    private static WifiChip.WifiChipCapabilities halToFrameworkWifiChipCapabilities(
+            WifiChipCapabilities halCapabilities) {
+        return new WifiChip.WifiChipCapabilities(halCapabilities.maxMloAssociationLinkCount,
+                halCapabilities.maxMloStrLinkCount, halCapabilities.maxConcurrentTdlsSessionCount);
     }
 
     private static WifiChip.WifiRadioCombination halToFrameworkRadioCombination(
@@ -1619,5 +1656,47 @@ public class WifiChipAidlImpl implements IWifiChip {
 
     private void handleIllegalArgumentException(IllegalArgumentException e, String methodStr) {
         Log.e(TAG, methodStr + " failed with illegal argument exception: " + e);
+    }
+
+    /**
+     * See comments for {@link IWifiChip#setMloMode(int)}.
+     */
+    @Override
+    public @WifiStatusCode int setMloMode(@WifiManager.MloMode int mode) {
+        final String methodStr = "setMloMode";
+        @WifiStatusCode int errorCode = WifiStatusCode.ERROR_UNKNOWN;
+        synchronized (mLock) {
+            try {
+                if (checkIfaceAndLogFailure(methodStr)) {
+                    mWifiChip.setMloMode(frameworkToAidlMloMode(mode));
+                    errorCode = WifiStatusCode.SUCCESS;
+                }
+            } catch (RemoteException e) {
+                handleRemoteException(e, methodStr);
+            } catch (ServiceSpecificException e) {
+                handleServiceSpecificException(e, methodStr);
+                errorCode = e.errorCode;
+            } catch (IllegalArgumentException e) {
+                handleIllegalArgumentException(e, methodStr);
+                errorCode = WifiStatusCode.ERROR_INVALID_ARGS;
+            }
+            return errorCode;
+        }
+    }
+
+    private @android.hardware.wifi.IWifiChip.ChipMloMode int frameworkToAidlMloMode(
+            @WifiManager.MloMode int mode) {
+        switch(mode) {
+            case WifiManager.MLO_MODE_DEFAULT:
+                return android.hardware.wifi.IWifiChip.ChipMloMode.DEFAULT;
+            case WifiManager.MLO_MODE_LOW_LATENCY:
+                return android.hardware.wifi.IWifiChip.ChipMloMode.LOW_LATENCY;
+            case WifiManager.MLO_MODE_HIGH_THROUGHPUT:
+                return android.hardware.wifi.IWifiChip.ChipMloMode.HIGH_THROUGHPUT;
+            case WifiManager.MLO_MODE_LOW_POWER:
+                return android.hardware.wifi.IWifiChip.ChipMloMode.LOW_POWER;
+            default:
+                throw new IllegalArgumentException("frameworkToAidlMloMode: Invalid mode: " + mode);
+        }
     }
 }

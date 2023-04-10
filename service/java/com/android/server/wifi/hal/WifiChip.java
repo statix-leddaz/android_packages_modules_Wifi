@@ -20,8 +20,10 @@ import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
+import android.hardware.wifi.WifiStatusCode;
 import android.net.wifi.CoexUnsafeChannel;
 import android.net.wifi.WifiAvailableChannel;
+import android.net.wifi.WifiManager;
 import android.net.wifi.WifiScanner;
 import android.util.Log;
 
@@ -276,18 +278,42 @@ public class WifiChip {
     }
 
     /**
-     * Wifi radio combinations matrix.
+     * Wifi Chip capabilities.
      */
-    public static class WifiRadioCombinationMatrix {
-        public final List<WifiRadioCombination> radioCombinations;
+    public static class WifiChipCapabilities {
+        /**
+         * Maximum number of links supported by the chip for MLO association.
+         *
+         * Note: This is a static configuration of the chip.
+         */
+        public final int maxMloAssociationLinkCount;
+        /**
+         * Maximum number of STR links used in Multi-Link Operation. The maximum
+         * number of STR links used for MLO can be different from the number of
+         * radios supported by the chip.
+         *
+         * Note: This is a static configuration of the chip.
+         */
+        public final int maxMloStrLinkCount;
+        /**
+         * Maximum number of concurrent TDLS sessions that can be enabled
+         * by framework via
+         * {@link android.hardware.wifi.supplicant.ISupplicantStaIface#initiateTdlsSetup(byte[])}.
+         */
+        public final int maxConcurrentTdlsSessionCount;
 
-        public WifiRadioCombinationMatrix(List<WifiRadioCombination> inRadioCombinations) {
-            radioCombinations = inRadioCombinations;
+        public WifiChipCapabilities(int maxMloAssociationLinkCount, int maxMloStrLinkCount,
+                int maxConcurrentTdlsSessionCount) {
+            this.maxMloAssociationLinkCount = maxMloAssociationLinkCount;
+            this.maxMloStrLinkCount = maxMloStrLinkCount;
+            this.maxConcurrentTdlsSessionCount = maxConcurrentTdlsSessionCount;
         }
 
         @Override
         public String toString() {
-            return "{radioCombinations=" + radioCombinations + "}";
+            return "{maxMloAssociationLinkCount=" + maxMloAssociationLinkCount
+                    + ", maxMloStrLinkCount=" + maxMloStrLinkCount
+                    + ", maxConcurrentTdlsSessionCount=" + maxConcurrentTdlsSessionCount + "}";
         }
     }
 
@@ -673,12 +699,21 @@ public class WifiChip {
     }
 
     /**
-     * See comments for {@link IWifiChip#getSupportedRadioCombinationsMatrix()}
+     * See comments for {@link IWifiChip#getSupportedRadioCombinations()}
      */
     @Nullable
-    public WifiChip.WifiRadioCombinationMatrix getSupportedRadioCombinationsMatrix() {
-        return validateAndCall("getSupportedRadioCombinationsMatrix", null,
-                () -> mWifiChip.getSupportedRadioCombinationsMatrix());
+    public List<WifiChip.WifiRadioCombination> getSupportedRadioCombinations() {
+        return validateAndCall("getSupportedRadioCombinations", null,
+                () -> mWifiChip.getSupportedRadioCombinations());
+    }
+
+    /**
+     * See comments for {@link IWifiChip#getWifiChipCapabilities()}
+     */
+    @Nullable
+    public WifiChipCapabilities getWifiChipCapabilities() {
+        return validateAndCall("getWifiChipCapabilities", null,
+                () -> mWifiChip.getWifiChipCapabilities());
     }
 
     /**
@@ -767,14 +802,6 @@ public class WifiChip {
     }
 
     /**
-     * See comments for {@link IWifiChip#resetTxPowerScenario()}
-     */
-    public boolean resetTxPowerScenario() {
-        return validateAndCall("resetTxPowerScenario", false,
-                () -> mWifiChip.resetTxPowerScenario());
-    }
-
-    /**
      * See comments for {@link IWifiChip#selectTxPowerScenario(SarInfo)}
      */
     public boolean selectTxPowerScenario(SarInfo sarInfo) {
@@ -856,5 +883,23 @@ public class WifiChip {
     public boolean triggerSubsystemRestart() {
         return validateAndCall("triggerSubsystemRestart", false,
                 () -> mWifiChip.triggerSubsystemRestart());
+    }
+
+    /**
+     * See comments for {@link IWifiChip#setMloMode(int)}.
+     */
+    public @WifiStatusCode int setMloMode(@WifiManager.MloMode int mode) {
+        return validateAndCall("setMloMode", WifiStatusCode.ERROR_NOT_STARTED,
+                () -> mWifiChip.setMloMode(mode));
+    }
+
+    /**
+     * See comments for {@link IWifiChip#enableStaChannelForPeerNetwork(boolean, boolean)}
+     */
+    public boolean enableStaChannelForPeerNetwork(boolean enableIndoorChannel,
+            boolean enableDfsChannel) {
+        return validateAndCall("enableStaChannelForPeerNetwork", false,
+                () -> mWifiChip.enableStaChannelForPeerNetwork(enableIndoorChannel,
+                        enableDfsChannel));
     }
 }

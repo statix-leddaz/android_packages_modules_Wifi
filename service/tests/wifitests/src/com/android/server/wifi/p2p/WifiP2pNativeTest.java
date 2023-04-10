@@ -25,13 +25,13 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
 
 import android.app.test.MockAnswerUtil.AnswerWithArguments;
 import android.hardware.wifi.V1_0.IWifiP2pIface;
-import android.net.wifi.WifiManager;
 import android.net.wifi.nl80211.WifiNl80211Manager;
 import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pDevice;
@@ -220,6 +220,8 @@ public class WifiP2pNativeTest extends WifiBaseTest {
         when(mHalDeviceManagerMock.createP2pIface(
                 any(HalDeviceManager.InterfaceDestroyedListener.class),
                 eq(mHandlerMock), eq(mWorkSourceMock))).thenReturn(null);
+        when(mHalDeviceManagerMock.isItPossibleToCreateIface(
+                eq(HalDeviceManager.HDM_CREATE_IFACE_P2P), eq(mWorkSourceMock))).thenReturn(true);
 
         mWifiP2pNative.setupInterface(mDestroyedListenerMock, mHandlerMock, mWorkSourceMock);
         verify(mWifiMetrics).incrementNumSetupP2pInterfaceFailureDueToHal();
@@ -227,6 +229,22 @@ public class WifiP2pNativeTest extends WifiBaseTest {
                 mWifiP2pNative.setupInterface(
                         mDestroyedListenerMock, mHandlerMock, mWorkSourceMock),
                 null);
+    }
+
+    /**
+     * Verifies that Wi-Fi metrics do correct action when setting up p2p interface failed and
+     * HalDevMgr not possibly creating it.
+     */
+    @Test
+    public void testSetupInterfaceFailureInCreatingP2pIfaceWhenHalDevMgrNotPossiblyCreate() {
+        when(mHalDeviceManagerMock.createP2pIface(
+                any(HalDeviceManager.InterfaceDestroyedListener.class),
+                eq(mHandlerMock), eq(mWorkSourceMock))).thenReturn(null);
+        when(mHalDeviceManagerMock.isItPossibleToCreateIface(
+                eq(HalDeviceManager.HDM_CREATE_IFACE_P2P), eq(mWorkSourceMock))).thenReturn(false);
+
+        mWifiP2pNative.setupInterface(mDestroyedListenerMock, mHandlerMock, mWorkSourceMock);
+        verify(mWifiMetrics, never()).incrementNumSetupP2pInterfaceFailureDueToHal();
     }
 
     /**
@@ -957,18 +975,6 @@ public class WifiP2pNativeTest extends WifiBaseTest {
     }
 
     /**
-     * Verifies getting supported feature set.
-     */
-    @Test
-    public void testGetSupportedFeatureSet() {
-        when(mWifiVendorHalMock.getSupportedFeatureSet(anyString()))
-                .thenReturn(WifiManager.WIFI_FEATURE_P2P_RAND_MAC);
-        assertEquals(WifiManager.WIFI_FEATURE_P2P_RAND_MAC,
-                mWifiP2pNative.getSupportedFeatureSet(TEST_IFACE));
-        verify(mWifiVendorHalMock).getSupportedFeatureSet(eq(TEST_IFACE));
-    }
-
-    /**
      * Verifies setting Wifi Display R2 device info when SupplicantP2pIfaceHal succeeds in setting.
      */
     @Test
@@ -1034,5 +1040,19 @@ public class WifiP2pNativeTest extends WifiBaseTest {
         assertFalse(mWifiP2pNative.is5g6gDbsSupported());
         when(mHalDeviceManagerMock.is5g6gDbsSupportedOnP2pIface(any())).thenReturn(false);
         assertFalse(mWifiP2pNative.is5g6gDbsSupported());
+    }
+
+    /**
+     * Test the EAPOL IpAddress Allocation configuration Parameters
+     */
+    @Test
+    public void testConfigureEapolIpAddressAllocationParamsSuccess() throws Exception {
+        when(mSupplicantP2pIfaceHalMock.configureEapolIpAddressAllocationParams(
+                anyInt(), anyInt(), anyInt(), anyInt())).thenReturn(true);
+
+        assertTrue(mWifiP2pNative.configureEapolIpAddressAllocationParams(0x0101A8C0,
+                0x00FFFFFF, 0x0501A8C0, 0x0801A8C0));
+        verify(mSupplicantP2pIfaceHalMock).configureEapolIpAddressAllocationParams(eq(0x0101A8C0),
+                eq(0x00FFFFFF), eq(0x0501A8C0), eq(0x0801A8C0));
     }
 }

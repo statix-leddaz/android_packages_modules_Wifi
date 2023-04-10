@@ -956,18 +956,22 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
     }
 
     /**
-     * Verify that WifiConfigurationUtil.isSameNetwork returns false when two WifiConfiguration
+     * Verify WifiConfigurationUtil.isSameNetwork return vale when two WifiConfiguration
      * objects have the different EAP anonymous(pseudonym) identity in EAP-SIM.
      */
     @Test
-    public void testIsSameNetworkReturnsFalseOnDifferentEapAnonymousIdentityInEapSim() {
+    public void testIsSameNetworkReturnValueOnDifferentEapAnonymousIdentityInEapSim() {
         WifiConfiguration network1 = WifiConfigurationTestUtil.createEapNetwork(TEST_SSID);
         WifiConfiguration network2 = WifiConfigurationTestUtil.createEapNetwork(TEST_SSID);
         network1.enterpriseConfig.setEapMethod(WifiEnterpriseConfig.Eap.SIM);
         network2.enterpriseConfig.setEapMethod(WifiEnterpriseConfig.Eap.SIM);
         network1.enterpriseConfig.setAnonymousIdentity("Identity1");
         network2.enterpriseConfig.setAnonymousIdentity("Identity2");
-        assertFalse(WifiConfigurationUtil.isSameNetwork(network1, network2));
+        if (SdkLevel.isAtLeastT()) {
+            assertTrue(WifiConfigurationUtil.isSameNetwork(network1, network2));
+        } else {
+            assertFalse(WifiConfigurationUtil.isSameNetwork(network1, network2));
+        }
     }
 
     /**
@@ -1129,6 +1133,50 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
                 existingConfig, newConfig));
     }
 
+    /**
+     * Verifies that isConfigForEnterpriseNetwork() returns true for SECURITY_TYPE_EAP,
+     * SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT, SECURITY_TYPE_PASSPOINT_R1_R2 and
+     * SECURITY_TYPE_PASSPOINT_R3 WiFi configurations.
+     */
+    @Test
+    public void testisConfigForEnterpriseNetworkReturnTrue() {
+        WifiConfiguration config = new WifiConfiguration();
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_EAP);
+        assertTrue(WifiConfigurationUtil.isConfigForEnterpriseNetwork(config));
+
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE);
+        assertTrue(WifiConfigurationUtil.isConfigForEnterpriseNetwork(config));
+
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT);
+        assertTrue(WifiConfigurationUtil.isConfigForEnterpriseNetwork(config));
+
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PASSPOINT_R1_R2);
+        assertTrue(WifiConfigurationUtil.isConfigForEnterpriseNetwork(config));
+
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PASSPOINT_R3);
+        assertTrue(WifiConfigurationUtil.isConfigForEnterpriseNetwork(config));
+    }
+
+    /**
+     * Verifies that isConfigForEnterpriseNetwork() returns false for SECURITY_TYPE_OPEN,
+     * SECURITY_TYPE_PSK, SECURITY_TYPE_OWE and SECURITY_TYPE_SAE WiFi configurations.
+     */
+    @Test
+    public void testisConfigForEnterpriseNetworkReturnFalse() {
+        WifiConfiguration config = new WifiConfiguration();
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_OPEN);
+        assertFalse(WifiConfigurationUtil.isConfigForEnterpriseNetwork(config));
+
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+        assertFalse(WifiConfigurationUtil.isConfigForEnterpriseNetwork(config));
+
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_OWE);
+        assertFalse(WifiConfigurationUtil.isConfigForEnterpriseNetwork(config));
+
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE);
+        assertFalse(WifiConfigurationUtil.isConfigForEnterpriseNetwork(config));
+    }
+
     private static class EnterpriseConfig {
         public String eap;
         public String phase2;
@@ -1223,6 +1271,21 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
                 .setIdentity("username", "password")
                 .setCaCerts(new X509Certificate[]{FakeKeys.CA_CERT0});
         eapConfig2.enterpriseConfig.setOcsp(OCSP_REQUIRE_CERT_STATUS);
+
+        assertTrue(WifiConfigurationUtil.hasEnterpriseConfigChanged(eapConfig1.enterpriseConfig,
+                eapConfig2.enterpriseConfig));
+    }
+
+    /**
+     * Verify WifiEnterpriseConfig Domain changes are detected.
+     */
+    @Test
+    public void testDomainNameChangesDetected() {
+        EnterpriseConfig eapConfig1 = new EnterpriseConfig(WifiEnterpriseConfig.Eap.TLS);
+        eapConfig1.enterpriseConfig.setDomainSuffixMatch("wlan.android.com");
+
+        EnterpriseConfig eapConfig2 = new EnterpriseConfig(WifiEnterpriseConfig.Eap.TTLS);
+        eapConfig1.enterpriseConfig.setDomainSuffixMatch("wifi.android.com");
 
         assertTrue(WifiConfigurationUtil.hasEnterpriseConfigChanged(eapConfig1.enterpriseConfig,
                 eapConfig2.enterpriseConfig));

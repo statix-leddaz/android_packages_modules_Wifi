@@ -16,6 +16,8 @@
 
 package com.android.server.wifi.p2p;
 
+import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_P2P;
+
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.net.wifi.CoexUnsafeChannel;
@@ -57,8 +59,6 @@ public class WifiP2pNative {
     private final WifiVendorHal mWifiVendorHal;
     private String mP2pIfaceName;
     private InterfaceDestroyedListenerInternal mInterfaceDestroyedListener;
-    // Cache the features and return it when P2P interface is not up.
-    private long mSupportedFeatures = -1L;
 
 
     // Internal callback registered to HalDeviceManager.
@@ -200,7 +200,10 @@ public class WifiP2pNative {
             String ifaceName = createP2pIface(handler, requestorWs);
             if (ifaceName == null) {
                 Log.e(TAG, "Failed to create P2p iface");
-                mWifiMetrics.incrementNumSetupP2pInterfaceFailureDueToHal();
+                if (mHalDeviceManager.isItPossibleToCreateIface(HDM_CREATE_IFACE_P2P,
+                        requestorWs)) {
+                    mWifiMetrics.incrementNumSetupP2pInterfaceFailureDueToHal();
+                }
                 return null;
             }
             if (!waitForSupplicantConnection()) {
@@ -215,7 +218,6 @@ public class WifiP2pNative {
                 mWifiMetrics.incrementNumSetupP2pInterfaceFailureDueToSupplicant();
                 return null;
             }
-            getSupportedFeatures();
             Log.i(TAG, "P2P interface setup completed");
             return ifaceName;
         } else {
@@ -264,16 +266,15 @@ public class WifiP2pNative {
     /**
      * Get the supported features.
      *
-     * The features are stored once P2P interface is up so it can be used
-     * when P2P interface is down due to idle shutdown.
+     * The features can be retrieved regardless of whether the P2P interface is up.
+     *
+     * Note that the feature set may be incomplete if Supplicant has not been started
+     * on the device yet.
      *
      * @return bitmask defined by WifiP2pManager.FEATURE_*
      */
     public long getSupportedFeatures() {
-        if (-1L != mSupportedFeatures) return mSupportedFeatures;
-        mSupportedFeatures = mSupplicantP2pIfaceHal.getSupportedFeatures();
-        Log.i(TAG, "Retrieved supported features: " + mSupportedFeatures);
-        return mSupportedFeatures;
+        return mSupplicantP2pIfaceHal.getSupportedFeatures();
     }
 
     /**
@@ -877,16 +878,6 @@ public class WifiP2pNative {
     }
 
     /**
-     * Get the supported features
-     *
-     * @param ifaceName Name of the interface.
-     * @return bitmask defined by WifiManager.WIFI_FEATURE_*
-     */
-    public long getSupportedFeatureSet(@NonNull String ifaceName) {
-        return mWifiVendorHal.getSupportedFeatureSet(ifaceName);
-    }
-
-    /**
      * Set Wifi Display R2 device info.
      *
      * @param hex WFD device info as described in section 5.1.12 of WFD technical
@@ -931,5 +922,24 @@ public class WifiP2pNative {
         if (mP2pIfaceName == null) return false;
         if (!mHalDeviceManager.isSupported()) return false;
         return mHalDeviceManager.is5g6gDbsSupportedOnP2pIface(mP2pIfaceName);
+    }
+
+    /**
+     * Configure the IP addresses in supplicant for P2P GO to provide the IP address to
+     * client in EAPOL handshake. Refer Wi-Fi P2P Technical Specification v1.7 - Section  4.2.8
+     * IP Address Allocation in EAPOL-Key Frames (4-Way Handshake) for more details.
+     * The IP addresses are IPV4 addresses and higher-order address bytes are in the
+     * lower-order int bytes (e.g. 1.2.3.4 is represented as 0x04030201)
+     *
+     * @param ipAddressGo The P2P Group Owner IP address.
+     * @param ipAddressMask The P2P Group owner subnet mask.
+     * @param ipAddressStart The starting address in the IP address pool.
+     * @param ipAddressEnd The ending address in the IP address pool.
+     * @return boolean value indicating whether operation was successful.
+     */
+    public boolean configureEapolIpAddressAllocationParams(int ipAddressGo, int ipAddressMask,
+            int ipAddressStart, int ipAddressEnd) {
+        return mSupplicantP2pIfaceHal.configureEapolIpAddressAllocationParams(ipAddressGo,
+                ipAddressMask, ipAddressStart, ipAddressEnd);
     }
 }

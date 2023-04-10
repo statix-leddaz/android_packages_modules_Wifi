@@ -46,6 +46,7 @@ import android.hardware.wifi.WifiRateInfo;
 import android.net.wifi.WifiManager;
 
 import com.android.server.wifi.SsidTranslator;
+import com.android.server.wifi.WifiBaseTest;
 import com.android.server.wifi.WifiLinkLayerStats;
 import com.android.server.wifi.WifiLoggerHal;
 import com.android.server.wifi.WifiNative;
@@ -59,7 +60,7 @@ import org.mockito.MockitoAnnotations;
 import java.util.List;
 import java.util.Random;
 
-public class WifiStaIfaceAidlImplTest {
+public class WifiStaIfaceAidlImplTest extends WifiBaseTest {
     private static final int[] TEST_FREQUENCIES = {2412, 2417, 2422, 2427, 2432, 2437};
 
     private WifiStaIfaceAidlImpl mDut;
@@ -80,14 +81,14 @@ public class WifiStaIfaceAidlImplTest {
      */
     @Test
     public void testStaIfaceFeatureMaskTranslation() {
-        int caps = (
-                IWifiStaIface.StaIfaceCapabilityMask.BACKGROUND_SCAN
-                        | IWifiStaIface.StaIfaceCapabilityMask.LINK_LAYER_STATS
+        int halFeatures = (
+                IWifiStaIface.FeatureSetMask.BACKGROUND_SCAN
+                        | IWifiStaIface.FeatureSetMask.LINK_LAYER_STATS
         );
         long expected = (
                 WifiManager.WIFI_FEATURE_SCANNER
                         | WifiManager.WIFI_FEATURE_LINK_LAYER_STATS);
-        assertEquals(expected, mDut.halToFrameworkStaIfaceCapability(caps));
+        assertEquals(expected, mDut.halToFrameworkStaFeatureSet(halFeatures));
     }
 
     /**

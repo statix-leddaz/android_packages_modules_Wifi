@@ -26,6 +26,7 @@ import android.net.wifi.IWifiConnectedNetworkScorer;
 import android.net.wifi.WifiAnnotations;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager.DeviceMobilityState;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.nl80211.DeviceWiphyCapabilities;
@@ -80,9 +81,30 @@ public interface ClientMode {
 
     void startRoamToNetwork(int networkId, String bssid);
 
+    /** When the device mobility changes, update the RSSI polling interval accordingly */
+    void onDeviceMobilityStateUpdated(@DeviceMobilityState int newState);
+
+    /**
+     * Set the fixed link layer stats polling interval when it is overridden, or set the interval
+     * to be handled automatically by the framework
+     * @param newIntervalMs new link layer stats polling interval in milliseconds. Use value 0
+     *                      for automatic handling
+     */
+    void setLinkLayerStatsPollingInterval(int newIntervalMs);
+
     boolean setWifiConnectedNetworkScorer(IBinder binder, IWifiConnectedNetworkScorer scorer);
 
     void clearWifiConnectedNetworkScorer();
+
+    /**
+     * Notify the connected network scorer of the user accepting a network switch.
+     */
+    void onNetworkSwitchAccepted(int targetNetworkId, String targetBssid);
+
+    /**
+     * Notify the connected network scorer of the user rejecting a network switch.
+     */
+    void onNetworkSwitchRejected(int targetNetworkId, String targetBssid);
 
     void resetSimAuthNetworks(@ClientModeImpl.ResetSimReason int resetReason);
 
@@ -116,7 +138,20 @@ public interface ClientMode {
 
     boolean isWifiStandardSupported(@WifiAnnotations.WifiStandard int standard);
 
-    void enableTdls(String remoteMacAddress, boolean enable);
+    /** Enable TDLS session with remote MAC address */
+    boolean enableTdls(String remoteMacAddress, boolean enable);
+
+    /** Enable TDLS session with remote IP address */
+    boolean enableTdlsWithRemoteIpAddress(String remoteIpAddress, boolean enable);
+
+    /** Check if a TDLS session can be established */
+    boolean isTdlsOperationCurrentlyAvailable();
+
+    /** The maximum number of TDLS sessions supported by the device */
+    int getMaxSupportedConcurrentTdlsSessions();
+
+    /** The number of Peer mac addresses configured in the device for establishing a TDLS session */
+    int getNumberOfEnabledTdlsSessions();
 
     void dumpIpClient(FileDescriptor fd, PrintWriter pw, String[] args);
 

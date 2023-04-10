@@ -146,6 +146,9 @@ public class WifiInfo implements TransportInfo, Parcelable {
     public static final int INVALID_RSSI = -127;
 
     /** @hide **/
+    public static final int UNKNOWN_FREQUENCY = -1;
+
+    /** @hide **/
     public static final int MIN_RSSI = -126;
 
     /** @hide **/
@@ -191,29 +194,6 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * @hide
      */
     public static final int DPM_SECURITY_TYPE_UNKNOWN = -1;
-
-    /**
-     * Security type of current connection.
-     * @hide
-     */
-    @Retention(RetentionPolicy.SOURCE)
-    @IntDef(prefix = { "SECURITY_TYPE_" }, value = {
-            SECURITY_TYPE_UNKNOWN,
-            SECURITY_TYPE_OPEN,
-            SECURITY_TYPE_WEP,
-            SECURITY_TYPE_PSK,
-            SECURITY_TYPE_EAP,
-            SECURITY_TYPE_SAE,
-            SECURITY_TYPE_OWE,
-            SECURITY_TYPE_WAPI_PSK,
-            SECURITY_TYPE_WAPI_CERT,
-            SECURITY_TYPE_EAP_WPA3_ENTERPRISE,
-            SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT,
-            SECURITY_TYPE_PASSPOINT_R1_R2,
-            SECURITY_TYPE_PASSPOINT_R3,
-            SECURITY_TYPE_DPP,
-    })
-    public @interface SecurityType {}
 
     /** @see #isPrimary() - No permission to access the field.  */
     private static final int IS_PRIMARY_NO_PERMISSION = -1;
@@ -359,6 +339,11 @@ public class WifiInfo implements TransportInfo, Parcelable {
     public long rxSuccess;
 
     private double mLostTxPacketsPerSecond;
+
+    /**
+     * TID-to-link mapping negotiation support by the AP.
+     */
+    private boolean mApTidToLinkMappingNegotiationSupported;
 
     /**
      * Average rate of lost transmitted packets, in units of packets per second. In case of Multi
@@ -511,7 +496,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
         mSupplicantState = SupplicantState.UNINITIALIZED;
         mRssi = INVALID_RSSI;
         mLinkSpeed = LINK_SPEED_UNKNOWN;
-        mFrequency = -1;
+        mFrequency = UNKNOWN_FREQUENCY;
         mSubscriptionId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
         mSecurityType = -1;
         mIsPrimary = IS_PRIMARY_FALSE;
@@ -561,6 +546,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
         mSecurityType = -1;
         mNetworkKey = null;
         resetMultiLinkInfo();
+        enableApTidToLinkMappingNegotiationSupport(false);
     }
 
     /** @hide */
@@ -618,8 +604,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
             mOemPaid = source.mOemPaid;
             mOemPrivate = source.mOemPrivate;
             mCarrierMerged = source.mCarrierMerged;
-            mRequestingPackageName =
-                    source.mRequestingPackageName;
+            mRequestingPackageName = shouldRedactNetworkSettingsFields(redactions) ? null
+                    : source.mRequestingPackageName;
             mOsuAp = source.mOsuAp;
             mFqdn = shouldRedactLocationSensitiveFields(redactions)
                     ? null : source.mFqdn;
@@ -650,6 +636,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
             mSecurityType = source.mSecurityType;
             mNetworkKey = shouldRedactLocationSensitiveFields(redactions)
                     ? null : source.mNetworkKey;
+            mApTidToLinkMappingNegotiationSupported =
+                    source.mApTidToLinkMappingNegotiationSupported;
         }
     }
 
@@ -736,6 +724,17 @@ public class WifiInfo implements TransportInfo, Parcelable {
         @NonNull
         public Builder setCurrentSecurityType(@WifiConfiguration.SecurityType int securityType) {
             mWifiInfo.setCurrentSecurityType(securityType);
+            return this;
+        }
+
+        /**
+         * Enable or Disable Peer TID-To-Link Mapping Negotiation Capability.
+         * See {@link WifiInfo#isApTidToLinkMappingNegotiationSupported()}
+         * @hide
+         */
+        @NonNull
+        public Builder enableApTidToLinkMappingNegotiationSupport(boolean enable) {
+            mWifiInfo.enableApTidToLinkMappingNegotiationSupport(enable);
             return this;
         }
 
@@ -1535,6 +1534,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
                 .append(mRequestingPackageName == null ? none : mRequestingPackageName)
                 .append(mNetworkKey == null ? none : mNetworkKey)
                 .append("MLO Information: ")
+                .append(", Is TID-To-Link negotiation supported by the AP: ")
+                .append(mApTidToLinkMappingNegotiationSupported)
                 .append(", AP MLD Address: ").append(
                         mApMldMacAddress == null ? none : mApMldMacAddress.toString())
                 .append(", AP MLO Link Id: ").append(
@@ -1620,6 +1621,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
         dest.writeParcelable(mApMldMacAddress, flags);
         dest.writeInt(mApMloLinkId);
         dest.writeTypedList(mAffiliatedMloLinks);
+        dest.writeBoolean(mApTidToLinkMappingNegotiationSupported);
     }
 
     /** Implement the Parcelable interface {@hide} */
@@ -1682,6 +1684,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
                 info.mApMldMacAddress = in.readParcelable(MacAddress.class.getClassLoader());
                 info.mApMloLinkId = in.readInt();
                 info.mAffiliatedMloLinks = in.createTypedArrayList(MloLink.CREATOR);
+                info.mApTidToLinkMappingNegotiationSupported = in.readBoolean();
                 return info;
             }
 
@@ -1846,10 +1849,12 @@ public class WifiInfo implements TransportInfo, Parcelable {
                 && Objects.equals(mMaxSupportedRxLinkSpeed, thatWifiInfo.mMaxSupportedRxLinkSpeed)
                 && Objects.equals(mPasspointUniqueId, thatWifiInfo.mPasspointUniqueId)
                 && Objects.equals(mInformationElements, thatWifiInfo.mInformationElements)
-                && mIsPrimary ==  thatWifiInfo.mIsPrimary
+                && mIsPrimary == thatWifiInfo.mIsPrimary
                 && mSecurityType == thatWifiInfo.mSecurityType
                 && mRestricted == thatWifiInfo.mRestricted
-                && Objects.equals(mNetworkKey, thatWifiInfo.mNetworkKey);
+                && Objects.equals(mNetworkKey, thatWifiInfo.mNetworkKey)
+                && mApTidToLinkMappingNegotiationSupported
+                == thatWifiInfo.mApTidToLinkMappingNegotiationSupported;
     }
 
     @Override
@@ -1900,7 +1905,8 @@ public class WifiInfo implements TransportInfo, Parcelable {
                 mIsPrimary,
                 mSecurityType,
                 mRestricted,
-                mNetworkKey);
+                mNetworkKey,
+                mApTidToLinkMappingNegotiationSupported);
     }
 
     /**
@@ -1950,7 +1956,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
      *
      * @return the security type, or {@link #SECURITY_TYPE_UNKNOWN} if not currently connected.
      */
-    public @SecurityType int getCurrentSecurityType() {
+    public @WifiAnnotations.SecurityType int getCurrentSecurityType() {
         return mSecurityType;
     }
 
@@ -1960,7 +1966,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * @return security type as a WifiInfo.SecurityType
      * @hide
      */
-    public static @SecurityType int convertWifiConfigurationSecurityType(
+    public static @WifiAnnotations.SecurityType int convertWifiConfigurationSecurityType(
             @WifiConfiguration.SecurityType int wifiConfigSecurity) {
         switch (wifiConfigSecurity) {
             case WifiConfiguration.SECURITY_TYPE_OPEN:
@@ -2002,7 +2008,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
      * @hide
      */
     public static int convertSecurityTypeToDpmWifiSecurity(
-            @WifiInfo.SecurityType int securityType) {
+            @WifiAnnotations.SecurityType int securityType) {
         switch (securityType) {
             case SECURITY_TYPE_OPEN:
             case SECURITY_TYPE_OWE:
@@ -2050,5 +2056,24 @@ public class WifiInfo implements TransportInfo, Parcelable {
     @Nullable
     public String getNetworkKey() {
         return mNetworkKey;
+    }
+
+    /**
+     * TID-to-Link mapping negotiation is an optional feature. This API returns whether the feature
+     * is supported by the AP.
+     *
+     * @return Return true if TID-to-Link mapping negotiation is supported by the AP, otherwise
+     * false.
+     *
+     * @hide
+     */
+    @SystemApi
+    public boolean isApTidToLinkMappingNegotiationSupported() {
+        return mApTidToLinkMappingNegotiationSupported;
+    }
+
+    /** @hide */
+    public void enableApTidToLinkMappingNegotiationSupport(boolean enable) {
+        mApTidToLinkMappingNegotiationSupported = enable;
     }
 }

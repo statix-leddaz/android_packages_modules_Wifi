@@ -41,6 +41,7 @@ import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.proto.WifiStatsLog;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.server.wifi.util.WorkSourceUtil;
+import com.android.wifi.resources.R;
 
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -172,34 +173,46 @@ public class WifiLockManager {
         return canActivateLowLatencyLock(0, null);
     }
 
-    // Detect UIDs going foreground/background
+    private void onAppForeground(final int uid, final int importance) {
+        mHandler.post(() -> {
+            UidRec uidRec = mLowLatencyUidWatchList.get(uid);
+            if (uidRec == null) {
+                // Not a uid in the watch list
+                return;
+            }
+
+            boolean newModeIsFg = isAppForeground(uid, importance);
+            if (uidRec.mIsFg == newModeIsFg) {
+                return; // already at correct state
+            }
+
+            uidRec.mIsFg = newModeIsFg;
+            updateOpMode();
+
+            // If conditions for lock activation are met,
+            // then UID either share the blame, or removed from sharing
+            // whether to start or stop the blame based on UID fg/bg state
+            if (canActivateLowLatencyLock(
+                    isAppScreenOnExempted(uid) ? IGNORE_SCREEN_STATE_MASK : 0)) {
+                setBlameLowLatencyUid(uid, uidRec.mIsFg);
+            }
+        });
+    }
+
+    // Detect UIDs going,
+    //          - Foreground <-> Background
+    //          - Foreground service <-> Background
     private void registerUidImportanceTransitions() {
         mActivityManager.addOnUidImportanceListener(new ActivityManager.OnUidImportanceListener() {
             @Override
             public void onUidImportance(final int uid, final int importance) {
-                mHandler.post(() -> {
-                    UidRec uidRec = mLowLatencyUidWatchList.get(uid);
-                    if (uidRec == null) {
-                        // Not a uid in the watch list
-                        return;
-                    }
-
-                    boolean newModeIsFg = isAppForeground(uid, importance);
-                    if (uidRec.mIsFg == newModeIsFg) {
-                        return; // already at correct state
-                    }
-
-                    uidRec.mIsFg = newModeIsFg;
-                    updateOpMode();
-
-                    // If conditions for lock activation are met,
-                    // then UID either share the blame, or removed from sharing
-                    // whether to start or stop the blame based on UID fg/bg state
-                    if (canActivateLowLatencyLock(
-                            isAppScreenOnExempted(uid) ? IGNORE_SCREEN_STATE_MASK : 0)) {
-                        setBlameLowLatencyUid(uid, uidRec.mIsFg);
-                    }
-                });
+                onAppForeground(uid, importance);
+            }
+        }, ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND);
+        mActivityManager.addOnUidImportanceListener(new ActivityManager.OnUidImportanceListener() {
+            @Override
+            public void onUidImportance(final int uid, final int importance) {
+                onAppForeground(uid, importance);
             }
         }, ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE);
     }
@@ -452,7 +465,8 @@ public class WifiLockManager {
             return true;
         }
         // Exemption for applications running with CAR Mode permissions.
-        if (mWifiPermissionsUtil.checkEnterCarModePrioritized(uid) && (importance
+        if (mWifiPermissionsUtil.checkRequestCompanionProfileAutomotiveProjectionPermission(uid)
+                && (importance
                 <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE)) {
             return true;
         }
@@ -463,7 +477,9 @@ public class WifiLockManager {
 
     private boolean isAppScreenOnExempted(int uid) {
         // Exemption for applications running with CAR Mode permissions.
-        if (mWifiPermissionsUtil.checkEnterCarModePrioritized(uid)) return true;
+        if (mWifiPermissionsUtil.checkRequestCompanionProfileAutomotiveProjectionPermission(uid)) {
+            return true;
+        }
         // Add more exemptions here
         return false;
     }
@@ -643,7 +659,7 @@ public class WifiLockManager {
     private boolean resetCurrentMode(@NonNull ClientModeManager clientModeManager) {
         switch (mCurrentOpMode) {
             case WifiManager.WIFI_MODE_FULL_HIGH_PERF:
-                if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+                if (!setPowerSave(clientModeManager, ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
                         true)) {
                     Log.e(TAG, "Failed to reset the OpMode from hi-perf to Normal");
                     return false;
@@ -673,13 +689,28 @@ public class WifiLockManager {
     }
 
     /**
+     * Set power save mode with an overlay check. It's a wrapper for
+     * {@link ClientModeImpl#setPowerSave(int, boolean)}.
+     */
+    private boolean setPowerSave(@NonNull ClientModeManager clientModeManager,
+            @ClientMode.PowerSaveClientType int client, boolean ps) {
+        // Check the overlay allows lock to control chip power save.
+        if (mContext.getResources().getBoolean(
+                R.bool.config_wifiLowLatencyLockDisableChipPowerSave)) {
+            return clientModeManager.setPowerSave(client, ps);
+        }
+        // Otherwise, pretend the call is a success.
+        return true;
+    }
+
+    /**
      * Set the new lock mode on the given ClientModeManager
      * @return true if the operation succeeded, false otherwise
      */
     private boolean setNewMode(@NonNull ClientModeManager clientModeManager, int newLockMode) {
         switch (newLockMode) {
             case WifiManager.WIFI_MODE_FULL_HIGH_PERF:
-                if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+                if (!setPowerSave(clientModeManager, ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
                         false)) {
                     Log.e(TAG, "Failed to set the OpMode to hi-perf");
                     return false;
@@ -768,7 +799,7 @@ public class WifiLockManager {
                 return false;
             }
 
-            if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+            if (!setPowerSave(clientModeManager, ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
                     !enabled)) {
                 Log.e(TAG, "Failed to set power save mode");
                 // Revert the low latency mode
@@ -777,7 +808,7 @@ public class WifiLockManager {
             }
         } else if (lowLatencySupport == LOW_LATENCY_NOT_SUPPORTED) {
             // Only set power save mode
-            if (!clientModeManager.setPowerSave(ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
+            if (!setPowerSave(clientModeManager, ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
                     !enabled)) {
                 Log.e(TAG, "Failed to set power save mode");
                 return false;

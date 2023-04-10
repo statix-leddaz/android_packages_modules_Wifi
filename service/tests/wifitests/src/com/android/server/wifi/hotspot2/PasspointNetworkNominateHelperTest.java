@@ -52,6 +52,7 @@ import androidx.test.filters.SmallTest;
 import com.android.server.wifi.Clock;
 import com.android.server.wifi.NetworkUpdateResult;
 import com.android.server.wifi.ScanDetail;
+import com.android.server.wifi.WifiBaseTest;
 import com.android.server.wifi.WifiCarrierInfoManager;
 import com.android.server.wifi.WifiConfigManager;
 import com.android.server.wifi.WifiConfigurationTestUtil;
@@ -77,7 +78,7 @@ import java.util.Map;
  * Unit tests for {@link PasspointNetworkNominateHelper}.
  */
 @SmallTest
-public class PasspointNetworkNominateHelperTest {
+public class PasspointNetworkNominateHelperTest extends WifiBaseTest {
     // TODO(b/140763176): should extend WifiBaseTest, but if it does then it fails with NPE
     private static final int TEST_NETWORK_ID = 1;
     private static final int TEST_NETWORK_ID2 = 2;
@@ -855,7 +856,7 @@ public class PasspointNetworkNominateHelperTest {
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(TEST_CONFIG1);
 
         // Refreshing the network candidates with the cached scans should now result in a match
-        mNominateHelper.updateBestMatchScanDetailForProviders();
+        mNominateHelper.refreshWifiConfigsForProviders();
         verify(mPasspointManager, times(2)).matchProvider(any());
         // Verify the content of the WifiConfiguration that was added to WifiConfigManager.
         ArgumentCaptor<WifiConfiguration> addedConfig =
@@ -876,7 +877,7 @@ public class PasspointNetworkNominateHelperTest {
 
         // Timeout the scan detail and verify we don't try to match the scan detail again.
         advanceClockMs(PasspointNetworkNominateHelper.SCAN_DETAIL_EXPIRATION_MS);
-        mNominateHelper.updateBestMatchScanDetailForProviders();
+        mNominateHelper.refreshWifiConfigsForProviders();
         verify(mPasspointManager, times(2)).matchProvider(any());
         verify(mWifiConfigManager, times(1)).addOrUpdateNetwork(any(), anyInt(),
                 any(), eq(false));

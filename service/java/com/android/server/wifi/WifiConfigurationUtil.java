@@ -130,9 +130,20 @@ public class WifiConfigurationUtil {
 
     /**
      * Helper method to check if the provided |config| corresponds to a EAP network or not.
+     *
+     * Attention: This method returns true only for WiFi configuration with traditional EAP methods.
+     * It returns false for passpoint WiFi configuration. Please consider to use
+     * isConfigForEnterpriseNetwork() if necessary.
      */
     public static boolean isConfigForEapNetwork(WifiConfiguration config) {
         return config.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP);
+    }
+
+    /**
+     * Helper method to check if the provided |config| corresponds to an enterprise network or not.
+     */
+    public static boolean isConfigForEnterpriseNetwork(WifiConfiguration config) {
+        return config.getDefaultSecurityParams().isEnterpriseSecurityType();
     }
 
     /**
@@ -268,8 +279,13 @@ public class WifiConfigurationUtil {
                 return true;
             }
             if (existingEnterpriseConfig.isAuthenticationSimBased()) {
-                // The anonymous identity will be decorated with 3gpp realm in the service.
-                if (!TextUtils.equals(existingEnterpriseConfig.getAnonymousIdentity(),
+                // On Pre-T devices consider it as a credential change so that the network
+                // configuration is reloaded in wpa_supplicant during reconnection. This is to
+                // ensure that the updated anonymous identity is sent to wpa_supplicant. On newer
+                // releases the anonymous identity is updated immediately after connection
+                // completion event.
+                if (!SdkLevel.isAtLeastT()
+                        && !TextUtils.equals(existingEnterpriseConfig.getAnonymousIdentity(),
                         newEnterpriseConfig.getAnonymousIdentity())) {
                     return true;
                 }
@@ -313,6 +329,10 @@ public class WifiConfigurationUtil {
                 return true;
             }
             if (newEnterpriseConfig.getOcsp() != existingEnterpriseConfig.getOcsp()) {
+                return true;
+            }
+            if (!TextUtils.equals(newEnterpriseConfig.getDomainSuffixMatch(),
+                    existingEnterpriseConfig.getDomainSuffixMatch())) {
                 return true;
             }
         } else {

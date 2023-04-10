@@ -157,25 +157,20 @@ public class WifiConfiguration implements Parcelable {
         /**
          * WPA2 pre-shared key for use with soft access point
          * (requires {@code preSharedKey} to be specified).
-         * @hide
          */
-        @SystemApi
         public static final int WPA2_PSK = 4;
         /**
          * Hotspot 2.0 r2 OSEN:
-         * @hide
          */
         public static final int OSEN = 5;
 
         /**
          * IEEE 802.11r Fast BSS Transition with PSK authentication.
-         * @hide
          */
         public static final int FT_PSK = 6;
 
         /**
          * IEEE 802.11r Fast BSS Transition with EAP authentication.
-         * @hide
          */
         public static final int FT_EAP = 7;
 
@@ -196,38 +191,30 @@ public class WifiConfiguration implements Parcelable {
 
         /**
          * WPA pre-shared key with stronger SHA256-based algorithms.
-         * @hide
          */
         public static final int WPA_PSK_SHA256 = 11;
 
         /**
          * WPA using EAP authentication with stronger SHA256-based algorithms.
-         * @hide
          */
         public static final int WPA_EAP_SHA256 = 12;
 
         /**
          * WAPI pre-shared key (requires {@code preSharedKey} to be specified).
-         * @hide
          */
-        @SystemApi
         public static final int WAPI_PSK = 13;
 
         /**
          * WAPI certificate to be specified.
-         * @hide
          */
-        @SystemApi
         public static final int WAPI_CERT = 14;
 
         /**
         * IEEE 802.11ai FILS SK with SHA256
-         * @hide
         */
         public static final int FILS_SHA256 = 15;
         /**
          * IEEE 802.11ai FILS SK with SHA384:
-         * @hide
          */
         public static final int FILS_SHA384 = 16;
 
@@ -235,7 +222,6 @@ public class WifiConfiguration implements Parcelable {
          * Easy Connect - AKA Device Provisioning Protocol (DPP)
          * For more details, visit <a href="https://www.wi-fi.org/">https://www.wi-fi.org/</a> and
          * search for "Easy Connect" or "Device Provisioning Protocol specification".
-         * @hide
          */
         public static final int DPP = 17;
 
@@ -620,7 +606,6 @@ public class WifiConfiguration implements Parcelable {
         }
         // Clear existing data.
         mSecurityParamsList.clear();
-
         allowedKeyManagement = (BitSet) givenAllowedKeyManagement.clone();
         convertLegacyFieldsToSecurityParamsIfNeeded();
     }
@@ -713,7 +698,8 @@ public class WifiConfiguration implements Parcelable {
     }
 
     private boolean isWpa3EnterpriseConfiguration() {
-        if (!allowedKeyManagement.get(KeyMgmt.WPA_EAP)
+        if (!allowedKeyManagement.get(KeyMgmt.WPA_EAP_SHA256)
+                && !allowedKeyManagement.get(KeyMgmt.WPA_EAP)
                 && !allowedKeyManagement.get(KeyMgmt.IEEE8021X)) {
             return false;
         }
@@ -733,7 +719,6 @@ public class WifiConfiguration implements Parcelable {
      */
     public void convertLegacyFieldsToSecurityParamsIfNeeded() {
         if (!mSecurityParamsList.isEmpty()) return;
-
         if (allowedKeyManagement.get(KeyMgmt.WAPI_CERT)) {
             setSecurityParams(SECURITY_TYPE_WAPI_CERT);
         } else if (allowedKeyManagement.get(KeyMgmt.WAPI_PSK)) {
@@ -748,9 +733,11 @@ public class WifiConfiguration implements Parcelable {
             setSecurityParams(SECURITY_TYPE_SAE);
         } else if (allowedKeyManagement.get(KeyMgmt.OSEN)) {
             setSecurityParams(SECURITY_TYPE_OSEN);
-        } else if (allowedKeyManagement.get(KeyMgmt.WPA2_PSK)) {
+        } else if (allowedKeyManagement.get(KeyMgmt.WPA2_PSK)
+                || allowedKeyManagement.get(KeyMgmt.WPA_PSK_SHA256)) {
             setSecurityParams(SECURITY_TYPE_PSK);
-        } else if (allowedKeyManagement.get(KeyMgmt.WPA_EAP)) {
+        } else if (allowedKeyManagement.get(KeyMgmt.WPA_EAP)
+                || allowedKeyManagement.get(KeyMgmt.WPA_EAP_SHA256)) {
             if (isWpa3EnterpriseConfiguration()) {
                 setSecurityParams(SECURITY_TYPE_EAP_WPA3_ENTERPRISE);
             } else {
@@ -2082,7 +2069,8 @@ public class WifiConfiguration implements Parcelable {
                 DISABLED_AUTHENTICATION_NO_SUBSCRIPTION,
                 DISABLED_AUTHENTICATION_PRIVATE_EAP_ERROR,
                 DISABLED_NETWORK_NOT_FOUND,
-                DISABLED_CONSECUTIVE_FAILURES})
+                DISABLED_CONSECUTIVE_FAILURES,
+                DISABLED_UNWANTED_LOW_RSSI})
         public @interface NetworkSelectionDisableReason {}
 
         // Quality Network disabled reasons
@@ -2134,10 +2122,15 @@ public class WifiConfiguration implements Parcelable {
          */
         public static final int DISABLED_TRANSITION_DISABLE_INDICATION = 13;
         /**
+         * This network is temporarily disabled because of unwanted network under sufficient rssi.
+         * @hide
+         */
+        public static final int DISABLED_UNWANTED_LOW_RSSI = 14;
+        /**
          * All other disable reasons should be strictly less than this value.
          * @hide
          */
-        public static final int NETWORK_SELECTION_DISABLED_MAX = 14;
+        public static final int NETWORK_SELECTION_DISABLED_MAX = 15;
 
         /**
          * Get an integer that is equal to the maximum integer value of all the
@@ -2311,6 +2304,10 @@ public class WifiConfiguration implements Parcelable {
                             1,
                             DisableReasonInfo.PERMANENT_DISABLE_TIMEOUT));
 
+            reasons.append(DISABLED_UNWANTED_LOW_RSSI,
+                    new DisableReasonInfo("NETWORK_SELECTION_DISABLED_UNWANTED_LOW_RSSI",
+                            1,
+                            30 * 1000));
             return reasons;
         }
 
@@ -3301,6 +3298,7 @@ public class WifiConfiguration implements Parcelable {
                 .append(" SubscriptionId: ").append(this.subscriptionId)
                 .append(" SubscriptionGroup: ").append(this.mSubscriptionGroup)
                 .append(" Currently Connected: ").append(this.isCurrentlyConnected)
+                .append(" User Selected: ").append(this.mIsUserSelected)
                 .append('\n');
 
 
@@ -3988,6 +3986,7 @@ public class WifiConfiguration implements Parcelable {
             mDppCSignKey = source.mDppCSignKey.clone();
             mDppNetAccessKey = source.mDppNetAccessKey.clone();
             isCurrentlyConnected = source.isCurrentlyConnected;
+            mIsUserSelected = source.mIsUserSelected;
             mHasPreSharedKeyChanged = source.hasPreSharedKeyChanged();
             mEncryptedPreSharedKey = source.mEncryptedPreSharedKey != null
                     ? source.mEncryptedPreSharedKey.clone() : new byte[0];
@@ -4086,6 +4085,7 @@ public class WifiConfiguration implements Parcelable {
         dest.writeByteArray(mDppCSignKey);
         dest.writeByteArray(mDppNetAccessKey);
         dest.writeBoolean(isCurrentlyConnected);
+        dest.writeBoolean(mIsUserSelected);
         dest.writeBoolean(mHasPreSharedKeyChanged);
         dest.writeByteArray(mEncryptedPreSharedKey);
         dest.writeByteArray(mEncryptedPreSharedKeyIv);
@@ -4180,10 +4180,23 @@ public class WifiConfiguration implements Parcelable {
                 config.mBssidAllowlist = in.readArrayList(MacAddress.class.getClassLoader());
                 config.mIsDppConfigurator = in.readBoolean();
                 config.mDppPrivateEcKey = in.createByteArray();
+                if (config.mDppPrivateEcKey == null) {
+                    config.mDppPrivateEcKey = new byte[0];
+                }
                 config.mDppConnector = in.createByteArray();
+                if (config.mDppConnector == null) {
+                    config.mDppConnector = new byte[0];
+                }
                 config.mDppCSignKey = in.createByteArray();
+                if (config.mDppCSignKey == null) {
+                    config.mDppCSignKey = new byte[0];
+                }
                 config.mDppNetAccessKey = in.createByteArray();
+                if (config.mDppNetAccessKey == null) {
+                    config.mDppNetAccessKey = new byte[0];
+                }
                 config.isCurrentlyConnected = in.readBoolean();
+                config.mIsUserSelected = in.readBoolean();
                 config.mHasPreSharedKeyChanged = in.readBoolean();
                 config.mEncryptedPreSharedKey = in.createByteArray();
                 if (config.mEncryptedPreSharedKey == null) {
@@ -4241,6 +4254,24 @@ public class WifiConfiguration implements Parcelable {
      * @hide
      */
     public boolean isCurrentlyConnected = false;
+
+    private boolean mIsUserSelected = false;
+
+    /**
+     * Sets whether the network is connected by user selection or not.
+     * @hide
+     */
+    public boolean setIsUserSelected(boolean isUserSelected) {
+        return mIsUserSelected = isUserSelected;
+    }
+
+    /**
+     * Whether the network is connected by user selection or not.
+     * @hide
+     */
+    public boolean isUserSelected() {
+        return mIsUserSelected;
+    }
 
     /**
      * Whether the key mgmt indicates if the WifiConfiguration needs a preSharedKey or not.

@@ -34,7 +34,6 @@ import android.hardware.wifi.V1_5.WifiIfaceMode;
 import android.hardware.wifi.V1_6.IfaceConcurrencyType;
 import android.hardware.wifi.V1_6.WifiAntennaMode;
 import android.hardware.wifi.V1_6.WifiRadioCombination;
-import android.hardware.wifi.V1_6.WifiRadioCombinationMatrix;
 import android.hardware.wifi.V1_6.WifiRadioConfiguration;
 import android.net.wifi.CoexUnsafeChannel;
 import android.net.wifi.WifiAvailableChannel;
@@ -353,14 +352,21 @@ public class WifiChipHidlImpl implements IWifiChip {
     }
 
     /**
-     * See comments for {@link IWifiChip#getSupportedRadioCombinationsMatrix()}
+     * See comments for {@link IWifiChip#getSupportedRadioCombinations()}
      */
     @Override
     @Nullable
-    public WifiChip.WifiRadioCombinationMatrix getSupportedRadioCombinationsMatrix() {
-        String methodStr = "getSupportedRadioCombinationsMatrix";
+    public List<WifiChip.WifiRadioCombination> getSupportedRadioCombinations() {
+        String methodStr = "getSupportedRadioCombinations";
         return validateAndCall(methodStr, null,
-                () -> getSupportedRadioCombinationsMatrixInternal(methodStr));
+                () -> getSupportedRadioCombinationsInternal(methodStr));
+    }
+
+    /**
+     * See comments for {@link IWifiChip#getWifiChipCapabilities()}
+     */
+    public WifiChip.WifiChipCapabilities getWifiChipCapabilities() {
+        return null;
     }
 
     /**
@@ -470,16 +476,6 @@ public class WifiChipHidlImpl implements IWifiChip {
     }
 
     /**
-     * See comments for {@link IWifiChip#resetTxPowerScenario()}
-     */
-    @Override
-    public boolean resetTxPowerScenario() {
-        String methodStr = "resetTxPowerScenario";
-        return validateAndCall(methodStr, false,
-                () -> resetTxPowerScenarioInternal(methodStr));
-    }
-
-    /**
      * See comments for {@link IWifiChip#selectTxPowerScenario(SarInfo)}
      */
     @Override
@@ -572,6 +568,23 @@ public class WifiChipHidlImpl implements IWifiChip {
                 () -> triggerSubsystemRestartInternal(methodStr));
     }
 
+    /**
+     * See comments for {@link IWifiChip#setMloMode(int)}.
+     */
+    @Override
+    public @android.hardware.wifi.WifiStatusCode int setMloMode(@WifiManager.MloMode int mode) {
+        return android.hardware.wifi.WifiStatusCode.ERROR_NOT_SUPPORTED;
+    }
+
+    /**
+     * See comments for {@link IWifiChip#enableStaChannelForPeerNetwork(boolean, boolean)}
+     */
+    @Override
+    public boolean enableStaChannelForPeerNetwork(boolean enableIndoorChannel,
+            boolean enableDfsChannel) {
+        Log.d(TAG, "enableStaChannelForPeerNetwork() is not implemented in hidl.");
+        return false;
+    }
 
     // Internal Implementations
 
@@ -983,19 +996,22 @@ public class WifiChipHidlImpl implements IWifiChip {
         return ifaceNameResp.value;
     }
 
-    private WifiChip.WifiRadioCombinationMatrix getSupportedRadioCombinationsMatrixInternal(
+    private List<WifiChip.WifiRadioCombination> getSupportedRadioCombinationsInternal(
             String methodStr) {
-        Mutable<WifiChip.WifiRadioCombinationMatrix> matrixResp = new Mutable<>();
+        Mutable<List<WifiChip.WifiRadioCombination>> radioComboResp = new Mutable<>();
         try {
             android.hardware.wifi.V1_6.IWifiChip chip16 = getWifiChipV1_6Mockable();
             if (chip16 == null) return null;
             chip16.getSupportedRadioCombinationsMatrix((status, matrix) -> {
-                matrixResp.value = halToFrameworkRadioCombinationMatrix(matrix);
+                if (matrix != null) {
+                    radioComboResp.value =
+                            halToFrameworkRadioCombinations(matrix.radioCombinations);
+                }
             });
         } catch (RemoteException e) {
             handleRemoteException(e, methodStr);
         }
-        return matrixResp.value;
+        return radioComboResp.value;
     }
 
     private List<WifiAvailableChannel> getUsableChannelsInternal(String methodStr,
@@ -1169,24 +1185,6 @@ public class WifiChipHidlImpl implements IWifiChip {
             handleRemoteException(e, methodStr);
         }
         return debugResp.value;
-    }
-
-    private boolean resetTxPowerScenarioInternal(String methodStr) {
-        try {
-            android.hardware.wifi.V1_1.IWifiChip chip11 = getWifiChipV1_1Mockable();
-            android.hardware.wifi.V1_2.IWifiChip chip12 = getWifiChipV1_2Mockable();
-            if (chip11 == null && chip12 == null) return false;
-            WifiStatus status;
-            if (chip12 != null) {
-                status = chip12.resetTxPowerScenario();
-            } else {
-                status = chip11.resetTxPowerScenario();
-            }
-            return isOk(status, methodStr);
-        } catch (RemoteException e) {
-            handleRemoteException(e, methodStr);
-            return false;
-        }
     }
 
     private boolean selectTxPowerScenarioInternal(String methodStr, SarInfo sarInfo) {
@@ -1887,13 +1885,13 @@ public class WifiChipHidlImpl implements IWifiChip {
         return flags;
     }
 
-    private static WifiChip.WifiRadioCombinationMatrix halToFrameworkRadioCombinationMatrix(
-            WifiRadioCombinationMatrix halMatrix) {
+    private static List<WifiChip.WifiRadioCombination> halToFrameworkRadioCombinations(
+            List<WifiRadioCombination> halCombos) {
         List<WifiChip.WifiRadioCombination> frameworkCombos = new ArrayList<>();
-        for (WifiRadioCombination combo : halMatrix.radioCombinations) {
+        for (WifiRadioCombination combo : halCombos) {
             frameworkCombos.add(halToFrameworkRadioCombination(combo));
         }
-        return new WifiChip.WifiRadioCombinationMatrix(frameworkCombos);
+        return frameworkCombos;
     }
 
     private static WifiChip.WifiRadioCombination halToFrameworkRadioCombination(

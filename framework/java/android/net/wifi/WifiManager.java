@@ -24,6 +24,7 @@ import static android.Manifest.permission.NEARBY_WIFI_DEVICES;
 import static android.Manifest.permission.READ_WIFI_CREDENTIAL;
 import static android.Manifest.permission.REQUEST_COMPANION_PROFILE_AUTOMOTIVE_PROJECTION;
 
+import android.Manifest;
 import android.annotation.CallbackExecutor;
 import android.annotation.IntDef;
 import android.annotation.IntRange;
@@ -492,7 +493,9 @@ public class WifiManager {
             API_P2P_START_LISTENING,
             API_P2P_STOP_LISTENING,
             API_P2P_SET_CHANNELS,
-            API_WIFI_SCANNER_START_SCAN
+            API_WIFI_SCANNER_START_SCAN,
+            API_SET_TDLS_ENABLED,
+            API_SET_TDLS_ENABLED_WITH_MAC_ADDRESS
     })
     public @interface ApiType {}
 
@@ -822,10 +825,32 @@ public class WifiManager {
     public static final int API_WIFI_SCANNER_START_SCAN = 33;
 
     /**
+     * A constant used in
+     * {@link WifiManager#getLastCallerInfoForApi(int, Executor, BiConsumer)}
+     * Tracks usage of
+     * {@link WifiManager#setTdlsEnabled(InetAddress, boolean)} and
+     * {@link WifiManager#setTdlsEnabled(InetAddress, boolean, Executor, Consumer)}
+     * @hide
+     */
+    @SystemApi
+    public static final int API_SET_TDLS_ENABLED = 34;
+
+    /**
+     * A constant used in
+     * {@link WifiManager#getLastCallerInfoForApi(int, Executor, BiConsumer)}
+     * Tracks usage of
+     * {@link WifiManager#setTdlsEnabledWithMacAddress(String, boolean)} and
+     * {@link WifiManager#setTdlsEnabledWithMacAddress(String, boolean, Executor, Consumer)}
+     * @hide
+     */
+    @SystemApi
+    public static final int API_SET_TDLS_ENABLED_WITH_MAC_ADDRESS = 35;
+
+    /**
      * Used internally to keep track of boundary.
      * @hide
      */
-    public static final int API_MAX = 34;
+    public static final int API_MAX = 36;
 
     /**
      * Broadcast intent action indicating that a Passpoint provider icon has been received.
@@ -1910,7 +1935,7 @@ public class WifiManager {
 
     /**
      * This policy is being tracked by the Wifi service.
-     * Indicates success for {@link #addQosPolicy(QosPolicyParams, Executor, Consumer)}.
+     * Indicates success for {@link #addQosPolicies(List, Executor, Consumer)}.
      * @hide
      */
     @SystemApi
@@ -1954,6 +1979,21 @@ public class WifiManager {
             QOS_REQUEST_STATUS_FAILURE_UNKNOWN})
     public @interface QosRequestStatus {}
 
+    /**
+     * Maximum number of policies that can be included in a QoS add/remove request.
+     */
+    private static final int MAX_POLICIES_PER_QOS_REQUEST = 16;
+
+    /**
+     * Get the maximum number of policies that can be included in a request to
+     * {@link #addQosPolicies(List, Executor, Consumer)} or {@link #removeQosPolicies(int[])}.
+     * @hide
+     */
+    @SystemApi
+    public static int getMaxNumberOfPoliciesPerQosRequest() {
+        return MAX_POLICIES_PER_QOS_REQUEST;
+    }
+
     /* Number of currently active WifiLocks and MulticastLocks */
     @UnsupportedAppUsage
     private int mActiveLockCount;
@@ -1991,6 +2031,60 @@ public class WifiManager {
             sLocalOnlyHotspotSoftApCallbackMap = new SparseArray();
     private static final SparseArray<ILocalOnlyConnectionStatusListener>
             sLocalOnlyConnectionStatusListenerMap = new SparseArray();
+    private static final SparseArray<IWifiNetworkStateChangedListener>
+            sOnWifiNetworkStateChangedListenerMap = new SparseArray<>();
+
+    /**
+     * Multi-link operation (MLO) will allow Wi-Fi devices to operate on multiple links at the same
+     * time through a single connection, aiming to support applications that require lower latency,
+     * and higher capacity. Chip vendors have algorithms that run on the chip to use available links
+     * based on incoming traffic and various inputs. Below is a list of Multi-Link Operation modes
+     * that applications can suggest to be accommodated in the algorithm.
+     *
+     * The default MLO mode is for chip vendors to use algorithms to select the optimum links to
+     * operate on, without any guidance from the calling app.
+     *
+     * @hide
+     */
+    @SystemApi
+    public static final int MLO_MODE_DEFAULT = 0;
+
+    /**
+     * Low latency mode for Multi-link operation. In this mode, the chip vendor's algorithm
+     * should select MLO links that will achieve low latency.
+     *
+     * @hide
+     */
+    @SystemApi
+    public static final int MLO_MODE_LOW_LATENCY = 1;
+
+    /**
+     * High throughput mode for Multi-link operation. In this mode, the chip vendor's algorithm
+     * should select MLO links that will achieve higher throughput.
+     *
+     * @hide
+     */
+    @SystemApi
+    public static final int MLO_MODE_HIGH_THROUGHPUT = 2;
+
+    /**
+     * Low power mode for Multi-link operation. In this mode, the chip vendor's algorithm
+     * should select MLO links that will achieve low power.
+     *
+     * @hide
+     */
+    @SystemApi
+    public static final int MLO_MODE_LOW_POWER = 3;
+
+    /** @hide */
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef(prefix = {"MLO_MODE_"}, value = {
+            MLO_MODE_DEFAULT,
+            MLO_MODE_LOW_LATENCY,
+            MLO_MODE_HIGH_THROUGHPUT,
+            MLO_MODE_LOW_POWER})
+    public @interface MloMode {
+    }
 
     /**
      * Create a new WifiManager instance.
@@ -2074,7 +2168,7 @@ public class WifiManager {
      *
      * @return a list of network configurations in the form of a list
      * of {@link WifiConfiguration} objects.
-     * @throws {@link java.lang.SecurityException} if the caller is not allowed to call this API
+     * @throws SecurityException if the caller is not allowed to call this API
      */
     @RequiresPermission(ACCESS_WIFI_STATE)
     @NonNull
@@ -2150,7 +2244,7 @@ public class WifiManager {
      * @return The WifiConfiguration representation of the connected wifi network providing
      * internet, or null if wifi is not connected.
      *
-     * @throws {@link SecurityException} if caller does not have the required permissions
+     * @throws SecurityException if caller does not have the required permissions
      * @hide
      **/
     @SystemApi
@@ -2308,7 +2402,7 @@ public class WifiManager {
             MANAGE_WIFI_NETWORK_SELECTION
     })
     @SystemApi
-    public void getNetworkSelectionConfig(@NonNull Executor executor,
+    public void getNetworkSelectionConfig(@NonNull @CallbackExecutor Executor executor,
             @NonNull Consumer<WifiNetworkSelectionConfig> resultsCallback) {
         Objects.requireNonNull(executor, "executor cannot be null");
         Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
@@ -2665,10 +2759,10 @@ public class WifiManager {
      *            If the {@link WifiConfiguration} has an Http Proxy set
      *            the calling app must be System, or be provisioned as the Profile or Device Owner.
      * @return A {@link AddNetworkResult} Object.
-     * @throws {@link SecurityException} if the calling app is not a Device Owner (DO),
+     * @throws SecurityException if the calling app is not a Device Owner (DO),
      *                           Profile Owner (PO), system app, or a privileged app that has one of
      *                           the permissions required by this API.
-     * @throws {@link IllegalArgumentException} if the input configuration is null or if the
+     * @throws IllegalArgumentException if the input configuration is null or if the
      *            security type in input configuration is not supported.
      */
     @RequiresPermission(anyOf = {
@@ -3201,7 +3295,7 @@ public class WifiManager {
      *
      * @param networkSuggestions List of network suggestions provided by the app.
      * @return Status code for the operation. One of the STATUS_NETWORK_SUGGESTIONS_ values.
-     * @throws {@link SecurityException} if the caller is missing required permissions.
+     * @throws SecurityException if the caller is missing required permissions.
      * @see WifiNetworkSuggestion#equals(Object)
      */
     @RequiresPermission(CHANGE_WIFI_STATE)
@@ -3457,7 +3551,7 @@ public class WifiManager {
      * be called by a Device Owner (DO) app.
      *
      * @return {@code true} if at least one network is removed, {@code false} otherwise
-     * @throws {@link java.lang.SecurityException} if the caller is not a Device Owner app
+     * @throws SecurityException if the caller is not a Device Owner app
      */
     @RequiresPermission(CHANGE_WIFI_STATE)
     public boolean removeNonCallerConfiguredNetworks() {
@@ -3806,6 +3900,11 @@ public class WifiManager {
      * @hide
      */
     public static final long WIFI_FEATURE_DUAL_BAND_SIMULTANEOUS = 1L << 57;
+    /**
+     * Support for TID-To-Link Mapping negotiation.
+     * @hide
+     */
+    public static final long WIFI_FEATURE_T2LM_NEGOTIATION = 1L << 58;
 
     private long getSupportedFeatures() {
         try {
@@ -4376,7 +4475,7 @@ public class WifiManager {
      */
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     @RequiresPermission(NEARBY_WIFI_DEVICES)
-    public void getChannelData(@NonNull Executor executor,
+    public void getChannelData(@NonNull @CallbackExecutor Executor executor,
             @NonNull Consumer<List<Bundle>> resultsCallback) {
         Objects.requireNonNull(executor, "executor cannot be null");
         Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
@@ -4561,6 +4660,199 @@ public class WifiManager {
     }
 
     /**
+     * Interface used to listen to changes in current network state.
+     * @hide
+     */
+    @SystemApi
+    public interface WifiNetworkStateChangedListener {
+        /** @hide */
+        @Retention(RetentionPolicy.SOURCE)
+        @IntDef(prefix = {"WIFI_ROLE_CLIENT_"}, value = {
+                WIFI_ROLE_CLIENT_PRIMARY,
+                WIFI_ROLE_CLIENT_SECONDARY_INTERNET,
+                WIFI_ROLE_CLIENT_SECONDARY_LOCAL_ONLY
+        })
+        @interface WifiClientModeRole {}
+
+        /**
+         * A client mode role returned by {@link #onWifiNetworkStateChanged(int, int)}.
+         * Represents the primary Client Mode Manager which is mostly used for internet, but could
+         * also be used for other use-cases such as local only connections.
+         **/
+        int WIFI_ROLE_CLIENT_PRIMARY = 1;
+        /**
+         * A client mode role returned by {@link #onWifiNetworkStateChanged(int, int)}.
+         * Represents a Client Mode Manager dedicated for the secondary internet use-case.
+         **/
+        int WIFI_ROLE_CLIENT_SECONDARY_INTERNET = 2;
+        /**
+         * A client mode role returned by {@link #onWifiNetworkStateChanged(int, int)}.
+         * Represents a Client Mode Manager dedicated for the local only connection use-case.
+         **/
+        int WIFI_ROLE_CLIENT_SECONDARY_LOCAL_ONLY = 3;
+
+        /** @hide */
+        @Retention(RetentionPolicy.SOURCE)
+        @IntDef(prefix = {"WIFI_NETWORK_STATUS_"}, value = {
+                WIFI_NETWORK_STATUS_IDLE,
+                WIFI_NETWORK_STATUS_SCANNING,
+                WIFI_NETWORK_STATUS_CONNECTING,
+                WIFI_NETWORK_STATUS_AUTHENTICATING,
+                WIFI_NETWORK_STATUS_OBTAINING_IPADDR,
+                WIFI_NETWORK_STATUS_CONNECTED,
+                WIFI_NETWORK_STATUS_DISCONNECTED,
+                WIFI_NETWORK_STATUS_FAILED
+        })
+        @interface WifiNetworkState {}
+
+        /**
+         * A state returned by {@link #onWifiNetworkStateChanged(int, int)}.
+         * Supplicant is in uninitialized state.
+         **/
+        int WIFI_NETWORK_STATUS_IDLE = 1;
+        /**
+         * A state returned by {@link #onWifiNetworkStateChanged(int, int)}.
+         * Supplicant is scanning.
+         **/
+        int WIFI_NETWORK_STATUS_SCANNING = 2;
+        /**
+         * A state returned by {@link #onWifiNetworkStateChanged(int, int)}.
+         * L2 connection is in progress.
+         **/
+        int WIFI_NETWORK_STATUS_CONNECTING = 3;
+        /**
+         * A state returned by {@link #onWifiNetworkStateChanged(int, int)}.
+         * L2 connection 4 way handshake.
+         **/
+        int WIFI_NETWORK_STATUS_AUTHENTICATING = 4;
+        /**
+         * A state returned by {@link #onWifiNetworkStateChanged(int, int)}.
+         * L2 connection complete. Obtaining IP address.
+         **/
+        int WIFI_NETWORK_STATUS_OBTAINING_IPADDR = 5;
+        /**
+         * A state returned by {@link #onWifiNetworkStateChanged(int, int)}.
+         * L3 connection is complete.
+         **/
+        int WIFI_NETWORK_STATUS_CONNECTED = 6;
+        /**
+         * A state returned by {@link #onWifiNetworkStateChanged(int, int)}.
+         * Network disconnected.
+         **/
+        int WIFI_NETWORK_STATUS_DISCONNECTED = 7;
+        /**
+         * A state returned by {@link #onWifiNetworkStateChanged(int, int)}.
+         * A pseudo-state that should normally never be seen.
+         **/
+        int WIFI_NETWORK_STATUS_FAILED = 8;
+
+
+        /**
+         * Provides network state changes per client mode role.
+         * @param cmmRole the role of the wifi client mode manager having the state change.
+         *                One of {@link WifiClientModeRole}.
+         * @param state the wifi network state specified by one of {@link WifiNetworkState}.
+         */
+        void onWifiNetworkStateChanged(@WifiClientModeRole int cmmRole,
+                @WifiNetworkState int state);
+    }
+
+    /**
+     * Helper class to support wifi network state changed listener.
+     */
+    private static class OnWifiNetworkStateChangedProxy
+            extends IWifiNetworkStateChangedListener.Stub {
+
+        @NonNull private Executor mExecutor;
+        @NonNull private WifiNetworkStateChangedListener mListener;
+
+        OnWifiNetworkStateChangedProxy(@NonNull Executor executor,
+                @NonNull WifiNetworkStateChangedListener listener) {
+            Objects.requireNonNull(executor);
+            Objects.requireNonNull(listener);
+            mExecutor = executor;
+            mListener = listener;
+        }
+
+        @Override
+        public void onWifiNetworkStateChanged(int cmmRole, int state) {
+            Log.i(TAG, "OnWifiNetworkStateChangedProxy: onWifiNetworkStateChanged: "
+                    + cmmRole + ", " + state);
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mListener.onWifiNetworkStateChanged(cmmRole, state));
+        }
+    }
+
+    /**
+     * Add a listener to listen to Wi-Fi network state changes on available client mode roles
+     * specified in {@link WifiNetworkStateChangedListener.WifiClientModeRole}.
+     * When wifi state changes such as connected/disconnect happens, results will be delivered via
+     * {@link WifiNetworkStateChangedListener#onWifiNetworkStateChanged(int, int)}.
+     *
+     * @param executor The Executor on which to execute the callbacks.
+     * @param listener listener for the network status updates.
+     * @throws SecurityException if the caller is missing required permissions.
+     * @throws IllegalArgumentException if incorrect input arguments are provided.
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(Manifest.permission.NETWORK_SETTINGS)
+    public void addWifiNetworkStateChangedListener(@NonNull @CallbackExecutor Executor executor,
+            @NonNull WifiNetworkStateChangedListener listener) {
+        if (executor == null) throw new IllegalArgumentException("executor cannot be null");
+        if (listener == null) throw new IllegalArgumentException("listener cannot be null");
+        if (mVerboseLoggingEnabled) {
+            Log.d(TAG, "addWifiNetworkStateChangedListener: listener=" + listener
+                    + ", executor=" + executor);
+        }
+        final int listenerIdentifier = System.identityHashCode(listener);
+        synchronized (sOnWifiNetworkStateChangedListenerMap) {
+            try {
+                IWifiNetworkStateChangedListener.Stub listenerProxy =
+                        new OnWifiNetworkStateChangedProxy(executor, listener);
+                sOnWifiNetworkStateChangedListenerMap.put(listenerIdentifier,
+                        listenerProxy);
+                mService.addWifiNetworkStateChangedListener(listenerProxy);
+            } catch (RemoteException e) {
+                sOnWifiNetworkStateChangedListenerMap.remove(listenerIdentifier);
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
+    /**
+     * Remove a listener added using
+     * {@link #addWifiNetworkStateChangedListener(Executor, WifiNetworkStateChangedListener)}.
+     * @param listener the listener to be removed.
+     * @throws IllegalArgumentException if incorrect input arguments are provided.
+     * @hide
+     */
+    @SystemApi
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    public void removeWifiNetworkStateChangedListener(
+            @NonNull WifiNetworkStateChangedListener listener) {
+        if (listener == null) throw new IllegalArgumentException("listener cannot be null");
+        if (mVerboseLoggingEnabled) {
+            Log.d(TAG, "removeWifiNetworkStateChangedListener: listener=" + listener);
+        }
+        final int listenerIdentifier = System.identityHashCode(listener);
+        synchronized (sOnWifiNetworkStateChangedListenerMap) {
+            try {
+                if (!sOnWifiNetworkStateChangedListenerMap.contains(listenerIdentifier)) {
+                    Log.w(TAG, "Unknown external listener " + listenerIdentifier);
+                    return;
+                }
+                mService.removeWifiNetworkStateChangedListener(
+                        sOnWifiNetworkStateChangedListenerMap.get(listenerIdentifier));
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            } finally {
+                sOnWifiNetworkStateChangedListenerMap.remove(listenerIdentifier);
+            }
+        }
+    }
+
+    /**
      * Get the country code as resolved by the Wi-Fi framework.
      * The Wi-Fi framework uses multiple sources to resolve a country code
      * - in order of priority (high to low):
@@ -4698,7 +4990,7 @@ public class WifiManager {
      * @param enabled {@code true} to enable, {@code false} to disable.
      * @return {@code false} if the request cannot be satisfied; {@code true} indicates that wifi is
      *         either already in the requested state, or in progress toward the requested state.
-     * @throws  {@link java.lang.SecurityException} if the caller is missing required permissions.
+     * @throws  SecurityException if the caller is missing required permissions.
      *
      * @deprecated Starting with Build.VERSION_CODES#Q, applications are not allowed to
      * enable/disable Wi-Fi.
@@ -5401,7 +5693,7 @@ public class WifiManager {
             android.Manifest.permission.NETWORK_SETUP_WIZARD,
             NEARBY_WIFI_DEVICES})
     public void startLocalOnlyHotspot(@NonNull SoftApConfiguration config,
-            @Nullable Executor executor,
+            @Nullable @CallbackExecutor Executor executor,
             @Nullable LocalOnlyHotspotCallback callback) {
         Objects.requireNonNull(config);
         startLocalOnlyHotspotInternal(config, executor, callback);
@@ -5417,7 +5709,7 @@ public class WifiManager {
      */
     private void startLocalOnlyHotspotInternal(
             @Nullable SoftApConfiguration config,
-            @Nullable Executor executor,
+            @Nullable @CallbackExecutor Executor executor,
             @Nullable LocalOnlyHotspotCallback callback) {
         if (executor == null) {
             executor = mContext.getMainExecutor();
@@ -5736,7 +6028,8 @@ public class WifiManager {
     @Nullable
     @SystemApi
     @RequiresPermission(android.Manifest.permission.NETWORK_SETTINGS)
-    public void queryLastConfiguredTetheredApPassphraseSinceBoot(@NonNull Executor executor,
+    public void queryLastConfiguredTetheredApPassphraseSinceBoot(
+            @NonNull @CallbackExecutor Executor executor,
             @NonNull Consumer<String> resultCallback) {
         Objects.requireNonNull(executor, "executor cannot be null");
         Objects.requireNonNull(resultCallback, "resultsCallback cannot be null");
@@ -5842,6 +6135,43 @@ public class WifiManager {
     }
 
     /**
+     * Enable/Disable TDLS on a specific local route.
+     *
+     * Similar to {@link #setTdlsEnabled(InetAddress, boolean)}, except
+     * this version sends the result of the Enable/Disable request.
+     *
+     * @param remoteIPAddress IP address of the endpoint to setup TDLS with
+     * @param enable true = setup and false = tear down TDLS
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return {@code Boolean} indicating
+     *                        whether TDLS was successfully enabled or disabled.
+     *                        {@code true} for success, {@code false} for failure.
+     *
+     * @throws NullPointerException if the caller provided invalid inputs.
+     */
+    public void setTdlsEnabled(@NonNull InetAddress remoteIPAddress, boolean enable,
+            @NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Boolean> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        Objects.requireNonNull(remoteIPAddress, "remote IP address cannot be null");
+        try {
+            mService.enableTdlsWithRemoteIpAddress(remoteIPAddress.getHostAddress(), enable,
+                    new IBooleanListener.Stub() {
+                        @Override
+                        public void onResult(boolean value) {
+                            Binder.clearCallingIdentity();
+                            executor.execute(() -> {
+                                resultsCallback.accept(value);
+                            });
+                        }
+                    });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
      * Similar to {@link #setTdlsEnabled(InetAddress, boolean) }, except
      * this version allows you to specify remote endpoint with a MAC address.
      * @param remoteMacAddress MAC address of the remote endpoint such as 00:00:0c:9f:f2:ab
@@ -5850,6 +6180,148 @@ public class WifiManager {
     public void setTdlsEnabledWithMacAddress(String remoteMacAddress, boolean enable) {
         try {
             mService.enableTdlsWithMacAddress(remoteMacAddress, enable);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Enable/Disable TDLS with a specific peer Mac Address.
+     *
+     * Similar to {@link #setTdlsEnabledWithMacAddress(String, boolean)}, except
+     * this version sends the result of the Enable/Disable request.
+     *
+     * @param remoteMacAddress Mac address of the endpoint to setup TDLS with
+     * @param enable true = setup and false = tear down TDLS
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return {@code Boolean} indicating
+     *                        whether TDLS was successfully enabled or disabled.
+     *                        {@code true} for success, {@code false} for failure.
+     *
+     * @throws NullPointerException if the caller provided invalid inputs.
+     */
+    public void setTdlsEnabledWithMacAddress(@NonNull String remoteMacAddress, boolean enable,
+            @NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Boolean> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        Objects.requireNonNull(remoteMacAddress, "remote Mac address cannot be null");
+        try {
+            mService.enableTdlsWithRemoteMacAddress(remoteMacAddress, enable,
+                    new IBooleanListener.Stub() {
+                        @Override
+                        public void onResult(boolean value) {
+                            Binder.clearCallingIdentity();
+                            executor.execute(() -> {
+                                resultsCallback.accept(value);
+                            });
+                        }
+                    });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Check if a TDLS session can be established at this time via
+     * {@link #setTdlsEnabled(InetAddress, boolean)} or
+     * {@link #setTdlsEnabledWithMacAddress(String, boolean)} or
+     * {@link #setTdlsEnabled(InetAddress, boolean, Executor, Consumer)} or
+     * {@link #setTdlsEnabledWithMacAddress(String, boolean, Executor, Consumer)}
+     *
+     * Internally framework checks the STA connected state, device support for TDLS and
+     * the number of TDLS sessions available in driver/firmware.
+     *
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return {@code Boolean} indicating
+     *                        whether a TDLS session can be established at this time.
+     *                        {@code true} for available, {@code false} for not available.
+     *
+     * @throws NullPointerException if the caller provided invalid inputs.
+     */
+    public void isTdlsOperationCurrentlyAvailable(@NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Boolean> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            mService.isTdlsOperationCurrentlyAvailable(
+                    new IBooleanListener.Stub() {
+                        @Override
+                        public void onResult(boolean value) {
+                            Binder.clearCallingIdentity();
+                            executor.execute(() -> {
+                                resultsCallback.accept(value);
+                            });
+                        }
+                    });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Return the maximum number of concurrent TDLS sessions supported by the device.
+     *
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return the maximum number of
+     *                        concurrent TDLS sessions supported by the device. Returns
+     *                        {@code -1} if information is not available,
+     *                        e.g. if the driver/firmware doesn't provide this information.
+     *
+     * @throws NullPointerException if the caller provided invalid inputs.
+     * @throws UnsupportedOperationException if the feature is not available.
+     */
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    public void getMaxSupportedConcurrentTdlsSessions(@NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Integer> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            mService.getMaxSupportedConcurrentTdlsSessions(
+                    new IIntegerListener.Stub() {
+                        @Override
+                        public void onResult(int value) {
+                            Binder.clearCallingIdentity();
+                            executor.execute(() -> {
+                                resultsCallback.accept(value);
+                            });
+                        }
+                    });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Return the number of currently enabled TDLS sessions.
+     *
+     * Tracks the number of peers enabled for TDLS session via
+     * {@link #setTdlsEnabled(InetAddress, boolean) },
+     * {@link #setTdlsEnabledWithMacAddress(String, boolean) },
+     * {@link #setTdlsEnabled(InetAddress, boolean, Executor, Consumer) } and
+     * {@link #setTdlsEnabledWithMacAddress(String, boolean, Executor, Consumer) }
+     *
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return the number of Peer
+     *                        Mac addresses configured in the driver for TDLS session.
+     *
+     * @throws NullPointerException if the caller provided invalid inputs.
+     */
+    public void getNumberOfEnabledTdlsSessions(@NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Integer> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            mService.getNumberOfEnabledTdlsSessions(
+                    new IIntegerListener.Stub() {
+                        @Override
+                        public void onResult(int value) {
+                            Binder.clearCallingIdentity();
+                            executor.execute(() -> {
+                                resultsCallback.accept(value);
+                            });
+                        }
+                    });
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -6494,7 +6966,7 @@ public class WifiManager {
          */
         LocalOnlyHotspotCallbackProxy(
                 @NonNull WifiManager manager,
-                @NonNull Executor executor,
+                @NonNull @CallbackExecutor Executor executor,
                 @Nullable LocalOnlyHotspotCallback callback) {
             mWifiManager = new WeakReference<>(manager);
             mExecutor = executor;
@@ -6974,7 +7446,7 @@ public class WifiManager {
      * @throws SecurityException if the caller does not have permission.
      * @throws NullPointerException if the caller provided invalid inputs.
      */
-    public void queryAutojoinGlobal(@NonNull Executor executor,
+    public void queryAutojoinGlobal(@NonNull @CallbackExecutor Executor executor,
             @NonNull Consumer<Boolean> resultsCallback) {
         Objects.requireNonNull(executor, "executor cannot be null");
         Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
@@ -7591,6 +8063,7 @@ public class WifiManager {
     public void enableVerboseLogging(@VerboseLoggingLevel int verbose) {
         try {
             mService.enableVerboseLogging(verbose);
+            mVerboseLoggingEnabled = verbose == VERBOSE_LOGGING_LEVEL_ENABLED;
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -8095,6 +8568,13 @@ public class WifiManager {
      */
     public boolean isDualBandSimultaneousSupported() {
         return isFeatureSupported(WIFI_FEATURE_DUAL_BAND_SIMULTANEOUS);
+    }
+
+    /**
+     * @return true if this device supports TID-To-Link Mapping Negotiation.
+     */
+    public boolean isTidToLinkMappingNegotiationSupported() {
+        return isFeatureSupported(WIFI_FEATURE_T2LM_NEGOTIATION);
     }
 
     /**
@@ -8830,7 +9310,7 @@ public class WifiManager {
          * @param wifiNetworkSpecifier The {@link WifiNetworkSpecifier} which failed to connect.
          * @param failureReason the connection failure reason code.
          */
-        void onConnectionStatus(
+        void onConnectionFailed(
                 @NonNull WifiNetworkSpecifier wifiNetworkSpecifier,
                 @LocalOnlyConnectionStatusCode int failureReason);
     }
@@ -8851,7 +9331,7 @@ public class WifiManager {
                 int failureReason) {
             Binder.clearCallingIdentity();
             mExecutor.execute(() ->
-                    mListener.onConnectionStatus(networkSpecifier, failureReason));
+                    mListener.onConnectionFailed(networkSpecifier, failureReason));
         }
 
     }
@@ -9323,6 +9803,30 @@ public class WifiManager {
          * implemented and instantiated by framework.
          */
         void onSetScoreUpdateObserver(@NonNull ScoreUpdateObserver observerImpl);
+
+        /**
+         * Called by framework to indicate the user accepted a dialog to switch to a new network.
+         * @param sessionId The ID to indicate current Wi-Fi network connection obtained from
+         *                  {@link WifiConnectedNetworkScorer#onStart(int)}.
+         * @param targetNetworkId Network ID of the target network.
+         * @param targetBssid BSSID of the target network.
+         */
+        default void onNetworkSwitchAccepted(
+                int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            // No-op.
+        }
+
+        /**
+         * Called by framework to indicate the user rejected a dialog to switch to new network.
+         * @param sessionId The ID to indicate current Wi-Fi network connection obtained from
+         *                  {@link WifiConnectedNetworkScorer#onStart(int)}.
+         * @param targetNetworkId Network ID of the target network.
+         * @param targetBssid BSSID of the target network.
+         */
+        default void onNetworkSwitchRejected(
+                int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            // No-op.
+        }
     }
 
 
@@ -9510,6 +10014,33 @@ public class WifiManager {
             mExecutor.execute(() -> mScorer.onSetScoreUpdateObserver(
                     new ScoreUpdateObserverProxy(observerImpl)));
         }
+
+        @Override
+        public void onNetworkSwitchAccepted(
+                int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "WifiConnectedNetworkScorer: onNetworkSwitchAccepted:"
+                        + " sessionId=" + sessionId
+                        + " targetNetworkId=" + targetNetworkId
+                        + " targetBssid=" + targetBssid);
+            }
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mScorer.onNetworkSwitchAccepted(
+                    sessionId, targetNetworkId, targetBssid));
+        }
+        @Override
+        public void onNetworkSwitchRejected(
+                int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "WifiConnectedNetworkScorer: onNetworkSwitchRejected:"
+                                + " sessionId=" + sessionId
+                                + " targetNetworkId=" + targetNetworkId
+                                + " targetBssid=" + targetBssid);
+            }
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mScorer.onNetworkSwitchRejected(
+                    sessionId, targetNetworkId, targetBssid));
+        }
     }
 
     /**
@@ -9609,7 +10140,8 @@ public class WifiManager {
             android.Manifest.permission.NETWORK_SETTINGS,
             android.Manifest.permission.NETWORK_STACK,
             NetworkStack.PERMISSION_MAINLINE_NETWORK_STACK})
-    public void getLastCallerInfoForApi(@ApiType int apiType, @NonNull Executor executor,
+    public void getLastCallerInfoForApi(@ApiType int apiType,
+            @NonNull @CallbackExecutor Executor executor,
             @NonNull BiConsumer<String, Boolean> resultsCallback) {
         if (executor == null) {
             throw new IllegalArgumentException("executor can't be null");
@@ -10697,8 +11229,11 @@ public class WifiManager {
                                 for (int i = 0; i < interfacesToDelete.length; ++i) {
                                     finalSet.add(
                                             new InterfaceCreationImpact(interfacesToDelete[i],
-                                                    new ArraySet<>(
-                                                            packagesForInterfaces[i].split(","))));
+                                                    packagesForInterfaces[i] == null
+                                                            ? Collections.emptySet()
+                                                            : new ArraySet<>(
+                                                                    packagesForInterfaces[i]
+                                                                            .split(","))));
                                 }
                             }
                             executor.execute(() -> resultCallback.accept(canCreate, finalSet));
@@ -10726,24 +11261,33 @@ public class WifiManager {
     }
 
     /**
-     * Add a new application-initiated QoS policy.
+     * Add a list of new application-initiated QoS policies.
      *
      * Note: Policies are managed using a policy ID, which can be retrieved using
      *       {@link QosPolicyParams#getPolicyId()}. This ID can be used when removing a policy via
-     *       {@link #removeQosPolicy(int)}. The caller is in charge of assigning and managing the
-     *       policy IDs for any requested policies.
+     *       {@link #removeQosPolicies(int[])}. The caller is in charge of assigning and managing
+     *       the policy IDs for any requested policies.
      *
      * Note: Policies with duplicate IDs are not allowed. To update an existing policy, first
-     *       remove it using {@link #removeQosPolicy(int)}, and then re-add it using this API.
+     *       remove it using {@link #removeQosPolicies(int[])}, and then re-add it using this API.
      *
-     * @param policyParams {@link QosPolicyParams} object describing the requested policy.
+     * Note: All policies in a single request must have the same {@link QosPolicyParams.Direction}.
+     *
+     * Note: Currently, only the {@link QosPolicyParams#DIRECTION_DOWNLINK} direction is supported.
+     *
+     * @param policyParamsList List of {@link QosPolicyParams} objects describing the requested
+     *                         policies. Must have a maximum length of
+     *                         {@link #getMaxNumberOfPoliciesPerQosRequest()}.
      * @param executor The executor on which callback will be invoked.
-     * @param resultsCallback An asynchronous callback that will return an integer status code
-     *                        from {@link QosRequestStatus}.
+     * @param resultsCallback An asynchronous callback that will return a list of integer status
+     *                        codes from {@link QosRequestStatus}. Result list will be the same
+     *                        length as the input list, and each status code will correspond to
+     *                        the policy at that index in the input list.
      *
      * @throws SecurityException if caller does not have the required permissions.
-     * @throws NullPointerException if the caller provided invalid inputs.
+     * @throws NullPointerException if the caller provided a null input.
      * @throws UnsupportedOperationException if the feature is not enabled.
+     * @throws IllegalArgumentException if the input list is invalid.
      * @hide
      */
     @SystemApi
@@ -10752,16 +11296,17 @@ public class WifiManager {
             android.Manifest.permission.NETWORK_SETTINGS,
             MANAGE_WIFI_NETWORK_SELECTION
     })
-    public void addQosPolicy(@NonNull QosPolicyParams policyParams,
+    public void addQosPolicies(@NonNull List<QosPolicyParams> policyParamsList,
             @NonNull @CallbackExecutor Executor executor,
-            @NonNull Consumer<Integer> resultsCallback) {
+            @NonNull Consumer<List<Integer>> resultsCallback) {
+        Objects.requireNonNull(policyParamsList, "policyParamsList cannot be null");
         Objects.requireNonNull(executor, "executor cannot be null");
         Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
         try {
-            mService.addQosPolicy(policyParams, new Binder(), mContext.getOpPackageName(),
-                    new IIntegerListener.Stub() {
+            mService.addQosPolicies(policyParamsList, new Binder(), mContext.getOpPackageName(),
+                    new IListListener.Stub() {
                         @Override
-                        public void onResult(@QosRequestStatus int value) {
+                        public void onResult(List value) {
                             Binder.clearCallingIdentity();
                             executor.execute(() -> {
                                 resultsCallback.accept(value);
@@ -10774,14 +11319,17 @@ public class WifiManager {
     }
 
     /**
-     * Remove an existing application-initiated QoS policy, previously added via
-     * {@link #addQosPolicy(QosPolicyParams, Executor, Consumer)}.
+     * Remove a list of existing application-initiated QoS policies, previously added via
+     * {@link #addQosPolicies(List, Executor, Consumer)}.
      *
-     * Note: The policy is identified by its policy ID, which is assigned by the caller. The ID
+     * Note: Policies are identified by their policy IDs, which are assigned by the caller. The ID
      *       for a given policy can be retrieved using {@link QosPolicyParams#getPolicyId()}.
      *
-     * @param policyId ID of the policy to remove.
+     * @param policyIdList List of policy IDs corresponding to the policies to remove. Must have
+     *                     a maximum length of {@link #getMaxNumberOfPoliciesPerQosRequest()}.
      * @throws SecurityException if caller does not have the required permissions.
+     * @throws NullPointerException if the caller provided a null input.
+     * @throws IllegalArgumentException if the input list is invalid.
      * @hide
      */
     @SystemApi
@@ -10790,9 +11338,10 @@ public class WifiManager {
             android.Manifest.permission.NETWORK_SETTINGS,
             MANAGE_WIFI_NETWORK_SELECTION
     })
-    public void removeQosPolicy(int policyId) {
+    public void removeQosPolicies(@NonNull int[] policyIdList) {
+        Objects.requireNonNull(policyIdList, "policyIdList cannot be null");
         try {
-            mService.removeQosPolicy(policyId, mContext.getOpPackageName());
+            mService.removeQosPolicies(policyIdList, mContext.getOpPackageName());
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -10800,7 +11349,7 @@ public class WifiManager {
 
     /**
      * Remove all application-initiated QoS policies requested by this caller,
-     * previously added via {@link #addQosPolicy(QosPolicyParams, Executor, Consumer)}.
+     * previously added via {@link #addQosPolicies(List, Executor, Consumer)}.
      *
      * @throws SecurityException if caller does not have the required permissions.
      * @hide
@@ -10814,6 +11363,145 @@ public class WifiManager {
     public void removeAllQosPolicies() {
         try {
             mService.removeAllQosPolicies(mContext.getOpPackageName());
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Set the link layer stats polling interval, in milliseconds.
+     *
+     * @param intervalMs a non-negative integer, for the link layer stats polling interval
+     *                   in milliseconds.
+     *                   To set a fixed interval, use a positive value.
+     *                   For automatic handling of the interval, use value 0
+     * @throws UnsupportedOperationException if the API is not supported on this SDK version.
+     * @throws SecurityException if the caller does not have permission.
+     * @throws IllegalArgumentException if input is invalid.
+     * @hide
+     */
+    @SystemApi
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    @RequiresPermission(android.Manifest.permission.MANAGE_WIFI_NETWORK_SELECTION)
+    public void setLinkLayerStatsPollingInterval(@IntRange (from = 0) int intervalMs) {
+        try {
+            mService.setLinkLayerStatsPollingInterval(intervalMs);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Get the link layer stats polling interval, in milliseconds.
+     *
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return current
+     *                        link layer stats polling interval in milliseconds.
+     *
+     * @throws UnsupportedOperationException if the API is not supported on this SDK version.
+     * @throws SecurityException if the caller does not have permission.
+     * @throws NullPointerException if the caller provided invalid inputs.
+     * @hide
+     */
+    @SystemApi
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    @RequiresPermission(android.Manifest.permission.MANAGE_WIFI_NETWORK_SELECTION)
+    public void getLinkLayerStatsPollingInterval(@NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Integer> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            mService.getLinkLayerStatsPollingInterval(
+                    new IIntegerListener.Stub() {
+                        @Override
+                        public void onResult(int value) {
+                            Binder.clearCallingIdentity();
+                            executor.execute(() -> {
+                                resultsCallback.accept(value);
+                            });
+                        }
+                    });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * This API allows a privileged application to set Multi-Link Operation mode.
+     *
+     * Multi-link operation (MLO) will allow Wi-Fi devices to operate on multiple links at the same
+     * time through a single connection, aiming to support applications that require lower latency,
+     * and higher capacity. Chip vendors have algorithms that run on the chip to use available links
+     * based on incoming traffic and various inputs. This API allows system application to give a
+     * suggestion to such algorithms on its preference using {@link MloMode}.
+     *
+     *
+     * @param mode Refer {@link MloMode} for supported modes.
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return {@code Boolean} indicating
+     *                        whether the MLO mode is successfully set or not.
+     * @throws IllegalArgumentException if mode value is not in {@link MloMode}.
+     * @throws NullPointerException if the caller provided a null input.
+     * @throws SecurityException if caller does not have the required permissions.
+     * @throws UnsupportedOperationException if the set operation is not supported.
+     * @hide
+     */
+    @SystemApi
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    @RequiresPermission(MANAGE_WIFI_NETWORK_SELECTION)
+    public void setMloMode(@MloMode int mode, @NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Boolean> resultsCallback) {
+
+        if (mode < MLO_MODE_DEFAULT || mode > MLO_MODE_LOW_POWER) {
+            throw new IllegalArgumentException("invalid mode: " + mode);
+        }
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            mService.setMloMode(mode, new IBooleanListener.Stub() {
+                @Override
+                public void onResult(boolean value) {
+                    Binder.clearCallingIdentity();
+                    executor.execute(() -> {
+                        resultsCallback.accept(value);
+                    });
+                }
+            });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * This API allows a privileged application to get Multi-Link Operation mode. Refer
+     * {@link WifiManager#setMloMode(int)} for more details.
+     *
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return current MLO mode. Returns
+     *                        {@link MloMode#MLO_MODE_DEFAULT} if information is not available,
+     *                        e.g. if the driver/firmware doesn't provide this information.
+     * @throws NullPointerException if the caller provided a null input.
+     * @throws SecurityException if caller does not have the required permissions.
+     * @throws UnsupportedOperationException if the set operation is not supported.
+     * @hide
+     */
+    @SystemApi
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    @RequiresPermission(MANAGE_WIFI_NETWORK_SELECTION)
+    public void getMloMode(@NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Integer> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            mService.getMloMode(new IIntegerListener.Stub() {
+                @Override
+                public void onResult(int value) {
+                    Binder.clearCallingIdentity();
+                    executor.execute(() -> {
+                        resultsCallback.accept(value);
+                    });
+                }
+            });
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }

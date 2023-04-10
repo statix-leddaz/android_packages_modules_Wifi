@@ -30,10 +30,10 @@ import android.os.Handler;
 import android.os.WorkSource;
 import android.text.TextUtils;
 import android.util.ArrayMap;
+import android.util.ArraySet;
 import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
-import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
 
 import com.android.internal.annotations.VisibleForTesting;
@@ -63,6 +63,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Handles device management through the HAL interface.
@@ -86,15 +87,16 @@ public class HalDeviceManager {
     @VisibleForTesting
     public static final int START_HAL_RETRY_TIMES = 3;
 
+    private final WifiContext mContext;
     private final Clock mClock;
     private final WifiInjector mWifiInjector;
     private final Handler mEventHandler;
     private WifiHal mWifiHal;
     private WifiDeathRecipient mIWifiDeathRecipient;
-    private boolean mWifiUserApprovalRequiredForD2dInterfacePriority;
     private boolean mIsConcurrencyComboLoadedFromDriver;
     private boolean mWaitForDestroyedListeners;
-    private ArrayMap<WifiHal.WifiInterface, SoftApManager> mSoftApManagers = new ArrayMap<>();
+    // Map of Interface name to their associated SoftApManager
+    private final ArrayMap<String, SoftApManager> mSoftApManagers = new ArrayMap<>();
 
     /**
      * Public API for querying interfaces from the HalDeviceManager.
@@ -137,10 +139,7 @@ public class HalDeviceManager {
     // public API
     public HalDeviceManager(WifiContext context, Clock clock, WifiInjector wifiInjector,
             Handler handler) {
-        Resources res = context.getResources();
-        mWifiUserApprovalRequiredForD2dInterfacePriority =
-                res.getBoolean(R.bool.config_wifiUserApprovalRequiredForD2dInterfacePriority);
-        mWaitForDestroyedListeners = res.getBoolean(R.bool.config_wifiWaitForDestroyedListeners);
+        mContext = context;
         mClock = clock;
         mWifiInjector = wifiInjector;
         mEventHandler = handler;
@@ -331,7 +330,7 @@ public class HalDeviceManager {
                 : HDM_CREATE_IFACE_AP, requiredChipCapabilities, destroyedListener,
                 handler, requestorWs);
         if (apIface != null) {
-            mSoftApManagers.put(apIface, softApManager);
+            mSoftApManagers.put(getName(apIface), softApManager);
         }
         return apIface;
     }
@@ -444,24 +443,47 @@ public class HalDeviceManager {
         }
     }
 
-    private boolean isDbsSupported(WifiHal.WifiInterface iface, int dbsMask) {
+    /**
+     * See {@link WifiNative#getSupportedBandCombinations(String)}.
+     */
+    public Set<List<Integer>> getSupportedBandCombinations(WifiHal.WifiInterface iface) {
         synchronized (mLock) {
-            WifiChipInfo info = getChipInfo(iface);
-            if (info == null) return false;
-            // If there is no radio combination information, cache it.
-            if (info.radioCombinationMatrix == null) {
-                WifiChip chip = getChip(iface);
-                if (chip == null) return false;
+            Set<List<Integer>> combinations = getCachedSupportedBandCombinations(iface);
+            if (combinations == null) return null;
+            return Collections.unmodifiableSet(combinations);
+        }
+    }
 
-                info.radioCombinationMatrix = getChipSupportedRadioCombinationsMatrix(chip);
-                info.radioCombinationLookupTable = convertRadioCombinationMatrixToLookupTable(
-                        info.radioCombinationMatrix);
-                if (mDbg) {
-                    Log.d(TAG, "radioCombinationMatrix=" + info.radioCombinationMatrix
-                            + "radioCombinationLookupTable=" + info.radioCombinationLookupTable);
-                }
+    private Set<List<Integer>> getCachedSupportedBandCombinations(
+            WifiHal.WifiInterface iface) {
+        WifiChipInfo info = getChipInfo(iface);
+        if (info == null) return null;
+        // If there is no band combination information, cache it.
+        if (info.bandCombinations == null) {
+            if (info.radioCombinations == null) {
+                WifiChip chip = getChip(iface);
+                if (chip == null) return null;
+                info.radioCombinations = getChipSupportedRadioCombinations(chip);
             }
-            return info.radioCombinationLookupTable.get(dbsMask);
+            info.bandCombinations = getChipSupportedBandCombinations(info.radioCombinations);
+            if (mDbg) {
+                Log.d(TAG, "radioCombinations=" + info.radioCombinations
+                        + " bandCombinations=" + info.bandCombinations);
+            }
+        }
+        return info.bandCombinations;
+    }
+
+    /**
+     * See {@link WifiNative#isBandCombinationSupported(String, List)}.
+     */
+    public boolean isBandCombinationSupported(WifiHal.WifiInterface iface,
+            @NonNull List<Integer> bands) {
+        synchronized (mLock) {
+            Set<List<Integer>> combinations = getCachedSupportedBandCombinations(iface);
+            if (combinations == null) return false;
+            // Lookup depends on the order of the bands. So sort it.
+            return combinations.contains(bands.stream().sorted().collect(Collectors.toList()));
         }
     }
 
@@ -472,7 +494,8 @@ public class HalDeviceManager {
      * @return true if supported; false, otherwise;
      */
     public boolean is24g5gDbsSupported(WifiHal.WifiInterface iface) {
-        return isDbsSupported(iface, DBS_24G_5G_MASK);
+        return isBandCombinationSupported(iface,
+                Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_5_GHZ));
     }
 
     /**
@@ -491,7 +514,8 @@ public class HalDeviceManager {
      * @return true if supported; false, otherwise;
      */
     public boolean is5g6gDbsSupported(WifiHal.WifiInterface iface) {
-        return isDbsSupported(iface, DBS_5G_6G_MASK);
+        return isBandCombinationSupported(iface,
+                Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ, WifiScanner.WIFI_BAND_6_GHZ));
     }
 
     /**
@@ -958,8 +982,9 @@ public class HalDeviceManager {
         // returned by WifiChip.getXxxIfaceNames.
         public WifiIfaceInfo[][] ifaces = new WifiIfaceInfo[CREATE_TYPES_BY_PRIORITY.length][];
         public long chipCapabilities;
-        public WifiChip.WifiRadioCombinationMatrix radioCombinationMatrix = null;
-        public SparseBooleanArray radioCombinationLookupTable = new SparseBooleanArray();
+        public List<WifiChip.WifiRadioCombination> radioCombinations = null;
+        // A data structure for the faster band combination lookup.
+        public Set<List<Integer>> bandCombinations = null;
 
         @Override
         public String toString() {
@@ -967,7 +992,9 @@ public class HalDeviceManager {
             sb.append("{chipId=").append(chipId).append(", availableModes=").append(availableModes)
                     .append(", currentModeIdValid=").append(currentModeIdValid)
                     .append(", currentModeId=").append(currentModeId)
-                    .append(", chipCapabilities=").append(chipCapabilities);
+                    .append(", chipCapabilities=").append(chipCapabilities)
+                    .append(", radioCombinations=").append(radioCombinations)
+                    .append(", bandCombinations=").append(bandCombinations);
             for (int type: IFACE_TYPES_BY_PRIORITY) {
                 sb.append(", ifaces[" + type + "].length=").append(ifaces[type].length);
             }
@@ -1914,9 +1941,6 @@ public class HalDeviceManager {
      * interface request from |existingRequestorWsPriority|.
      *
      * Rule:
-     *  - If |mWifiUserApprovalRequiredForD2dInterfacePriority| is true, AND
-     *    |newRequestorWsPriority| > PRIORITY_BG, AND |requestedCreateType| is
-     *    HDM_CREATE_IFACE_P2P or HDM_CREATE_IFACE_NAN, then YES
      *  - If |newRequestorWsPriority| > |existingRequestorWsPriority|, then YES.
      *  - If they are at the same priority level, then
      *      - If both are privileged and not for the same interface type, then YES.
@@ -2155,7 +2179,11 @@ public class HalDeviceManager {
             WifiIfaceInfo[] bridgedApIfaces) {
         List<WifiIfaceInfo> ifacesToDowngrade = new ArrayList<>();
         for (WifiIfaceInfo ifaceInfo : bridgedApIfaces) {
-            SoftApManager softApManager = mSoftApManagers.get(ifaceInfo.iface);
+            String name = getName(ifaceInfo.iface);
+            if (name == null) {
+                continue;
+            }
+            SoftApManager softApManager = mSoftApManagers.get(name);
             if (softApManager == null) {
                 Log.e(TAG, "selectBridgedApInterfacesToDowngrade: Could not find SoftApManager for"
                         + " iface: " + ifaceInfo.iface);
@@ -2430,14 +2458,13 @@ public class HalDeviceManager {
     }
 
     private boolean downgradeBridgedApIface(WifiIfaceInfo bridgedApIfaceInfo) {
-        SoftApManager bridgedSoftApManager = mSoftApManagers.get(bridgedApIfaceInfo.iface);
-        if (bridgedSoftApManager == null) {
-            Log.e(TAG, "Could not find SoftApManager for bridged AP iface "
-                    + bridgedApIfaceInfo.iface);
-            return false;
-        }
         String name = getName(bridgedApIfaceInfo.iface);
         if (name == null) {
+            return false;
+        }
+        SoftApManager bridgedSoftApManager = mSoftApManagers.get(name);
+        if (bridgedSoftApManager == null) {
+            Log.e(TAG, "Could not find SoftApManager for bridged AP iface " + name);
             return false;
         }
         WifiChip chip = getChip(bridgedApIfaceInfo.iface);
@@ -2680,21 +2707,20 @@ public class HalDeviceManager {
         return -1;
     }
 
-    private static SparseBooleanArray convertRadioCombinationMatrixToLookupTable(
-            WifiChip.WifiRadioCombinationMatrix matrix) {
-        SparseBooleanArray lookupTable = new SparseBooleanArray();
-        if (matrix == null) return lookupTable;
-
-        for (WifiChip.WifiRadioCombination combination : matrix.radioCombinations) {
-            int bandMask = 0;
+    private static Set<List<Integer>> getChipSupportedBandCombinations(
+            List<WifiChip.WifiRadioCombination> combinations) {
+        Set<List<Integer>> lookupTable = new ArraySet<>();
+        if (combinations == null) return lookupTable;
+        // Add radio combinations to the lookup table.
+        for (WifiChip.WifiRadioCombination combination : combinations) {
+            // Build list of bands.
+            List<Integer> bands = new ArrayList<>();
             for (WifiChip.WifiRadioConfiguration config : combination.radioConfigurations) {
-                bandMask |= config.bandInfo;
+                bands.add(config.bandInfo);
             }
-            if ((bandMask & DBS_24G_5G_MASK) == DBS_24G_5G_MASK) {
-                lookupTable.put(DBS_24G_5G_MASK, true);
-            } else if ((bandMask & DBS_5G_6G_MASK) == DBS_5G_6G_MASK) {
-                lookupTable.put(DBS_5G_6G_MASK, true);
-            }
+            // Sort the list of bands as hash code depends on the order and content of the list.
+            Collections.sort(bands);
+            lookupTable.add(Collections.unmodifiableList(bands));
         }
         return lookupTable;
     }
@@ -2721,19 +2747,27 @@ public class HalDeviceManager {
     }
 
     /**
-     * Get the supported radio combination matrix.
+     * Get the supported radio combinations.
      *
      * This is called after creating an interface and need at least v1.6 HAL.
      *
      * @param wifiChip WifiChip
-     * @return Wifi radio combinmation matrix
+     * @return List of supported Wifi radio combinations
      */
-    private WifiChip.WifiRadioCombinationMatrix getChipSupportedRadioCombinationsMatrix(
+    private List<WifiChip.WifiRadioCombination> getChipSupportedRadioCombinations(
             @NonNull WifiChip wifiChip) {
         synchronized (mLock) {
             if (wifiChip == null) return null;
-            return wifiChip.getSupportedRadioCombinationsMatrix();
+            return wifiChip.getSupportedRadioCombinations();
         }
+    }
+
+    /**
+     * Initialization after boot completes to get boot-dependent resources.
+     */
+    public void handleBootCompleted() {
+        Resources res = mContext.getResources();
+        mWaitForDestroyedListeners = res.getBoolean(R.bool.config_wifiWaitForDestroyedListeners);
     }
 
     /**

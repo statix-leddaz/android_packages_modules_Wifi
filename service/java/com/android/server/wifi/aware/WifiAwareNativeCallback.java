@@ -75,8 +75,8 @@ public class WifiAwareNativeCallback implements WifiNanIface.Callback,
     private static final int CB_EV_DATA_PATH_TERMINATED = 10;
     private static final int CB_EV_DATA_PATH_SCHED_UPDATE = 11;
 
-    private SparseIntArray mCallbackCounter = new SparseIntArray();
-    private SparseArray<List<WifiAwareChannelInfo>> mChannelInfoPerNdp = new SparseArray<>();
+    private final SparseIntArray mCallbackCounter = new SparseIntArray();
+    private final SparseArray<List<WifiAwareChannelInfo>> mChannelInfoPerNdp = new SparseArray<>();
 
     private void incrementCbCount(int callbackId) {
         mCallbackCounter.put(callbackId, mCallbackCounter.get(callbackId) + 1);
@@ -294,6 +294,12 @@ public class WifiAwareNativeCallback implements WifiNanIface.Callback,
     }
 
     @Override
+    public void notifyTerminatePairingResponse(short id, int status) {
+        mWifiAwareStateManager.onEndPairingResponse(id, status == NanStatusCode.SUCCESS,
+                status);
+    }
+
+    @Override
     public void eventClusterEvent(int eventType, byte[] addr) {
         incrementCbCount(CB_EV_CLUSTER);
         if (eventType == NanClusterEventType.DISCOVERY_MAC_ADDRESS_CHANGED) {
@@ -423,13 +429,20 @@ public class WifiAwareNativeCallback implements WifiNanIface.Callback,
     }
 
     @Override
-    public void eventBootstrappingConfirm(int pairingId, boolean accept, int reason) {
-        mWifiAwareStateManager.onBootstrappingConfirmNotification(pairingId, accept, reason);
+    public void eventBootstrappingConfirm(int bootstrappingId, int responseCode, int reason,
+            int comebackDelay, byte[] cookie) {
+        mWifiAwareStateManager.onBootstrappingConfirmNotification(bootstrappingId, responseCode,
+                reason, comebackDelay, cookie);
     }
 
-        /**
-         * Reset the channel info when Aware is down.
-         */
+    @Override
+    public void eventSuspensionModeChanged(boolean isSuspended) {
+        mWifiAwareStateManager.onSuspensionModeChangedNotification(isSuspended);
+    }
+
+    /**
+     * Reset the channel info when Aware is down.
+     */
     /* package */ void resetChannelInfo() {
         mChannelInfoPerNdp.clear();
     }

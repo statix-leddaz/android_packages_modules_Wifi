@@ -53,7 +53,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
@@ -542,7 +541,7 @@ public class WifiMonitorTest extends WifiBaseTest {
         String bssid = BSSID;
         SupplicantState newState = SupplicantState.ASSOCIATED;
         mWifiMonitor.broadcastSupplicantStateChangeEvent(
-                WLAN_IFACE_NAME, networkId, wifiSsid, bssid, newState);
+                WLAN_IFACE_NAME, networkId, wifiSsid, bssid, 2412, newState);
         mLooper.dispatchAll();
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
@@ -552,6 +551,7 @@ public class WifiMonitorTest extends WifiBaseTest {
         assertEquals(networkId, result.networkId);
         assertEquals(wifiSsid, result.wifiSsid);
         assertEquals(bssid, result.bssid);
+        assertEquals(2412, result.frequencyMhz);
         assertEquals(newState, result.state);
     }
 
@@ -777,18 +777,20 @@ public class WifiMonitorTest extends WifiBaseTest {
     public void testBroadcastCertificateEvent() {
         final int depth = 2;
         mWifiMonitor.registerHandler(
-                WLAN_IFACE_NAME, WifiMonitor.TOFU_ROOT_CA_CERTIFICATE, mHandlerSpy);
+                WLAN_IFACE_NAME, WifiMonitor.TOFU_CERTIFICATE_EVENT, mHandlerSpy);
         mWifiMonitor.broadcastCertificationEvent(
-                WLAN_IFACE_NAME, NETWORK_ID, SSID, depth, FakeKeys.CA_CERT0);
+                WLAN_IFACE_NAME, NETWORK_ID, SSID, depth,
+                new CertificateEventInfo(FakeKeys.CA_CERT0, "1234"));
         mLooper.dispatchAll();
 
         ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
         verify(mHandlerSpy).handleMessage(messageCaptor.capture());
-        assertEquals(WifiMonitor.TOFU_ROOT_CA_CERTIFICATE, messageCaptor.getValue().what);
+        assertEquals(WifiMonitor.TOFU_CERTIFICATE_EVENT, messageCaptor.getValue().what);
         assertEquals(NETWORK_ID, messageCaptor.getValue().arg1);
         assertEquals(depth, messageCaptor.getValue().arg2);
-        X509Certificate cert = (X509Certificate) messageCaptor.getValue().obj;
-        assertEquals(FakeKeys.CA_CERT0, cert);
+        CertificateEventInfo certEventInfo = (CertificateEventInfo) messageCaptor.getValue().obj;
+        assertEquals(FakeKeys.CA_CERT0, certEventInfo.getCert());
+        assertEquals("1234", certEventInfo.getCertHash());
     }
 
     /**
@@ -857,5 +859,22 @@ public class WifiMonitorTest extends WifiBaseTest {
         assertEquals(dialogToken, messageCaptor.getValue().arg1);
         assertEquals(numPolicyRequests,
                 ((List<QosPolicyRequest>) messageCaptor.getValue().obj).size());
+    }
+
+    /**
+     * Broadcast BSS frequency changed event test.
+     */
+    @Test
+    public void testBroadcastBssFrequencyChangedEvent() {
+        mWifiMonitor.registerHandler(
+                WLAN_IFACE_NAME, WifiMonitor.BSS_FREQUENCY_CHANGED_EVENT, mHandlerSpy);
+        mWifiMonitor.broadcastBssFrequencyChanged(WLAN_IFACE_NAME, 2412);
+        mLooper.dispatchAll();
+
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(mHandlerSpy).handleMessage(messageCaptor.capture());
+        assertEquals(WifiMonitor.BSS_FREQUENCY_CHANGED_EVENT, messageCaptor.getValue().what);
+        int frequency = (int) messageCaptor.getValue().arg1;
+        assertEquals(2412, frequency);
     }
 }

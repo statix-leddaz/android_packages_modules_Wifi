@@ -23,6 +23,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.hardware.wifi.WifiStatusCode;
 import android.net.MacAddress;
 import android.net.apf.ApfCapabilities;
 import android.net.wifi.ScanResult;
@@ -121,6 +122,20 @@ public class WifiVendorHal {
     // some reasonable assumptions. See
     // https://docs.oracle.com/javase/specs/jls/se7/html/jls-17.html#jls-17.5
     private final Handler mHalEventHandler;
+
+
+    /**
+     * Wi-Fi chip related info.
+     */
+    private static class WifiChipInfo {
+        public WifiChip.WifiChipCapabilities capabilities = null;
+        /**
+         * Add more chip specific parameters here. Basically it avoids frequent call to chip by
+         * caching it on {@link mCachedWifiChipInfos}.
+         */
+    }
+    /** A cache which maps chip id to {@link WifiChipInfo} */
+    private SparseArray<WifiChipInfo> mCachedWifiChipInfos = new SparseArray<>();
 
     public WifiVendorHal(Context context, HalDeviceManager halDeviceManager, Handler handler,
             WifiGlobals wifiGlobals,
@@ -485,6 +500,7 @@ public class WifiVendorHal {
                 mWifiChip = null;
                 return false;
             }
+            cacheWifiChipInfo(mWifiChip);
             return true;
         }
     }
@@ -759,6 +775,73 @@ public class WifiVendorHal {
         }
         enter("System feature set: %").c(featureSet).flush();
         return featureSet;
+    }
+
+    /**
+     * Get maximum number of links supported by the chip for MLO association.
+     *
+     * @param ifaceName Name of the interface.
+     * @return maximum number of association links or -1 if error or not available.
+     */
+    public int getMaxMloAssociationLinkCount(String ifaceName) {
+        WifiChipInfo wifiChipInfo = getCachedWifiChipInfo(
+                ifaceName);
+        if (wifiChipInfo == null || wifiChipInfo.capabilities == null) return -1;
+        return wifiChipInfo.capabilities.maxMloAssociationLinkCount;
+    }
+
+    /**
+     * Get the maximum number of STR links used in Multi-Link Operation.
+     *
+     * @param ifaceName Name of the interface.
+     * @return maximum number of MLO STR links or -1 if error or not available.
+     */
+    public int getMaxMloStrLinkCount(String ifaceName) {
+        WifiChipInfo wifiChipInfo = getCachedWifiChipInfo(
+                ifaceName);
+        if (wifiChipInfo == null || wifiChipInfo.capabilities == null) return -1;
+        return wifiChipInfo.capabilities.maxMloStrLinkCount;
+    }
+
+    /**
+     * Get the maximum number of concurrent TDLS sessions supported by the device.
+     *
+     * @param ifaceName Name of the interface.
+     * @return maximum number of concurrent TDLS sessions or -1 if error or not available.
+     */
+    public int getMaxSupportedConcurrentTdlsSessions(String ifaceName) {
+        WifiChipInfo wifiChipInfo = getCachedWifiChipInfo(
+                ifaceName);
+        if (wifiChipInfo == null || wifiChipInfo.capabilities == null) return -1;
+        return wifiChipInfo.capabilities.maxConcurrentTdlsSessionCount;
+    }
+
+    /**
+     * Get Chip specific cached info.
+     *
+     * @param ifaceName Name of the interface
+     * @return the cached information.
+     */
+    private WifiChipInfo getCachedWifiChipInfo(String ifaceName) {
+        WifiStaIface iface = getStaIface(ifaceName);
+        if (iface == null) return null;
+
+        WifiChip chip = mHalDeviceManager.getChip(iface);
+        if (chip == null) return null;
+
+        return mCachedWifiChipInfos.get(chip.getId());
+    }
+
+    /**
+     * Cache chip specific info.
+     *
+     * @param chip Wi-Fi chip
+     */
+    private void cacheWifiChipInfo(@NonNull WifiChip chip) {
+        if (mCachedWifiChipInfos.contains(chip.getId())) return;
+        WifiChipInfo wifiChipInfo = new WifiChipInfo();
+        wifiChipInfo.capabilities = chip.getWifiChipCapabilities();
+        mCachedWifiChipInfos.put(chip.getId(), wifiChipInfo);
     }
 
     /**
@@ -1848,6 +1931,58 @@ public class WifiVendorHal {
             WifiStaIface iface = getStaIface(ifaceName);
             if (iface == null) return false;
             return iface.setDtimMultiplier(multiplier);
+        }
+    }
+
+    /**
+     * Set the Multi-Link Operation mode.
+     *
+     * @param mode Multi-Link operation mode {@link android.net.wifi.WifiManager.MloMode}.
+     * @return {@code true} if success, otherwise {@code false}.
+     */
+    public @WifiStatusCode int setMloMode(@WifiManager.MloMode int mode) {
+        synchronized (sLock) {
+            if (mWifiChip == null) return WifiStatusCode.ERROR_WIFI_CHIP_INVALID;
+            return mWifiChip.setMloMode(mode);
+        }
+    }
+
+    /**
+     * Enable/disable the feature of allowing current STA-connected channel for WFA GO, SAP and
+     * Aware when the regulatory allows.
+     *
+     * @param enableIndoorChannel enable or disable indoor channel.
+     * @param enableDfsChannel    enable or disable DFS channel.
+     * @return true if the operation succeeded, false if there is an error in Hal.
+     */
+    public boolean enableStaChannelForPeerNetwork(boolean enableIndoorChannel,
+            boolean enableDfsChannel) {
+        synchronized (sLock) {
+            if (mWifiChip == null) return false;
+            return mWifiChip.enableStaChannelForPeerNetwork(enableIndoorChannel, enableDfsChannel);
+        }
+    }
+
+    /**
+     * See {@link WifiNative#isBandCombinationSupported(String, List)}.
+     */
+    public boolean isBandCombinationSupported(@NonNull String ifaceName,
+            @NonNull List<Integer> bands) {
+        synchronized (sLock) {
+            WifiStaIface iface = getStaIface(ifaceName);
+            if (iface == null) return false;
+            return mHalDeviceManager.isBandCombinationSupported(iface, bands);
+        }
+    }
+
+    /**
+     * See {@link WifiNative#getSupportedBandCombinations(String)}.
+     */
+    public Set<List<Integer>> getSupportedBandCombinations(String ifaceName) {
+        synchronized (sLock) {
+            WifiStaIface iface = getStaIface(ifaceName);
+            if (iface == null) return null;
+            return mHalDeviceManager.getSupportedBandCombinations(iface);
         }
     }
 }

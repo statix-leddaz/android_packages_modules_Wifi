@@ -17,8 +17,10 @@
 package com.android.server.wifi.hal;
 
 import android.annotation.Nullable;
+import android.hardware.wifi.WifiStatusCode;
 import android.net.wifi.CoexUnsafeChannel;
 import android.net.wifi.WifiAvailableChannel;
+import android.net.wifi.WifiManager;
 import android.net.wifi.WifiScanner;
 
 import com.android.server.wifi.SarInfo;
@@ -251,12 +253,18 @@ public interface IWifiChip {
     /**
      * Retrieve the list of all the possible radio combinations supported by this chip.
      *
-     * @return |WifiRadioCombinationMatrix| representation of all the possible radio combinations,
-     *         or null if an error occurred.
-     *
+     * @return List of all possible radio combinations, or null if an error occurred.
      */
     @Nullable
-    WifiChip.WifiRadioCombinationMatrix getSupportedRadioCombinationsMatrix();
+    List<WifiChip.WifiRadioCombination> getSupportedRadioCombinations();
+
+    /**
+     * Retrieve the chip capabilities.
+     *
+     * @return |WifiChipCapabilities| representation of wifi chip capabilities or null if
+     * an error occurred or not available.
+     */
+    WifiChip.WifiChipCapabilities getWifiChipCapabilities();
 
     /**
      * Retrieve a list of usable Wifi channels for the specified band and operational modes.
@@ -351,13 +359,6 @@ public interface IWifiChip {
     byte[] requestFirmwareDebugDump();
 
     /**
-     * Reset TX power levels.
-     *
-     * @return true if successful, false otherwise.
-     */
-    boolean resetTxPowerScenario();
-
-    /**
      * Select one of the preset TX power scenarios.
      *
      * @param sarInfo SarInfo to select the proper scenario.
@@ -435,4 +436,23 @@ public interface IWifiChip {
      * @return true if successful, false otherwise.
      */
     boolean triggerSubsystemRestart();
+
+    /**
+     * Set MLO mode for the chip. See {@link WifiManager#setMloMode(int, Executor, Consumer)} and
+     * {@link android.net.wifi.WifiManager.MloMode}.
+     *
+     * @param mode MLO mode {@link android.net.wifi.WifiManager.MloMode}
+     * @return {@code true} if success, otherwise false.
+     */
+    @WifiStatusCode int setMloMode(@WifiManager.MloMode int mode);
+
+    /**
+     * Enable/disable the feature of allowing current STA-connected channel for WFA GO, SAP and
+     * Aware when the regulatory allows.
+     *
+     * @param enableIndoorChannel enable or disable indoor channel.
+     * @param enableDfsChannel    enable or disable DFS channel.
+     * @return true if successful, false otherwise.
+     */
+    boolean enableStaChannelForPeerNetwork(boolean enableIndoorChannel, boolean enableDfsChannel);
 }
