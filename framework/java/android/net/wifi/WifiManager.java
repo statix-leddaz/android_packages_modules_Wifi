@@ -10014,6 +10014,33 @@ public class WifiManager {
             mExecutor.execute(() -> mScorer.onSetScoreUpdateObserver(
                     new ScoreUpdateObserverProxy(observerImpl)));
         }
+
+        @Override
+        public void onNetworkSwitchAccepted(
+                int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "WifiConnectedNetworkScorer: onNetworkSwitchAccepted:"
+                        + " sessionId=" + sessionId
+                        + " targetNetworkId=" + targetNetworkId
+                        + " targetBssid=" + targetBssid);
+            }
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mScorer.onNetworkSwitchAccepted(
+                    sessionId, targetNetworkId, targetBssid));
+        }
+        @Override
+        public void onNetworkSwitchRejected(
+                int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "WifiConnectedNetworkScorer: onNetworkSwitchRejected:"
+                                + " sessionId=" + sessionId
+                                + " targetNetworkId=" + targetNetworkId
+                                + " targetBssid=" + targetBssid);
+            }
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mScorer.onNetworkSwitchRejected(
+                    sessionId, targetNetworkId, targetBssid));
+        }
     }
 
     /**
@@ -11243,6 +11270,10 @@ public class WifiManager {
      *
      * Note: Policies with duplicate IDs are not allowed. To update an existing policy, first
      *       remove it using {@link #removeQosPolicies(int[])}, and then re-add it using this API.
+     *
+     * Note: All policies in a single request must have the same {@link QosPolicyParams.Direction}.
+     *
+     * Note: Currently, only the {@link QosPolicyParams#DIRECTION_DOWNLINK} direction is supported.
      *
      * @param policyParamsList List of {@link QosPolicyParams} objects describing the requested
      *                         policies. Must have a maximum length of
