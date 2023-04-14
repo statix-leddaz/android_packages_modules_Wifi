@@ -573,6 +573,7 @@ public class WifiInjector {
         mWifiConfigManager.enableVerboseLogging(verboseEnabled);
         mPasspointManager.enableVerboseLogging(verboseEnabled);
         mWifiNetworkFactory.enableVerboseLogging(verboseEnabled);
+        mMultiInternetWifiNetworkFactory.enableVerboseLogging(verboseEnabled);
         mLinkProbeManager.enableVerboseLogging(verboseEnabled);
         mMboOceController.enableVerboseLogging(verboseEnabled);
         mWifiScoreCard.enableVerboseLogging(verboseEnabled);
