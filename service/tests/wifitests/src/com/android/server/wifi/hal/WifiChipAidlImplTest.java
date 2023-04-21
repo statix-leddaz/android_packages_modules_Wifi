@@ -44,6 +44,7 @@ import android.os.ServiceSpecificException;
 
 import com.android.server.wifi.SarInfo;
 import com.android.server.wifi.SsidTranslator;
+import com.android.server.wifi.WifiBaseTest;
 import com.android.server.wifi.WifiNative;
 import com.android.server.wifi.WlanWakeReasonAndCounts;
 
@@ -56,7 +57,7 @@ import org.mockito.MockitoAnnotations;
 import java.util.List;
 import java.util.Random;
 
-public class WifiChipAidlImplTest {
+public class WifiChipAidlImplTest extends WifiBaseTest {
     private WifiChipAidlImpl mDut;
     @Mock private IWifiChip mIWifiChipMock;
     @Mock private Context mContextMock;
@@ -96,17 +97,17 @@ public class WifiChipAidlImplTest {
      */
     @Test
     public void testChipFeatureMaskTranslation() {
-        int caps = (
-                android.hardware.wifi.IWifiChip.ChipCapabilityMask.SET_TX_POWER_LIMIT
-                        | android.hardware.wifi.IWifiChip.ChipCapabilityMask.D2D_RTT
-                        | android.hardware.wifi.IWifiChip.ChipCapabilityMask.D2AP_RTT
+        int halFeatures = (
+                android.hardware.wifi.IWifiChip.FeatureSetMask.SET_TX_POWER_LIMIT
+                        | android.hardware.wifi.IWifiChip.FeatureSetMask.D2D_RTT
+                        | android.hardware.wifi.IWifiChip.FeatureSetMask.D2AP_RTT
         );
         long expected = (
                 WifiManager.WIFI_FEATURE_TX_POWER_LIMIT
                         | WifiManager.WIFI_FEATURE_D2D_RTT
                         | WifiManager.WIFI_FEATURE_D2AP_RTT
         );
-        assertEquals(expected, mDut.halToFrameworkChipCapabilityMask(caps));
+        assertEquals(expected, mDut.halToFrameworkChipFeatureSet(halFeatures));
     }
 
     /**

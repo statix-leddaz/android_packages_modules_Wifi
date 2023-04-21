@@ -123,6 +123,20 @@ public class WifiVendorHal {
     // https://docs.oracle.com/javase/specs/jls/se7/html/jls-17.html#jls-17.5
     private final Handler mHalEventHandler;
 
+
+    /**
+     * Wi-Fi chip related info.
+     */
+    private static class WifiChipInfo {
+        public WifiChip.WifiChipCapabilities capabilities = null;
+        /**
+         * Add more chip specific parameters here. Basically it avoids frequent call to chip by
+         * caching it on {@link mCachedWifiChipInfos}.
+         */
+    }
+    /** A cache which maps chip id to {@link WifiChipInfo} */
+    private SparseArray<WifiChipInfo> mCachedWifiChipInfos = new SparseArray<>();
+
     public WifiVendorHal(Context context, HalDeviceManager halDeviceManager, Handler handler,
             WifiGlobals wifiGlobals,
             @NonNull SsidTranslator ssidTranslator) {
@@ -486,6 +500,7 @@ public class WifiVendorHal {
                 mWifiChip = null;
                 return false;
             }
+            cacheWifiChipInfo(mWifiChip);
             return true;
         }
     }
@@ -760,6 +775,73 @@ public class WifiVendorHal {
         }
         enter("System feature set: %").c(featureSet).flush();
         return featureSet;
+    }
+
+    /**
+     * Get maximum number of links supported by the chip for MLO association.
+     *
+     * @param ifaceName Name of the interface.
+     * @return maximum number of association links or -1 if error or not available.
+     */
+    public int getMaxMloAssociationLinkCount(String ifaceName) {
+        WifiChipInfo wifiChipInfo = getCachedWifiChipInfo(
+                ifaceName);
+        if (wifiChipInfo == null || wifiChipInfo.capabilities == null) return -1;
+        return wifiChipInfo.capabilities.maxMloAssociationLinkCount;
+    }
+
+    /**
+     * Get the maximum number of STR links used in Multi-Link Operation.
+     *
+     * @param ifaceName Name of the interface.
+     * @return maximum number of MLO STR links or -1 if error or not available.
+     */
+    public int getMaxMloStrLinkCount(String ifaceName) {
+        WifiChipInfo wifiChipInfo = getCachedWifiChipInfo(
+                ifaceName);
+        if (wifiChipInfo == null || wifiChipInfo.capabilities == null) return -1;
+        return wifiChipInfo.capabilities.maxMloStrLinkCount;
+    }
+
+    /**
+     * Get the maximum number of concurrent TDLS sessions supported by the device.
+     *
+     * @param ifaceName Name of the interface.
+     * @return maximum number of concurrent TDLS sessions or -1 if error or not available.
+     */
+    public int getMaxSupportedConcurrentTdlsSessions(String ifaceName) {
+        WifiChipInfo wifiChipInfo = getCachedWifiChipInfo(
+                ifaceName);
+        if (wifiChipInfo == null || wifiChipInfo.capabilities == null) return -1;
+        return wifiChipInfo.capabilities.maxConcurrentTdlsSessionCount;
+    }
+
+    /**
+     * Get Chip specific cached info.
+     *
+     * @param ifaceName Name of the interface
+     * @return the cached information.
+     */
+    private WifiChipInfo getCachedWifiChipInfo(String ifaceName) {
+        WifiStaIface iface = getStaIface(ifaceName);
+        if (iface == null) return null;
+
+        WifiChip chip = mHalDeviceManager.getChip(iface);
+        if (chip == null) return null;
+
+        return mCachedWifiChipInfos.get(chip.getId());
+    }
+
+    /**
+     * Cache chip specific info.
+     *
+     * @param chip Wi-Fi chip
+     */
+    private void cacheWifiChipInfo(@NonNull WifiChip chip) {
+        if (mCachedWifiChipInfos.contains(chip.getId())) return;
+        WifiChipInfo wifiChipInfo = new WifiChipInfo();
+        wifiChipInfo.capabilities = chip.getWifiChipCapabilities();
+        mCachedWifiChipInfos.put(chip.getId(), wifiChipInfo);
     }
 
     /**
@@ -1842,7 +1924,14 @@ public class WifiVendorHal {
     }
 
     /**
-     * Set DTIM multiplier used when the system is in the suspended mode.
+     * Set maximum acceptable DTIM multiplier to hardware driver. Any multiplier larger than the
+     * maximum value must not be accepted, it will cause packet loss higher than what the system
+     * can accept, which will cause unexpected behavior for apps, and may interrupt the network
+     * connection.
+     *
+     * @param ifaceName Name of the interface.
+     * @param multiplier integer maximum DTIM multiplier value to set.
+     * @return true for success
      */
     public boolean setDtimMultiplier(@NonNull String ifaceName, int multiplier) {
         synchronized (sLock) {
@@ -1878,6 +1967,29 @@ public class WifiVendorHal {
         synchronized (sLock) {
             if (mWifiChip == null) return false;
             return mWifiChip.enableStaChannelForPeerNetwork(enableIndoorChannel, enableDfsChannel);
+        }
+    }
+
+    /**
+     * See {@link WifiNative#isBandCombinationSupported(String, List)}.
+     */
+    public boolean isBandCombinationSupported(@NonNull String ifaceName,
+            @NonNull List<Integer> bands) {
+        synchronized (sLock) {
+            WifiStaIface iface = getStaIface(ifaceName);
+            if (iface == null) return false;
+            return mHalDeviceManager.isBandCombinationSupported(iface, bands);
+        }
+    }
+
+    /**
+     * See {@link WifiNative#getSupportedBandCombinations(String)}.
+     */
+    public Set<List<Integer>> getSupportedBandCombinations(String ifaceName) {
+        synchronized (sLock) {
+            WifiStaIface iface = getStaIface(ifaceName);
+            if (iface == null) return null;
+            return mHalDeviceManager.getSupportedBandCombinations(iface);
         }
     }
 }

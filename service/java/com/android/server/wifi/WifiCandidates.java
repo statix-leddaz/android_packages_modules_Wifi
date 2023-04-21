@@ -143,6 +143,10 @@ public class WifiCandidates {
          */
         double getLastSelectionWeight();
         /**
+         * Returns true if the network was selected by the user.
+         */
+        boolean isUserSelected();
+        /**
          * Gets the scan RSSI.
          */
         int getScanRssi();
@@ -159,10 +163,29 @@ public class WifiCandidates {
          * Gets the predicted throughput in Mbps.
          */
         int getPredictedThroughputMbps();
+
+        /**
+         * Gets the predicted multi-link throughput in Mbps.
+         */
+        int getPredictedMultiLinkThroughputMbps();
+
+        /**
+         * Sets the predicted multi-link throughput in Mbps.
+         */
+        void setPredictedMultiLinkThroughputMbps(int throughput);
+
         /**
          * Estimated probability of getting internet access (percent 0-100).
          */
         int getEstimatedPercentInternetAvailability();
+
+        /**
+         * If the candidate is MLO capable, return the AP MLD MAC address.
+         *
+         * @return Mac address of the AP MLD.
+         */
+        MacAddress getApMldMacAddress();
+
         /**
          * Gets statistics from the scorecard.
          */
@@ -172,6 +195,13 @@ public class WifiCandidates {
          * Returns true for a restricted network.
          */
         boolean isRestricted();
+
+        /**
+         * Returns true if the candidate is a multi-link capable.
+         *
+         * @return true or false.
+         */
+        boolean isMultiLinkCapable();
     }
 
     /**
@@ -185,6 +215,7 @@ public class WifiCandidates {
         private final int mChannelWidth;
         private final double mLastSelectionWeight;
         private final WifiScoreCard.PerBssid mPerBssid; // For accessing the scorecard entry
+        private final boolean mIsUserSelected;
         private final boolean mIsCurrentNetwork;
         private final boolean mIsCurrentBssid;
         private final boolean mIsMetered;
@@ -199,7 +230,9 @@ public class WifiCandidates {
         private final boolean mOemPrivate;
         private final boolean mCarrierOrPrivileged;
         private final int mPredictedThroughputMbps;
+        private int mPredictedMultiLinkThroughputMbps;
         private final int mEstimatedPercentInternetAvailability;
+        private final MacAddress mApMldMacAddress;
 
         CandidateImpl(Key key, WifiConfiguration config,
                 WifiScoreCard.PerBssid perBssid,
@@ -208,11 +241,13 @@ public class WifiCandidates {
                 int frequency,
                 int channelWidth,
                 double lastSelectionWeight,
+                boolean isUserSelected,
                 boolean isCurrentNetwork,
                 boolean isCurrentBssid,
                 boolean isMetered,
                 boolean isCarrierOrPrivileged,
-                int predictedThroughputMbps) {
+                int predictedThroughputMbps,
+                MacAddress apMldMacAddress) {
             this.mKey = key;
             this.mNominatorId = nominatorId;
             this.mScanRssi = scanRssi;
@@ -220,6 +255,7 @@ public class WifiCandidates {
             this.mChannelWidth = channelWidth;
             this.mPerBssid = perBssid;
             this.mLastSelectionWeight = lastSelectionWeight;
+            this.mIsUserSelected = isUserSelected;
             this.mIsCurrentNetwork = isCurrentNetwork;
             this.mIsCurrentBssid = isCurrentBssid;
             this.mIsMetered = isMetered;
@@ -236,6 +272,8 @@ public class WifiCandidates {
             this.mEstimatedPercentInternetAvailability = perBssid == null ? 50 :
                     perBssid.estimatePercentInternetAvailability();
             this.mRestricted = config.restricted;
+            this.mPredictedMultiLinkThroughputMbps = 0;
+            this.mApMldMacAddress = apMldMacAddress;
         }
 
         @Override
@@ -271,6 +309,11 @@ public class WifiCandidates {
         @Override
         public boolean isRestricted() {
             return mRestricted;
+        }
+
+        @Override
+        public boolean isMultiLinkCapable() {
+            return (mApMldMacAddress != null);
         }
 
         @Override
@@ -314,6 +357,11 @@ public class WifiCandidates {
         }
 
         @Override
+        public boolean isUserSelected() {
+            return mIsUserSelected;
+        }
+
+        @Override
         public boolean isCurrentNetwork() {
             return mIsCurrentNetwork;
         }
@@ -344,8 +392,23 @@ public class WifiCandidates {
         }
 
         @Override
+        public int getPredictedMultiLinkThroughputMbps() {
+            return mPredictedMultiLinkThroughputMbps;
+        }
+
+        @Override
+        public void setPredictedMultiLinkThroughputMbps(int throughput) {
+            mPredictedMultiLinkThroughputMbps = throughput;
+        }
+
+        @Override
         public int getEstimatedPercentInternetAvailability() {
             return mEstimatedPercentInternetAvailability;
+        }
+
+        @Override
+        public MacAddress getApMldMacAddress() {
+            return  mApMldMacAddress;
         }
 
         /**
@@ -490,6 +553,39 @@ public class WifiCandidates {
 
     private final Map<Key, Candidate> mCandidates = new ArrayMap<>();
 
+    /**
+     * Lists of multi-link candidates mapped with MLD mac address.
+     *
+     * e.g. let's say we have 10 candidates starting from Candidate_1 to Candidate_10.
+     *  mMultiLinkCandidates has a mapping,
+     *      BSSID_MLD_AP1 -> [Candidate_1, Candidate_3]
+     *      BSSID_MLD_AP2 -> [Candidate_4, Candidate_6, Candidate_7]
+     *      Here, Candidate_1 and _3 are the affiliated to MLD_AP1.
+     *            Candidate_4, _6, _7 are affiliated to MLD_AP2
+     *  All remaining candidates are not affiliated to any MLD AP's.
+     */
+    private final Map<MacAddress, List<Candidate>> mMultiLinkCandidates = new ArrayMap<>();
+
+    /**
+     * Get a list of multi-link candidates as a collection.
+     *
+     * @return List of candidates or empty Collection if none present.
+     */
+    public Collection<List<Candidate>> getMultiLinkCandidates() {
+        return mMultiLinkCandidates.values();
+    }
+
+    /**
+     * Get a list of multi-link candidates for a particular MLD AP.
+     *
+     * @param mldMacAddr AP MLD address.
+     * @return List of candidates or null if none present.
+     */
+    @Nullable
+    public List<Candidate> getMultiLinkCandidates(@NonNull MacAddress mldMacAddr) {
+        return mMultiLinkCandidates.get(mldMacAddr);
+    }
+
     private int mCurrentNetworkId = -1;
     @Nullable private MacAddress mCurrentBssid = null;
 
@@ -527,7 +623,8 @@ public class WifiCandidates {
                 lastSelectionWeightBetweenZeroAndOne,
                 isMetered,
                 false,
-                predictedThroughputMbps);
+                predictedThroughputMbps,
+                scanDetail.getScanResult().getApMldMacAddress());
     }
 
     /**
@@ -560,7 +657,8 @@ public class WifiCandidates {
             double lastSelectionWeightBetweenZeroAndOne,
             boolean isMetered,
             boolean isCarrierOrPrivileged,
-            int predictedThroughputMbps) {
+            int predictedThroughputMbps,
+            MacAddress apMldMacAddress) {
         Candidate old = mCandidates.get(key);
         if (old != null) {
             // check if we want to replace this old candidate
@@ -579,12 +677,19 @@ public class WifiCandidates {
                 frequency,
                 channelWidth,
                 Math.min(Math.max(lastSelectionWeightBetweenZeroAndOne, 0.0), 1.0),
+                config.isUserSelected(),
                 config.networkId == mCurrentNetworkId,
                 key.bssid.equals(mCurrentBssid),
                 isMetered,
                 isCarrierOrPrivileged,
-                predictedThroughputMbps);
+                predictedThroughputMbps,
+                apMldMacAddress);
         mCandidates.put(key, candidate);
+        if (apMldMacAddress != null) {
+            List<Candidate> mlCandidates = mMultiLinkCandidates.computeIfAbsent(apMldMacAddress,
+                    k -> new ArrayList<>());
+            mlCandidates.add(candidate);
+        }
         return true;
     }
 

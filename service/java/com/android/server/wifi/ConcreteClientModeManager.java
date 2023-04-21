@@ -980,8 +980,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
                         if (TextUtils.isEmpty(mClientInterfaceName)) {
                             Log.e(getTag(), "Failed to create ClientInterface. Sit in Idle");
                             takeBugReportInterfaceFailureIfNeeded(
-                                    "Wi-Fi BugReport (scan STA interface failure): please report "
-                                            + "it through BetterBug app",
+                                    "Wi-Fi BugReport (scan STA interface failure):",
                                     "Failed to create client interface in idle state");
                             mModeListener.onStartFailure(ConcreteClientModeManager.this);
                             break;
@@ -1068,8 +1067,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
                                     WifiManager.WIFI_STATE_DISABLED,
                                     WifiManager.WIFI_STATE_UNKNOWN);
                             takeBugReportInterfaceFailureIfNeeded(
-                                    "Wi-Fi BugReport (STA interface failure): please report it "
-                                            + "through BetterBug app",
+                                    "Wi-Fi BugReport (STA interface failure):",
                                     "Fail to switch to connection mode in started state");
                             mModeListener.onStartFailure(ConcreteClientModeManager.this);
                             break;
@@ -1427,6 +1425,16 @@ public class ConcreteClientModeManager implements ClientModeManager {
     }
 
     @Override
+    public void onNetworkSwitchAccepted(int targetNetworkId, String targetBssid) {
+        getClientMode().onNetworkSwitchAccepted(targetNetworkId, targetBssid);
+    }
+
+    @Override
+    public void onNetworkSwitchRejected(int targetNetworkId, String targetBssid) {
+        getClientMode().onNetworkSwitchRejected(targetNetworkId, targetBssid);
+    }
+
+    @Override
     public void resetSimAuthNetworks(@ClientModeImpl.ResetSimReason int resetReason) {
         getClientMode().resetSimAuthNetworks(resetReason);
     }
@@ -1686,5 +1694,10 @@ public class ConcreteClientModeManager implements ClientModeManager {
     @Override
     public boolean isAffiliatedLinkBssid(MacAddress bssid) {
         return getClientMode().isAffiliatedLinkBssid(bssid);
+    }
+
+    @Override
+    public boolean isMlo() {
+        return getClientMode().isMlo();
     }
 }

@@ -84,6 +84,12 @@ public class WifiSettingsConfigStore {
             new Key<>("wifi_p2p_device_name", null);
 
     /**
+     * The Wi-Fi peer-to-peer device mac address
+     */
+    public static final Key<String> WIFI_P2P_DEVICE_ADDRESS =
+            new Key<>("wifi_p2p_device_address", null);
+
+    /**
      * Whether Wifi scoring is enabled or not.
      */
     public static final Key<Boolean> WIFI_SCORING_ENABLED =
@@ -151,6 +157,12 @@ public class WifiSettingsConfigStore {
      */
     public static final Key<Boolean> SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI_SET_BY_API =
             new Key<>("show_dialog_when_third_party_apps_enable_wifi_set_by_api", false);
+
+    /**
+     * AIDL version implemented by the Supplicant service.
+     */
+    public static final Key<Integer> SUPPLICANT_HAL_AIDL_SERVICE_VERSION =
+            new Key<>("supplicant_hal_aidl_service_version", -1);
 
     /******** Wifi shared pref keys ***************/
 

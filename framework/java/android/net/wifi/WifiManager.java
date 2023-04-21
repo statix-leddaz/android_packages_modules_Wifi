@@ -2033,6 +2033,8 @@ public class WifiManager {
             sLocalOnlyConnectionStatusListenerMap = new SparseArray();
     private static final SparseArray<IWifiNetworkStateChangedListener>
             sOnWifiNetworkStateChangedListenerMap = new SparseArray<>();
+    private static final SparseArray<IWifiDeviceLowLatencyModeListener>
+            sWifiDeviceLowLatencyModeListenerMap = new SparseArray<>();
 
     /**
      * Multi-link operation (MLO) will allow Wi-Fi devices to operate on multiple links at the same
@@ -7801,6 +7803,129 @@ public class WifiManager {
     }
 
     /**
+     * Interface for device low latency mode change listener. Should be extended by application and
+     * set when calling {@link WifiManager#addWifiDeviceLowLatencyModeListener(Executor,
+     * WifiDeviceLowLatencyModeListener)}.
+     *
+     * @hide
+     */
+    public interface WifiDeviceLowLatencyModeListener {
+        /**
+         * Provides device low latency mode is enabled or disabled.
+         *
+         * @param enabled true if low latency mode is enabled, otherwise false.
+         * @hide
+         */
+        void onEnabled(boolean enabled);
+    }
+
+    /**
+     * Helper class to support wifi device low latency mode listener.
+     */
+    private static class OnWifiDeviceLowLatencyModeProxy
+            extends IWifiDeviceLowLatencyModeListener.Stub {
+
+        @NonNull private Executor mExecutor;
+        @NonNull private WifiDeviceLowLatencyModeListener mListener;
+
+        OnWifiDeviceLowLatencyModeProxy(@NonNull Executor executor,
+                @NonNull WifiDeviceLowLatencyModeListener listener) {
+            Objects.requireNonNull(executor);
+            Objects.requireNonNull(listener);
+            mExecutor = executor;
+            mListener = listener;
+        }
+
+        @Override
+        public void onEnabled(boolean enabled) {
+            Log.i(TAG, "OnWifiDeviceLowLatencyModeProxy: onEnabled: " + enabled);
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mListener.onEnabled(enabled));
+        }
+    }
+
+    /**
+     * Add a listener for monitoring the device low latency mode. The enabled or disabled status
+     * will be delivered via {@link WifiDeviceLowLatencyModeListener#onEnabled(boolean)}. The
+     * caller can unregister a previously registered listener using {@link
+     * WifiManager#removeWifiDeviceLowLatencyModeListener(WifiDeviceLowLatencyModeListener)}.
+     *
+     * Note: While registering, listener will always be notified for the first time.
+     *
+     * Applications should have the {@link android.Manifest.permission#NETWORK_SETTINGS} and
+     * {@link android.Manifest.permission#MANAGE_WIFI_NETWORK_SELECTION} permission. Callers
+     * without the permission will trigger a {@link java.lang.SecurityException}.
+     *
+     * @param executor The Executor on which to execute the callbacks.
+     * @param listener The listener for the latency mode change.
+     * @throws IllegalArgumentException if incorrect input arguments are provided.
+     * @throws SecurityException if the caller is not allowed to call this API
+     * @hide
+     */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    @RequiresPermission(anyOf = {
+            android.Manifest.permission.NETWORK_SETTINGS,
+            MANAGE_WIFI_NETWORK_SELECTION
+    })
+    public void addWifiDeviceLowLatencyModeListener(
+            @NonNull @CallbackExecutor Executor executor,
+            @NonNull WifiDeviceLowLatencyModeListener listener) {
+        if (executor == null) throw new IllegalArgumentException("executor cannot be null");
+        if (listener == null) throw new IllegalArgumentException("listener cannot be null");
+        if (mVerboseLoggingEnabled) {
+            Log.d(TAG, "addWifiDeviceLowLatencyModeListener: listener=" + listener
+                    + ", executor=" + executor);
+        }
+        final int listenerIdentifier = System.identityHashCode(listener);
+        try {
+            synchronized (sWifiDeviceLowLatencyModeListenerMap) {
+                IWifiDeviceLowLatencyModeListener.Stub listenerProxy =
+                        new OnWifiDeviceLowLatencyModeProxy(executor, listener);
+                sWifiDeviceLowLatencyModeListenerMap.put(listenerIdentifier,
+                        listenerProxy);
+                mService.addWifiDeviceLowLatencyModeListener(listenerProxy);
+            }
+        } catch (RemoteException e) {
+            sWifiDeviceLowLatencyModeListenerMap.remove(listenerIdentifier);
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Removes a listener added using
+     * {@link WifiManager#addWifiDeviceLowLatencyModeListener(Executor,
+     * WifiDeviceLowLatencyModeListener)}. After calling this method, applications will no longer
+     * receive low latency mode change notifications.
+     *
+     * @param listener the listener to be removed.
+     * @throws IllegalArgumentException if incorrect input arguments are provided.
+     * @hide
+     */
+    public void removeWifiDeviceLowLatencyModeListener(
+            @NonNull WifiDeviceLowLatencyModeListener listener) {
+        if (listener == null) throw new IllegalArgumentException("listener cannot be null");
+        if (mVerboseLoggingEnabled) {
+            Log.d(TAG, "removeWifiDeviceLowLatencyModeListener: listener=" + listener);
+        }
+        final int listenerIdentifier = System.identityHashCode(listener);
+        synchronized (sWifiDeviceLowLatencyModeListenerMap) {
+            try {
+                if (!sWifiDeviceLowLatencyModeListenerMap.contains(listenerIdentifier)) {
+                    Log.w(TAG, "Unknown external listener " + listenerIdentifier);
+                    return;
+                }
+                mService.removeWifiDeviceLowLatencyModeListener(
+                        sWifiDeviceLowLatencyModeListenerMap.get(listenerIdentifier));
+
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            } finally {
+                sWifiDeviceLowLatencyModeListenerMap.remove(listenerIdentifier);
+            }
+        }
+    }
+
+    /**
      * Creates a new WifiLock.
      *
      * @param tag a tag for the WifiLock to identify it in debugging messages.  This string is
@@ -8063,6 +8188,7 @@ public class WifiManager {
     public void enableVerboseLogging(@VerboseLoggingLevel int verbose) {
         try {
             mService.enableVerboseLogging(verbose);
+            mVerboseLoggingEnabled = verbose == VERBOSE_LOGGING_LEVEL_ENABLED;
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -10013,6 +10139,33 @@ public class WifiManager {
             mExecutor.execute(() -> mScorer.onSetScoreUpdateObserver(
                     new ScoreUpdateObserverProxy(observerImpl)));
         }
+
+        @Override
+        public void onNetworkSwitchAccepted(
+                int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "WifiConnectedNetworkScorer: onNetworkSwitchAccepted:"
+                        + " sessionId=" + sessionId
+                        + " targetNetworkId=" + targetNetworkId
+                        + " targetBssid=" + targetBssid);
+            }
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mScorer.onNetworkSwitchAccepted(
+                    sessionId, targetNetworkId, targetBssid));
+        }
+        @Override
+        public void onNetworkSwitchRejected(
+                int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "WifiConnectedNetworkScorer: onNetworkSwitchRejected:"
+                                + " sessionId=" + sessionId
+                                + " targetNetworkId=" + targetNetworkId
+                                + " targetBssid=" + targetBssid);
+            }
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mScorer.onNetworkSwitchRejected(
+                    sessionId, targetNetworkId, targetBssid));
+        }
     }
 
     /**
@@ -11201,8 +11354,11 @@ public class WifiManager {
                                 for (int i = 0; i < interfacesToDelete.length; ++i) {
                                     finalSet.add(
                                             new InterfaceCreationImpact(interfacesToDelete[i],
-                                                    new ArraySet<>(
-                                                            packagesForInterfaces[i].split(","))));
+                                                    packagesForInterfaces[i] == null
+                                                            ? Collections.emptySet()
+                                                            : new ArraySet<>(
+                                                                    packagesForInterfaces[i]
+                                                                            .split(","))));
                                 }
                             }
                             executor.execute(() -> resultCallback.accept(canCreate, finalSet));
@@ -11239,6 +11395,10 @@ public class WifiManager {
      *
      * Note: Policies with duplicate IDs are not allowed. To update an existing policy, first
      *       remove it using {@link #removeQosPolicies(int[])}, and then re-add it using this API.
+     *
+     * Note: All policies in a single request must have the same {@link QosPolicyParams.Direction}.
+     *
+     * Note: Currently, only the {@link QosPolicyParams#DIRECTION_DOWNLINK} direction is supported.
      *
      * @param policyParamsList List of {@link QosPolicyParams} objects describing the requested
      *                         policies. Must have a maximum length of

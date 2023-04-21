@@ -308,7 +308,7 @@ public class WifiNanIfaceCallbackAidlImpl extends IWifiNanIfaceEventCallback.Stu
             Log.v(TAG, "notifyTerminatePairingResponse: id=" + id
                     + ", status=" + statusString(status));
         }
-        mWifiNanIface.getFrameworkCallback().notifyRespondToBootstrappingIndicationResponse(
+        mWifiNanIface.getFrameworkCallback().notifyTerminatePairingResponse(
                 (short) id, WifiNanIface.NanStatusCode.fromAidl(status.status));
     }
 
@@ -493,6 +493,10 @@ public class WifiNanIfaceCallbackAidlImpl extends IWifiNanIfaceEventCallback.Stu
     @Override
     public void eventSuspensionModeChanged(NanSuspensionModeChangeInd event) {
         if (!checkFrameworkCallback()) return;
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "eventSuspensionModeChanged: isSuspended=" + event.isSuspended);
+        }
+        mWifiNanIface.getFrameworkCallback().eventSuspensionModeChanged(event.isSuspended);
     }
 
     @Override

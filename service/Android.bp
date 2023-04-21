@@ -51,7 +51,6 @@ java_library {
 
     sdk_version: "system_server_current",
     lint: {
-        baseline_filename: "lint-baseline-pre-jarjar.xml",
         strict_updatability_linting: true,
     },
     libs: [
@@ -72,6 +71,11 @@ java_library {
         "framework-tethering.stubs.module_lib",
         "unsupportedappusage",
         "app-compat-annotations",
+        "auto_value_annotations",
+    ],
+
+    plugins: [
+        "auto_value_plugin",
     ],
 
     static_libs: [
@@ -109,10 +113,12 @@ java_library {
         // the necessary core platform APIs.
         "libprotobuf-java-lite",
         "libnanohttpd",
+        "modules-utils-backgroundthread",
         "modules-utils-locallog",
         "netd-client",
         "networkstack-client",
         "net-utils-services-common",
+        "service-entitlement",
         "wifi-lite-protos",
         "wifi-nano-protos",
     ],
@@ -132,6 +138,11 @@ java_library {
     // need to include `libs` so that Soong doesn't complain about missing classes after jarjaring
     libs: [
         "framework-wifi.impl",
+        "auto_value_annotations",
+    ],
+
+    plugins: [
+        "auto_value_plugin",
     ],
 
     sdk_version: "system_server_current",

@@ -253,12 +253,18 @@ public interface IWifiChip {
     /**
      * Retrieve the list of all the possible radio combinations supported by this chip.
      *
-     * @return |WifiRadioCombinationMatrix| representation of all the possible radio combinations,
-     *         or null if an error occurred.
-     *
+     * @return List of all possible radio combinations, or null if an error occurred.
      */
     @Nullable
-    WifiChip.WifiRadioCombinationMatrix getSupportedRadioCombinationsMatrix();
+    List<WifiChip.WifiRadioCombination> getSupportedRadioCombinations();
+
+    /**
+     * Retrieve the chip capabilities.
+     *
+     * @return |WifiChipCapabilities| representation of wifi chip capabilities or null if
+     * an error occurred or not available.
+     */
+    WifiChip.WifiChipCapabilities getWifiChipCapabilities();
 
     /**
      * Retrieve a list of usable Wifi channels for the specified band and operational modes.
@@ -351,13 +357,6 @@ public interface IWifiChip {
      */
     @Nullable
     byte[] requestFirmwareDebugDump();
-
-    /**
-     * Reset TX power levels.
-     *
-     * @return true if successful, false otherwise.
-     */
-    boolean resetTxPowerScenario();
 
     /**
      * Select one of the preset TX power scenarios.

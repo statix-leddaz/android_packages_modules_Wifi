@@ -26,6 +26,7 @@
           <item type="bool" name="config_wifi60ghzSupport" />
           <item type="bool" name="config_wifi11axSupportOverride" />
           <item type="bool" name="config_wifi11beSupportOverride" />
+          <item type="bool" name="config_wifiWepDeprecated" />
           <item type="bool" name="config_wifiFrameworkMaxNumSpatialStreamDeviceOverrideEnable" />
           <item type="integer" name="config_wifiFrameworkMaxNumSpatialStreamDeviceOverrideValue" />
           <item type="bool" name="config_wifi_fast_bss_transition_enabled" />
@@ -65,6 +66,8 @@
           <item type="integer" name="config_wifiFrameworkScoreEntryRssiThreshold6ghz" />
           <item type="integer" name="config_wifiFrameworkScoreLowRssiThreshold6ghz" />
           <item type="integer" name="config_wifiFrameworkScoreGoodRssiThreshold6ghz" />
+          <item type="bool" name="config_wifiAskUserBeforeSwitchingFromUserSelectedNetwork" />
+          <item type="bool" name="config_wifiThroughputScorerBoostForRecentlyUserSelectedNetwork" />
           <item type="integer" name="config_wifiFrameworkSoftApShutDownTimeoutMilliseconds" />
           <item type="integer" name="config_wifiFrameworkSoftApShutDownIdleInstanceInBridgedModeTimeoutMillisecond" />
           <item type="bool" name="config_wifiFrameworkSoftApDisableBridgedModeShutdownIdleInstanceWhenCharging" />
@@ -185,6 +188,7 @@
           <item type="integer" name="config_wifiBssidBlocklistMonitorConnectedScoreBaseBlockDurationMs" />
           <item type="integer" name="config_wifiBssidBlocklistMonitorFailureStreakCap" />
           <item type="integer" name="config_wifiBssidBlocklistAbnormalDisconnectTimeWindowMs" />
+          <item type="bool" name="config_wifiDisableUnwantedNetworkOnLowRssi" />
           <item type="integer" name="config_wifiBssidBlocklistMonitorNoResponseThreshold" />
           <item type="integer" name="config_wifiBssidBlocklistMonitorValidationFailureBaseBlockDurationMs" />
           <item type="bool" name="config_wifiScanHiddenNetworksScanOnlyMode" />
@@ -214,6 +218,7 @@
           <item type="integer" name="config_wifiRttBackgroundExecGapMs" />
           <item type="integer" name="config_wifiPollRssiIntervalMilliseconds" />
           <item type="integer" name="config_wifiPollRssiLongIntervalMilliseconds" />
+          <item type="integer" name="config_wifiNetworkNotFoundEventThreshold" />
           <item type="integer" name="config_wifiClientRssiMonitorThresholdDbm" />
           <item type="integer" name="config_wifiClientRssiMonitorHysteresisDb" />
           <item type="bool" name="config_wifiAdjustPollRssiIntervalEnabled" />
@@ -262,6 +267,7 @@
           <item type="integer" name="config_wifiP2pDeviceNamePostfixNumDigits" />
           <item type="integer" name="config_wifiP2pExtListenPeriodMs" />
           <item type="integer" name="config_wifiP2pExtListenIntervalMs" />
+          <item type="bool" name="config_p2pWaitForPeerInviteOnInviteStatusInfoUnavailable" />
           <item type="integer" name="config_wifiMaxNumWifiConfigurations" />
           <item type="integer" name="config_wifiMaxNumWifiConfigurationsAddedByAllApps" />
           <item type="bool" name="config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW" />
@@ -312,6 +318,11 @@
           <item type="bool" name="config_wifiLowLatencyLockDisableChipPowerSave" />
           <item type="bool" name="config_wifiNiapModeEnabled" />
           <item type="bool" name="config_wifiUpdateCountryCodeFromScanResultSetupWizard" />
+          <item type="bool" name="config_wifiP2pGoIpAddressAllocationInEapolFrames" />
+          <item type="string"  name="config_wifiP2pGoEapolIpAddressRangeStart" />
+          <item type="string"  name="config_wifiP2pGoEapolIpAddressRangeEnd" />
+          <item type="bool" name="config_wifiUpdateCountryCodeFromScanResultGeneric" />
+
           <!-- Params from config.xml that can be overlayed -->
 
           <!-- Params from strings.xml that can be overlayed -->
@@ -419,6 +430,7 @@
           <item type="string" name="wifi_ca_cert_dialog_message_server_name_text" />
           <item type="string" name="wifi_ca_cert_dialog_message_issuer_name_text" />
           <item type="string" name="wifi_ca_cert_dialog_message_organization_text" />
+          <item type="string" name="wifi_ca_cert_dialog_message_expiration_text" />
           <item type="string" name="wifi_ca_cert_dialog_message_contact_text" />
           <item type="string" name="wifi_ca_cert_dialog_message_signature_name_text" />
           <item type="string" name="wifi_ca_cert_notification_title" />
@@ -443,6 +455,10 @@
           <item type="string" name="wifi_network_disabled_by_admin_title" />
           <item type="string" name="wifi_network_disabled_by_admin_message" />
           <item type="string" name="wifi_network_disabled_by_admin_button" />
+          <item type="string" name="wifi_network_switch_dialog_title" />
+          <item type="string" name="wifi_network_switch_dialog_message" />
+          <item type="string" name="wifi_network_switch_dialog_positive_button" />
+          <item type="string" name="wifi_network_switch_dialog_negative_button" />
           <!-- Params from strings.xml that can be overlayed -->
 
           <!-- Params from styles.xml that can be overlayed -->
