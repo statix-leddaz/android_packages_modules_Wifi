@@ -3860,11 +3860,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             Log.d(getTag(), "Start makeIpClient ifaceName = " + mInterfaceName);
             mFacade.makeIpClient(mContext, mInterfaceName, mIpClientCallbacks);
             mIpClientCallbacks.awaitCreation();
+            setupClientMode();
         }
 
         private void continueEnterSetup(IpClientManager ipClientManager) {
             mIpClient = ipClientManager;
-            setupClientMode();
 
             IntentFilter filter = new IntentFilter();
             filter.addAction(Intent.ACTION_SCREEN_ON);
