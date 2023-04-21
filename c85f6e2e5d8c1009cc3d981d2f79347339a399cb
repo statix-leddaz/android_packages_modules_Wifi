@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "1e13f4b5_12f3527a",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-04-21T14:45:18Z",
+      "side": 1,
+      "message": "Arun: is there an open bug to track the issue which is being fixed by this CL? Please refer to it in the commit message or open one first. Thanks.",
+      "revId": "c85f6e2e5d8c1009cc3d981d2f79347339a399cb",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
