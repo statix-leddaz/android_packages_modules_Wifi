@@ -20,6 +20,7 @@ import android.content.Context;
 import android.net.INetd;
 import android.net.INetdUnsolicitedEventListener;
 import android.net.InetAddresses;
+import android.net.InterfaceActivityParcel;
 import android.net.InterfaceConfiguration;
 import android.net.InterfaceConfigurationParcel;
 import android.net.IpPrefix;
@@ -146,6 +147,12 @@ public class NetdWrapper {
         @Override
         public String getInterfaceHash() {
             return INetdUnsolicitedEventListener.HASH;
+        }
+
+        @Override
+        public void onInterfaceClassActivityChangedParcel(InterfaceActivityParcel activity)
+                throws RemoteException {
+            // Unused.
         }
     }
 
