@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "2ec3a2e3_5b31f13b",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1957819
+      },
+      "writtenOn": "2023-04-25T04:26:12Z",
+      "side": 1,
+      "message": "Etan Cohen, etancohen@google.com\n\n\nBug CL is updated.\nThis implementation is part of this patch \nhttps://android-review.googlesource.com/q/topic:%22dhcp_domain_search_list%22",
+      "revId": "8e49c8d19571f8fbbb080e1a7e97db8a62d0c483",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
