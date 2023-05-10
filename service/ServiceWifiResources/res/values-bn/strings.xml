@@ -139,8 +139,9 @@
     <string name="wifi_ca_cert_dialog_message_server_name_text" msgid="3707809865604348289">"সার্ভারের নাম:\n<xliff:g id="VALUE">%1$s</xliff:g>\n\n"</string>
     <string name="wifi_ca_cert_dialog_message_issuer_name_text" msgid="1147216922475192304">"ইস্যুকারীর নাম:\n<xliff:g id="VALUE">%1$s</xliff:g>\n\n"</string>
     <string name="wifi_ca_cert_dialog_message_organization_text" msgid="4936354600863239487">"সংস্থা:\n<xliff:g id="VALUE">%1$s</xliff:g>\n\n"</string>
+    <string name="wifi_ca_cert_dialog_message_expiration_text" msgid="1612917217606436217">"সার্টিফিকেটের মেয়াদ শেষ হওয়ার তারিখ:\n<xliff:g id="VALUE">%1$s</xliff:g>\n\n"</string>
+    <string name="wifi_ca_cert_dialog_message_signature_name_text" msgid="8455163626514894233">"SHA-256 ফিঙ্গারপ্রিন্ট:\n<xliff:g id="VALUE">%1$s</xliff:g>\n\n"</string>
     <string name="wifi_ca_cert_dialog_message_contact_text" msgid="5799083318641183815">"পরিচিতি:\n<xliff:g id="VALUE">%1$s</xliff:g>\n\n"</string>
-    <string name="wifi_ca_cert_dialog_message_signature_name_text" msgid="704614002854299776">"স্বাক্ষর:\n<xliff:g id="VALUE">%1$s</xliff:g>\n\n"</string>
     <string name="wifi_ca_cert_notification_title" msgid="537569884930429796">"নেটওয়ার্ক যাচাই করা প্রয়োজন"</string>
     <string name="wifi_ca_cert_notification_message" msgid="6413248690626616961">"কানেক্ট করার আগে <xliff:g id="SSID">%1$s</xliff:g>-এর নেটওয়ার্ক সংক্রান্ত বিবরণ পর্যালোচনা করুন। চালিয়ে যেতে ট্যাপ করুন।"</string>
     <string name="wifi_ca_cert_failed_to_install_ca_cert" msgid="4864192219789736195">"সার্টিফিকেট ইনস্টল করা যায়নি।"</string>
@@ -148,8 +149,8 @@
     <string name="wifi_tofu_invalid_cert_chain_message" msgid="7047987920029432392">"সার্ভার সার্টিফিকেট চেন সঠিক নয়।"</string>
     <string name="wifi_tofu_invalid_cert_chain_ok_text" msgid="9098567577510279854">"ঠিক আছে"</string>
     <string name="wifi_ca_cert_dialog_preT_title" msgid="6916320484037009061">"এই নেটওয়ার্ক যাচাই করা যায়নি"</string>
-    <string name="wifi_ca_cert_dialog_preT_continue_text" msgid="3181614240421159530">"তবুও কানেক্ট করুন"</string>
-    <string name="wifi_ca_cert_dialog_preT_abort_text" msgid="1195575129023960325">"কানেক্ট করবেন না"</string>
+    <string name="wifi_ca_cert_dialog_preT_continue_text" msgid="9118713368838029797">"সবসময় কানেক্ট থাকুন"</string>
+    <string name="wifi_ca_cert_dialog_preT_abort_text" msgid="1331309662999405224">"এখনই ডিসকানেক্ট করুন"</string>
     <string name="wifi_ca_cert_dialog_preT_message_hint" msgid="5682518783200852031">"<xliff:g id="SSID">%1$s</xliff:g> নেটওয়ার্কে একটি সার্টিফিকেট নেই।"</string>
     <string name="wifi_ca_cert_dialog_preT_message_link" msgid="6325483132538546884">"কীভাবে সার্টিফিকেট যোগ করতে হয় তা জানুন"</string>
     <string name="wifi_ca_cert_notification_preT_title" msgid="7255129934648316663">"এই নেটওয়ার্ক যাচাই করা যায়নি"</string>
@@ -164,7 +165,7 @@
     <string name="wifi_network_disabled_by_admin_message" msgid="7830360441333155462">"আপনার অ্যাডমিনিস্ট্রেটর <xliff:g id="SSID">%1$s</xliff:g> বন্ধ করে দিয়েছেন।"</string>
     <string name="wifi_network_disabled_by_admin_button" msgid="3350310756265122689">"বন্ধ করুন"</string>
     <string name="wifi_enabled_apm_first_time_title" msgid="4814302384637588804">"\'বিমান মোড\'-এ ওয়াই-ফাই চালু থাকে"</string>
-    <string name="wifi_enabled_apm_first_time_message" msgid="3804474326110512024">"আপনি ওয়াই-ফাই চালু করে রাখলে, পরের বার \'বিমান মোড\'-এ থাকাকালীন এটি চালু থাকবে"</string>
+    <string name="wifi_enabled_apm_first_time_message" msgid="5443101896157496353">"আপনি ওয়াই-ফাই চালু রাখলে, আপনি \'বিমান\' মোডে থাকলে পরবর্তী সময় আপনার ফোন এটি চালু রাখার জন্য মনে রাখবে"</string>
     <string name="apm_enabled_first_time_title" msgid="2534167413190488009">"ওয়াই-ফাই চালু থাকে"</string>
-    <string name="apm_enabled_first_time_message" msgid="8381594447227021365">"\'বিমান মোড\'-এ থাকাকালীন আপনার ফোন ওয়াই-ফাই চালু রাখে। এটি পরিবর্তন করতে, ওয়াই-ফাই বন্ধ করুন।"</string>
+    <string name="apm_enabled_first_time_message" msgid="4753441005253327841">"\'বিমান মোড\'-এ থাকাকালীন আপনার ফোন ওয়াই-ফাই চালু রাখে। আপনি এটি চালু না রাখতে চাইলে ওয়াই-ফাই বন্ধ করুন।"</string>
 </resources>

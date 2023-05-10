@@ -165,6 +165,7 @@ public class WifiNetworkFactory extends NetworkFactory {
     @Nullable private NetworkRequest mConnectedSpecificNetworkRequest;
     @Nullable private WifiNetworkSpecifier mConnectedSpecificNetworkRequestSpecifier;
     @Nullable private WifiConfiguration mUserSelectedNetwork;
+    private boolean mShouldHaveInternetCapabilities = false;
     private Set<Integer> mConnectedUids = new ArraySet<>();
     private int mUserSelectedNetworkConnectRetryCount;
     // Map of bssid to latest scan results for all scan results matching a request. Will be
@@ -372,10 +373,23 @@ public class WifiNetworkFactory extends NetworkFactory {
                 // Remove the mode manager if the associated request is no longer active.
                 if (mActiveSpecificNetworkRequest == null
                         && mConnectedSpecificNetworkRequest == null) {
-                    Log.w(TAG, "Client mode manager request answer received with no active"
-                            + " requests");
+                    Log.w(TAG, "Client mode manager request answer received with no active and "
+                            + "connected requests, remove the manager");
                     mActiveModeWarden.removeClientModeManager(modeManager);
                     return;
+                }
+                if (mActiveSpecificNetworkRequest == null) {
+                    Log.w(TAG, "Client mode manager request answer received with no active"
+                            + " requests, but has connected request. ");
+                    if (modeManager != mClientModeManager) {
+                        // If clientModeManager changes, teardown the current connection
+                        mActiveModeWarden.removeClientModeManager(modeManager);
+                    }
+                    return;
+                }
+                if (modeManager != mClientModeManager) {
+                    // If clientModeManager changes, teardown the current connection
+                    removeClientModeManagerIfNecessary();
                 }
                 mClientModeManager = modeManager;
                 mClientModeManagerRole = modeManager.getRole();
@@ -745,6 +759,11 @@ public class WifiNetworkFactory extends NetworkFactory {
                 releaseRequestAsUnfulfillableByAnyFactory(networkRequest);
                 return false;
             }
+            if (mWifiPermissionsUtil.isGuestUser()) {
+                Log.e(TAG, "network specifier from guest user, reject");
+                releaseRequestAsUnfulfillableByAnyFactory(networkRequest);
+                return false;
+            }
             if (Objects.equals(mActiveSpecificNetworkRequest, networkRequest)
                     || Objects.equals(mConnectedSpecificNetworkRequest, networkRequest)) {
                 Log.e(TAG, "acceptRequest: Already processing the request " + networkRequest);
@@ -819,6 +838,11 @@ public class WifiNetworkFactory extends NetworkFactory {
             // Invalid request with wifi network specifier.
             if (!isRequestWithWifiNetworkSpecifierValid(networkRequest)) {
                 Log.e(TAG, "Invalid network specifier: " + ns + ". Rejecting");
+                releaseRequestAsUnfulfillableByAnyFactory(networkRequest);
+                return;
+            }
+            if (mWifiPermissionsUtil.isGuestUser()) {
+                Log.e(TAG, "network specifier from guest user, reject");
                 releaseRequestAsUnfulfillableByAnyFactory(networkRequest);
                 return;
             }
@@ -994,6 +1018,14 @@ public class WifiNetworkFactory extends NetworkFactory {
         return Collections.emptySet();
     }
 
+    /**
+     * Return whether if current network request should have the internet capabilities due to a
+     * same saved/suggestion network is present.
+     */
+    public boolean shouldHaveInternetCapabilities() {
+        return mShouldHaveInternetCapabilities;
+    }
+
     // Helper method to add the provided network configuration to WifiConfigManager, if it does not
     // already exist & return the allocated network ID. This ID will be used in the CONNECT_NETWORK
     // request to ClientModeImpl.
@@ -1114,10 +1146,28 @@ public class WifiNetworkFactory extends NetworkFactory {
             Log.v(TAG,
                     "Requesting new ClientModeManager instance - didUserSeeUi = " + didUserSeeUi);
         }
+        mShouldHaveInternetCapabilities = false;
+        ClientModeManagerRequestListener listener = new ClientModeManagerRequestListener();
+        if (mWifiPermissionsUtil.checkEnterCarModePrioritized(mActiveSpecificNetworkRequest
+                .getRequestorUid())) {
+            mShouldHaveInternetCapabilities = hasNetworkForInternet(mUserSelectedNetwork);
+            if (mShouldHaveInternetCapabilities) {
+                listener.onAnswer(mActiveModeWarden.getPrimaryClientModeManager());
+                return;
+            }
+        }
         WorkSource ws = new WorkSource(mActiveSpecificNetworkRequest.getRequestorUid(),
                 mActiveSpecificNetworkRequest.getRequestorPackageName());
         mActiveModeWarden.requestLocalOnlyClientModeManager(new ClientModeManagerRequestListener(),
                 ws, networkToConnect.SSID, networkToConnect.BSSID, didUserSeeUi);
+    }
+
+    private boolean hasNetworkForInternet(WifiConfiguration network) {
+        List<WifiConfiguration> networks = mWifiConfigManager.getConfiguredNetworksWithPasswords();
+        return networks.stream().anyMatch(a -> Objects.equals(a.SSID, network.SSID)
+                && !WifiConfigurationUtil.hasCredentialChanged(a, network)
+                && !a.fromWifiNetworkSpecifier
+                && !a.noInternetAccessExpected);
     }
 
     private void handleConnectToNetworkUserSelection(WifiConfiguration network,
@@ -1278,7 +1328,6 @@ public class WifiNetworkFactory extends NetworkFactory {
         mActiveSpecificNetworkRequest = null;
         mActiveSpecificNetworkRequestSpecifier = null;
         mSkipUserDialogue = false;
-        mUserSelectedNetwork = null;
         mUserSelectedNetworkConnectRetryCount = 0;
         mIsPeriodicScanEnabled = false;
         mIsPeriodicScanPaused = false;

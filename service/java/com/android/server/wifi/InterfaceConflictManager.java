@@ -35,12 +35,16 @@ import android.os.Message;
 import android.os.WorkSource;
 import android.text.TextUtils;
 import android.util.ArraySet;
+import android.util.LocalLog;
 import android.util.Log;
 import android.util.Pair;
+
+import androidx.annotation.NonNull;
 
 import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
 import com.android.server.wifi.util.WaitingState;
+import com.android.server.wifi.util.WorkSourceHelper;
 import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
@@ -60,11 +64,13 @@ public class InterfaceConflictManager {
     private static final String TAG = "InterfaceConflictManager";
     private boolean mVerboseLoggingEnabled = false;
 
+    private final WifiInjector mWifiInjector;
     private final WifiContext mContext;
     private final FrameworkFacade mFrameworkFacade;
     private final HalDeviceManager mHdm;
     private final WifiThreadRunner mThreadRunner;
     private final WifiDialogManager mWifiDialogManager;
+    private final LocalLog mLocalLog;
 
     private boolean mUserApprovalNeeded = false;
     private Set<String> mUserApprovalExemptedPackages = new ArraySet<>();
@@ -84,14 +90,16 @@ public class InterfaceConflictManager {
 
     private static final String MESSAGE_BUNDLE_KEY_PENDING_USER = "pending_user_decision";
 
-    public InterfaceConflictManager(WifiContext wifiContext, FrameworkFacade frameworkFacade,
-            HalDeviceManager hdm, WifiThreadRunner threadRunner,
-            WifiDialogManager wifiDialogManager) {
+    public InterfaceConflictManager(@NonNull WifiInjector wifiInjector, WifiContext wifiContext,
+            FrameworkFacade frameworkFacade, HalDeviceManager hdm, WifiThreadRunner threadRunner,
+            WifiDialogManager wifiDialogManager, LocalLog localLog) {
+        mWifiInjector = wifiInjector;
         mContext = wifiContext;
         mFrameworkFacade = frameworkFacade;
         mHdm = hdm;
         mThreadRunner = threadRunner;
         mWifiDialogManager = wifiDialogManager;
+        mLocalLog = localLog;
 
         // Monitor P2P connection for auto-approval
         IntentFilter intentFilter = new IntentFilter();
@@ -122,30 +130,67 @@ public class InterfaceConflictManager {
     }
 
     /**
-     * Returns an indication as to whether user approval is needed for this specific request. User
-     * approval is controlled by:
+     * Returns whether user approval is needed to delete an existing interface for a new one.
+     * User approval is controlled by:
      * - A global overlay `config_wifiUserApprovalRequiredForD2dInterfacePriority`
      * - An exemption list overlay `config_wifiExcludedFromUserApprovalForD2dInterfacePriority`
      *   which is a list of packages which are *exempted* from user approval
      * - A shell command which can be used to override
      *
-     * @param requestorWs The WorkSource of the requestor - used to determine whether it is exempted
-     *                    from user approval. All requesting packages must be exempted for the
-     *                    dialog to NOT be displayed.
+     * @param requestedCreateType Requested interface type
+     * @param newRequestorWsHelper WorkSourceHelper of the new interface
+     * @param existingCreateType Existing interface type
+     * @param existingRequestorWsHelper WorkSourceHelper of the existing interface
+     * @return true if the new interface needs user approval to delete the existing one.
      */
-    private boolean isUserApprovalNeeded(WorkSource requestorWs) {
-        if (mUserApprovalNeededOverride) return mUserApprovalNeededOverrideValue;
-        if (!mUserApprovalNeeded || mUserApprovalExemptedPackages.isEmpty()) {
-            return mUserApprovalNeeded;
+    public boolean needsUserApprovalToDelete(
+            int requestedCreateType, @NonNull WorkSourceHelper newRequestorWsHelper,
+            int existingCreateType, @NonNull WorkSourceHelper existingRequestorWsHelper) {
+        if (!isUserApprovalEnabled()) {
+            return false;
         }
 
-        for (int i = 0; i < requestorWs.size(); ++i) {
-            if (!mUserApprovalExemptedPackages.contains(requestorWs.getPackageName(i))) {
+        // Check if every package in the WorkSource are exempt from user approval.
+        if (!mUserApprovalExemptedPackages.isEmpty()) {
+            boolean exemptFromUserApproval = true;
+            WorkSource requestorWs = newRequestorWsHelper.getWorkSource();
+            for (int i = 0; i < requestorWs.size(); i++) {
+                if (!mUserApprovalExemptedPackages.contains(requestorWs.getPackageName(i))) {
+                    exemptFromUserApproval = false;
+                    break;
+                }
+            }
+            if (exemptFromUserApproval) {
+                return false;
+            }
+        }
+        // Check if priority level can get user approval.
+        if (newRequestorWsHelper.getRequestorWsPriority() <= WorkSourceHelper.PRIORITY_BG
+                || existingRequestorWsHelper.getRequestorWsPriority()
+                == WorkSourceHelper.PRIORITY_INTERNAL) {
+            return false;
+        }
+        // Check if the conflicting interface types can get user approval.
+        if (requestedCreateType == HDM_CREATE_IFACE_AP
+                || requestedCreateType == HDM_CREATE_IFACE_AP_BRIDGE) {
+            if (existingCreateType == HDM_CREATE_IFACE_P2P
+                    || existingCreateType == HDM_CREATE_IFACE_NAN) {
+                return true;
+            }
+        } else if (requestedCreateType == HDM_CREATE_IFACE_P2P) {
+            if (existingCreateType == HDM_CREATE_IFACE_AP
+                    || existingCreateType == HDM_CREATE_IFACE_AP_BRIDGE
+                    || existingCreateType == HDM_CREATE_IFACE_NAN) {
+                return true;
+            }
+        } else if (requestedCreateType == HDM_CREATE_IFACE_NAN) {
+            if (existingCreateType == HDM_CREATE_IFACE_AP
+                    || existingCreateType == HDM_CREATE_IFACE_AP_BRIDGE
+                    || existingCreateType == HDM_CREATE_IFACE_P2P) {
                 return true;
             }
         }
-
-        return false; // all packages of the requestor are excluded
+        return false;
     }
 
     /**
@@ -156,12 +201,17 @@ public class InterfaceConflictManager {
      * @param overrideValue The actual override value (i.e. disable or enable).
      */
     public void setUserApprovalNeededOverride(boolean override, boolean overrideValue) {
-        if (mVerboseLoggingEnabled) {
-            Log.d(TAG, "setUserApprovalNeededOverride: override=" + override + ", overrideValue="
-                    + overrideValue);
-        }
+        localLog("setUserApprovalNeededOverride: override=" + override + ", overrideValue="
+                + overrideValue);
         mUserApprovalNeededOverride = override;
         mUserApprovalNeededOverrideValue = overrideValue;
+    }
+
+    private boolean isUserApprovalEnabled() {
+        if (mUserApprovalNeededOverride) {
+            return mUserApprovalNeededOverrideValue;
+        }
+        return mUserApprovalNeeded;
     }
 
     /**
@@ -235,6 +285,7 @@ public class InterfaceConflictManager {
             @HalDeviceManager.HdmIfaceTypeForCreation int createIfaceType, WorkSource requestorWs,
             boolean bypassDialog) {
         synchronized (mLock) {
+            // Check if we're waiting for user approval for a different caller.
             if (mUserApprovalPending && !TextUtils.equals(tag, mUserApprovalPendingTag)) {
                 Log.w(TAG, tag + ": rejected since there's a pending user approval for "
                         + mUserApprovalPendingTag);
@@ -250,14 +301,13 @@ public class InterfaceConflictManager {
                 mUserApprovalPending = false;
                 mUserApprovalPendingTag = null;
 
-                if (mVerboseLoggingEnabled) {
-                    Log.d(TAG, tag + ": Executing a command with user approval result: "
-                            + mUserJustApproved + ", isReexecutedCommand: " + isReexecutedCommand
-                            + ", wasInWaitingState: " + wasInWaitingState);
-                }
+                localLog(tag + ": Executing a command with user approval result: "
+                        + mUserJustApproved + ", isReexecutedCommand: " + isReexecutedCommand
+                        + ", wasInWaitingState: " + wasInWaitingState);
                 return mUserJustApproved ? ICM_EXECUTE_COMMAND : ICM_ABORT_COMMAND;
             }
 
+            // Check if we're already waiting for user approval for this caller.
             if (mUserApprovalPending) {
                 Log.w(TAG, tag
                         + ": trying for another potentially waiting operation - but should be"
@@ -266,30 +316,35 @@ public class InterfaceConflictManager {
                 return ICM_SKIP_COMMAND_WAIT_FOR_USER; // same effect
             }
 
-            if (bypassDialog || !isUserApprovalNeeded(requestorWs)) return ICM_EXECUTE_COMMAND;
+            // Execute the command if the dialogs aren't enabled.
+            if (!isUserApprovalEnabled()) return ICM_EXECUTE_COMMAND;
 
+            // Auto-approve dialog if bypass is specified.
+            if (bypassDialog) return ICM_EXECUTE_COMMAND;
+
+            // Check if we need to show the dialog.
             List<Pair<Integer, WorkSource>> impact = mHdm.reportImpactToCreateIface(createIfaceType,
                     false, requestorWs);
-            if (mVerboseLoggingEnabled) {
-                Log.d(TAG, tag + ": Asking user about creating the interface, impact=" + impact);
-            }
+            localLog(tag + ": Asking user about creating the interface, impact=" + impact);
             if (impact == null || impact.isEmpty()) {
-                Log.d(TAG, tag
+                localLog(tag
                         + ": Either can't create interface or can w/o sid-effects - proceeding");
                 return ICM_EXECUTE_COMMAND;
             }
 
+            // Auto-approve dialog if we only need to delete a disconnected P2P.
             if (mUserApprovalNotRequireForDisconnectedP2p && !mIsP2pConnected
                     && impact.size() == 1 && impact.get(0).first == HDM_CREATE_IFACE_P2P) {
-                Log.d(TAG, tag
+                localLog(tag
                         + ": existing inferface is p2p and it is not connected - proceeding");
                 return ICM_EXECUTE_COMMAND;
             }
 
             boolean shouldShowDialogToDelete = false;
             for (Pair<Integer, WorkSource> ifaceToDelete : impact) {
-                if (mHdm.needsUserApprovalToDelete(createIfaceType, requestorWs,
-                        ifaceToDelete.first, ifaceToDelete.second)) {
+                if (needsUserApprovalToDelete(
+                        createIfaceType, mWifiInjector.makeWsHelper(requestorWs),
+                        ifaceToDelete.first, mWifiInjector.makeWsHelper(ifaceToDelete.second))) {
                     shouldShowDialogToDelete = true;
                     break;
                 }
@@ -313,10 +368,8 @@ public class InterfaceConflictManager {
             mUserJustApproved = false;
             mCurrentDialogHandle = createUserApprovalDialog(createIfaceType, requestorWs, impact,
                     (result) -> {
-                        if (mVerboseLoggingEnabled) {
-                            Log.d(TAG, tag + ": User response to creating " + getInterfaceName(
-                                    createIfaceType) + ": " + result);
-                        }
+                        localLog(tag + ": User response to creating " + getInterfaceName(
+                                createIfaceType) + ": " + result);
                         mUserJustApproved = result;
                         mCurrentWaitingState = null;
                         mCurrentTargetState = null;
@@ -343,10 +396,8 @@ public class InterfaceConflictManager {
             WorkSource requestorWs,
             List<Pair<Integer, WorkSource>> impact,
             Consumer<Boolean> handleResult) {
-        if (mVerboseLoggingEnabled) {
-            Log.d(TAG, "displayUserApprovalDialog: createIfaceType=" + createIfaceType
-                    + ", requestorWs=" + requestorWs + ", impact=" + impact);
-        }
+        localLog("displayUserApprovalDialog: createIfaceType=" + createIfaceType
+                + ", requestorWs=" + requestorWs + ", impact=" + impact);
 
         CharSequence requestorAppName = mFrameworkFacade.getAppName(mContext,
                 requestorWs.getPackageName(0), requestorWs.getUid(0));
@@ -380,19 +431,15 @@ public class InterfaceConflictManager {
                 new WifiDialogManager.SimpleDialogCallback() {
                     @Override
                     public void onPositiveButtonClicked() {
-                        if (mVerboseLoggingEnabled) {
-                            Log.d(TAG, "User approved request for " + getInterfaceName(
-                                    createIfaceType));
-                        }
+                        localLog("User approved request for " + getInterfaceName(
+                                createIfaceType));
                         handleResult.accept(true);
                     }
 
                     @Override
                     public void onNegativeButtonClicked() {
-                        if (mVerboseLoggingEnabled) {
-                            Log.d(TAG, "User rejected request for " + getInterfaceName(
-                                    createIfaceType));
-                        }
+                        localLog("User rejected request for " + getInterfaceName(
+                                createIfaceType));
                         handleResult.accept(false);
                     }
 
@@ -462,6 +509,15 @@ public class InterfaceConflictManager {
                 R.bool.config_wifiUserApprovalNotRequireForDisconnectedP2p);
     }
 
+    // A helper to log debugging information in the local log buffer, which can
+    // be retrieved in bugreport. It is also used to print the log in the console.
+    private void localLog(String log) {
+        mLocalLog.log(log);
+        if (mVerboseLoggingEnabled) {
+            Log.d(TAG, log);
+        }
+    }
+
     /**
      * Dump the internal state of the class.
      */
@@ -475,5 +531,6 @@ public class InterfaceConflictManager {
         pw.println("  mUserJustApproved=" + mUserJustApproved);
         pw.println("  mUserApprovalNotRequireForDisconnectedP2p="
                 + mUserApprovalNotRequireForDisconnectedP2p);
+        mLocalLog.dump(pw);
     }
 }

@@ -549,7 +549,7 @@ public class WifiConnectivityManager {
                 mWifiBlocklistMonitor.tryEnablingBlockedBssids(scanDetails);
         for (ScanDetail scanDetail : enabledDetails) {
             WifiConfiguration config = mConfigManager.getSavedNetworkForScanDetail(scanDetail);
-            if (config != null) {
+            if (config != null && config.getNetworkSelectionStatus().isNetworkTemporaryDisabled()) {
                 mConfigManager.updateNetworkSelectionStatus(config.networkId,
                         WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
             }
@@ -2810,8 +2810,11 @@ public class WifiConnectivityManager {
                         // filter out candidates that are disabled.
                         WifiConfiguration config =
                                 mConfigManager.getConfiguredNetwork(candidate.getNetworkConfigId());
-                        return config != null
-                                && config.getNetworkSelectionStatus().isNetworkEnabled()
+                        if (config == null || mConfigManager.isNetworkTemporarilyDisabledByUser(
+                                config.isPasspoint() ? config.FQDN : config.SSID)) {
+                            return false;
+                        }
+                        return config.getNetworkSelectionStatus().isNetworkEnabled()
                                 && config.allowAutojoin;
                     })
                     .collect(Collectors.toList());

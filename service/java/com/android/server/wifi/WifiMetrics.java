@@ -1080,6 +1080,8 @@ public class WifiMetrics {
         private int mAuthType;
         private int mTrigger;
         private boolean mHasEverConnected;
+        private boolean mIsCarrierWifi;
+        private boolean mIsOobPseudonymEnabled;
 
         private ConnectionEvent() {
             mConnectionEvent = new WifiMetricsProto.ConnectionEvent();
@@ -1089,6 +1091,8 @@ public class WifiMetrics {
             mConfigBssid = "<NULL>";
             mWifiState = WifiMetricsProto.WifiLog.WIFI_UNKNOWN;
             mScreenOn = false;
+            mIsCarrierWifi = false;
+            mIsOobPseudonymEnabled = false;
         }
 
         public String toString() {
@@ -1324,6 +1328,8 @@ public class WifiMetrics {
                         clientRoleEnumToString(mConnectionEvent.interfaceRole));
                 sb.append(", isFirstConnectionAfterBoot="
                         + mConnectionEvent.isFirstConnectionAfterBoot);
+                sb.append(", isCarrierWifi=" + mIsCarrierWifi);
+                sb.append(", isOobPseudonymEnabled=" + mIsOobPseudonymEnabled);
                 return sb.toString();
             }
         }
@@ -1339,6 +1345,10 @@ public class WifiMetrics {
                     // Probe-responses)
                     if (config.dtimInterval > 0) {
                         mRouterFingerPrint.mRouterFingerPrintProto.dtim = config.dtimInterval;
+                    }
+
+                    if (config.carrierId != TelephonyManager.UNKNOWN_CARRIER_ID) {
+                        mIsCarrierWifi = true;
                     }
 
                     mConfigSsid = config.SSID;
@@ -1816,7 +1826,8 @@ public class WifiMetrics {
      * or 0 if there is no unfinished connection
      */
     public int startConnectionEvent(
-            String ifaceName, WifiConfiguration config, String targetBSSID, int roamType) {
+            String ifaceName, WifiConfiguration config, String targetBSSID, int roamType,
+            boolean isOobPseudonymEnabled) {
         synchronized (mLock) {
             int overlapWithLastConnectionMs = 0;
             ConnectionEvent currentConnectionEvent = mCurrentConnectionEventPerIface.get(ifaceName);
@@ -1861,6 +1872,7 @@ public class WifiMetrics {
             currentConnectionEvent.mConnectionEvent.networkSelectorExperimentId =
                     mNetworkSelectorExperimentId;
             currentConnectionEvent.updateFromWifiConfiguration(config);
+            currentConnectionEvent.mIsOobPseudonymEnabled = isOobPseudonymEnabled;
             currentConnectionEvent.mConfigBssid = "any";
             currentConnectionEvent.mWifiState = mWifiState;
             currentConnectionEvent.mScreenOn = mScreenOn;
@@ -1922,7 +1934,7 @@ public class WifiMetrics {
                 } else if (WifiConfigurationUtil.isConfigForPskNetwork(config)) {
                     currentConnectionEvent.mConnectionEvent.networkType =
                             WifiMetricsProto.ConnectionEvent.TYPE_WPA2;
-                } else if (WifiConfigurationUtil.isConfigForEapNetwork(config)) {
+                } else if (WifiConfigurationUtil.isConfigForEnterpriseNetwork(config)) {
                     currentConnectionEvent.mConnectionEvent.networkType =
                             WifiMetricsProto.ConnectionEvent.TYPE_EAP;
                 } else if (WifiConfigurationUtil.isConfigForOweNetwork(config)) {
@@ -2071,22 +2083,19 @@ public class WifiMetrics {
                 // Write metrics to statsd
                 int wwFailureCode = getConnectionResultFailureCode(level2FailureCode,
                         level2FailureReason);
-
-                if (wwFailureCode != -1) {
-                    int timeSinceConnectedSeconds = (int) ((mPreviousSession != null ?
-                            (mClock.getElapsedSinceBootMillis()
-                                    - mPreviousSession.mSessionEndTimeMillis) :
-                            mClock.getElapsedSinceBootMillis()) / 1000);
-
-                    WifiStatsLog.write(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED,
-                            connectionSucceeded,
-                            wwFailureCode, currentConnectionEvent.mConnectionEvent.signalStrength,
-                            durationTakenToConnectMillis, band, currentConnectionEvent.mAuthType,
-                            currentConnectionEvent.mTrigger,
-                            currentConnectionEvent.mHasEverConnected,
-                            timeSinceConnectedSeconds
-                    );
-                }
+                int timeSinceConnectedSeconds = (int) ((mPreviousSession != null
+                        ? (mClock.getElapsedSinceBootMillis()
+                                - mPreviousSession.mSessionEndTimeMillis) :
+                        mClock.getElapsedSinceBootMillis()) / 1000);
+                WifiStatsLog.write(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED,
+                        connectionSucceeded,
+                        wwFailureCode, currentConnectionEvent.mConnectionEvent.signalStrength,
+                        durationTakenToConnectMillis, band, currentConnectionEvent.mAuthType,
+                        currentConnectionEvent.mTrigger,
+                        currentConnectionEvent.mHasEverConnected,
+                        timeSinceConnectedSeconds,
+                        currentConnectionEvent.mIsCarrierWifi,
+                        currentConnectionEvent.mIsOobPseudonymEnabled);
 
                 // ConnectionEvent already added to ConnectionEvents List. Safe to remove here.
                 mCurrentConnectionEventPerIface.remove(ifaceName);
@@ -2159,7 +2168,6 @@ public class WifiMetrics {
                 userToggledWifiAfterEnteringApmWithinMinute, false);
     }
 
-    // TODO(b/177341879): Add failure type ConnectionEvent.FAILURE_NO_RESPONSE into Westworld.
     private int getConnectionResultFailureCode(int level2FailureCode, int level2FailureReason) {
         switch (level2FailureCode) {
             case ConnectionEvent.FAILURE_NONE:
@@ -2183,8 +2191,18 @@ public class WifiMetrics {
                 return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_NETWORK_DISCONNECTION;
             case ConnectionEvent.FAILURE_ROAM_TIMEOUT:
                 return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_ROAM_TIMEOUT;
+            case ConnectionEvent.FAILURE_CONNECT_NETWORK_FAILED:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_CONNECT_NETWORK_FAILED;
+            case ConnectionEvent.FAILURE_NEW_CONNECTION_ATTEMPT:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_NEW_CONNECTION_ATTEMPT;
+            case ConnectionEvent.FAILURE_REDUNDANT_CONNECTION_ATTEMPT:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_REDUNDANT_CONNECTION_ATTEMPT;
+            case ConnectionEvent.FAILURE_NETWORK_NOT_FOUND:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_NETWORK_NOT_FOUND;
+            case ConnectionEvent.FAILURE_NO_RESPONSE:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_NO_RESPONSE;
             default:
-                return -1;
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__FAILURE_CODE__FAILURE_OTHERS;
         }
     }
 
@@ -5404,7 +5422,6 @@ public class WifiMetrics {
             mNumProvisionSuccess = 0;
             mBssidBlocklistStats = new BssidBlocklistStats();
             mConnectionDurationStats.clear();
-            mWifiLogProto.isExternalWifiScorerOn = false;
             mWifiOffMetrics.clear();
             mSoftApConfigLimitationMetrics.clear();
             //Initial partial scan metrics

@@ -79,7 +79,6 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiConfiguration;
-import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiSsid;
 import android.os.Handler;
@@ -2035,13 +2034,8 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
     public void testTerminateV1_0() throws Exception {
         executeAndValidateInitializationSequence();
 
-        doAnswer(new MockAnswerUtil.AnswerWithArguments() {
-            public boolean answer(IHwBinder.DeathRecipient cb, long cookie) throws RemoteException {
-                mHandler.post(() -> cb.serviceDied(cookie));
-                return true;
-            }
-        }).when(mISupplicantMock).linkToDeath(any(IHwBinder.DeathRecipient.class), any(long.class));
         mDut.terminate();
+        mSupplicantDeathCaptor.getValue().serviceDied(mDeathRecipientCookieCaptor.getValue());
         mLooper.dispatchAll();
         verify(mFrameworkFacade).stopSupplicant();
 
@@ -2057,16 +2051,8 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         setupMocksForHalV1_1();
 
         executeAndValidateInitializationSequenceV1_1(false, false);
-
-        doAnswer(new MockAnswerUtil.AnswerWithArguments() {
-            public boolean answer(IHwBinder.DeathRecipient cb, long cookie) throws RemoteException {
-                mHandler.post(() -> cb.serviceDied(cookie));
-                return true;
-            }
-        }).when(mISupplicantMockV11).linkToDeath(any(IHwBinder.DeathRecipient.class),
-                any(long.class));
-
         mDut.terminate();
+        mSupplicantDeathCaptor.getValue().serviceDied(mDeathRecipientCookieCaptor.getValue());
         mLooper.dispatchAll();
         verify(mFrameworkFacade, never()).stopSupplicant();
         verify(mISupplicantMockV11).terminate();
@@ -2797,7 +2783,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         assertTrue(mDut.isInitializationComplete());
         assertTrue(mDut.setupIface(WLAN0_IFACE_NAME) == shouldSucceed);
         mInOrder.verify(mISupplicantMockV11).linkToDeath(mSupplicantDeathCaptor.capture(),
-                anyLong());
+                mDeathRecipientCookieCaptor.capture());
         // verify: addInterface is called
         mInOrder.verify(mISupplicantMockV11)
                 .addInterface(any(ISupplicant.IfaceInfo.class),
@@ -3831,57 +3817,26 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 .isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK));
     }
 
-    private void verifySetEapAnonymousIdentity(boolean updateToNativeService)
+    /**
+     * Tests that the very first connection attempt failure due to Authentication timeout in PSK
+     * network is notified as wrong password error.
+     */
+    @Test
+    public void testPskNetworkAuthenticationTimeOutDueToWrongPasswordInFirstConnectAttempt()
             throws Exception {
-        int testFrameworkNetworkId = 9;
-        String anonymousIdentity = "adb@realm.com";
-        ArrayList<Byte> bytes = NativeUtil.stringToByteArrayList(anonymousIdentity);
-        when(mSupplicantStaNetworkMock.setEapAnonymousIdentity(any()))
-                .thenReturn(true);
-
-        WifiConfiguration config = new WifiConfiguration();
-        config.networkId = testFrameworkNetworkId;
-        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_EAP);
-        config.enterpriseConfig.setEapMethod(WifiEnterpriseConfig.Eap.TLS);
-
-        setupMocksForConnectSequence(false);
-
         executeAndValidateInitializationSequence();
-        assertTrue(mDut.connectToNetwork(WLAN0_IFACE_NAME, config));
-
-        config.enterpriseConfig.setAnonymousIdentity(anonymousIdentity);
-        // Check the data are sent to the native service.
-        assertTrue(mDut.setEapAnonymousIdentity(WLAN0_IFACE_NAME, anonymousIdentity,
-                updateToNativeService));
-        if (updateToNativeService) {
-            verify(mSupplicantStaNetworkMock).setEapAnonymousIdentity(eq(bytes));
-        } else {
-            verify(mSupplicantStaNetworkMock, never()).setEapAnonymousIdentity(any());
-        }
-
-        // Clear the first connection interaction.
-        reset(mISupplicantStaIfaceMock);
-        setupMocksForConnectSequence(true);
-        // Check the cached value is updated, and this
-        // config should be considered the same network.
-        assertTrue(mDut.connectToNetwork(WLAN0_IFACE_NAME, config));
-        verify(mISupplicantStaIfaceMock, never()).removeNetwork(anyInt());
-        verify(mISupplicantStaIfaceMock, never()).addNetwork(any());
-    }
-
-    /**
-     * Tests the setting of EAP anonymous identity.
-     */
-    @Test
-    public void testSetEapAnonymousIdentity() throws Exception {
-        verifySetEapAnonymousIdentity(true);
-    }
-
-    /**
-     * Tests the setting of EAP anonymous identity.
-     */
-    @Test
-    public void testSetEapAnonymousIdentityNotUpdateToNativeService() throws Exception {
-        verifySetEapAnonymousIdentity(false);
+        assertNotNull(mISupplicantStaIfaceCallback);
+        executeAndValidateConnectSequenceWithKeyMgmt(
+                SUPPLICANT_NETWORK_ID, false, TRANSLATED_SUPPLICANT_SSID.toString(),
+                WifiConfiguration.SECURITY_TYPE_PSK, null, false);
+        mISupplicantStaIfaceCallback.onStateChanged(
+                ISupplicantStaIfaceCallback.State.ASSOCIATING,
+                NativeUtil.macAddressToByteArray(BSSID), SUPPLICANT_NETWORK_ID,
+                NativeUtil.decodeSsid(SUPPLICANT_SSID));
+        mISupplicantStaIfaceCallback.onAuthenticationTimeout(
+                NativeUtil.macAddressToByteArray(BSSID));
+        verify(mWifiMonitor).broadcastAuthenticationFailureEvent(
+                eq(WLAN0_IFACE_NAME), eq(WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD), eq(-1),
+                eq(TRANSLATED_SUPPLICANT_SSID.toString()), eq(MacAddress.fromString(BSSID)));
     }
 }
