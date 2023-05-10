@@ -80,6 +80,7 @@ public class WifiConfigurationUtil {
             new Pair<>(MacAddress.BROADCAST_ADDRESS, MacAddress.BROADCAST_ADDRESS);
     private static final Pair<MacAddress, MacAddress> MATCH_ALL_BSSID_PATTERN =
             new Pair<>(ALL_ZEROS_MAC_ADDRESS, ALL_ZEROS_MAC_ADDRESS);
+    private static final String SYSTEM_CA_STORE_PATH = "/system/etc/security/cacerts";
 
     /**
      * Checks if the provided |wepKeys| array contains any non-null value;
@@ -130,9 +131,20 @@ public class WifiConfigurationUtil {
 
     /**
      * Helper method to check if the provided |config| corresponds to a EAP network or not.
+     *
+     * Attention: This method returns true only for WiFi configuration with traditional EAP methods.
+     * It returns false for passpoint WiFi configuration. Please consider to use
+     * isConfigForEnterpriseNetwork() if necessary.
      */
     public static boolean isConfigForEapNetwork(WifiConfiguration config) {
         return config.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP);
+    }
+
+    /**
+     * Helper method to check if the provided |config| corresponds to an enterprise network or not.
+     */
+    public static boolean isConfigForEnterpriseNetwork(WifiConfiguration config) {
+        return config.getDefaultSecurityParams().isEnterpriseSecurityType();
     }
 
     /**
@@ -268,8 +280,13 @@ public class WifiConfigurationUtil {
                 return true;
             }
             if (existingEnterpriseConfig.isAuthenticationSimBased()) {
-                // The anonymous identity will be decorated with 3gpp realm in the service.
-                if (!TextUtils.equals(existingEnterpriseConfig.getAnonymousIdentity(),
+                // On Pre-T devices consider it as a credential change so that the network
+                // configuration is reloaded in wpa_supplicant during reconnection. This is to
+                // ensure that the updated anonymous identity is sent to wpa_supplicant. On newer
+                // releases the anonymous identity is updated immediately after connection
+                // completion event.
+                if (!SdkLevel.isAtLeastT()
+                        && !TextUtils.equals(existingEnterpriseConfig.getAnonymousIdentity(),
                         newEnterpriseConfig.getAnonymousIdentity())) {
                     return true;
                 }
@@ -313,6 +330,10 @@ public class WifiConfigurationUtil {
                 return true;
             }
             if (newEnterpriseConfig.getOcsp() != existingEnterpriseConfig.getOcsp()) {
+                return true;
+            }
+            if (!TextUtils.equals(newEnterpriseConfig.getDomainSuffixMatch(),
+                    existingEnterpriseConfig.getDomainSuffixMatch())) {
                 return true;
             }
         } else {
@@ -709,6 +730,10 @@ public class WifiConfigurationUtil {
         }
         if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE)
                 && !validatePassword(config.preSharedKey, isAdd, true)) {
+            return false;
+        }
+        if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_WAPI_PSK)
+                && !validatePassword(config.preSharedKey, isAdd, false)) {
             return false;
         }
         if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_DPP)
@@ -1179,5 +1204,15 @@ public class WifiConfigurationUtil {
         }
 
         return false;
+    }
+
+    /**
+     * Get the system trust store path which can be used when setting the CA path of an Enterprise
+     * Wi-Fi connection {@link WifiEnterpriseConfig#setCaPath(String)}
+     *
+     * @return The system trust store path
+     */
+    public static String getSystemTrustStorePath() {
+        return SYSTEM_CA_STORE_PATH;
     }
 }

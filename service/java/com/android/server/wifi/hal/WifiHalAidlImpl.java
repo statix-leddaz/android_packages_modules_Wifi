@@ -129,6 +129,7 @@ public class WifiHalAidlImpl implements IWifiHal {
     private boolean registerHalCallback() {
         final String methodStr = "registerHalCallback";
         try {
+            if (!checkWifiAndLogFailure(methodStr)) return false;
             mWifi.registerEventCallback(mHalCallback);
             return true;
         } catch (RemoteException e) {
@@ -263,7 +264,7 @@ public class WifiHalAidlImpl implements IWifiHal {
                 // Stop wifi just in case. Stop will invalidate the callbacks, so re-register them.
                 stopInternal();
                 registerHalCallback();
-                Log.i(TAG, "Initialization was successful");
+                Log.i(TAG, "Initialization is complete");
             } catch (RemoteException e) {
                 handleRemoteException(e, methodStr);
             }
@@ -365,8 +366,12 @@ public class WifiHalAidlImpl implements IWifiHal {
     @VisibleForTesting
     protected android.hardware.wifi.IWifi getWifiServiceMockable() {
         try {
-            return android.hardware.wifi.IWifi.Stub.asInterface(
-                    ServiceManager.waitForDeclaredService(HAL_INSTANCE_NAME));
+            if (SdkLevel.isAtLeastU()) {
+                return android.hardware.wifi.IWifi.Stub.asInterface(
+                        ServiceManager.waitForDeclaredService(HAL_INSTANCE_NAME));
+            } else {
+                return null;
+            }
         } catch (Exception e) {
             Log.e(TAG, "Unable to get IWifi service, " + e);
             return null;

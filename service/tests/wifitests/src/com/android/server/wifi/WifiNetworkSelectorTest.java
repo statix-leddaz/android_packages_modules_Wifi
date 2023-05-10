@@ -24,6 +24,7 @@ import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_NONE;
 import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_OWE;
 import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_PSK;
 import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_SAE;
+import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_WEP;
 import static com.android.server.wifi.WifiNetworkSelector.experimentIdFromIdentifier;
 
 import static org.hamcrest.Matchers.*;
@@ -34,12 +35,14 @@ import static org.mockito.Mockito.*;
 import android.annotation.NonNull;
 import android.app.admin.DevicePolicyManager;
 import android.app.admin.WifiSsidPolicy;
-import android.content.Context;
+import android.net.MacAddress;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiContext;
 import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
 import android.os.SystemClock;
 import android.util.ArraySet;
@@ -86,6 +89,18 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
     private static final String TEST_IFACE_NAME_SECONDARY = "mockWlan1";
     private static final String TEST_AUTO_UPGRADE_SSID = "\"auto-upgrade-network\"";
 
+    private static class CandidateParams {
+        public static final String BSSID_1 = "6c:f3:7f:ae:8c:f3";
+        public static final String BSSID_2 = "6c:f3:7f:ae:8c:f4";
+        public static final String BSSID_3 = "6c:f3:7f:ae:8c:f5";
+        public static final String BSSID_4 = "6c:f3:7f:ae:8c:f6";
+        public static final String MLD_MAC_ADDRESS_1 = "00:aa:bb:cc:dd:01";
+        public static int throughput_1 = 50;
+        public static int throughput_2 = 100;
+        public static int throughput_3 = 125;
+        public static int throughput_4 = 150;
+    }
+
     private MockitoSession mSession;
 
     /** Sets up test. */
@@ -120,7 +135,8 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
                 mThroughputPredictor,
                 mWifiChannelUtilization,
                 mWifiGlobals,
-                mScanRequestProxy);
+                mScanRequestProxy,
+                mWifiNative);
         mWifiNetworkSelector.enableVerboseLogging(true);
 
         mWifiNetworkSelector.registerNetworkNominator(mPlaceholderNominator);
@@ -129,7 +145,7 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
         when(mWifiScoreCard.lookupBssid(any(), any())).thenReturn(mPerBssid);
         mCompatibilityScorer = new CompatibilityScorer(mScoringParams);
         mScoreCardBasedScorer = new ScoreCardBasedScorer(mScoringParams);
-        mThroughputScorer = new ThroughputScorer(mScoringParams);
+        mThroughputScorer = new ThroughputScorer(mContext, mScoringParams);
         mThroughputScorer.enableVerboseLogging(true);
         when(mWifiInjector.getActiveModeWarden()).thenReturn(mActiveModeWarden);
         when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
@@ -276,7 +292,7 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
     private WifiNetworkSelector mWifiNetworkSelector = null;
     private PlaceholderNominator mPlaceholderNominator = new PlaceholderNominator();
     @Mock private WifiConfigManager mWifiConfigManager;
-    @Mock private Context mContext;
+    @Mock private WifiContext mContext;
     @Mock private WifiScoreCard mWifiScoreCard;
     @Mock private WifiScoreCard.PerBssid mPerBssid;
     @Mock private WifiCandidates.CandidateScorer mCandidateScorer;
@@ -285,6 +301,7 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
     @Mock private ActiveModeWarden mActiveModeWarden;
     @Mock private ClientModeManager mClientModeManager;
     @Mock private WifiNetworkSelector.NetworkNominator mNetworkNominator;
+    @Mock private WifiNative mWifiNative;
 
     // For simulating the resources, we use a Spy on a MockResource
     // (which is really more of a stub than a mock, in spite if its name).
@@ -302,6 +319,7 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
     private LocalLog mLocalLog;
     private int mThresholdMinimumRssi2G;
     private int mThresholdMinimumRssi5G;
+    private int mThresholdMinimumRssi6G;
     private int mThresholdQualifiedRssi2G;
     private int mThresholdQualifiedRssi5G;
     private int mMinPacketRateActiveTraffic;
@@ -335,6 +353,7 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
         mThresholdMinimumRssi2G = mScoringParams.getEntryRssi(
                 ScanResult.BAND_24_GHZ_START_FREQ_MHZ);
         mThresholdMinimumRssi5G = mScoringParams.getEntryRssi(ScanResult.BAND_5_GHZ_START_FREQ_MHZ);
+        mThresholdMinimumRssi6G = mScoringParams.getEntryRssi(ScanResult.BAND_6_GHZ_START_FREQ_MHZ);
 
         mThresholdQualifiedRssi2G = mScoringParams.getSufficientRssi(
                 ScanResult.BAND_24_GHZ_START_FREQ_MHZ);
@@ -363,6 +382,8 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
         when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(true);
         when(mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()).thenReturn(true);
         when(mWifiGlobals.isOweUpgradeEnabled()).thenReturn(true);
+        when(mWifiGlobals.isWepDeprecated()).thenReturn(false);
+        when(mWifiGlobals.isWpaPersonalDeprecated()).thenReturn(false);
     }
 
     private void setupWifiConfigManager() {
@@ -1012,6 +1033,108 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
                 Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
                 false, true, true, Collections.emptySet(), false);
         WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
+    }
+
+    /**
+     * Deprecated security type WEP SSID is filtered out for network selection.
+     *
+     * ClientModeImpl is disconnected.
+     * scanDetails contains a network which is has deprecated security type.
+     *
+     * Expected behavior: no network recommended by Network Selector
+     */
+    @Test
+    public void filterOutDeprecatedSecurityTypeWepSsid() {
+        String[] ssids = {"\"test1\""};
+        String[] bssids = {"6c:f3:7f:ae:8c:f3"};
+        int[] freqs = {5180};
+        String[] caps = {"[WEP][ESS]"};
+        int[] levels = {mThresholdQualifiedRssi5G + 8};
+        int[] securities = {SECURITY_WEP};
+        when(mWifiGlobals.isWepDeprecated()).thenReturn(true);
+        when(WifiInfo.convertWifiConfigurationSecurityType(
+                WifiConfiguration.SECURITY_TYPE_WEP)).thenReturn(WifiInfo.SECURITY_TYPE_WEP);
+
+        ScanDetailsAndWifiConfigs scanDetailsAndConfigs =
+                WifiNetworkSelectorTestUtil.setupScanDetailsAndConfigStore(ssids, bssids,
+                        freqs, caps, levels, securities, mWifiConfigManager, mClock);
+        List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
+        HashSet<String> blocklist = new HashSet<String>();
+
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
+                scanDetails, blocklist,
+                Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
+                false, true, true, Collections.emptySet(), false);
+        WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
+        assertEquals("Expect null configuration", null, candidate);
+    }
+
+    /**
+     * Unsupported security type WPA-Personal SSID is filtered out for network selection.
+     *
+     * ClientModeImpl is disconnected.
+     * scanDetails contains a network which is has unsupported security type.
+     *
+     * Expected behavior: no network recommended by Network Selector
+     */
+    @Test
+    public void filterOutUnsupportedSecurityTypeWpaPersonalSsid() {
+        String[] ssids = {"\"test1\""};
+        String[] bssids = {"6c:f3:7f:ae:8c:f3"};
+        int[] freqs = {5180};
+        String[] caps = {"[WPA-PSK-TKIP][ESS]"};
+        int[] levels = {mThresholdQualifiedRssi5G + 8};
+        int[] securities = {SECURITY_PSK};
+        when(mWifiGlobals.isWpaPersonalDeprecated()).thenReturn(true);
+        when(WifiInfo.convertWifiConfigurationSecurityType(
+                WifiConfiguration.SECURITY_TYPE_PSK)).thenReturn(WifiInfo.SECURITY_TYPE_PSK);
+
+        ScanDetailsAndWifiConfigs scanDetailsAndConfigs =
+                WifiNetworkSelectorTestUtil.setupScanDetailsAndConfigStore(ssids, bssids,
+                        freqs, caps, levels, securities, mWifiConfigManager, mClock);
+        List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
+        HashSet<String> blocklist = new HashSet<String>();
+
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
+                scanDetails, blocklist,
+                Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
+                false, true, true, Collections.emptySet(), false);
+        WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
+        assertEquals("Expect null configuration", null, candidate);
+    }
+
+    /**
+     * Unsupported security type WPA-Personal should not filter WPA/WPA2 networks.
+     *
+     * ClientModeImpl is disconnected.
+     * scanDetails contains a network which is has WPA/WPA2 security type.
+     *
+     * Expected behavior: WPA/WPA2 network recommended by Network Selector
+     */
+    @Test
+    public void testWpa2NotFilteredWithWpa() {
+        String[] ssids = {"\"test1\""};
+        String[] bssids = {"6c:f3:7f:ae:8c:f3"};
+        int[] freqs = {5180};
+        String[] caps = {"[WPA-PSK-TKIP][ESS][WPA2-PSK-CCMP][RSN-PSK-CCMP]"};
+        int[] levels = {mThresholdQualifiedRssi5G + 8};
+        int[] securities = {SECURITY_PSK};
+        when(mWifiGlobals.isWpaPersonalDeprecated()).thenReturn(false);
+        when(WifiInfo.convertWifiConfigurationSecurityType(
+                WifiConfiguration.SECURITY_TYPE_PSK)).thenReturn(WifiInfo.SECURITY_TYPE_PSK);
+
+        ScanDetailsAndWifiConfigs scanDetailsAndConfigs =
+                WifiNetworkSelectorTestUtil.setupScanDetailsAndConfigStore(ssids, bssids,
+                        freqs, caps, levels, securities, mWifiConfigManager, mClock);
+        List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
+        HashSet<String> blocklist = new HashSet<String>();
+
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
+                scanDetails, blocklist,
+                Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
+                false, true, true, Collections.emptySet(), false);
+        WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
+        assertEquals(ssids[0], candidate.SSID);
     }
 
     /**
@@ -3057,5 +3180,316 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
         verify(mWifiConfigManager).setNetworkCandidateScanResult(
                 eq(userSelectedConfig.networkId), any(), eq(0), paramsCaptor.capture());
         assertTrue(paramsCaptor.getValue().isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE));
+    }
+
+    /**
+     * Get Wi-Fi candidates for multi-link testing.
+     *
+     * @param maxMloStrLinkCount - Maximum STR link count supported for the test.
+     * @param bandMatrix - Simultaneous band combination matrix for the test.
+     * @return A list of Wi-Fi candidates.
+     */
+    private List<WifiCandidates.Candidate> getWifiCandidates(final int maxMloStrLinkCount,
+            Set<List<Integer>> bandMatrix) {
+        // Static configuration for the test.
+        String[] ssids = {"\"mlo\"", "\"mlo\"", "\"mlo\"", "\"legacy\""};
+        String[] bssids =
+                {CandidateParams.BSSID_1, CandidateParams.BSSID_2, CandidateParams.BSSID_3,
+                        CandidateParams.BSSID_4};
+        String[] mldMacAddress =
+                {CandidateParams.MLD_MAC_ADDRESS_1, CandidateParams.MLD_MAC_ADDRESS_1,
+                        CandidateParams.MLD_MAC_ADDRESS_1, null};
+        int[] freqs = {2437, 5180, 6115, 5220};
+        int[] throughputs = {CandidateParams.throughput_1, CandidateParams.throughput_2,
+                CandidateParams.throughput_3, CandidateParams.throughput_4};
+
+        String[] caps =
+                {"[WPA3-PSK][ESS]", "[WPA3-PSK][ESS]", "[WPA3-PSK][ESS]", "[WPA2-PSK][ESS]"};
+        int[] levels = {mThresholdMinimumRssi2G + RSSI_BUMP, mThresholdMinimumRssi5G + RSSI_BUMP,
+                mThresholdMinimumRssi6G + RSSI_BUMP, mThresholdMinimumRssi5G + RSSI_BUMP};
+        int[] securities = {SECURITY_PSK, SECURITY_PSK, SECURITY_PSK, SECURITY_PSK};
+        // VHT cap IE
+        byte[] iesBytes =
+                {(byte) 0x92, (byte) 0x01, (byte) 0x80, (byte) 0x33, (byte) 0xaa, (byte) 0xff,
+                        (byte) 0x00, (byte) 0x00, (byte) 0xaa, (byte) 0xff, (byte) 0x00,
+                        (byte) 0x00};
+        byte[][] iesByteStream = {iesBytes, iesBytes, iesBytes, iesBytes};
+        // Return predicted throughput's for each of the links identified by the frequency.
+        for (int i = 0; i < throughputs.length; ++i) {
+            when(mThroughputPredictor.predictThroughput(any(), anyInt(), anyInt(), anyInt(),
+                    eq(freqs[i]), anyInt(), anyInt(), anyInt(), anyBoolean())).thenReturn(
+                    throughputs[i]);
+        }
+        // Configure scan details and configs.
+        ScanDetailsAndWifiConfigs scanDetailsAndConfigs =
+                WifiNetworkSelectorTestUtil.setupScanDetailsAndConfigStore(ssids, bssids, freqs,
+                        caps, levels, securities, mWifiConfigManager, mClock, iesByteStream);
+        List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
+        // Set MLD MAC address.
+        for (int i = 0; i < scanDetails.size(); ++i) {
+            if (mldMacAddress[i] != null) {
+                scanDetails.get(i).getScanResult().setApMldMacAddress(
+                        MacAddress.fromString(mldMacAddress[i]));
+            }
+        }
+        // Register network nominator.
+        mWifiNetworkSelector.registerNetworkNominator(
+                new AllNetworkNominator(scanDetailsAndConfigs));
+        // No block listing.
+        HashSet<String> blocklist = new HashSet<String>();
+        // Mock MLO capabilities
+        when(mWifiNative.getMaxMloStrLinkCount(anyString())).thenReturn(maxMloStrLinkCount);
+        when(mWifiNative.getSupportedBandCombinations(anyString())).thenReturn(bandMatrix);
+        // Mock interface name
+        when(mClientModeManager.getInterfaceName()).thenReturn(TEST_IFACE_NAME);
+        // Select network.
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
+                scanDetails, blocklist,
+                Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
+                false, true, true, Collections.emptySet(), false);
+        return candidates;
+    }
+
+    /**
+     * Validate default multi-link attributes.
+     *      - Wifi candidates in MLD AP are multi-link capable.
+     *      - Predicted multi-link throughput will be zero.
+     */
+    private void validateDefaultMultiLinkAttributes(WifiCandidates.Candidate c) {
+        switch (c.getKey().bssid.toString()) {
+            case CandidateParams.BSSID_1:
+                assertTrue(c.isMultiLinkCapable());
+                assertEquals(0, c.getPredictedMultiLinkThroughputMbps());
+                assertEquals(CandidateParams.throughput_1, c.getPredictedThroughputMbps());
+                break;
+            case CandidateParams.BSSID_2:
+                assertTrue(c.isMultiLinkCapable());
+                assertEquals(0, c.getPredictedMultiLinkThroughputMbps());
+                assertEquals(CandidateParams.throughput_2, c.getPredictedThroughputMbps());
+                break;
+            case CandidateParams.BSSID_3:
+                assertTrue(c.isMultiLinkCapable());
+                assertEquals(0, c.getPredictedMultiLinkThroughputMbps());
+                assertEquals(CandidateParams.throughput_3, c.getPredictedThroughputMbps());
+                break;
+            case CandidateParams.BSSID_4:
+                assertFalse(c.isMultiLinkCapable());
+                assertEquals(0, c.getPredictedMultiLinkThroughputMbps());
+                assertEquals(CandidateParams.throughput_4, c.getPredictedThroughputMbps());
+                break;
+        }
+    }
+
+    /**
+     * Test multi-link candidates with legacy inputs.
+     */
+    @Test
+    public void testUpdateMultiLinkCandidatesThroughputLegacy() {
+        Set<List<Integer>> bandMatrix = Set.of(
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_6_GHZ)), new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_6_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ, WifiScanner.WIFI_BAND_6_GHZ)));
+
+        // Scenario: Chip doesn't support Simultaneous Transmit and Receive (STR).
+        // Expectation: no change in multi-link attributes.
+        for (WifiCandidates.Candidate c : getWifiCandidates(-1, bandMatrix)) {
+            validateDefaultMultiLinkAttributes(c);
+        }
+
+        // Scenario: STR link count = 1.
+        // Expectation: no change in multi-link attributes.
+        for (WifiCandidates.Candidate c : getWifiCandidates(1, bandMatrix)) {
+            validateDefaultMultiLinkAttributes(c);
+        }
+
+        // Scenario: No band combination info.
+        // Expectation: no change in multi-link attributes.
+        for (WifiCandidates.Candidate c : getWifiCandidates(2, null)) {
+            validateDefaultMultiLinkAttributes(c);
+        }
+    }
+
+    /**
+     * Test multi-link candidates are updated with aggregated throughput in case of maximum STR
+     * link count = 2 (dual-band station).
+     *
+     * Test scenario:
+     * Band Supported: {{2.4}, {5}, {6}, {2.4, 5}, {2.4, 6}, {5, 6}}
+     * APs:            AP1 - {2.4 Ghz, 5 Ghz, 6 Ghz} , AP2 - 5 Ghz
+     * Max STR link count: 2 (dual-band)
+     */
+    @Test
+    public void testUpdateMultiLinkCandidatesThroughputDualBand() {
+        Set<List<Integer>> bandMatrix = Set.of(
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_6_GHZ)), new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_6_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ, WifiScanner.WIFI_BAND_6_GHZ)));
+        // Validate multi-link candidates are grouped and predicted multi-link throughput is
+        // updated properly for each group.
+        for (WifiCandidates.Candidate c : getWifiCandidates(2, bandMatrix)) {
+            switch (c.getKey().bssid.toString()) {
+                case CandidateParams.BSSID_1:
+                    assertTrue(c.isMultiLinkCapable());
+                    assertEquals(CandidateParams.throughput_1 + CandidateParams.throughput_3,
+                            c.getPredictedMultiLinkThroughputMbps());
+                    break;
+                case CandidateParams.BSSID_2:
+                    // fall through.
+                case CandidateParams.BSSID_3:
+                    assertTrue(c.isMultiLinkCapable());
+                    assertEquals(CandidateParams.throughput_2 + CandidateParams.throughput_3,
+                            c.getPredictedMultiLinkThroughputMbps());
+                    break;
+                case CandidateParams.BSSID_4:
+                    assertFalse(c.isMultiLinkCapable());
+                    assertEquals(0, c.getPredictedMultiLinkThroughputMbps());
+                    break;
+            }
+        }
+    }
+
+    /**
+     * Test multi-link candidates are updated with aggregated throughput in case of max STR link
+     * count = 3 (tri-band station).
+     *
+     * Test scenario:
+     * Band Supported: {{2.4}, {5}, {6}, {2.4, 5}, {2.4, 6}, {5, 6}, {2.4, 5, 6}}
+     * APs: AP1 - {2.4 Ghz, 5 Ghz, 6 Ghz} , AP2 - 5 Ghz
+     * Max STR link count: 3 (tri-band)
+     */
+    @Test
+    public void testUpdateMultiLinkCandidatesThroughputTriBand() {
+        // Simultaneous bands of operation supported by the test device.
+        Set<List<Integer>> bandMatrix = Set.of(
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_6_GHZ)), new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_6_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ, WifiScanner.WIFI_BAND_6_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_5_GHZ,
+                                WifiScanner.WIFI_BAND_6_GHZ)));
+        // Validate multi-link candidates are grouped and predicted multi-link throughput is
+        // updated properly for each group.
+        for (WifiCandidates.Candidate c : getWifiCandidates(3, bandMatrix)) {
+            switch (c.getKey().bssid.toString()) {
+                case CandidateParams.BSSID_1:
+                    // fall  through
+                case CandidateParams.BSSID_2:
+                    // fall  through
+                case CandidateParams.BSSID_3:
+                    assertTrue(c.isMultiLinkCapable());
+                    assertEquals(CandidateParams.throughput_1 + CandidateParams.throughput_2
+                                    + CandidateParams.throughput_3,
+                            c.getPredictedMultiLinkThroughputMbps());
+                    break;
+                case CandidateParams.BSSID_4:
+                    assertFalse(c.isMultiLinkCapable());
+                    assertEquals(0, c.getPredictedMultiLinkThroughputMbps());
+                    break;
+            }
+        }
+    }
+
+    /**
+     * Test network selection falls back to legacy.
+     */
+    @Test
+    public void testNetworkSelectionLegacy() {
+        Set<List<Integer>> bandMatrix = Set.of(
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_6_GHZ)), new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_6_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ, WifiScanner.WIFI_BAND_6_GHZ)));
+
+        // STR not supported.
+        WifiConfiguration candidate;
+        candidate = mWifiNetworkSelector.selectNetwork(getWifiCandidates(-1, bandMatrix));
+        assertEquals("\"legacy\"", candidate.SSID);
+
+        // Max STR link count = 1.
+        candidate = mWifiNetworkSelector.selectNetwork(getWifiCandidates(1, bandMatrix));
+        assertEquals("\"legacy\"", candidate.SSID);
+
+        // No band matrix.
+        candidate = mWifiNetworkSelector.selectNetwork(getWifiCandidates(2, null));
+        assertEquals("\"legacy\"", candidate.SSID);
+
+        // Legacy AP is better than MLO.
+        CandidateParams.throughput_4 = 300;
+        candidate = mWifiNetworkSelector.selectNetwork(getWifiCandidates(2, bandMatrix));
+        assertEquals("\"legacy\"", candidate.SSID);
+        // Revert the throughput change.
+        CandidateParams.throughput_4 = 150;
+    }
+
+    /**
+     * Test Network selection with two MLO links.
+     *
+     * Test scenario:
+     * Band Supported: {{2.4}, {5}, {6}, {2.4, 5}, {2.4, 6}, {5, 6}}
+     * APs:            AP1 - {2.4 Ghz, 5 Ghz, 6 Ghz} , AP2 - 5 Ghz
+     * Max STR link count: 2 (dual-band)
+     */
+    @Test
+    public void testNetworkSelectionDualBand() {
+        Set<List<Integer>> bandMatrix = Set.of(
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_6_GHZ)), new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_6_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ, WifiScanner.WIFI_BAND_6_GHZ)));
+
+        WifiConfiguration candidate;
+        candidate = mWifiNetworkSelector.selectNetwork(getWifiCandidates(2, bandMatrix));
+        assertEquals("\"mlo\"", candidate.SSID);
+
+    }
+
+    /**
+     * Test Network selection with three MLO links.
+     *
+     * Test scenario:
+     * Band Supported: {{2.4}, {5}, {6}, {2.4, 5}, {2.4, 6}, {5, 6}, {2.4, 5, 6}}
+     * APs: AP1 - {2.4 Ghz, 5 Ghz, 6 Ghz} , AP2 - 5 Ghz
+     * Max STR link count: 3 (tri-band)
+     */
+    @Test
+    public void testNetworkSelectionTriBand() {
+        Set<List<Integer>> bandMatrix = Set.of(
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(Arrays.asList(WifiScanner.WIFI_BAND_6_GHZ)), new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_5_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_6_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_5_GHZ, WifiScanner.WIFI_BAND_6_GHZ)),
+                new ArrayList(
+                        Arrays.asList(WifiScanner.WIFI_BAND_24_GHZ, WifiScanner.WIFI_BAND_5_GHZ,
+                                WifiScanner.WIFI_BAND_6_GHZ)));
+        WifiConfiguration candidate;
+        candidate = mWifiNetworkSelector.selectNetwork(getWifiCandidates(3, bandMatrix));
+        assertEquals("\"mlo\"", candidate.SSID);
     }
 }

@@ -376,8 +376,9 @@ public class SupplicantStaNetworkHalAidlImpl {
             }
             /** Security Protocol */
             BitSet allowedProtocols = securityParams.getAllowedProtocols();
-            if (allowedProtocols.cardinality() != 0
-                    && !setProto(wifiConfigurationToSupplicantProtoMask(allowedProtocols))) {
+            if (allowedProtocols.cardinality() != 0 && !setProto(
+                    wifiConfigurationToSupplicantProtoMask(allowedProtocols, mWifiGlobals,
+                            WifiConfigurationUtil.isConfigForEnterpriseNetwork(config)))) {
                 Log.e(TAG, "failed to set Security Protocol");
                 return false;
             }
@@ -741,6 +742,14 @@ public class SupplicantStaNetworkHalAidlImpl {
                         + eapConfig.getPhase2Method());
                 return false;
             }
+            if (eapConfig.isAuthenticationSimBased()
+                    && eapConfig.getEapMethod() != WifiEnterpriseConfig.Eap.PEAP
+                    && eapConfig.getStrictConservativePeerMode()) {
+                if (!enableStrictConservativePeerMode()) {
+                    Log.w(TAG, "failed or not support to set strict conservative peer mode.");
+                }
+                // don't return false, as the mode is optional.
+            }
             String eapParam = null;
             /** EAP Identity */
             eapParam = eapConfig.getFieldValue(WifiEnterpriseConfig.IDENTITY_KEY);
@@ -941,13 +950,16 @@ public class SupplicantStaNetworkHalAidlImpl {
         return mask;
     }
 
-    private static int wifiConfigurationToSupplicantProtoMask(BitSet protoMask) {
+    private static int wifiConfigurationToSupplicantProtoMask(BitSet protoMask,
+            WifiGlobals wifiGlobals, boolean isEnterprise) {
         int mask = 0;
         for (int bit = protoMask.nextSetBit(0); bit != -1;
                 bit = protoMask.nextSetBit(bit + 1)) {
             switch (bit) {
                 case WifiConfiguration.Protocol.WPA:
-                    mask |= ProtoMask.WPA;
+                    if (isEnterprise || !wifiGlobals.isWpaPersonalDeprecated()) {
+                        mask |= ProtoMask.WPA;
+                    }
                     break;
                 case WifiConfiguration.Protocol.RSN:
                     mask |= ProtoMask.RSN;
@@ -3702,6 +3714,28 @@ public class SupplicantStaNetworkHalAidlImpl {
             }
             try {
                 mISupplicantStaNetwork.setMinimumTlsVersionEapPhase1Param(aidlTlsVersion);
+                return true;
+            } catch (RemoteException e) {
+                handleRemoteException(e, methodStr);
+            } catch (ServiceSpecificException e) {
+                handleServiceSpecificException(e, methodStr);
+            }
+            return false;
+        }
+    }
+
+    private boolean enableStrictConservativePeerMode() {
+        synchronized (mLock) {
+            final String methodStr = "setStrictConservativePeerMode";
+            if (!checkStaNetworkAndLogFailure(methodStr)) {
+                return false;
+            }
+            // check AIDL version
+            try {
+                if (mISupplicantStaNetwork.getInterfaceVersion() < 2) {
+                    return false;
+                }
+                mISupplicantStaNetwork.setStrictConservativePeerMode(true);
                 return true;
             } catch (RemoteException e) {
                 handleRemoteException(e, methodStr);

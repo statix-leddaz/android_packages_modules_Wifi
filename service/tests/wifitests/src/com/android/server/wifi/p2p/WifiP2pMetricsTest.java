@@ -16,6 +16,8 @@
 package com.android.server.wifi.p2p;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 
 import android.content.Context;
@@ -89,9 +91,11 @@ public class WifiP2pMetricsTest extends WifiBaseTest {
         // Start and end Connection event.
         mWifiP2pMetrics.startConnectionEvent(P2pConnectionEvent.CONNECTION_FRESH, null,
                 GroupEvent.GROUP_OWNER, 2000);
+        assertTrue(mWifiP2pMetrics.hasOngoingConnection());
         when(mClock.getElapsedSinceBootMillis()).thenReturn(1000L);
         mWifiP2pMetrics.endConnectionEvent(P2pConnectionEvent.CLF_NONE);
         stats = mWifiP2pMetrics.consolidateProto();
+        assertFalse(mWifiP2pMetrics.hasOngoingConnection());
         assertEquals(1, stats.connectionEvent.length);
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 WifiStatsLog.WIFI_P2P_CONNECTION_REPORTED,
@@ -100,13 +104,14 @@ public class WifiP2pMetricsTest extends WifiBaseTest {
                 WifiStatsLog.WIFI_P2P_CONNECTION_REPORTED__FAILURE_CODE__NONE,
                 WifiStatsLog.WIFI_P2P_CONNECTION_REPORTED__GROUP_ROLE__GROUP_OWNER,
                 WifiStatsLog.WIFI_P2P_CONNECTION_REPORTED__BAND__BAND_UNKNOWN,
-                0, 0, 2000, true));
+                0, 0, 2000, true, false));
 
         // Start and end Connection event.
         config.groupOwnerBand = 5210;
         when(mWifiInfo.getFrequency()).thenReturn(2412);
         mWifiP2pMetrics.startConnectionEvent(P2pConnectionEvent.CONNECTION_FRESH, config,
                 GroupEvent.GROUP_OWNER, 2014);
+        mWifiP2pMetrics.setFallbackToNegotiationOnInviteStatusInfoUnavailable();
         when(mClock.getElapsedSinceBootMillis()).thenReturn(3000L);
         mWifiP2pMetrics.setIsCountryCodeWorldMode(false);
         mWifiP2pMetrics.endConnectionEvent(P2pConnectionEvent.CLF_NONE);
@@ -119,7 +124,7 @@ public class WifiP2pMetricsTest extends WifiBaseTest {
                 WifiStatsLog.WIFI_P2P_CONNECTION_REPORTED__FAILURE_CODE__NONE,
                 WifiStatsLog.WIFI_P2P_CONNECTION_REPORTED__GROUP_ROLE__GROUP_OWNER,
                 WifiStatsLog.WIFI_P2P_CONNECTION_REPORTED__BAND__BAND_FREQUENCY,
-                5210, 2412, 2014, false));
+                5210, 2412, 2014, false, true));
 
         // End Connection event without starting one.
         // this would create a new connection event immediately.

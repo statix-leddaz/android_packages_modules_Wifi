@@ -27,8 +27,10 @@ import android.util.ArraySet;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.util.Collections;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * This class allows getting all configurable flags from DeviceConfig.
@@ -209,16 +211,20 @@ public class DeviceConfigFacade {
     private boolean mApmEnhancementEnabled;
     private boolean mAwareSuspensionEnabled;
     private boolean mHighPerfLockDeprecated;
-    private boolean mOobPseudonymEnabled;
+    private Optional<Boolean> mOobPseudonymEnabled = Optional.empty();
+    private Consumer<Boolean> mOobPseudonymFeatureFlagChangedListener = null;
     private boolean mApplicationQosPolicyApiEnabled;
     private boolean mAdjustPollRssiIntervalEnabled;
     private boolean mSoftwarePnoEnabled;
     private boolean mIncludePasspointSsidsInPnoScans;
+    private boolean mHandleRssiOrganicKernelFailuresEnabled;
+
+    private final Handler mWifiHandler;
 
     public DeviceConfigFacade(Context context, Handler handler, WifiMetrics wifiMetrics) {
         mContext = context;
         mWifiMetrics = wifiMetrics;
-
+        mWifiHandler = handler;
         updateDeviceConfigFlags();
         DeviceConfig.addOnPropertiesChangedListener(
                 NAMESPACE,
@@ -392,17 +398,26 @@ public class DeviceConfigFacade {
         mAwareSuspensionEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "aware_suspension_enabled", false);
         mHighPerfLockDeprecated = DeviceConfig.getBoolean(NAMESPACE,
-                "high_perf_lock_deprecated", false);
-        mOobPseudonymEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "high_perf_lock_deprecated", true);
+        boolean oobPseudonymEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "oob_pseudonym_enabled", false);
+        if (mOobPseudonymEnabled.isPresent()
+                && mOobPseudonymEnabled.get() != oobPseudonymEnabled
+                && mOobPseudonymFeatureFlagChangedListener != null) {
+            mWifiHandler.post(
+                    () -> mOobPseudonymFeatureFlagChangedListener.accept(oobPseudonymEnabled));
+        }
+        mOobPseudonymEnabled = Optional.of(oobPseudonymEnabled);
         mApplicationQosPolicyApiEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "application_qos_policy_api_enabled", false);
         mAdjustPollRssiIntervalEnabled = DeviceConfig.getBoolean(NAMESPACE,
-                "adjust_poll_rssi_interval_enabled", false);
+                "adjust_poll_rssi_interval_enabled", true);
         mSoftwarePnoEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "software_pno_enabled", false);
         mIncludePasspointSsidsInPnoScans = DeviceConfig.getBoolean(NAMESPACE,
                 "include_passpoint_ssids_in_pno_scans", false);
+        mHandleRssiOrganicKernelFailuresEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "handle_rssi_organic_kernel_failures_enabled", false);
     }
 
     private Set<String> getUnmodifiableSetQuoted(String key) {
@@ -852,7 +867,7 @@ public class DeviceConfigFacade {
      * Gets the feature flag for the OOB pseudonym of EAP-SIM/AKA/AKA'
      */
     public boolean isOobPseudonymEnabled() {
-        return mOobPseudonymEnabled;
+        return mOobPseudonymEnabled.isPresent() && mOobPseudonymEnabled.get();
     }
 
     /**
@@ -881,5 +896,22 @@ public class DeviceConfigFacade {
      */
     public boolean includePasspointSsidsInPnoScans() {
         return mIncludePasspointSsidsInPnoScans;
+    }
+
+    /**
+     * Gets the feature flag indicating whether handling IP reachability failures triggered from
+     * Wi-Fi RSSI polling or organic kernel probes the same as failure post roaming.
+     */
+    public boolean isHandleRssiOrganicKernelFailuresEnabled() {
+        return mHandleRssiOrganicKernelFailuresEnabled;
+    }
+
+    /*
+     * Sets the listener to be notified when the OOB Pseudonym feature is enabled;
+     * Only 1 listener is accepted.
+     */
+    public void setOobPseudonymFeatureFlagChangedListener(
+            Consumer<Boolean> listener) {
+        mOobPseudonymFeatureFlagChangedListener = listener;
     }
 }

@@ -259,6 +259,14 @@ public interface IWifiChip {
     List<WifiChip.WifiRadioCombination> getSupportedRadioCombinations();
 
     /**
+     * Retrieve the chip capabilities.
+     *
+     * @return |WifiChipCapabilities| representation of wifi chip capabilities or null if
+     * an error occurred or not available.
+     */
+    WifiChip.WifiChipCapabilities getWifiChipCapabilities();
+
+    /**
      * Retrieve a list of usable Wifi channels for the specified band and operational modes.
      *
      * @param band Band for which the list of usable channels is requested.
@@ -349,13 +357,6 @@ public interface IWifiChip {
      */
     @Nullable
     byte[] requestFirmwareDebugDump();
-
-    /**
-     * Reset TX power levels.
-     *
-     * @return true if successful, false otherwise.
-     */
-    boolean resetTxPowerScenario();
 
     /**
      * Select one of the preset TX power scenarios.

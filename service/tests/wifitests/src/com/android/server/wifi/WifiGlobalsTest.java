@@ -25,6 +25,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 
 import android.content.Context;
+import android.net.wifi.WifiConfiguration;
 
 import androidx.test.filters.SmallTest;
 
@@ -44,6 +45,9 @@ public class WifiGlobalsTest extends WifiBaseTest {
     private MockResources mResources;
 
     @Mock private Context mContext;
+
+    private static final int TEST_NETWORK_ID = 54;
+    private static final String TEST_SSID = "\"GoogleGuest\"";
 
     @Before
     public void setUp() {
@@ -125,5 +129,44 @@ public class WifiGlobalsTest extends WifiBaseTest {
     @Test
     public void testSaveFactoryMacToConfigStoreEnabled() throws Exception {
         assertEquals(true, mWifiGlobals.isSaveFactoryMacToConfigStoreEnabled());
+    }
+
+
+    /**
+     * Test that isDeprecatedSecurityTypeNetwork returns true due to WEP network
+     */
+    @Test
+    public void testDeprecatedNetworkSecurityTypeWep()
+            throws Exception {
+        mResources.setBoolean(R.bool.config_wifiWepDeprecated, true);
+        mWifiGlobals = new WifiGlobals(mContext);
+        assertTrue(mWifiGlobals.isWepDeprecated());
+
+        WifiConfiguration config = new WifiConfiguration();
+        config.networkId = TEST_NETWORK_ID;
+        config.SSID = TEST_SSID;
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_WEP);
+
+        assertTrue(mWifiGlobals.isDeprecatedSecurityTypeNetwork(config));
+    }
+
+    /**
+     * Test that isDeprecatedSecurityTypeNetwork returns true due to WPA-Personal network
+     */
+    @Test
+    public void testDeprecatedNetworkSecurityTypeWpaPersonal()
+            throws Exception {
+        mResources.setBoolean(R.bool.config_wifiWpaPersonalDeprecated, true);
+        mWifiGlobals = new WifiGlobals(mContext);
+        assertTrue(mWifiGlobals.isWpaPersonalDeprecated());
+
+        WifiConfiguration config = new WifiConfiguration();
+        config.networkId = TEST_NETWORK_ID;
+        config.SSID = TEST_SSID;
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+        config.allowedProtocols.set(WifiConfiguration.Protocol.WPA);
+        config.allowedProtocols.clear(WifiConfiguration.Protocol.RSN);
+
+        assertTrue(mWifiGlobals.isDeprecatedSecurityTypeNetwork(config));
     }
 }

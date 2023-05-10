@@ -16,7 +16,9 @@
 
 package com.android.server.wifi;
 
+import android.annotation.Nullable;
 import android.content.Context;
+import android.net.wifi.WifiConfiguration;
 
 import com.android.modules.utils.build.SdkLevel;
 import com.android.wifi.resources.R;
@@ -59,10 +61,14 @@ public class WifiGlobals {
     private final int mClientRssiMonitorHysteresisDb;
     private final boolean mAdjustPollRssiIntervalEnabled;
     private final boolean mWifiInterfaceAddedSelfRecoveryEnabled;
+    private final int mNetworkNotFoundEventThreshold;
+    private final boolean mIsWepDeprecated;
+    private final boolean mIsWpaPersonalDeprecated;
 
     // This is set by WifiManager#setVerboseLoggingEnabled(int).
     private boolean mIsShowKeyVerboseLoggingModeEnabled = false;
     private boolean mIsUsingExternalScorer = false;
+    private boolean mDisableUnwantedNetworkOnLowRssi = false;
 
     public WifiGlobals(Context context) {
         mContext = context;
@@ -107,6 +113,14 @@ public class WifiGlobals {
                 R.bool.config_wifiAdjustPollRssiIntervalEnabled);
         mWifiInterfaceAddedSelfRecoveryEnabled = mContext.getResources().getBoolean(
                 R.bool.config_wifiInterfaceAddedSelfRecoveryEnabled);
+        mDisableUnwantedNetworkOnLowRssi = mContext.getResources().getBoolean(
+                R.bool.config_wifiDisableUnwantedNetworkOnLowRssi);
+        mNetworkNotFoundEventThreshold = mContext.getResources().getInteger(
+                R.integer.config_wifiNetworkNotFoundEventThreshold);
+        mIsWepDeprecated = mContext.getResources()
+                .getBoolean(R.bool.config_wifiWepDeprecated);
+        mIsWpaPersonalDeprecated = mContext.getResources()
+                .getBoolean(R.bool.config_wifiWpaPersonalDeprecated);
     }
 
     /** Get the interval between RSSI polls, in milliseconds. */
@@ -158,6 +172,41 @@ public class WifiGlobals {
     public boolean isConnectedMacRandomizationEnabled() {
         return mContext.getResources().getBoolean(
                 R.bool.config_wifi_connected_mac_randomization_supported);
+    }
+
+    /**
+     * Helper method to check if WEP networks are deprecated.
+     *
+     * @return boolean true if WEP networks are deprecated, false otherwise.
+     */
+    public boolean isWepDeprecated() {
+        return mIsWepDeprecated;
+    }
+
+    /**
+     * Helper method to check if WPA-Personal networks are deprecated.
+     *
+     * @return boolean true if WPA-Personal networks are deprecated, false otherwise.
+     */
+    public boolean isWpaPersonalDeprecated() {
+        return mIsWpaPersonalDeprecated;
+    }
+
+    /**
+     * Helper method to check if the device may not connect to the configuration
+     * due to deprecated security type
+     */
+    public boolean isDeprecatedSecurityTypeNetwork(@Nullable WifiConfiguration config) {
+        if (config == null) {
+            return false;
+        }
+        if (isWepDeprecated() && config.isSecurityType(WifiConfiguration.SECURITY_TYPE_WEP)) {
+            return true;
+        }
+        if (isWpaPersonalDeprecated() && config.isWpaPersonalOnlyConfiguration()) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -313,6 +362,20 @@ public class WifiGlobals {
         return mWifiInterfaceAddedSelfRecoveryEnabled;
     }
 
+    /**
+     * Get whether to temporarily disable a unwanted network that has low RSSI.
+     */
+    public boolean disableUnwantedNetworkOnLowRssi() {
+        return mDisableUnwantedNetworkOnLowRssi;
+    }
+
+    /**
+     * Get the threshold to use for blocking a network due to NETWORK_NOT_FOUND_EVENT failure.
+     */
+    public int getNetworkNotFoundEventThreshold() {
+        return mNetworkNotFoundEventThreshold;
+    }
+
     /** Dump method for debugging */
     public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         pw.println("Dump of WifiGlobals");
@@ -339,5 +402,9 @@ public class WifiGlobals {
         pw.println("mIsP2pMacRandomizationSupported" + mIsP2pMacRandomizationSupported);
         pw.println("mWifiInterfaceAddedSelfRecoveryEnabled="
                 + mWifiInterfaceAddedSelfRecoveryEnabled);
+        pw.println("mDisableUnwantedNetworkOnLowRssi=" + mDisableUnwantedNetworkOnLowRssi);
+        pw.println("mNetworkNotFoundEventThreshold=" + mNetworkNotFoundEventThreshold);
+        pw.println("mIsWepDeprecated=" + mIsWepDeprecated);
+        pw.println("mIsWpaPersonalDeprecated=" + mIsWpaPersonalDeprecated);
     }
 }

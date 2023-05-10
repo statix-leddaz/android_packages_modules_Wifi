@@ -96,6 +96,16 @@ public interface ClientMode {
 
     void clearWifiConnectedNetworkScorer();
 
+    /**
+     * Notify the connected network scorer of the user accepting a network switch.
+     */
+    void onNetworkSwitchAccepted(int targetNetworkId, String targetBssid);
+
+    /**
+     * Notify the connected network scorer of the user rejecting a network switch.
+     */
+    void onNetworkSwitchRejected(int targetNetworkId, String targetBssid);
+
     void resetSimAuthNetworks(@ClientModeImpl.ResetSimReason int resetReason);
 
     /**
@@ -339,4 +349,10 @@ public interface ClientMode {
      * @return true if BSSID matches to one of the affiliated link BSSIDs, false otherwise.
      */
     boolean isAffiliatedLinkBssid(MacAddress bssid);
+
+    /**
+     * Check if the connection is MLO (Multi-Link Operation).
+     * @return true if connection is MLO, otherwise false.
+     */
+    boolean isMlo();
 }

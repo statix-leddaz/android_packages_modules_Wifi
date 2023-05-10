@@ -80,6 +80,16 @@ public interface ClientModeDefaults extends ClientMode {
 
     default void clearWifiConnectedNetworkScorer() { }
 
+    /**
+     * Notify the connected network scorer of the user accepting a network switch.
+     */
+    default void onNetworkSwitchAccepted(int targetNetworkId, String targetBssid) { }
+
+    /**
+     * Notify the connected network scorer of the user rejecting a network switch.
+     */
+    default void onNetworkSwitchRejected(int targetNetworkId, String targetBssid) { }
+
     default void resetSimAuthNetworks(@ClientModeImpl.ResetSimReason int resetReason) { }
 
     default void onBluetoothConnectionStateChanged() { }
@@ -259,6 +269,11 @@ public interface ClientModeDefaults extends ClientMode {
 
     @Override
     default boolean isAffiliatedLinkBssid(MacAddress bssid) {
+        return false;
+    }
+
+    @Override
+    default boolean isMlo() {
         return false;
     }
 }

@@ -33,14 +33,6 @@ public interface IWifiNanIface {
     void enableVerboseLogging(boolean verbose);
 
     /**
-     * Get the underlying HIDL WifiNanIfaceObject.
-     * TODO: Remove this API. Will only be used temporarily until HalDeviceManager is refactored.
-     *
-     * @return HIDL IWifiNanIface object.
-     */
-    android.hardware.wifi.V1_0.IWifiNanIface getNanIface();
-
-    /**
      * Register a framework callback to receive notifications from the HAL.
      *
      * @param callback Instance of {@link WifiNanIface.Callback}.
@@ -277,16 +269,17 @@ public interface IWifiNanIface {
 
     /**
      * Initiate a bootstrapping request for this publish/subscribe session
+     *
      * @param transactionId Transaction ID for the transaction - used in the
-     *            async callback to match with the original request.
-     * @param peerId ID of the peer. Obtained through previous communication (a
-     *            match indication).
-     * @param peer The MAC address of the peer to create a connection with.
-     * @param method the proposed bootstrapping method
+     *                      async callback to match with the original request.
+     * @param peerId        ID of the peer. Obtained through previous communication (a
+     *                      match indication).
+     * @param peer          The MAC address of the peer to create a connection with.
+     * @param method        the proposed bootstrapping method
      * @return True if the request send succeed.
      */
     boolean initiateNanBootstrappingRequest(short transactionId, int peerId, MacAddress peer,
-            int method);
+            int method, byte[] cookie);
 
     /**
      * Respond to a bootstrapping request

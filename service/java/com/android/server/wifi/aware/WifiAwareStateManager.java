@@ -239,6 +239,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     private static final int NOTIFICATION_TYPE_ON_PAIRING_CONFIRM = 315;
     private static final int NOTIFICATION_TYPE_ON_BOOTSTRAPPING_REQUEST = 316;
     private static final int NOTIFICATION_TYPE_ON_BOOTSTRAPPING_CONFIRM = 317;
+    private static final int NOTIFICATION_TYPE_ON_SUSPENSION_MODE_CHANGED = 318;
 
     private static final SparseArray<String> sSmToString = MessageUtils.findMessageNames(
             new Class[]{WifiAwareStateManager.class},
@@ -301,7 +302,16 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     private static final String MESSAGE_BUNDLE_KEY_AWARE_OFFLOAD = "aware_offload";
     private static final String MESSAGE_BUNDLE_KEY_RE_ENABLE_AWARE_FROM_OFFLOAD =
             "aware_re_enable_from_offload";
+    private static final String MESSAGE_BUNDLE_KEY_SUSPENSION_MODE = "suspension_mode";
 
+    private static final String MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_RESPONSE_CODE =
+            "bootstrapping_response_state";
+    private static final String MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_COME_BACK_DELAY =
+            "bootstrapping_come_back_delay";
+    private static final String MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_COME_BACK_COOKIE =
+            "bootstrapping_come_back_cookie";
+    private static final String MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_IS_COME_BACK_REQUEST =
+            "bootstrapping_is_come_back";
     private WifiAwareNativeApi mWifiAwareNativeApi;
     private WifiAwareNativeManager mWifiAwareNativeManager;
 
@@ -372,12 +382,15 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         public final int mSessionId;
         public final int mPeerId;
         public final int mMethod;
+        public final boolean mIsComeBackFollowUp;
 
-        BootStrppingInfo(int clientId, int sessionId, int peerId, int method) {
+        BootStrppingInfo(int clientId, int sessionId, int peerId, int method,
+                boolean isComeBackFollowUp) {
             mClientId = clientId;
             mSessionId = sessionId;
             mPeerId = peerId;
             mMethod = method;
+            mIsComeBackFollowUp = isComeBackFollowUp;
         }
     }
 
@@ -1305,14 +1318,17 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
      * Initiate a bootstrapping request
      */
     public void initiateBootStrappingSetupRequest(int clientId, int sessionId, int peerId, int
-            method) {
+            method, long comeBackDelayMills, byte[] cookie) {
         Message msg = mSm.obtainMessage(MESSAGE_TYPE_COMMAND);
         msg.arg1 = COMMAND_TYPE_INITIATE_BOOTSTRAPPING_REQUEST;
         msg.arg2 = clientId;
         msg.getData().putInt(MESSAGE_BUNDLE_KEY_SESSION_ID, sessionId);
         msg.getData().putInt(MESSAGE_BUNDLE_KEY_PEER_ID, peerId);
         msg.getData().putInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_METHOD, method);
-        mSm.sendMessage(msg);
+        msg.getData().putByteArray(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_COME_BACK_COOKIE, cookie);
+        msg.getData().putBoolean(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_IS_COME_BACK_REQUEST,
+                comeBackDelayMills > 0);
+        mSm.sendMessageDelayed(msg, comeBackDelayMills);
     }
 
     /**
@@ -2055,7 +2071,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         mSm.sendMessage(msg);
     }
 
-     /**
+    /**
      * Place a callback request on the state machine queue: bootstrapping confirm received.
      */
     public void onBootstrappingConfirmNotification(int bootstrappingId, int responseCode,
@@ -2064,8 +2080,19 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         msg.arg1 = NOTIFICATION_TYPE_ON_BOOTSTRAPPING_CONFIRM;
         msg.arg2 = reason;
         msg.getData().putInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_REQUEST_ID, bootstrappingId);
-        msg.getData().putBoolean(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_ACCEPT,
-                responseCode == NAN_BOOTSTRAPPING_ACCEPT);
+        msg.getData().putInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_RESPONSE_CODE, responseCode);
+        msg.getData().putInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_COME_BACK_DELAY, comebackDelay);
+        msg.getData().putByteArray(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_COME_BACK_COOKIE, cookie);
+        mSm.sendMessage(msg);
+    }
+
+    /**
+     * Place a callback request on the state machine queue: suspension mode changed.
+     */
+    public void onSuspensionModeChangedNotification(boolean isSuspended) {
+        Message msg = mSm.obtainMessage(MESSAGE_TYPE_NOTIFICATION);
+        msg.arg1 = NOTIFICATION_TYPE_ON_SUSPENSION_MODE_CHANGED;
+        msg.getData().putBoolean(MESSAGE_BUNDLE_KEY_SUSPENSION_MODE, isSuspended);
         mSm.sendMessage(msg);
     }
 
@@ -2491,9 +2518,13 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     Bundle data = msg.getData();
                     int reason = msg.arg2;
                     int bootstrappingId = data.getInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_REQUEST_ID);
-                    boolean accept = data.getBoolean(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_ACCEPT);
-                    boolean success = onBootStrappingConfirmReceivedLocal(bootstrappingId, accept,
-                            reason);
+                    int responseCode = data.getInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_RESPONSE_CODE);
+                    int comBackDelay = data.getInt(
+                            MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_COME_BACK_DELAY);
+                    byte[] cookie = data.getByteArray(
+                            MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_COME_BACK_COOKIE);
+                    boolean success = onBootStrappingConfirmReceivedLocal(bootstrappingId,
+                            reason, responseCode, comBackDelay, cookie);
                     if (success) {
                         WakeupMessage timeout = mBootstrappingConfirmTimeoutMessages
                                 .get(bootstrappingId);
@@ -2502,6 +2533,12 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                             timeout.cancel();
                         }
                     }
+                    break;
+                }
+                case NOTIFICATION_TYPE_ON_SUSPENSION_MODE_CHANGED: {
+                    Bundle data = msg.getData();
+                    boolean isSuspended = data.getBoolean(MESSAGE_BUNDLE_KEY_SUSPENSION_MODE);
+                    onSuspensionModeChangedLocal(isSuspended);
                     break;
                 }
                 default:
@@ -2735,8 +2772,10 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     int sessionId = data.getInt(MESSAGE_BUNDLE_KEY_SESSION_ID);
                     int peerId = data.getInt(MESSAGE_BUNDLE_KEY_PEER_ID);
                     int method = data.getInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_METHOD);
+                    byte[] cookie = data.getByteArray(
+                            MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_COME_BACK_COOKIE);
                     waitForResponse = initiateBootstrappingRequestLocal(mCurrentTransactionId,
-                            clientId, sessionId, peerId, method);
+                            clientId, sessionId, peerId, method, cookie);
                     break;
                 }
                 case COMMAND_TYPE_RESPONSE_BOOTSTRAPPING_REQUEST: {
@@ -3103,7 +3142,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     if (success) {
                         WakeupMessage timeout = new WakeupMessage(mContext, getHandler(),
                                 HAL_PAIRING_CONFIRM_TIMEOUT_TAG, MESSAGE_TYPE_BOOTSTRAPPING_TIMEOUT,
-                                bootstrappingId);
+                                bootstrappingId, 0, mCurrentCommand);
                         mBootstrappingConfirmTimeoutMessages.put(bootstrappingId, timeout);
                         timeout.schedule(SystemClock.elapsedRealtime()
                                 + AWARE_WAIT_FOR_PAIRING_CONFIRM_TIMEOUT);
@@ -3478,7 +3517,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     mLocalLog, awareOffload);
             client.enableVerboseLogging(mVerboseLoggingEnabled);
             client.onClusterChange(mClusterEventType, mClusterId, mCurrentDiscoveryInterfaceMac);
-            client.onInterfaceAddressChange(mCurrentDiscoveryInterfaceMac);
             mClients.append(clientId, client);
             mAwareMetrics.recordAttachSession(uid, notifyIdentityChange, mClients);
             try {
@@ -3832,7 +3870,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     }
 
     private boolean initiateBootstrappingRequestLocal(short transactionId, int clientId,
-            int sessionId, int peerId, int method) {
+            int sessionId, int peerId, int method, byte[] cookie) {
         String methodString = "initiateBootstrappingRequestLocal";
         if (VDBG) {
             Log.v(TAG, methodString + ": transactionId=" + transactionId
@@ -3843,7 +3881,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         if (session == null) {
             return false;
         }
-        return session.initiateBootstrapping(transactionId, peerId, method);
+        return session.initiateBootstrapping(transactionId, peerId, method, cookie);
     }
 
     private boolean respondToBootstrappingRequestLocal(short transactionId, int clientId,
@@ -4044,7 +4082,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                         "onConfigCompletedLocal onConnectSuccess(): RemoteException (FYI): " + e);
             }
             client.onClusterChange(mClusterEventType, mClusterId, mCurrentDiscoveryInterfaceMac);
-            client.onInterfaceAddressChange(mCurrentDiscoveryInterfaceMac);
         } else if (completedCommand.arg1 == COMMAND_TYPE_DISCONNECT) {
             /*
              * NOP (i.e. updated configuration after disconnecting a client)
@@ -4510,7 +4547,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         BootStrppingInfo info = new BootStrppingInfo(command.arg2,
                 data.getInt(MESSAGE_BUNDLE_KEY_SESSION_ID),
                 data.getInt(MESSAGE_BUNDLE_KEY_PEER_ID),
-                data.getInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_METHOD));
+                data.getInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_METHOD),
+                data.getBoolean(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_IS_COME_BACK_REQUEST));
         WifiAwareDiscoverySessionState session = getClientSession(info.mClientId, info.mSessionId,
                 methodString);
         if (session == null) {
@@ -4529,7 +4567,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         BootStrppingInfo info = new BootStrppingInfo(command.arg2,
                 data.getInt(MESSAGE_BUNDLE_KEY_SESSION_ID),
                 data.getInt(MESSAGE_BUNDLE_KEY_PEER_ID),
-                data.getInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_METHOD));
+                data.getInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_METHOD),
+                data.getBoolean(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_IS_COME_BACK_REQUEST));
 
         WifiAwareDiscoverySessionState session = getClientSession(info.mClientId, info.mSessionId,
                 methodString);
@@ -4547,7 +4586,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         BootStrppingInfo info = new BootStrppingInfo(command.arg2,
                 data.getInt(MESSAGE_BUNDLE_KEY_SESSION_ID),
                 data.getInt(MESSAGE_BUNDLE_KEY_PEER_ID),
-                data.getInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_METHOD));
+                data.getInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_METHOD),
+                data.getBoolean(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_IS_COME_BACK_REQUEST));
 
         WifiAwareDiscoverySessionState session = getClientSession(info.mClientId, info.mSessionId,
                 methodString);
@@ -4594,9 +4634,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         if (session == null) {
             return;
         }
-        if (success) {
-            session.onResumeSuccess();
-        } else {
+        if (!success) {
             session.onResumeFail(reason);
         }
     }
@@ -4640,11 +4678,11 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             return false;
         }
         if (!session.isSuspendable()) {
-            session.onResumeFail(WIFI_AWARE_SUSPEND_INVALID_SESSION);
+            session.onSuspendFail(WIFI_AWARE_SUSPEND_INVALID_SESSION);
             return false;
         }
         if (session.isSessionSuspended()) {
-            session.onResumeFail(WIFI_AWARE_SUSPEND_REDUNDANT_REQUEST);
+            session.onSuspendFail(WIFI_AWARE_SUSPEND_REDUNDANT_REQUEST);
             return false;
         }
 
@@ -4924,11 +4962,21 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         }
     }
 
-    private boolean onBootStrappingConfirmReceivedLocal(int id, boolean accept, int reason) {
+    private boolean onBootStrappingConfirmReceivedLocal(int id, int reason, int responseCode,
+            int comeBackDelay, byte[] cookie) {
         BootStrppingInfo info = mBootstrappingRequest.get(id);
         mBootstrappingRequest.remove(id);
         if (info == null) {
             return false;
+        }
+        if (responseCode == NAN_BOOTSTRAPPING_COMEBACK && comeBackDelay > 0) {
+            if (!info.mIsComeBackFollowUp) {
+                initiateBootStrappingSetupRequest(info.mClientId, info.mSessionId, info.mPeerId,
+                        info.mMethod, comeBackDelay * 1000L, cookie);
+                return true;
+            }
+            Log.e(TAG, "onBootStrappingConfirmReceivedLocal come back event on a"
+                    + "comback followup request, handle it as reject!");
         }
         String methodString = "onBootStrappingConfirmReceivedLocal";
         WifiAwareDiscoverySessionState session = getClientSession(info.mClientId, info.mSessionId,
@@ -4936,12 +4984,30 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         if (session == null) {
             return false;
         }
+        boolean accept = responseCode == NAN_BOOTSTRAPPING_ACCEPT;
         session.onBootStrappingConfirmReceived(info.mPeerId, accept, info.mMethod);
 
         if (!accept && mVerboseLoggingEnabled) {
             Log.v(TAG, "bootstrapping request reject, reason=" + reason);
         }
         return true;
+    }
+
+    private void onSuspensionModeChangedLocal(boolean isSuspended) {
+        if (isSuspended) return;
+
+        // Trigger resume success callback for all suspended sessions when device exits
+        // suspended mode.
+        for (int i = 0; i < mClients.size(); i++) {
+            WifiAwareClientState clientState = mClients.valueAt(i);
+            SparseArray<WifiAwareDiscoverySessionState> sessions = clientState.getSessions();
+            for (int j = 0; j < sessions.size(); j++) {
+                WifiAwareDiscoverySessionState session = sessions.valueAt(j);
+                if (session != null && session.isSessionSuspended()) {
+                    session.onResumeSuccess();
+                }
+            }
+        }
     }
 
     /*

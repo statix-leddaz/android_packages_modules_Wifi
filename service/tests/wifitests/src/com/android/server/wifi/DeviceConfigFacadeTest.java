@@ -43,6 +43,7 @@ import org.mockito.MockitoSession;
 
 import java.util.Collections;
 import java.util.Set;
+import java.util.function.Consumer;
 
 
 /**
@@ -52,6 +53,8 @@ import java.util.Set;
 public class DeviceConfigFacadeTest extends WifiBaseTest {
     @Mock Context mContext;
     @Mock WifiMetrics mWifiMetrics;
+    @Mock
+    Consumer<Boolean> mOobPseudonymFeatureFlagChangedListener;
 
     final ArgumentCaptor<OnPropertiesChangedListener> mOnPropertiesChangedListenerCaptor =
             ArgumentCaptor.forClass(OnPropertiesChangedListener.class);
@@ -59,7 +62,6 @@ public class DeviceConfigFacadeTest extends WifiBaseTest {
     private DeviceConfigFacade mDeviceConfigFacade;
     private TestLooper mLooper = new TestLooper();
     private MockitoSession mSession;
-
     /**
      * Setup the mocks and an instance of WifiConfigManager before each test.
      */
@@ -100,6 +102,8 @@ public class DeviceConfigFacadeTest extends WifiBaseTest {
                 mWifiMetrics);
         verify(() -> DeviceConfig.addOnPropertiesChangedListener(anyString(), any(),
                 mOnPropertiesChangedListenerCaptor.capture()));
+        mDeviceConfigFacade.setOobPseudonymFeatureFlagChangedListener(
+                mOobPseudonymFeatureFlagChangedListener);
     }
 
     /**
@@ -222,11 +226,14 @@ public class DeviceConfigFacadeTest extends WifiBaseTest {
         assertEquals(false, mDeviceConfigFacade.isInterfaceFailureBugreportEnabled());
         assertEquals(false, mDeviceConfigFacade.isP2pFailureBugreportEnabled());
         assertEquals(false, mDeviceConfigFacade.isAwareSuspensionEnabled());
-        assertEquals(false, mDeviceConfigFacade.isHighPerfLockDeprecated());
+        assertEquals(true, mDeviceConfigFacade.isHighPerfLockDeprecated());
         assertEquals(false, mDeviceConfigFacade.isOobPseudonymEnabled());
+        mLooper.dispatchAll();
+        verify(mOobPseudonymFeatureFlagChangedListener, never()).accept(anyBoolean());
         assertEquals(false, mDeviceConfigFacade.isApplicationQosPolicyApiEnabled());
-        assertEquals(false, mDeviceConfigFacade.isAdjustPollRssiIntervalEnabled());
+        assertEquals(true, mDeviceConfigFacade.isAdjustPollRssiIntervalEnabled());
         assertEquals(false, mDeviceConfigFacade.includePasspointSsidsInPnoScans());
+        assertEquals(false, mDeviceConfigFacade.isHandleRssiOrganicKernelFailuresEnabled());
     }
 
     /**
@@ -367,6 +374,8 @@ public class DeviceConfigFacadeTest extends WifiBaseTest {
                 anyBoolean())).thenReturn(true);
         when(DeviceConfig.getBoolean(anyString(), eq("include_passpoint_ssids_in_pno_scans"),
                 anyBoolean())).thenReturn(true);
+        when(DeviceConfig.getBoolean(anyString(), eq("handle_rssi_organic_kernel_failures_enabled"),
+                anyBoolean())).thenReturn(true);
         mOnPropertiesChangedListenerCaptor.getValue().onPropertiesChanged(null);
 
         // Verifying fields are updated to the new values
@@ -436,8 +445,19 @@ public class DeviceConfigFacadeTest extends WifiBaseTest {
         assertEquals(true, mDeviceConfigFacade.isAwareSuspensionEnabled());
         assertEquals(true, mDeviceConfigFacade.isHighPerfLockDeprecated());
         assertEquals(true, mDeviceConfigFacade.isOobPseudonymEnabled());
+        mLooper.dispatchAll();
+        verify(mOobPseudonymFeatureFlagChangedListener).accept(true);
         assertEquals(true, mDeviceConfigFacade.isApplicationQosPolicyApiEnabled());
         assertEquals(true, mDeviceConfigFacade.isAdjustPollRssiIntervalEnabled());
         assertEquals(true, mDeviceConfigFacade.includePasspointSsidsInPnoScans());
+        assertEquals(true, mDeviceConfigFacade.isHandleRssiOrganicKernelFailuresEnabled());
+
+        when(DeviceConfig.getBoolean(anyString(), eq("oob_pseudonym_enabled"),
+                anyBoolean())).thenReturn(false);
+        mOnPropertiesChangedListenerCaptor.getValue().onPropertiesChanged(null);
+        mLooper.dispatchAll();
+
+        assertEquals(false, mDeviceConfigFacade.isOobPseudonymEnabled());
+        verify(mOobPseudonymFeatureFlagChangedListener).accept(false);
     }
 }

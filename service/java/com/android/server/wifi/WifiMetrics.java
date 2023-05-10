@@ -246,7 +246,6 @@ public class WifiMetrics {
     private RttMetrics mRttMetrics;
     private final PnoScanMetrics mPnoScanMetrics = new PnoScanMetrics();
     private final WifiLinkLayerUsageStats mWifiLinkLayerUsageStats = new WifiLinkLayerUsageStats();
-    private final TelephonyManager mTelephonyManager;
     /** Mapping of radio id values to RadioStats objects. */
     private final SparseArray<RadioStats> mRadioStats = new SparseArray<>();
     private final ExperimentValues mExperimentValues = new ExperimentValues();
@@ -295,6 +294,7 @@ public class WifiMetrics {
     private IntCounter mPasspointDeauthImminentScope = new IntCounter();
     private IntCounter mRecentFailureAssociationStatus = new IntCounter();
     private boolean mFirstConnectionAfterBoot = true;
+    private long mLastTotalBeaconRx = 0;
 
     /**
      * Metrics are stored within an instance of the WifiLog proto during runtime,
@@ -404,7 +404,6 @@ public class WifiMetrics {
     private final SparseIntArray mObservedHotspotR3ApsPerEssInScanHistogram = new SparseIntArray();
 
     private final SparseIntArray mObserved80211mcApInScanHistogram = new SparseIntArray();
-    private final IntCounter mCountryCodeScanHistogram = new IntCounter();
 
     // link probing stats
     private final IntCounter mLinkProbeSuccessRssiCounts = new IntCounter(-85, -65);
@@ -1081,6 +1080,8 @@ public class WifiMetrics {
         private int mAuthType;
         private int mTrigger;
         private boolean mHasEverConnected;
+        private boolean mIsCarrierWifi;
+        private boolean mIsOobPseudonymEnabled;
 
         private ConnectionEvent() {
             mConnectionEvent = new WifiMetricsProto.ConnectionEvent();
@@ -1090,6 +1091,8 @@ public class WifiMetrics {
             mConfigBssid = "<NULL>";
             mWifiState = WifiMetricsProto.WifiLog.WIFI_UNKNOWN;
             mScreenOn = false;
+            mIsCarrierWifi = false;
+            mIsOobPseudonymEnabled = false;
         }
 
         public String toString() {
@@ -1325,6 +1328,8 @@ public class WifiMetrics {
                         clientRoleEnumToString(mConnectionEvent.interfaceRole));
                 sb.append(", isFirstConnectionAfterBoot="
                         + mConnectionEvent.isFirstConnectionAfterBoot);
+                sb.append(", isCarrierWifi=" + mIsCarrierWifi);
+                sb.append(", isOobPseudonymEnabled=" + mIsOobPseudonymEnabled);
                 return sb.toString();
             }
         }
@@ -1340,6 +1345,10 @@ public class WifiMetrics {
                     // Probe-responses)
                     if (config.dtimInterval > 0) {
                         mRouterFingerPrint.mRouterFingerPrintProto.dtim = config.dtimInterval;
+                    }
+
+                    if (config.carrierId != TelephonyManager.UNKNOWN_CARRIER_ID) {
+                        mIsCarrierWifi = true;
                     }
 
                     mConfigSsid = config.SSID;
@@ -1544,7 +1553,6 @@ public class WifiMetrics {
         setScreenState(context.getSystemService(PowerManager.class).isInteractive());
 
         mScanMetrics = new ScanMetrics(context, clock);
-        mTelephonyManager = context.getSystemService(TelephonyManager.class);
     }
 
     /** Sets internal ScoringParams member */
@@ -1817,7 +1825,8 @@ public class WifiMetrics {
      * or 0 if there is no unfinished connection
      */
     public int startConnectionEvent(
-            String ifaceName, WifiConfiguration config, String targetBSSID, int roamType) {
+            String ifaceName, WifiConfiguration config, String targetBSSID, int roamType,
+            boolean isOobPseudonymEnabled) {
         synchronized (mLock) {
             int overlapWithLastConnectionMs = 0;
             ConnectionEvent currentConnectionEvent = mCurrentConnectionEventPerIface.get(ifaceName);
@@ -1862,6 +1871,7 @@ public class WifiMetrics {
             currentConnectionEvent.mConnectionEvent.networkSelectorExperimentId =
                     mNetworkSelectorExperimentId;
             currentConnectionEvent.updateFromWifiConfiguration(config);
+            currentConnectionEvent.mIsOobPseudonymEnabled = isOobPseudonymEnabled;
             currentConnectionEvent.mConfigBssid = "any";
             currentConnectionEvent.mWifiState = mWifiState;
             currentConnectionEvent.mScreenOn = mScreenOn;
@@ -1923,7 +1933,7 @@ public class WifiMetrics {
                 } else if (WifiConfigurationUtil.isConfigForPskNetwork(config)) {
                     currentConnectionEvent.mConnectionEvent.networkType =
                             WifiMetricsProto.ConnectionEvent.TYPE_WPA2;
-                } else if (WifiConfigurationUtil.isConfigForEapNetwork(config)) {
+                } else if (WifiConfigurationUtil.isConfigForEnterpriseNetwork(config)) {
                     currentConnectionEvent.mConnectionEvent.networkType =
                             WifiMetricsProto.ConnectionEvent.TYPE_EAP;
                 } else if (WifiConfigurationUtil.isConfigForOweNetwork(config)) {
@@ -2082,7 +2092,9 @@ public class WifiMetrics {
                         durationTakenToConnectMillis, band, currentConnectionEvent.mAuthType,
                         currentConnectionEvent.mTrigger,
                         currentConnectionEvent.mHasEverConnected,
-                        timeSinceConnectedSeconds);
+                        timeSinceConnectedSeconds,
+                        currentConnectionEvent.mIsCarrierWifi,
+                        currentConnectionEvent.mIsOobPseudonymEnabled);
 
                 // ConnectionEvent already added to ConnectionEvents List. Safe to remove here.
                 mCurrentConnectionEventPerIface.remove(ifaceName);
@@ -3502,7 +3514,6 @@ public class WifiMetrics {
                 mWifiLogProto.partialAllSingleScanListenerResults++;
                 return;
             }
-            updateCountryCodeScanStats(scanDetails);
 
             Set<ScanResultMatchInfo> ssids = new HashSet<ScanResultMatchInfo>();
             int bssids = 0;
@@ -3640,35 +3651,6 @@ public class WifiMetrics {
             }
             increment80211mcAps(mObserved80211mcApInScanHistogram, supporting80211mcAps);
         }
-    }
-
-    private void updateCountryCodeScanStats(List<ScanDetail> scanDetails) {
-        String countryCode = null;
-        int countryCodeCount = 0;
-        for (ScanDetail scanDetail : scanDetails) {
-            NetworkDetail networkDetail = scanDetail.getNetworkDetail();
-            String countryCodeCurr = networkDetail.getCountryCode();
-            if (countryCodeCurr == null) {
-                continue;
-            }
-            if (countryCode == null) {
-                countryCode = countryCodeCurr;
-                countryCodeCount = 1;
-                continue;
-            }
-            if (!countryCodeCurr.equalsIgnoreCase(countryCode)) {
-                mCountryCodeScanHistogram.increment(COUNTRY_CODE_CONFLICT_WIFI_SCAN);
-                return;
-            }
-            countryCodeCount++;
-        }
-        String countryCodeTelephony = mTelephonyManager.getNetworkCountryIso();
-        if (countryCodeCount > 0 && !TextUtils.isEmpty(countryCodeTelephony)
-                && !countryCodeTelephony.equalsIgnoreCase(countryCode)) {
-            mCountryCodeScanHistogram.increment(COUNTRY_CODE_CONFLICT_WIFI_SCAN_TELEPHONY);
-            return;
-        }
-        mCountryCodeScanHistogram.increment(Math.min(countryCodeCount, MAX_COUNTRY_CODE_COUNT));
     }
 
     /** Increments the occurence of a "Connect to Network" notification. */
@@ -4217,8 +4199,6 @@ public class WifiMetrics {
 
                 pw.println("mWifiLogProto.observed80211mcSupportingApsInScanHistogram"
                         + mObserved80211mcApInScanHistogram);
-                pw.println("mWifiLogProto.CountryCodeScanHistogram="
-                        + mCountryCodeScanHistogram.toString());
                 pw.println("mWifiLogProto.bssidBlocklistStats:");
                 pw.println(mBssidBlocklistStats.toString());
 
@@ -5182,7 +5162,6 @@ public class WifiMetrics {
             mWifiLogProto.passpointDeauthImminentScope = mPasspointDeauthImminentScope.toProto();
             mWifiLogProto.recentFailureAssociationStatus =
                     mRecentFailureAssociationStatus.toProto();
-            mWifiLogProto.countryCodeScanHistogram = mCountryCodeScanHistogram.toProto();
         }
     }
 
@@ -5342,7 +5321,6 @@ public class WifiMetrics {
             mObservedHotspotR1ApsPerEssInScanHistogram.clear();
             mObservedHotspotR2ApsPerEssInScanHistogram.clear();
             mObservedHotspotR3ApsPerEssInScanHistogram.clear();
-            mCountryCodeScanHistogram.clear();
             mSoftApEventListTethered.clear();
             mSoftApEventListLocalOnly.clear();
             mWifiWakeMetrics.clear();
@@ -6411,6 +6389,7 @@ public class WifiMetrics {
                 wifiUsabilityStatsEntry.totalCcaBusyFreqTimeMs = statsMap.ccaBusyTimeMs;
             }
             wifiUsabilityStatsEntry.totalBeaconRx = stats.beacon_rx;
+            mLastTotalBeaconRx = stats.beacon_rx;
             wifiUsabilityStatsEntry.timeSliceDutyCycleInPercent = stats.timeSliceDutyCycleInPercent;
 
             boolean isSameBssidAndFreq = mLastBssid == null || mLastFrequency == -1
@@ -6686,6 +6665,8 @@ public class WifiMetrics {
         // Fill per link stats.
         for (WifiLinkLayerStats.LinkSpecificStats inStat : stats.links) {
             if (inStat == null) break;
+            WifiLinkLayerStats.ChannelStats channelStatsMap = stats.channelStatsMap.get(
+                    inStat.frequencyMhz);
             // Note: RSSI, Tx & Rx link speed are derived from signal poll stats which is updated in
             // Mlolink or WifiInfo (non-MLO case).
             android.net.wifi.WifiUsabilityStatsEntry.LinkStats outStat =
@@ -6705,8 +6686,10 @@ public class WifiMetrics {
                                     + inStat.lostmpdu_vi,
                             inStat.rxmpdu_be + inStat.rxmpdu_bk + inStat.rxmpdu_vo
                                     + inStat.rxmpdu_vi,
-                            inStat.beacon_rx,
-                            inStat.timeSliceDutyCycleInPercent, convertContentionTimeStats(stats),
+                            inStat.beacon_rx, inStat.timeSliceDutyCycleInPercent,
+                            (channelStatsMap != null) ? channelStatsMap.ccaBusyTimeMs : 0 ,
+                            (channelStatsMap != null) ? channelStatsMap.radioOnTimeMs : 0,
+                            convertContentionTimeStats(stats),
                             convertRateStats(stats));
             linkStats.put(inStat.link_id, outStat);
         }
@@ -8067,11 +8050,7 @@ public class WifiMetrics {
      * Get total beacon receive count
      */
     public long getTotalBeaconRxCount() {
-        if (mWifiUsabilityStatsEntriesList.isEmpty()) {
-            return -1;
-        } else {
-            return mWifiUsabilityStatsEntriesList.getLast().totalBeaconRx;
-        }
+        return mLastTotalBeaconRx;
     }
 
     /** Note whether Wifi was enabled at boot time. */

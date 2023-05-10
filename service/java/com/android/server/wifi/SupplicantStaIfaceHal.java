@@ -756,6 +756,11 @@ public class SupplicantStaIfaceHal {
             policyId = id;
             statusCode = status;
         }
+
+        @Override
+        public String toString() {
+            return "{policyId: " + policyId + ", statusCode: " + statusCode + "}";
+        }
     }
 
     protected static final int QOS_POLICY_SCS_REQUEST_STATUS_ERROR_UNKNOWN = -1;
@@ -2306,19 +2311,6 @@ public class SupplicantStaIfaceHal {
             return null;
         }
         return mStaIfaceHal.removeQosPolicyForScs(ifaceName, policyIds);
-    }
-
-    /**
-     * See comments for {@link ISupplicantStaIfaceHal#removeAllQosPoliciesForScs(String)}
-     */
-    public List<QosPolicyStatus> removeAllQosPoliciesForScs(
-            @NonNull String ifaceName) {
-        String methodStr = "removeAllQosPoliciesForScs";
-        if (mStaIfaceHal == null) {
-            handleNullHal(methodStr);
-            return null;
-        }
-        return mStaIfaceHal.removeAllQosPoliciesForScs(ifaceName);
     }
 
     /**

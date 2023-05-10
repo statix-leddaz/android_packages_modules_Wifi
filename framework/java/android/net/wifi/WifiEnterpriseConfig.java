@@ -126,6 +126,11 @@ public class WifiEnterpriseConfig implements Parcelable {
     public static final String KEYSTORES_URI = "keystores://";
 
     /**
+     * String representing a SHA-256 certificate hash used for wpa_supplicant.
+     */
+    private static final String CERT_HASH_PREFIX = "hash://server/sha256/";
+
+    /**
      * String to set the engine value to when it should be enabled.
      * @hide
      */
@@ -300,6 +305,8 @@ public class WifiEnterpriseConfig implements Parcelable {
     // subscription.
     private long mSelectedRcoi = 0;
 
+    private boolean mIsStrictConservativePeerMode = false;
+
     private static final String TAG = "WifiEnterpriseConfig";
 
     public WifiEnterpriseConfig() {
@@ -349,6 +356,7 @@ public class WifiEnterpriseConfig implements Parcelable {
         mUserApproveNoCaCert = source.mUserApproveNoCaCert;
         mSelectedRcoi = source.mSelectedRcoi;
         mMinimumTlsVersion = source.mMinimumTlsVersion;
+        mIsStrictConservativePeerMode = source.mIsStrictConservativePeerMode;
     }
 
     /**
@@ -742,6 +750,16 @@ public class WifiEnterpriseConfig implements Parcelable {
             e.printStackTrace();
             return alias;
         }
+    }
+
+    /**
+     * Set a server certificate hash instead of a CA certificate for a TOFU connection
+     *
+     * @param certHash Server certificate hash to match against in subsequent connections
+     * @hide
+     */
+    public void setServerCertificateHash(String certHash) {
+        setFieldValue(CA_CERT_KEY, certHash, CERT_HASH_PREFIX);
     }
 
     /**
@@ -1307,6 +1325,25 @@ public class WifiEnterpriseConfig implements Parcelable {
     }
 
     /**
+     * Enable or disable the conservative peer mode, this is only meaningful for
+     * EAP-SIM/AKA/AKA'
+     * @param enable true if the conservative peer mode is enabled.
+     * @hide
+     */
+    public void setStrictConservativePeerMode(boolean enable) {
+        mIsStrictConservativePeerMode = enable;
+    }
+
+    /**
+     * Check if the conservative peer mode is enabled or not, this is only meaningful for
+     * EAP-SIM/AKA/AKA'
+     * @hide
+     */
+    public boolean getStrictConservativePeerMode() {
+        return mIsStrictConservativePeerMode;
+    }
+
+    /**
      * Set plmn (Public Land Mobile Network) of the provider of Passpoint credential
      * @param plmn the plmn value derived from mcc (mobile country code) & mnc (mobile network code)
      */
@@ -1448,6 +1485,8 @@ public class WifiEnterpriseConfig implements Parcelable {
         sb.append(" user_approve_no_ca_cert: ").append(mUserApproveNoCaCert).append("\n");
         sb.append(" selected_rcoi: ").append(mSelectedRcoi).append("\n");
         sb.append(" minimum_tls_version: ").append(mMinimumTlsVersion).append("\n");
+        sb.append(" enable_conservative_peer_mode: ")
+                .append(mIsStrictConservativePeerMode).append("\n");
         return sb.toString();
     }
 

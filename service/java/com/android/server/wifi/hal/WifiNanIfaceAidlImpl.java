@@ -101,16 +101,6 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
     }
 
     /**
-     * See comments for {@link IWifiNanIface#getNanIface()}
-     *
-     * TODO: Remove this API. Will only be used temporarily until HalDeviceManager is refactored.
-     */
-    @Override
-    public android.hardware.wifi.V1_0.IWifiNanIface getNanIface() {
-        return null;
-    }
-
-    /**
      * See comments for {@link IWifiNanIface#registerFrameworkCallback(WifiNanIface.Callback)}
      */
     @Override
@@ -518,9 +508,10 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
 
     @Override
     public boolean initiateNanBootstrappingRequest(short transactionId, int peerId, MacAddress peer,
-            int method) {
+            int method, byte[] cookie) {
         String methodStr = "initiateNanBootstrappingRequest";
-        NanBootstrappingRequest request = createNanBootstrappingRequest(peerId, peer, method);
+        NanBootstrappingRequest request = createNanBootstrappingRequest(peerId, peer, method,
+                cookie);
         synchronized (mLock) {
             try {
                 if (!checkIfaceAndLogFailure(methodStr)) return false;
@@ -598,12 +589,12 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
     }
 
     private static NanBootstrappingRequest createNanBootstrappingRequest(int peerId,
-            MacAddress peer, int method) {
+            MacAddress peer, int method, byte[] cookie) {
         NanBootstrappingRequest request = new NanBootstrappingRequest();
         request.peerId = peerId;
         request.peerDiscMacAddr = peer.toByteArray();
         request.requestBootstrappingMethod = method;
-        request.cookie = new byte[0];
+        request.cookie = copyArray(cookie);
         return request;
     }
 

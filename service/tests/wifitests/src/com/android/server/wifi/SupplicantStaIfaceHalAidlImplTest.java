@@ -79,6 +79,7 @@ import android.hardware.wifi.supplicant.MloLink;
 import android.hardware.wifi.supplicant.MloLinksInfo;
 import android.hardware.wifi.supplicant.OceRssiBasedAssocRejectAttr;
 import android.hardware.wifi.supplicant.OsuMethod;
+import android.hardware.wifi.supplicant.PmkSaCacheData;
 import android.hardware.wifi.supplicant.PortRange;
 import android.hardware.wifi.supplicant.QosPolicyClassifierParams;
 import android.hardware.wifi.supplicant.QosPolicyClassifierParamsMask;
@@ -117,6 +118,7 @@ import android.text.TextUtils;
 
 import androidx.test.filters.SmallTest;
 
+import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.MboOceController.BtmFrameData;
 import com.android.server.wifi.hotspot2.AnqpEvent;
 import com.android.server.wifi.hotspot2.IconEvent;
@@ -132,6 +134,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.stubbing.Answer;
 
+import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -1791,9 +1794,16 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         verify(mPmkCacheManager).get(eq(testFrameworkNetworkId));
         verify(mSupplicantStaNetworkMock).setPmkCache(eq(
                 NativeUtil.byteArrayFromArrayList(pmkCacheData)));
-        verify(mISupplicantStaIfaceCallback)
-                .onPmkCacheAdded(eq(PMK_CACHE_EXPIRATION_IN_SEC), eq(
-                        NativeUtil.byteArrayFromArrayList(pmkCacheData)));
+        if (SdkLevel.isAtLeastU()) {
+            ArgumentCaptor<PmkSaCacheData> pmkSaCacheCaptor =
+                    ArgumentCaptor.forClass(PmkSaCacheData.class);
+            verify(mISupplicantStaIfaceCallback).onPmkSaCacheAdded(pmkSaCacheCaptor.capture());
+            verifyOnPmkSaCacheAddedCallbackData(pmkCacheData, pmkSaCacheCaptor.getValue());
+        } else {
+            verify(mISupplicantStaIfaceCallback)
+                    .onPmkCacheAdded(eq(PMK_CACHE_EXPIRATION_IN_SEC), eq(
+                            NativeUtil.byteArrayFromArrayList(pmkCacheData)));
+        }
     }
 
     /**
@@ -1819,8 +1829,15 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
 
         verify(mPmkCacheManager).get(eq(testFrameworkNetworkId));
         verify(mSupplicantStaNetworkMock).setPmkCache(eq(cacheDataArr));
-        verify(mISupplicantStaIfaceCallback)
-                .onPmkCacheAdded(eq(PMK_CACHE_EXPIRATION_IN_SEC), eq(cacheDataArr));
+        if (SdkLevel.isAtLeastU()) {
+            ArgumentCaptor<PmkSaCacheData> pmkSaCacheCaptor =
+                    ArgumentCaptor.forClass(PmkSaCacheData.class);
+            verify(mISupplicantStaIfaceCallback).onPmkSaCacheAdded(pmkSaCacheCaptor.capture());
+            verifyOnPmkSaCacheAddedCallbackData(pmkCacheData, pmkSaCacheCaptor.getValue());
+        } else {
+            verify(mISupplicantStaIfaceCallback)
+                    .onPmkCacheAdded(eq(PMK_CACHE_EXPIRATION_IN_SEC), eq(cacheDataArr));
+        }
     }
 
     /**
@@ -1846,6 +1863,8 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         verify(mSupplicantStaNetworkMock, never()).setPmkCache(any());
         verify(mISupplicantStaIfaceCallback, never())
                 .onPmkCacheAdded(anyLong(), any());
+        verify(mISupplicantStaIfaceCallback, never())
+                .onPmkSaCacheAdded(any());
     }
 
     /**
@@ -1869,6 +1888,8 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         verify(mSupplicantStaNetworkMock, never()).setPmkCache(any());
         verify(mISupplicantStaIfaceCallback, never())
                 .onPmkCacheAdded(anyLong(), any());
+        verify(mISupplicantStaIfaceCallback, never())
+                .onPmkSaCacheAdded(any());
     }
 
     /**
@@ -1890,6 +1911,8 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         verify(mSupplicantStaNetworkMock, never()).setPmkCache(any(byte[].class));
         verify(mISupplicantStaIfaceCallback, never()).onPmkCacheAdded(
                 anyLong(), any(byte[].class));
+        verify(mISupplicantStaIfaceCallback, never())
+                .onPmkSaCacheAdded(any());
     }
 
     /**
@@ -1907,10 +1930,12 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         executeAndValidateInitializationSequence();
         assertTrue(mDut.connectToNetwork(WLAN0_IFACE_NAME, config));
 
-        verify(mPmkCacheManager, never()).add(any(), anyInt(), anyLong(), any());
+        verify(mPmkCacheManager, never()).add(any(), anyInt(), any(), anyLong(), any());
         verify(mSupplicantStaNetworkMock, never()).setPmkCache(any(byte[].class));
         verify(mISupplicantStaIfaceCallback, never()).onPmkCacheAdded(
                 anyLong(), any(byte[].class));
+        verify(mISupplicantStaIfaceCallback, never())
+                .onPmkSaCacheAdded(any());
     }
 
     /**
@@ -1928,10 +1953,12 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         executeAndValidateInitializationSequence();
         assertTrue(mDut.connectToNetwork(WLAN0_IFACE_NAME, config));
 
-        verify(mPmkCacheManager, never()).add(any(), anyInt(), anyLong(), any());
+        verify(mPmkCacheManager, never()).add(any(), anyInt(), any(), anyLong(), any());
         verify(mSupplicantStaNetworkMock, never()).setPmkCache(any(byte[].class));
         verify(mISupplicantStaIfaceCallback, never()).onPmkCacheAdded(
                 anyLong(), any(byte[].class));
+        verify(mISupplicantStaIfaceCallback, never())
+                .onPmkSaCacheAdded(any());
     }
 
     /**
@@ -2390,13 +2417,14 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         byte translatedPolicyId = 15;
         QosPolicyParams frameworkPolicy = new QosPolicyParams.Builder(
                 5 /* policyId */, QosPolicyParams.DIRECTION_DOWNLINK)
-                .setSourceAddress(MacAddress.fromString("00:11:22:33:44:55"))
-                .setDestinationAddress(MacAddress.fromString("aa:bb:cc:dd:ee:ff"))
+                .setSourceAddress(InetAddress.getByName("127.0.0.1"))
+                .setDestinationAddress(InetAddress.getByName("127.0.0.2"))
                 .setDscp(25)
                 .setUserPriority(QosPolicyParams.USER_PRIORITY_BACKGROUND_HIGH)
+                .setIpVersion(QosPolicyParams.IP_VERSION_4)
                 .setSourcePort(17)
                 .setProtocol(QosPolicyParams.PROTOCOL_TCP)
-                .setDestinationPortRange(10, 12)
+                .setDestinationPort(10)
                 .build();
         frameworkPolicy.setTranslatedPolicyId(translatedPolicyId);
         QosPolicyScsData halPolicy = SupplicantStaIfaceHalAidlImpl
@@ -2521,12 +2549,12 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
 
         if (frameworkPolicy.getSourceAddress() != null) {
             assertNotEquals(0, paramsMask & QosPolicyClassifierParamsMask.SRC_IP);
-            assertArrayEquals(frameworkPolicy.getSourceAddress().toByteArray(),
+            assertArrayEquals(frameworkPolicy.getSourceAddress().getAddress(),
                     classifierParams.srcIp);
         }
         if (frameworkPolicy.getDestinationAddress() != null) {
             assertNotEquals(0, paramsMask & QosPolicyClassifierParamsMask.DST_IP);
-            assertArrayEquals(frameworkPolicy.getDestinationAddress().toByteArray(),
+            assertArrayEquals(frameworkPolicy.getDestinationAddress().getAddress(),
                     classifierParams.dstIp);
         }
         if (frameworkPolicy.getSourcePort() != DscpPolicy.SOURCE_PORT_ANY) {
@@ -2870,14 +2898,43 @@ public class SupplicantStaIfaceHalAidlImplTest extends WifiBaseTest {
         }).when(mSupplicantStaNetworkMock)
                 .loadWifiConfiguration(any(WifiConfiguration.class), any(Map.class));
 
-        doAnswer(new MockAnswerUtil.AnswerWithArguments() {
-            public boolean answer(byte[] serializedData) throws Exception {
-                mISupplicantStaIfaceCallback.onPmkCacheAdded(
-                        PMK_CACHE_EXPIRATION_IN_SEC, serializedData);
-                return true;
-            }
-        }).when(mSupplicantStaNetworkMock)
-                .setPmkCache(any(byte[].class));
+        if (SdkLevel.isAtLeastU()) {
+            doAnswer(new MockAnswerUtil.AnswerWithArguments() {
+                public boolean answer(byte[] serializedData) throws Exception {
+                    mISupplicantStaIfaceCallback.onPmkSaCacheAdded(createPmkSaCacheData(
+                            BSSID, PMK_CACHE_EXPIRATION_IN_SEC, serializedData));
+                    return true;
+                }
+            }).when(mSupplicantStaNetworkMock)
+                    .setPmkCache(any(byte[].class));
+        } else {
+            doAnswer(new MockAnswerUtil.AnswerWithArguments() {
+                public boolean answer(byte[] serializedData) throws Exception {
+                    mISupplicantStaIfaceCallback.onPmkCacheAdded(
+                            PMK_CACHE_EXPIRATION_IN_SEC, serializedData);
+                    return true;
+                }
+            }).when(mSupplicantStaNetworkMock)
+                    .setPmkCache(any(byte[].class));
+        }
+    }
+
+    private PmkSaCacheData createPmkSaCacheData(String bssid,
+            long expirationTimeInSec, byte[] serializedEntry) {
+        PmkSaCacheData pmkSaData = new PmkSaCacheData();
+        pmkSaData.bssid = NativeUtil.macAddressToByteArray(bssid);
+        pmkSaData.expirationTimeInSec = expirationTimeInSec;
+        pmkSaData.serializedEntry = serializedEntry;
+        return pmkSaData;
+    }
+
+    private void verifyOnPmkSaCacheAddedCallbackData(ArrayList<Byte> pmkCacheData,
+            PmkSaCacheData pmkSaCache) {
+        assertNotNull(pmkSaCache);
+        assertEquals(MacAddress.fromString(BSSID), MacAddress.fromBytes(pmkSaCache.bssid));
+        assertEquals(PMK_CACHE_EXPIRATION_IN_SEC, pmkSaCache.expirationTimeInSec);
+        assertTrue(Arrays.equals(NativeUtil.byteArrayFromArrayList(pmkCacheData),
+                pmkSaCache.serializedEntry));
     }
 
     /**

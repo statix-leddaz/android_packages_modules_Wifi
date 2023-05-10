@@ -309,8 +309,12 @@ public class SupplicantP2pIfaceHalAidlImpl implements ISupplicantP2pIfaceHal {
     protected ISupplicant getSupplicantMockable() {
         synchronized (mLock) {
             try {
-                return ISupplicant.Stub.asInterface(
-                        ServiceManager.waitForDeclaredService(HAL_INSTANCE_NAME));
+                if (SdkLevel.isAtLeastT()) {
+                    return ISupplicant.Stub.asInterface(
+                            ServiceManager.waitForDeclaredService(HAL_INSTANCE_NAME));
+                } else {
+                    return null;
+                }
             } catch (Exception e) {
                 Log.e(TAG, "Unable to get ISupplicant service, " + e);
                 return null;
@@ -2465,6 +2469,39 @@ public class SupplicantP2pIfaceHalAidlImpl implements ISupplicantP2pIfaceHal {
             result |= WifiP2pManager.FEATURE_GROUP_OWNER_IPV6_LINK_LOCAL_ADDRESS_PROVIDED;
         }
         return result;
+    }
+
+    /**
+     * Configure the IP addresses in supplicant for P2P GO to provide the IP address to
+     * client in EAPOL handshake. Refer Wi-Fi P2P Technical Specification v1.7 - Section  4.2.8
+     * IP Address Allocation in EAPOL-Key Frames (4-Way Handshake) for more details.
+     * The IP addresses are IPV4 addresses and higher-order address bytes are in the
+     * lower-order int bytes (e.g. 1.2.3.4 is represented as 0x04030201)
+     *
+     * @param ipAddressGo The P2P Group Owner IP address.
+     * @param ipAddressMask The P2P Group owner subnet mask.
+     * @param ipAddressStart The starting address in the IP address pool.
+     * @param ipAddressEnd The ending address in the IP address pool.
+     * @return boolean value indicating whether operation was successful.
+     */
+    public boolean configureEapolIpAddressAllocationParams(int ipAddressGo, int ipAddressMask,
+            int ipAddressStart, int ipAddressEnd) {
+        synchronized (mLock) {
+            String methodStr = "configureEapolIpAddressAllocationParams";
+            if (!checkP2pIfaceAndLogFailure(methodStr)) {
+                return false;
+            }
+            try {
+                mISupplicantP2pIface.configureEapolIpAddressAllocationParams(ipAddressGo,
+                        ipAddressMask, ipAddressStart, ipAddressEnd);
+                return true;
+            } catch (RemoteException e) {
+                handleRemoteException(e, methodStr);
+            } catch (ServiceSpecificException e) {
+                handleServiceSpecificException(e, methodStr);
+            }
+            return false;
+        }
     }
 
     private byte[] convertInformationElementSetToBytes(

@@ -601,6 +601,10 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                 Log.e(TAG, "ISupplicant.removeInterface exception: " + e);
                 handleNoSuchElementException(e, "removeInterface");
                 return false;
+            } catch (IllegalArgumentException e) {
+                Log.e(TAG, "ISupplicant.removeInterface exception: " + e);
+                handleIllegalArgumentException(e, "removeInterface");
+                return false;
             }
             return true;
         }
@@ -2883,7 +2887,7 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
         String macAddressStr = getMacAddress(ifaceName);
         try {
             if (!mPmkCacheManager.add(MacAddress.fromString(macAddressStr),
-                    networkId, expirationTimeInSec, serializedEntry)) {
+                    networkId, null, expirationTimeInSec, serializedEntry)) {
                 Log.w(TAG, "Cannot add PMK cache for " + ifaceName);
             }
         } catch (IllegalArgumentException ex) {
@@ -3992,15 +3996,6 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
     public List<SupplicantStaIfaceHal.QosPolicyStatus> removeQosPolicyForScs(
             @NonNull String ifaceName, @NonNull List<Byte> policyIds) {
         Log.e(TAG, "removeQosPolicyForScs is not supported by the HIDL HAL");
-        return null;
-    }
-
-    /**
-     * See comments for {@link ISupplicantStaIfaceHal#removeAllQosPoliciesForScs(String)}
-     */
-    public List<SupplicantStaIfaceHal.QosPolicyStatus> removeAllQosPoliciesForScs(
-            @NonNull String ifaceName) {
-        Log.e(TAG, "removeAllQosPoliciesForScs is not supported by the HIDL HAL");
         return null;
     }
 

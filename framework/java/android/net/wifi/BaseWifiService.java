@@ -1040,4 +1040,29 @@ public class BaseWifiService extends IWifiManager.Stub {
         throw new UnsupportedOperationException();
     }
 
+    @Override
+    public void addWifiLowLatencyLockListener(IWifiLowLatencyLockListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void removeWifiLowLatencyLockListener(IWifiLowLatencyLockListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getMaxMloAssociationLinkCount(IIntegerListener listener, Bundle extras) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getMaxMloStrLinkCount(IIntegerListener listener, Bundle extras) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getSupportedSimultaneousBandCombinations(IWifiBandsListener listener,
+            Bundle extras) {
+        throw new UnsupportedOperationException();
+    }
 }
