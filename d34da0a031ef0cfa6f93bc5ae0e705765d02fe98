@@ -20,6 +20,23 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "ababf0c8_cbdba1c5",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 2869,
+      "author": {
+        "id": 1288034
+      },
+      "writtenOn": "2023-05-11T06:35:08Z",
+      "side": 1,
+      "message": "I think this should be in the ProvisioningConfiguration directly ? Not the Layer2Information, since this won\u0027t change when L2 (roaming) changes ?\n\nThis solves the problem where getConnectedWifiConfigurationInternal can return null.",
+      "revId": "d34da0a031ef0cfa6f93bc5ae0e705765d02fe98",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "8ca7037c_0dd505bb",
         "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
         "patchSetId": 1
