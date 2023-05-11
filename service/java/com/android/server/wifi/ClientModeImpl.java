@@ -201,7 +201,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private static final int NETWORK_AGENT_TEARDOWN_DELAY_MS = 5_000; // Max teardown delay.
     @VisibleForTesting public static final long CONNECTING_WATCHDOG_TIMEOUT_MS = 30_000; // 30 secs.
     @VisibleForTesting
-    public static final short NETWORK_NOT_FOUND_EVENT_THRESHOLD = 3;
     public static final String ARP_TABLE_PATH = "/proc/net/arp";
 
     private boolean mVerboseLoggingEnabled = false;
@@ -272,7 +271,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private final ConcreteClientModeManager mClientModeManager;
 
     private final WifiNotificationManager mNotificationManager;
-    private final DtimMultiplierController mDtimMultiplierController;
     private final QosPolicyRequestHandler mQosPolicyRequestHandler;
 
     private boolean mFailedToResetMacAddress = false;
@@ -412,6 +410,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private final RestrictedWifiNetworkFactory mRestrictedWifiNetworkFactory;
     @VisibleForTesting
     InsecureEapNetworkHandler mInsecureEapNetworkHandler;
+    boolean mLeafCertSent;
     @VisibleForTesting
     InsecureEapNetworkHandler.InsecureEapNetworkHandlerCallbacks
             mInsecureEapNetworkHandlerCallbacksImpl;
@@ -547,6 +546,14 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     /** Used to remove packet filter from apf. */
     static final int CMD_REMOVE_KEEPALIVE_PACKET_FILTER_FROM_APF = BASE + 210;
 
+    /**
+     * Set maximum acceptable DTIM multiplier to hardware driver. Any multiplier larger than the
+     * maximum value must not be accepted, it will cause packet loss higher than what the system
+     * can accept, which will cause unexpected behavior for apps, and may interrupt the network
+     * connection.
+     */
+    static final int CMD_SET_MAX_DTIM_MULTIPLIER = BASE + 211;
+
     @VisibleForTesting
     static final int CMD_PRE_DHCP_ACTION                                = BASE + 255;
     private static final int CMD_PRE_DHCP_ACTION_COMPLETE               = BASE + 256;
@@ -657,6 +664,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private int mNetworkNotFoundEventCount = 0;
 
     private final WifiPseudonymManager.PseudonymUpdatingListener mPseudonymUpdatingListener;
+
+    private final ApplicationQosPolicyRequestHandler mApplicationQosPolicyRequestHandler;
 
 
     /** Note that this constructor will also start() the StateMachine. */
@@ -813,8 +822,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiInjector = wifiInjector;
         mQosPolicyRequestHandler = new QosPolicyRequestHandler(mInterfaceName, mWifiNative, this,
                 mWifiInjector.getWifiHandlerThread());
-        mDtimMultiplierController = new DtimMultiplierController(mContext, mInterfaceName,
-                mWifiNative);
 
         mRssiMonitor = new RssiMonitor(mWifiGlobals, mWifiThreadRunner, mWifiInfo, mWifiNative,
                 mInterfaceName,
@@ -864,6 +871,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 getHandler());
 
         mPseudonymUpdatingListener = this::updatePseudonymFromOob;
+        mApplicationQosPolicyRequestHandler = mWifiInjector.getApplicationQosPolicyRequestHandler();
 
         final int threshold =  mContext.getResources().getInteger(
                 R.integer.config_wifiConfigurationWifiRunnerThresholdInMs);
@@ -960,8 +968,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private void setMulticastFilter(boolean enabled) {
         if (mIpClient != null) {
             mIpClient.setMulticastFilter(enabled);
-            // Multicast filter enabled = multicast lock disabled
-            mDtimMultiplierController.setMulticastLock(!enabled);
         }
     }
 
@@ -1117,6 +1123,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         public void onPreconnectionStart(List<Layer2PacketParcelable> packets) {
             if (mIpClientCallbacks != this) return;
             sendMessage(CMD_START_FILS_CONNECTION, 0, 0, packets);
+        }
+
+        @Override
+        public void setMaxDtimMultiplier(int multiplier) {
+            if (mIpClientCallbacks != this) return;
+            sendMessage(CMD_SET_MAX_DTIM_MULTIPLIER, multiplier);
         }
 
         @Override
@@ -1304,7 +1316,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mSupplicantStateTracker.enableVerboseLogging(mVerboseLoggingEnabled);
         mWifiNative.enableVerboseLogging(mVerboseLoggingEnabled, mVerboseLoggingEnabled);
         mQosPolicyRequestHandler.enableVerboseLogging(mVerboseLoggingEnabled);
-        mDtimMultiplierController.enableVerboseLogging(mVerboseLoggingEnabled);
         mRssiMonitor.enableVerboseLogging(mVerboseLoggingEnabled);
     }
 
@@ -2310,6 +2321,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             case CMD_SET_FALLBACK_PACKET_FILTERING:
                 sb.append(" enabled=" + (boolean) msg.obj);
                 break;
+            case CMD_SET_MAX_DTIM_MULTIPLIER:
+                sb.append(" maximum multiplier=" + msg.arg1);
+                break;
             case CMD_ROAM_WATCHDOG_TIMER:
                 sb.append(" ");
                 sb.append(Integer.toString(msg.arg1));
@@ -2416,6 +2430,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 return "CMD_SCREEN_STATE_CHANGED";
             case CMD_SET_FALLBACK_PACKET_FILTERING:
                 return "CMD_SET_FALLBACK_PACKET_FILTERING";
+            case CMD_SET_MAX_DTIM_MULTIPLIER:
+                return "CMD_SET_MAX_DTIM_MULTIPLIER";
             case CMD_SET_SUSPEND_OPT_ENABLED:
                 return "CMD_SET_SUSPEND_OPT_ENABLED";
             case CMD_START_CONNECT:
@@ -2785,7 +2801,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // TODO: Update all callers to use NetworkCallbacks and delete this.
             sendLinkConfigurationChangedBroadcast();
         }
-        mDtimMultiplierController.updateLinkProperties(newLp);
         if (mVerboseLoggingEnabled) {
             StringBuilder sb = new StringBuilder();
             sb.append("updateLinkProperties nid: " + mLastNetworkId);
@@ -3375,7 +3390,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (!newConnectionInProgress) {
             mIsUserSelected = false;
         }
-        mDtimMultiplierController.reset();
         updateCurrentConnectionInfo();
     }
 
@@ -4100,14 +4114,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mLastSimBasedConnectionCarrierName = null;
         mLastSignalLevel = -1;
         mEnabledTdlsPeers.clear();
-        if (mWifiGlobals.isConnectedMacRandomizationEnabled()) {
-            mFailedToResetMacAddress = !mWifiNative.setStaMacAddress(
-                    mInterfaceName, MacAddressUtils.createRandomUnicastAddress());
-            if (mFailedToResetMacAddress) {
-                Log.e(getTag(), "Failed to set random MAC address on ClientMode creation");
-            }
-        }
-        mWifiInfo.setMacAddress(mWifiNative.getMacAddress(mInterfaceName));
         // TODO: b/79504296 This broadcast has been deprecated and should be removed
         sendSupplicantConnectionChangedBroadcast(true);
 
@@ -4351,9 +4357,16 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         @Override
         public void enterImpl() {
             Log.d(getTag(), "entering ConnectableState: ifaceName = " + mInterfaceName);
-
             setSuspendOptimizationsNative(SUSPEND_DUE_TO_HIGH_PERF, true);
-
+            if (mWifiGlobals.isConnectedMacRandomizationEnabled()) {
+                mFailedToResetMacAddress = !mWifiNative.setStaMacAddress(
+                        mInterfaceName, MacAddressUtils.createRandomUnicastAddress());
+                if (mFailedToResetMacAddress) {
+                    Log.e(getTag(), "Failed to set random MAC address on ClientMode creation");
+                }
+            }
+            mWifiInfo.setMacAddress(mWifiNative.getMacAddress(mInterfaceName));
+            updateCurrentConnectionInfo();
             mWifiStateTracker.updateState(mInterfaceName, WifiStateTracker.INVALID);
             makeIpClient();
         }
@@ -4536,6 +4549,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
                     // TOFU flow for devices that do not support this feature
                     mInsecureEapNetworkHandler.prepareConnection(mTargetWifiConfiguration);
+                    mLeafCertSent = false;
                     if (!isTrustOnFirstUseSupported()) {
                         mInsecureEapNetworkHandler.startUserApprovalIfNecessary(mIsUserSelected);
                     }
@@ -4627,7 +4641,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 + netId + " while disconnected. Connecting.");
                         WifiConfiguration config =
                                 mWifiConfigManager.getConfiguredNetwork(netId);
-                        if (!mWifiPermissionsUtil.isAdminRestrictedNetwork(config)) {
+                        if (!mWifiPermissionsUtil.isAdminRestrictedNetwork(config)
+                                && !mWifiGlobals.isDeprecatedSecurityTypeNetwork(config)) {
                             startConnectToNetwork(netId, message.sendingUid, SUPPLICANT_BSSID_ANY);
                         }
                     } else if (result.hasCredentialChanged()) {
@@ -4748,6 +4763,16 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         mWifiNative.startFilteringMulticastV4Packets(mInterfaceName);
                     } else {
                         mWifiNative.stopFilteringMulticastV4Packets(mInterfaceName);
+                    }
+                    break;
+                }
+                case CMD_SET_MAX_DTIM_MULTIPLIER: {
+                    final int maxMultiplier = message.arg1;
+                    final boolean success =
+                            mWifiNative.setDtimMultiplier(mInterfaceName, maxMultiplier);
+                    if (mVerboseLoggingEnabled) {
+                        Log.d(TAG, "Set maximum DTIM Multiplier to " + maxMultiplier
+                                + (success ? " SUCCESS" : " FAIL"));
                     }
                     break;
                 }
@@ -5056,6 +5081,13 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         return false;
     }
 
+    /**
+     * Check if the connection is MLO (Multi-Link Operation).
+     * @return true if connection is MLO, otherwise false.
+     */
+    public boolean isMlo() {
+        return !mWifiInfo.getAssociatedMloLinks().isEmpty();
+    }
 
     private void updateCapabilities(WifiConfiguration currentWifiConfiguration) {
         updateCapabilities(getCapabilities(currentWifiConfiguration, getConnectedBssidInternal()));
@@ -5502,6 +5534,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     }
                     mWifiInfo.setNetworkKey(config.getNetworkKeyFromSecurityType(
                             mWifiInfo.getCurrentSecurityType()));
+                    if (mApplicationQosPolicyRequestHandler.isFeatureEnabled()) {
+                        mApplicationQosPolicyRequestHandler.queueAllPoliciesOnIface(mInterfaceName);
+                    }
                     updateLayer2Information();
                     updateCurrentConnectionInfo();
                     transitionTo(mL3ProvisioningState);
@@ -5747,7 +5782,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         break;
                     }
                     Log.d(getTag(), "Network not found event received: network: " + networkName);
-                    if (mNetworkNotFoundEventCount >= NETWORK_NOT_FOUND_EVENT_THRESHOLD
+                    if (mNetworkNotFoundEventCount
+                            >= mWifiGlobals.getNetworkNotFoundEventThreshold()
                             && mTargetWifiConfiguration != null
                             && mTargetWifiConfiguration.SSID != null
                             && mTargetWifiConfiguration.SSID.equals(networkName)) {
@@ -6043,11 +6079,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         Log.d(TAG, "Cannot set pending cert.");
                     }
                     // Launch user approval upon receiving the server certificate and disconnect
-                    if (certificateDepth == 0 && mInsecureEapNetworkHandler
+                    if (certificateDepth == 0 && !mLeafCertSent && mInsecureEapNetworkHandler
                             .startUserApprovalIfNecessary(mIsUserSelected)) {
                         // In the TOFU flow, the user approval dialog is now displayed and the
                         // network remains disconnected and disabled until it is approved.
                         sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_NETWORK_UNTRUSTED);
+                        mLeafCertSent = true;
                     }
                     break;
                 }
@@ -6262,6 +6299,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         sendNetworkChangeBroadcast(DetailedState.CONNECTED);
                     }
                     checkIfNeedDisconnectSecondaryWifi();
+                    if (mApplicationQosPolicyRequestHandler.isFeatureEnabled()) {
+                        mApplicationQosPolicyRequestHandler.queueAllPoliciesOnIface(mInterfaceName);
+                    }
                     break;
                 }
                 case WifiMonitor.BSS_FREQUENCY_CHANGED_EVENT: {

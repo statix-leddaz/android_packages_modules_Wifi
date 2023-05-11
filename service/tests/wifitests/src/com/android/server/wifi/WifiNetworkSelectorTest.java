@@ -24,6 +24,7 @@ import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_NONE;
 import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_OWE;
 import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_PSK;
 import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_SAE;
+import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_WEP;
 import static com.android.server.wifi.WifiNetworkSelector.experimentIdFromIdentifier;
 
 import static org.hamcrest.Matchers.*;
@@ -381,6 +382,8 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
         when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(true);
         when(mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()).thenReturn(true);
         when(mWifiGlobals.isOweUpgradeEnabled()).thenReturn(true);
+        when(mWifiGlobals.isWepDeprecated()).thenReturn(false);
+        when(mWifiGlobals.isWpaPersonalDeprecated()).thenReturn(false);
     }
 
     private void setupWifiConfigManager() {
@@ -1030,6 +1033,108 @@ public class WifiNetworkSelectorTest extends WifiBaseTest {
                 Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
                 false, true, true, Collections.emptySet(), false);
         WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
+    }
+
+    /**
+     * Deprecated security type WEP SSID is filtered out for network selection.
+     *
+     * ClientModeImpl is disconnected.
+     * scanDetails contains a network which is has deprecated security type.
+     *
+     * Expected behavior: no network recommended by Network Selector
+     */
+    @Test
+    public void filterOutDeprecatedSecurityTypeWepSsid() {
+        String[] ssids = {"\"test1\""};
+        String[] bssids = {"6c:f3:7f:ae:8c:f3"};
+        int[] freqs = {5180};
+        String[] caps = {"[WEP][ESS]"};
+        int[] levels = {mThresholdQualifiedRssi5G + 8};
+        int[] securities = {SECURITY_WEP};
+        when(mWifiGlobals.isWepDeprecated()).thenReturn(true);
+        when(WifiInfo.convertWifiConfigurationSecurityType(
+                WifiConfiguration.SECURITY_TYPE_WEP)).thenReturn(WifiInfo.SECURITY_TYPE_WEP);
+
+        ScanDetailsAndWifiConfigs scanDetailsAndConfigs =
+                WifiNetworkSelectorTestUtil.setupScanDetailsAndConfigStore(ssids, bssids,
+                        freqs, caps, levels, securities, mWifiConfigManager, mClock);
+        List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
+        HashSet<String> blocklist = new HashSet<String>();
+
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
+                scanDetails, blocklist,
+                Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
+                false, true, true, Collections.emptySet(), false);
+        WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
+        assertEquals("Expect null configuration", null, candidate);
+    }
+
+    /**
+     * Unsupported security type WPA-Personal SSID is filtered out for network selection.
+     *
+     * ClientModeImpl is disconnected.
+     * scanDetails contains a network which is has unsupported security type.
+     *
+     * Expected behavior: no network recommended by Network Selector
+     */
+    @Test
+    public void filterOutUnsupportedSecurityTypeWpaPersonalSsid() {
+        String[] ssids = {"\"test1\""};
+        String[] bssids = {"6c:f3:7f:ae:8c:f3"};
+        int[] freqs = {5180};
+        String[] caps = {"[WPA-PSK-TKIP][ESS]"};
+        int[] levels = {mThresholdQualifiedRssi5G + 8};
+        int[] securities = {SECURITY_PSK};
+        when(mWifiGlobals.isWpaPersonalDeprecated()).thenReturn(true);
+        when(WifiInfo.convertWifiConfigurationSecurityType(
+                WifiConfiguration.SECURITY_TYPE_PSK)).thenReturn(WifiInfo.SECURITY_TYPE_PSK);
+
+        ScanDetailsAndWifiConfigs scanDetailsAndConfigs =
+                WifiNetworkSelectorTestUtil.setupScanDetailsAndConfigStore(ssids, bssids,
+                        freqs, caps, levels, securities, mWifiConfigManager, mClock);
+        List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
+        HashSet<String> blocklist = new HashSet<String>();
+
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
+                scanDetails, blocklist,
+                Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
+                false, true, true, Collections.emptySet(), false);
+        WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
+        assertEquals("Expect null configuration", null, candidate);
+    }
+
+    /**
+     * Unsupported security type WPA-Personal should not filter WPA/WPA2 networks.
+     *
+     * ClientModeImpl is disconnected.
+     * scanDetails contains a network which is has WPA/WPA2 security type.
+     *
+     * Expected behavior: WPA/WPA2 network recommended by Network Selector
+     */
+    @Test
+    public void testWpa2NotFilteredWithWpa() {
+        String[] ssids = {"\"test1\""};
+        String[] bssids = {"6c:f3:7f:ae:8c:f3"};
+        int[] freqs = {5180};
+        String[] caps = {"[WPA-PSK-TKIP][ESS][WPA2-PSK-CCMP][RSN-PSK-CCMP]"};
+        int[] levels = {mThresholdQualifiedRssi5G + 8};
+        int[] securities = {SECURITY_PSK};
+        when(mWifiGlobals.isWpaPersonalDeprecated()).thenReturn(false);
+        when(WifiInfo.convertWifiConfigurationSecurityType(
+                WifiConfiguration.SECURITY_TYPE_PSK)).thenReturn(WifiInfo.SECURITY_TYPE_PSK);
+
+        ScanDetailsAndWifiConfigs scanDetailsAndConfigs =
+                WifiNetworkSelectorTestUtil.setupScanDetailsAndConfigStore(ssids, bssids,
+                        freqs, caps, levels, securities, mWifiConfigManager, mClock);
+        List<ScanDetail> scanDetails = scanDetailsAndConfigs.getScanDetails();
+        HashSet<String> blocklist = new HashSet<String>();
+
+        List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector.getCandidatesFromScan(
+                scanDetails, blocklist,
+                Arrays.asList(new ClientModeManagerState(TEST_IFACE_NAME, false, true, mWifiInfo)),
+                false, true, true, Collections.emptySet(), false);
+        WifiConfiguration candidate = mWifiNetworkSelector.selectNetwork(candidates);
+        assertEquals(ssids[0], candidate.SSID);
     }
 
     /**

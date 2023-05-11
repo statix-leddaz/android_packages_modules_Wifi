@@ -97,6 +97,7 @@ import com.android.server.wifi.ActiveModeManager.Listener;
 import com.android.server.wifi.ActiveModeManager.SoftApRole;
 import com.android.server.wifi.ActiveModeWarden.ExternalClientModeManagerRequestListener;
 import com.android.server.wifi.util.GeneralUtil.Mutable;
+import com.android.server.wifi.util.LastCallerInfoManager;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.wifi.resources.R;
 
@@ -179,6 +180,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
     @Mock Network mNetwork;
     @Mock LocalLog mLocalLog;
     @Mock WifiSettingsConfigStore mSettingsConfigStore;
+    @Mock LastCallerInfoManager mLastCallerInfoManager;
 
     Listener<ConcreteClientModeManager> mClientListener;
     Listener<SoftApManager> mSoftApListener;
@@ -233,6 +235,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         when(mContext.getPackageManager()).thenReturn(mPackageManager);
         when(mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_RTT)).thenReturn(true);
         when(mWifiInjector.getSettingsConfigStore()).thenReturn(mSettingsConfigStore);
+        when(mWifiInjector.getLastCallerInfoManager()).thenReturn(mLastCallerInfoManager);
         when(mSettingsConfigStore.get(
                 eq(WIFI_NATIVE_SUPPORTED_STA_BANDS))).thenReturn(
                 TEST_SUPPORTED_BANDS);
@@ -1506,6 +1509,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mSettingsStore).handleAirplaneModeToggled();
+        verify(mLastCallerInfoManager, never()).put(eq(WifiManager.API_WIFI_ENABLED),
+                anyInt(), anyInt(), anyInt(), any(), anyBoolean());
     }
 
     /**
@@ -1523,6 +1528,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
             mActiveModeWarden.airplaneModeToggled();
             mLooper.dispatchAll();
         }, 0);
+        verify(mLastCallerInfoManager, never()).put(eq(WifiManager.API_WIFI_ENABLED),
+                anyInt(), anyInt(), anyInt(), any(), anyBoolean());
 
         // Wi-Fi shuts down when APM enhancement disabled
         assertWifiShutDown(() -> {
@@ -1530,6 +1537,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
             mActiveModeWarden.airplaneModeToggled();
             mLooper.dispatchAll();
         });
+        verify(mLastCallerInfoManager).put(eq(WifiManager.API_WIFI_ENABLED), anyInt(), anyInt(),
+                anyInt(), eq("android_apm"), eq(false));
     }
 
     /**
@@ -3958,6 +3967,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
             mActiveModeWarden.airplaneModeToggled();
             mLooper.dispatchAll();
         });
+        verify(mLastCallerInfoManager).put(eq(WifiManager.API_WIFI_ENABLED), anyInt(), anyInt(),
+                anyInt(), eq("android_apm"), eq(false));
 
         mClientListener.onStopped(mClientModeManager);
         mLooper.dispatchAll();
@@ -4870,4 +4881,247 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         assertFalse(mActiveModeWarden.isBandSupportedForSta(WifiScanner.WIFI_BAND_5_GHZ_DFS_ONLY));
         assertTrue(mActiveModeWarden.isBandSupportedForSta(WifiScanner.WIFI_BAND_6_GHZ));
     }
+
+    @Test
+    public void testSatelliteModeOnDisableWifi() throws Exception {
+        // Wifi is enabled
+        enterClientModeActiveState();
+        assertInEnabledState();
+
+        // Satellite mode is ON, disable Wifi
+        assertWifiShutDown(() -> {
+            when(mSettingsStore.isSatelliteModeOn()).thenReturn(true);
+            mActiveModeWarden.handleSatelliteModeChange();
+            mLooper.dispatchAll();
+        });
+        mClientListener.onStopped(mClientModeManager);
+        mLooper.dispatchAll();
+        assertInDisabledState();
+    }
+
+    @Test
+    public void testSatelliteModeOffEnableWifi() throws Exception {
+        // Wifi is enabled
+        enterClientModeActiveState();
+        assertInEnabledState();
+
+        // Satellite mode is ON, disable Wifi
+        assertWifiShutDown(() -> {
+            when(mSettingsStore.isSatelliteModeOn()).thenReturn(true);
+            mActiveModeWarden.handleSatelliteModeChange();
+            mLooper.dispatchAll();
+        });
+        mClientListener.onStopped(mClientModeManager);
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // Satellite mode is off, enable Wifi
+        when(mSettingsStore.isSatelliteModeOn()).thenReturn(false);
+        mActiveModeWarden.handleSatelliteModeChange();
+        mLooper.dispatchAll();
+        assertInEnabledState();
+    }
+
+
+    @Test
+    public void testSatelliteModeOnAirplaneModeOn() throws Exception {
+        // Sequence: Satellite ON -> APM ON -> Satellite OFF -> APM OFF
+
+        // Wifi is enabled
+        enterClientModeActiveState();
+        assertInEnabledState();
+
+        // Satellite mode is ON, disable Wifi
+        assertWifiShutDown(() -> {
+            when(mSettingsStore.isSatelliteModeOn()).thenReturn(true);
+            mActiveModeWarden.handleSatelliteModeChange();
+            mLooper.dispatchAll();
+        });
+        mClientListener.onStopped(mClientModeManager);
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // APM toggle on, no change to Wifi state
+        when(mSettingsStore.isAirplaneModeOn()).thenReturn(true);
+        mActiveModeWarden.airplaneModeToggled();
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // Satellite mode is off, no change to Wifi state as APM is on
+        when(mSettingsStore.isSatelliteModeOn()).thenReturn(false);
+        mActiveModeWarden.handleSatelliteModeChange();
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // APM toggle off, enable Wifi
+        when(mSettingsStore.isAirplaneModeOn()).thenReturn(false);
+        mActiveModeWarden.airplaneModeToggled();
+        mLooper.dispatchAll();
+        assertInEnabledState();
+    }
+
+    @Test
+    public void testAirplaneModeOnSatelliteModeOn() throws Exception {
+        // Sequence: APM ON -> Satellite ON -> APM OFF -> Satellite OFF
+
+        // Wifi is enabled
+        enterClientModeActiveState();
+        assertInEnabledState();
+
+        // APM toggle on, Wifi disabled
+        assertWifiShutDown(() -> {
+            when(mSettingsStore.isAirplaneModeOn()).thenReturn(true);
+            mActiveModeWarden.airplaneModeToggled();
+            mLooper.dispatchAll();
+        });
+        mClientListener.onStopped(mClientModeManager);
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // Satellite mode is on, no change to Wifi state
+        when(mSettingsStore.isSatelliteModeOn()).thenReturn(true);
+        mActiveModeWarden.handleSatelliteModeChange();
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // APM toggle off, no change to Wifi state
+        when(mSettingsStore.isAirplaneModeOn()).thenReturn(false);
+        mActiveModeWarden.airplaneModeToggled();
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // Satellite mode is off, enable Wifi
+        when(mSettingsStore.isSatelliteModeOn()).thenReturn(false);
+        mActiveModeWarden.handleSatelliteModeChange();
+        mLooper.dispatchAll();
+        assertInEnabledState();
+    }
+
+    @Test
+    public void testToggleSatelliteModeBeforeAirplaneMode() throws Exception {
+        // Sequence: APM ON -> Satellite ON -> Satellite OFF -> APM OFF
+
+        // Wifi is enabled
+        enterClientModeActiveState();
+        assertInEnabledState();
+
+        // APM toggle on, Wifi disabled
+        assertWifiShutDown(() -> {
+            when(mSettingsStore.isAirplaneModeOn()).thenReturn(true);
+            mActiveModeWarden.airplaneModeToggled();
+            mLooper.dispatchAll();
+        });
+        verify(mLastCallerInfoManager).put(eq(WifiManager.API_WIFI_ENABLED), anyInt(), anyInt(),
+                anyInt(), eq("android_apm"), eq(false));
+        verify(mLastCallerInfoManager, never()).put(eq(WifiManager.API_WIFI_ENABLED), anyInt(),
+                anyInt(), anyInt(), eq("android_apm"), eq(true));
+        mClientListener.onStopped(mClientModeManager);
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // Satellite mode is on, no change to Wifi state
+        when(mSettingsStore.isSatelliteModeOn()).thenReturn(true);
+        mActiveModeWarden.handleSatelliteModeChange();
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // Satellite mode is off, no change to Wifi state
+        when(mSettingsStore.isSatelliteModeOn()).thenReturn(false);
+        mActiveModeWarden.handleSatelliteModeChange();
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // APM toggle off, enable Wifi
+        when(mSettingsStore.isAirplaneModeOn()).thenReturn(false);
+        mActiveModeWarden.airplaneModeToggled();
+        mLooper.dispatchAll();
+        assertInEnabledState();
+        verify(mLastCallerInfoManager).put(eq(WifiManager.API_WIFI_ENABLED), anyInt(), anyInt(),
+                anyInt(), eq("android_apm"), eq(true));
+    }
+
+    @Test
+    public void testToggleAirplaneModeBeforeSatelliteMode() throws Exception {
+        // Sequence: Satellite ON -> APM ON -> APM OFF -> Satellite OFF
+
+        // Wifi is enabled
+        enterClientModeActiveState();
+        assertInEnabledState();
+
+        // Satellite mode is ON, disable Wifi
+        assertWifiShutDown(() -> {
+            when(mSettingsStore.isSatelliteModeOn()).thenReturn(true);
+            mActiveModeWarden.handleSatelliteModeChange();
+            mLooper.dispatchAll();
+        });
+        mClientListener.onStopped(mClientModeManager);
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // APM toggle on, no change to Wifi state
+        when(mSettingsStore.isAirplaneModeOn()).thenReturn(true);
+        mActiveModeWarden.airplaneModeToggled();
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // APM toggle off, no change to Wifi state
+        when(mSettingsStore.isAirplaneModeOn()).thenReturn(false);
+        mActiveModeWarden.airplaneModeToggled();
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // Satellite mode is off, enable Wifi
+        when(mSettingsStore.isSatelliteModeOn()).thenReturn(false);
+        mActiveModeWarden.handleSatelliteModeChange();
+        mLooper.dispatchAll();
+        assertInEnabledState();
+    }
+
+    @Test
+    public void testToggleWifiWithSatelliteAndAirplaneMode() throws Exception {
+        // Sequence: APM ON -> Wifi ON -> Satellite ON -> APM OFF -> Satellite OFF
+
+        // Wifi is enabled
+        enterClientModeActiveState();
+        assertInEnabledState();
+
+        // APM toggle on, Wifi disabled
+        assertWifiShutDown(() -> {
+            when(mSettingsStore.isAirplaneModeOn()).thenReturn(true);
+            mActiveModeWarden.airplaneModeToggled();
+            mLooper.dispatchAll();
+        });
+        mClientListener.onStopped(mClientModeManager);
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // Wifi on
+        when(mSettingsStore.isWifiToggleEnabled()).thenReturn(true);
+        mActiveModeWarden.wifiToggled(TEST_WORKSOURCE);
+        mLooper.dispatchAll();
+        assertInEnabledState();
+
+        // Satellite mode is ON, disable Wifi
+        assertWifiShutDown(() -> {
+            when(mSettingsStore.isSatelliteModeOn()).thenReturn(true);
+            mActiveModeWarden.handleSatelliteModeChange();
+            mLooper.dispatchAll();
+        });
+        mClientListener.onStopped(mClientModeManager);
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // APM toggle off, no change to Wifi state
+        when(mSettingsStore.isAirplaneModeOn()).thenReturn(false);
+        mActiveModeWarden.airplaneModeToggled();
+        mLooper.dispatchAll();
+        assertInDisabledState();
+
+        // Satellite mode is off, enable Wifi
+        when(mSettingsStore.isSatelliteModeOn()).thenReturn(false);
+        mActiveModeWarden.handleSatelliteModeChange();
+        mLooper.dispatchAll();
+        assertInEnabledState();
+    }
+
 }

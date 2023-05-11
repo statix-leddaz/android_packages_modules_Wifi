@@ -26,6 +26,8 @@
           <item type="bool" name="config_wifi60ghzSupport" />
           <item type="bool" name="config_wifi11axSupportOverride" />
           <item type="bool" name="config_wifi11beSupportOverride" />
+          <item type="bool" name="config_wifiWepDeprecated" />
+          <item type="bool" name="config_wifiWpaPersonalDeprecated" />
           <item type="bool" name="config_wifiFrameworkMaxNumSpatialStreamDeviceOverrideEnable" />
           <item type="integer" name="config_wifiFrameworkMaxNumSpatialStreamDeviceOverrideValue" />
           <item type="bool" name="config_wifi_fast_bss_transition_enabled" />
@@ -217,6 +219,7 @@
           <item type="integer" name="config_wifiRttBackgroundExecGapMs" />
           <item type="integer" name="config_wifiPollRssiIntervalMilliseconds" />
           <item type="integer" name="config_wifiPollRssiLongIntervalMilliseconds" />
+          <item type="integer" name="config_wifiNetworkNotFoundEventThreshold" />
           <item type="integer" name="config_wifiClientRssiMonitorThresholdDbm" />
           <item type="integer" name="config_wifiClientRssiMonitorHysteresisDb" />
           <item type="bool" name="config_wifiAdjustPollRssiIntervalEnabled" />

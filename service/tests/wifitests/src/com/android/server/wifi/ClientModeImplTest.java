@@ -483,6 +483,10 @@ public class ClientModeImplTest extends WifiBaseTest {
     static final ApfCapabilities APF_CAP = new ApfCapabilities(1, 2, 3);
     static final long TEST_TX_BYTES = 6666;
     static final long TEST_RX_BYTES = 8888;
+    static final int TEST_MULTICAST_LOCK_MAX_DTIM_MULTIPLIER = 1;
+    static final int TEST_IPV6_ONLY_NETWORK_MAX_DTIM_MULTIPLIER = 2;
+    static final int TEST_IPV4_ONLY_NETWORK_MAX_DTIM_MULTIPLIER = 9;
+    static final int TEST_DUAL_STACK_NETWORK_MAX_DTIM_MULTIPLIER = 2;
 
     ClientModeImpl mCmi;
     HandlerThread mWifiCoreThread;
@@ -570,6 +574,7 @@ public class ClientModeImplTest extends WifiBaseTest {
     @Mock ScanResult mScanResult;
     @Mock HandlerThread mWifiHandlerThread;
     @Mock SsidTranslator mSsidTranslator;
+    @Mock ApplicationQosPolicyRequestHandler mApplicationQosPolicyRequestHandler;
     @Mock LocalLog mLocalLog;
 
     @Captor ArgumentCaptor<WifiConfigManager.OnNetworkUpdateListener> mConfigUpdateListenerCaptor;
@@ -648,7 +653,10 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(mUntrustedWifiNetworkFactory.hasConnectionRequests()).thenReturn(true);
         when(mOemWifiNetworkFactory.hasConnectionRequests()).thenReturn(true);
         when(mMultiInternetManager.hasPendingConnectionRequests()).thenReturn(true);
+        when(mApplicationQosPolicyRequestHandler.isFeatureEnabled()).thenReturn(true);
         when(mWifiInjector.getWifiHandlerLocalLog()).thenReturn(mLocalLog);
+        when(mWifiInjector.getApplicationQosPolicyRequestHandler())
+                .thenReturn(mApplicationQosPolicyRequestHandler);
 
         mFrameworkFacade = getFrameworkFacade();
         mContext = getContext();
@@ -700,6 +708,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(mWifiGlobals.isOweUpgradeEnabled()).thenReturn(true);
         when(mWifiGlobals.getClientModeImplNumLogRecs()).thenReturn(100);
         when(mWifiGlobals.isSaveFactoryMacToConfigStoreEnabled()).thenReturn(true);
+        when(mWifiGlobals.getNetworkNotFoundEventThreshold()).thenReturn(3);
         when(mWifiInjector.makeWifiNetworkAgent(any(), any(), any(), any(), any()))
                 .thenAnswer(new AnswerWithArguments() {
                     public WifiNetworkAgent answer(
@@ -899,6 +908,25 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         verify(connectActionListener).onSuccess();
         verify(mWifiPermissionsUtil).isAdminRestrictedNetwork(any());
+        verify(mClientModeManager, never())
+                .setShouldReduceNetworkScore(false);
+    }
+
+    /**
+     * Verifies that deprecated security type configs can be saved without triggering a connection.
+     */
+    @Test
+    public void canSaveDeprecatedSecurityTypeNetworkWithoutConnecting() throws Exception {
+        mWifiInfo.setNetworkId(WifiConfiguration.INVALID_NETWORK_ID);
+        IActionListener connectActionListener = mock(IActionListener.class);
+        when(mWifiGlobals.isDeprecatedSecurityTypeNetwork(any())).thenReturn(true);
+        mCmi.saveNetwork(
+                new NetworkUpdateResult(TEST_NETWORK_ID, STATUS_SUCCESS, false, false, true, false),
+                new ActionListenerWrapper(connectActionListener),
+                Binder.getCallingUid(), OP_PACKAGE_NAME);
+        mLooper.dispatchAll();
+
+        verify(connectActionListener).onSuccess();
         verify(mClientModeManager, never())
                 .setShouldReduceNetworkScore(false);
     }
@@ -7834,7 +7862,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         assumeTrue(SdkLevel.isAtLeastS());
         initializeAndAddNetworkAndVerifySuccess();
         mCmi.sendMessage(ClientModeImpl.CMD_START_CONNECT, 0, 0, TEST_BSSID_STR);
-        for (int i = 0; i < ClientModeImpl.NETWORK_NOT_FOUND_EVENT_THRESHOLD; i++) {
+        for (int i = 0; i < mWifiGlobals.getNetworkNotFoundEventThreshold(); i++) {
             mCmi.sendMessage(WifiMonitor.NETWORK_NOT_FOUND_EVENT, DEFAULT_TEST_SSID);
         }
         mLooper.dispatchAll();
@@ -8080,7 +8108,6 @@ public class ClientModeImplTest extends WifiBaseTest {
         verify(mWifiScoreReport, times(2)).onRoleChanged(ROLE_CLIENT_PRIMARY);
     }
 
-
     @Test
     public void testPacketFilterOnRoleChangeOnSecondaryCmmWithSupportForNonPrimaryApf()
             throws Exception {
@@ -8108,6 +8135,63 @@ public class ClientModeImplTest extends WifiBaseTest {
         mCmi.onRoleChanged();
         // ignore (since it was already applied)
         verify(mWifiNative, times(1)).installPacketFilter(WIFI_IFACE_NAME, filter);
+    }
+
+    @Test
+    public void testSetMaxDtimMultiplier_IPv4OnlyNetwork() throws Exception {
+        connect();
+
+        mIpClientCallback.setMaxDtimMultiplier(TEST_IPV4_ONLY_NETWORK_MAX_DTIM_MULTIPLIER);
+        mLooper.dispatchAll();
+
+        verify(mWifiNative).setDtimMultiplier(WIFI_IFACE_NAME,
+                TEST_IPV4_ONLY_NETWORK_MAX_DTIM_MULTIPLIER);
+    }
+
+    @Test
+    public void testSetMaxDtimMultiplier_IPv6OnlyNetwork() throws Exception {
+        connect();
+
+        mIpClientCallback.setMaxDtimMultiplier(TEST_IPV6_ONLY_NETWORK_MAX_DTIM_MULTIPLIER);
+        mLooper.dispatchAll();
+
+        verify(mWifiNative).setDtimMultiplier(WIFI_IFACE_NAME,
+                TEST_IPV6_ONLY_NETWORK_MAX_DTIM_MULTIPLIER);
+    }
+
+    private void runSetMaxDtimMultiplierInDualStackTest() throws Exception {
+        connect();
+
+        mIpClientCallback.setMaxDtimMultiplier(TEST_DUAL_STACK_NETWORK_MAX_DTIM_MULTIPLIER);
+        mLooper.dispatchAll();
+
+        verify(mWifiNative).setDtimMultiplier(WIFI_IFACE_NAME,
+                TEST_DUAL_STACK_NETWORK_MAX_DTIM_MULTIPLIER);
+    }
+
+    @Test
+    public void testSetMaxDtimMultiplier_DualStackNetwork() throws Exception {
+        runSetMaxDtimMultiplierInDualStackTest();
+    }
+
+    @Test
+    public void testSetMaxDtimMultiplier_EnableMulticastLock() throws Exception {
+        runSetMaxDtimMultiplierInDualStackTest();
+        reset(mIpClient);
+
+        // simulate the multicast lock is held.
+        WifiMulticastLockManager.FilterController filterController =
+                mCmi.getMcastLockManagerFilterController();
+        filterController.startFilteringMulticastPackets();
+        verify(mIpClient).setMulticastFilter(eq(true));
+
+        reset(mWifiNative);
+
+        mIpClientCallback.setMaxDtimMultiplier(TEST_MULTICAST_LOCK_MAX_DTIM_MULTIPLIER);
+        mLooper.dispatchAll();
+
+        verify(mWifiNative).setDtimMultiplier(WIFI_IFACE_NAME,
+                TEST_MULTICAST_LOCK_MAX_DTIM_MULTIPLIER);
     }
 
     @Test

@@ -80,6 +80,7 @@ public class WifiConfigurationUtil {
             new Pair<>(MacAddress.BROADCAST_ADDRESS, MacAddress.BROADCAST_ADDRESS);
     private static final Pair<MacAddress, MacAddress> MATCH_ALL_BSSID_PATTERN =
             new Pair<>(ALL_ZEROS_MAC_ADDRESS, ALL_ZEROS_MAC_ADDRESS);
+    private static final String SYSTEM_CA_STORE_PATH = "/system/etc/security/cacerts";
 
     /**
      * Checks if the provided |wepKeys| array contains any non-null value;
@@ -731,6 +732,10 @@ public class WifiConfigurationUtil {
                 && !validatePassword(config.preSharedKey, isAdd, true)) {
             return false;
         }
+        if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_WAPI_PSK)
+                && !validatePassword(config.preSharedKey, isAdd, false)) {
+            return false;
+        }
         if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_DPP)
                 && (supportedFeatureSet & WifiManager.WIFI_FEATURE_DPP_AKM) == 0) {
             Log.e(TAG, "DPP AKM is not supported");
@@ -1199,5 +1204,15 @@ public class WifiConfigurationUtil {
         }
 
         return false;
+    }
+
+    /**
+     * Get the system trust store path which can be used when setting the CA path of an Enterprise
+     * Wi-Fi connection {@link WifiEnterpriseConfig#setCaPath(String)}
+     *
+     * @return The system trust store path
+     */
+    public static String getSystemTrustStorePath() {
+        return SYSTEM_CA_STORE_PATH;
     }
 }
