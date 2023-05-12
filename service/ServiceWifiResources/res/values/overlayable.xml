@@ -67,6 +67,8 @@
           <item type="integer" name="config_wifiFrameworkSoftApShutDownTimeoutMilliseconds" />
           <item type="integer" name="config_wifiFrameworkSoftApShutDownIdleInstanceInBridgedModeTimeoutMillisecond" />
           <item type="bool" name="config_wifiFrameworkSoftApDisableBridgedModeShutdownIdleInstanceWhenCharging" />
+          <item type="array" name="config_wifiOobPseudonymEnabled_carrier_overrides" />
+          <item type="array" name="config_wifiOobPseudonymEntitlementServerUrl_carrier_overrides" />
           <item type="bool" name="config_wifiSoftApDynamicCountryCodeUpdateSupported" />
           <item type="bool" name="config_wifiSoftapResetChannelConfig" />
           <item type="bool" name="config_wifiSoftapResetHiddenConfig" />
@@ -173,6 +175,13 @@
           <item type="bool" name="config_wifiPnoRecencySortingEnabled" />
           <item type="integer" name="config_wifiMaxPnoSsidCount" />
           <item type="integer" name="config_wifiPnoWatchdogIntervalMs" />
+          <item type="bool" name="config_wifiSwPnoEnabled" />
+          <item type="integer" name="config_wifiSwPnoFastTimerMs" />
+          <item type="integer" name="config_wifiSwPnoFastTimerIterations" />
+          <item type="integer" name="config_wifiSwPnoSlowTimerMs" />
+          <item type="integer" name="config_wifiSwPnoSlowTimerIterations" />
+          <item type="integer" name="config_wifiSwPnoSlowTimerMargin" />
+          <item type="integer" name="config_wifiSwPnoMobilityStateTimerIterations" />
           <item type="bool" name="config_wifiSuspendOptimizationsEnabled" />
           <item type="bool" name="config_wifiHighMovementNetworkSelectionOptimizationEnabled" />
           <item type="bool" name="config_wifiScanOnCellularDataLossEnabled" />
@@ -257,6 +266,8 @@
           <item type="array" name="config_wifiCharsetsForSsidTranslation" />
           <item type="string" name="config_wifiBugreportDeepLink" />
           <item type="bool" name="config_wifiWaitForDestroyedListeners" />
+	  <item type="integer" name="config_wifiImsiProtectionNotificationDelaySeconds" />
+          <item type="bool" name="config_wifiNiapModeEnabled" />
           <!-- Params from config.xml that can be overlayed -->
 
           <!-- Params from strings.xml that can be overlayed -->
@@ -364,6 +375,7 @@
           <item type="string" name="wifi_ca_cert_dialog_message_server_name_text" />
           <item type="string" name="wifi_ca_cert_dialog_message_issuer_name_text" />
           <item type="string" name="wifi_ca_cert_dialog_message_organization_text" />
+          <item type="string" name="wifi_ca_cert_dialog_message_expiration_text" />
           <item type="string" name="wifi_ca_cert_dialog_message_contact_text" />
           <item type="string" name="wifi_ca_cert_dialog_message_signature_name_text" />
           <item type="string" name="wifi_ca_cert_notification_title" />

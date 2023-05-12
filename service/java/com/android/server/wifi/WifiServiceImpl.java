@@ -171,6 +171,7 @@ import com.android.modules.utils.ParceledListSlice;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.net.module.util.Inet4AddressUtils;
 import com.android.server.wifi.coex.CoexManager;
+import com.android.server.wifi.entitlement.PseudonymInfo;
 import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.hotspot2.PasspointProvider;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.UserActionEvent;
@@ -204,6 +205,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -259,6 +261,7 @@ public class WifiServiceImpl extends BaseWifiService {
     private final ConnectHelper mConnectHelper;
     private final WifiGlobals mWifiGlobals;
     private final WifiCarrierInfoManager mWifiCarrierInfoManager;
+    private final WifiPseudonymManager mWifiPseudonymManager;
     private @WifiManager.VerboseLoggingLevel int mVerboseLoggingLevel =
             WifiManager.VERBOSE_LOGGING_LEVEL_DISABLED;
     private boolean mVerboseLoggingEnabled = false;
@@ -504,6 +507,7 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiGlobals = wifiInjector.getWifiGlobals();
         mSimRequiredNotifier = wifiInjector.getSimRequiredNotifier();
         mWifiCarrierInfoManager = wifiInjector.getWifiCarrierInfoManager();
+        mWifiPseudonymManager = wifiInjector.getWifiPseudonymManager();
         mMakeBeforeBreakManager = mWifiInjector.getMakeBeforeBreakManager();
         mLastCallerInfoManager = mWifiInjector.getLastCallerInfoManager();
         mWifiDialogManager = mWifiInjector.getWifiDialogManager();
@@ -526,9 +530,6 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiThreadRunner.post(() -> {
             if (!mWifiConfigManager.loadFromStore()) {
                 Log.e(TAG, "Failed to load from config store");
-            }
-            if (!mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()) {
-                mWifiConfigManager.updateTrustOnFirstUseFlag(isTrustOnFirstUseSupported());
             }
             mWifiConfigManager.incrementNumRebootsSinceLastUse();
             // config store is read, check if verbose logging is enabled.
@@ -797,6 +798,10 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiInjector.getSsidTranslator().handleBootCompleted();
             mWifiInjector.getPasspointManager().handleBootCompleted();
             mWifiInjector.getInterfaceConflictManager().handleBootCompleted();
+            // HW capabilities is ready after boot completion.
+            if (!mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()) {
+                mWifiConfigManager.updateTrustOnFirstUseFlag(isTrustOnFirstUseSupported());
+            }
             updateVerboseLoggingEnabled();
         });
     }
@@ -3612,33 +3617,14 @@ public class WifiServiceImpl extends BaseWifiService {
             return new AddNetworkResult(AddNetworkResult.STATUS_SUCCESS, 0);
         }
 
-        if (config.isEnterprise() && config.enterpriseConfig.isEapMethodServerCertUsed()
-                && !config.enterpriseConfig.isMandatoryParameterSetForServerCertValidation()) {
-            if (!(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()
-                    && isSettingsOrSuw(Binder.getCallingPid(), Binder.getCallingUid()))) {
-                Log.e(TAG, "Enterprise network configuration is missing either a Root CA "
-                        + "or a domain name");
-                return new AddNetworkResult(
-                        AddNetworkResult.STATUS_INVALID_CONFIGURATION_ENTERPRISE, -1);
-            }
-            Log.w(TAG, "Insecure Enterprise network " + config.SSID
-                    + " configured by Settings/SUW");
-        }
-
         Log.i("addOrUpdateNetworkInternal", " uid = " + Binder.getCallingUid()
                 + " SSID " + config.SSID
                 + " nid=" + config.networkId);
-        // TODO: b/171981339, add more detailed failure reason into
-        //  WifiConfigManager.NetworkUpdateResult, and plumb that reason up.
-        int networkId =  mWifiThreadRunner.call(
+        NetworkUpdateResult result = mWifiThreadRunner.call(
                 () -> mWifiConfigManager.addOrUpdateNetwork(config, attributedCreatorUid,
-                        attributedCreatorPackage, overrideCreator).getNetworkId(),
-                WifiConfiguration.INVALID_NETWORK_ID);
-        if (networkId >= 0) {
-            return new AddNetworkResult(AddNetworkResult.STATUS_SUCCESS, networkId);
-        }
-        return new AddNetworkResult(
-                AddNetworkResult.STATUS_ADD_WIFI_CONFIG_FAILURE, -1);
+                        attributedCreatorPackage, overrideCreator),
+                new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID));
+        return new AddNetworkResult(result.getStatusCode(), result.getNetworkId());
     }
 
     public static void verifyCert(X509Certificate caCert)
@@ -5088,6 +5074,10 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiMulticastLockManager.enableVerboseLogging(mVerboseLoggingEnabled);
         mWifiInjector.enableVerboseLogging(mVerboseLoggingEnabled, halVerboseEnabled);
         mWifiInjector.getSarManager().enableVerboseLogging(mVerboseLoggingEnabled);
+        WifiScanner wifiScanner = mWifiInjector.getWifiScanner();
+        if (wifiScanner != null) {
+            wifiScanner.enableVerboseLogging(mVerboseLoggingEnabled);
+        }
         ApConfigUtil.enableVerboseLogging(mVerboseLoggingEnabled);
     }
 
@@ -5145,7 +5135,7 @@ public class WifiServiceImpl extends BaseWifiService {
                 if (network.isEnterprise()) {
                     mWifiInjector.getWifiKeyStore().removeKeys(network.enterpriseConfig, true);
                 }
-                removeNetwork(network.networkId, packageName);
+                mWifiConfigManager.removeNetwork(network.networkId, callingUid, packageName);
             }
         });
         // Delete all Passpoint configurations
@@ -6013,6 +6003,22 @@ public class WifiServiceImpl extends BaseWifiService {
                             + configuration);
                     wrapper.sendFailure(WifiManager.ActionListener.FAILURE_INTERNAL_ERROR);
                     return;
+                }
+                if (mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(configuration.carrierId)) {
+                    Optional<PseudonymInfo> pseudonymInfo =
+                            mWifiPseudonymManager.getValidPseudonymInfo(configuration.carrierId);
+                    if (pseudonymInfo.isEmpty()) {
+                        Log.e(TAG, "There isn't any valid pseudonym to update the Network="
+                                + configuration);
+                        mWifiPseudonymManager.retrievePseudonymOnFailureTimeoutExpired(
+                                configuration);
+                        // TODO(b/274148786): new error code and UX for this failure.
+                        wrapper.sendFailure(WifiManager.ActionListener.FAILURE_INTERNAL_ERROR);
+                        return;
+                    } else {
+                        mWifiPseudonymManager.updateWifiConfiguration(
+                                configuration);
+                    }
                 }
             }
 

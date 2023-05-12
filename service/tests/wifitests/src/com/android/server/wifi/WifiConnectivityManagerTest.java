@@ -2170,6 +2170,50 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
      * connection failure.
      */
     @Test
+    public void testNoRetryConnectionOnUserDisconnectedNetwork() {
+        // Setup WifiNetworkSelector to return 2 valid candidates from scan results
+        MacAddress macAddress = MacAddress.fromString(CANDIDATE_BSSID_2);
+        WifiCandidates.Key key = new WifiCandidates.Key(mock(ScanResultMatchInfo.class),
+                macAddress, 0, WifiConfiguration.SECURITY_TYPE_OPEN);
+        WifiCandidates.Candidate otherCandidate = mock(WifiCandidates.Candidate.class);
+        when(otherCandidate.getKey()).thenReturn(key);
+        List<WifiCandidates.Candidate> candidateList = new ArrayList<>();
+        candidateList.add(mCandidate1);
+        candidateList.add(otherCandidate);
+        when(mWifiNS.getCandidatesFromScan(any(), any(), any(), anyBoolean(), anyBoolean(),
+                anyBoolean(), any(), anyBoolean())).thenReturn(candidateList);
+
+        // Set WiFi to disconnected state to trigger scan
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        mLooper.dispatchAll();
+        // Verify a connection starting
+        verify(mWifiNS).selectNetwork((List<WifiCandidates.Candidate>)
+                argThat(new WifiCandidatesListSizeMatcher(2)));
+        verify(mPrimaryClientModeManager).startConnectToNetwork(anyInt(), anyInt(), any());
+
+        // now mark the network as disabled by the user the cached candidates
+        when(mWifiConfigManager.isNetworkTemporarilyDisabledByUser(CANDIDATE_SSID))
+                .thenReturn(true);
+
+        // Simulate the connection failing
+        WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork(CANDIDATE_SSID);
+        mWifiConnectivityManager.handleConnectionAttemptEnded(
+                mPrimaryClientModeManager,
+                WifiMetrics.ConnectionEvent.FAILURE_ASSOCIATION_REJECTION,
+                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, CANDIDATE_BSSID,
+                config);
+
+        // Verify there no re-attempt to connect
+        verify(mPrimaryClientModeManager).startConnectToNetwork(anyInt(), anyInt(), any());
+    }
+
+    /**
+     * Verify that when cached candidates get cleared there will no longer be retries after a
+     * connection failure.
+     */
+    @Test
     public void testNoRetryConnectionOnFailureAfterCacheCleared() {
         // Setup WifiNetworkSelector to return 2 valid candidates from scan results
         MacAddress macAddress = MacAddress.fromString(CANDIDATE_BSSID_2);
@@ -3777,13 +3821,13 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     @Test
     public void verifyBlocklistRefreshedAfterScanResults() {
         WifiConfiguration disabledConfig = WifiConfigurationTestUtil.createPskNetwork();
+        disabledConfig.getNetworkSelectionStatus().setNetworkSelectionStatus(
+                WifiConfiguration.NetworkSelectionStatus.NETWORK_SELECTION_TEMPORARY_DISABLED);
         List<ScanDetail> mockScanDetails = new ArrayList<>();
         mockScanDetails.add(mock(ScanDetail.class));
         when(mWifiBlocklistMonitor.tryEnablingBlockedBssids(any())).thenReturn(mockScanDetails);
         when(mWifiConfigManager.getSavedNetworkForScanDetail(any())).thenReturn(
                 disabledConfig);
-
-        when(mWifiConnectivityHelper.isFirmwareRoamingSupported()).thenReturn(true);
 
         InOrder inOrder = inOrder(mWifiBlocklistMonitor, mWifiConfigManager);
         // Force a connectivity scan
@@ -3793,6 +3837,35 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         inOrder.verify(mWifiBlocklistMonitor).tryEnablingBlockedBssids(any());
         inOrder.verify(mWifiConfigManager).updateNetworkSelectionStatus(disabledConfig.networkId,
+                WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
+        inOrder.verify(mWifiBlocklistMonitor).updateAndGetBssidBlocklistForSsids(anySet());
+    }
+
+    /**
+     *  Verify that a blocklisted BSSID becomes available only after
+     *  BSSID_BLOCKLIST_EXPIRE_TIME_MS, but will not re-enable a permanently disabled
+     *  WifiConfiguration.
+     */
+    @Test
+    public void verifyBlocklistRefreshedAfterScanResultsButIgnorePermanentlyDisabledConfigs() {
+        WifiConfiguration disabledConfig = WifiConfigurationTestUtil.createPskNetwork();
+        disabledConfig.getNetworkSelectionStatus().setNetworkSelectionStatus(
+                WifiConfiguration.NetworkSelectionStatus.NETWORK_SELECTION_PERMANENTLY_DISABLED);
+        List<ScanDetail> mockScanDetails = new ArrayList<>();
+        mockScanDetails.add(mock(ScanDetail.class));
+        when(mWifiBlocklistMonitor.tryEnablingBlockedBssids(any())).thenReturn(mockScanDetails);
+        when(mWifiConfigManager.getSavedNetworkForScanDetail(any())).thenReturn(
+                disabledConfig);
+
+        InOrder inOrder = inOrder(mWifiBlocklistMonitor, mWifiConfigManager);
+        // Force a connectivity scan
+        inOrder.verify(mWifiBlocklistMonitor, never())
+                .updateAndGetBssidBlocklistForSsids(anySet());
+        mWifiConnectivityManager.forceConnectivityScan(WIFI_WORK_SOURCE);
+        mLooper.dispatchAll();
+        inOrder.verify(mWifiBlocklistMonitor).tryEnablingBlockedBssids(any());
+        inOrder.verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(
+                disabledConfig.networkId,
                 WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
         inOrder.verify(mWifiBlocklistMonitor).updateAndGetBssidBlocklistForSsids(anySet());
     }

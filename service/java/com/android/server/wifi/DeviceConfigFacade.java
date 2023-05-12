@@ -27,8 +27,10 @@ import android.util.ArraySet;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.util.Collections;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * This class allows getting all configurable flags from DeviceConfig.
@@ -208,11 +210,16 @@ public class DeviceConfigFacade {
     private boolean mInterfaceFailureBugreportEnabled;
     private boolean mP2pFailureBugreportEnabled;
     private boolean mApmEnhancementEnabled;
+    private Optional<Boolean> mOobPseudonymEnabled = Optional.empty();
+    private Consumer<Boolean> mOobPseudonymFeatureFlagChangedListener = null;
+    private boolean mSoftwarePnoEnabled;
+
+    private final Handler mWifiHandler;
 
     public DeviceConfigFacade(Context context, Handler handler, WifiMetrics wifiMetrics) {
         mContext = context;
         mWifiMetrics = wifiMetrics;
-
+        mWifiHandler = handler;
         updateDeviceConfigFlags();
         DeviceConfig.addOnPropertiesChangedListener(
                 NAMESPACE,
@@ -385,7 +392,17 @@ public class DeviceConfigFacade {
                 "p2p_failure_bugreport_enabled", false);
         mApmEnhancementEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "apm_enhancement_enabled", false);
-
+        boolean oobPseudonymEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "oob_pseudonym_enabled", false);
+        if (mOobPseudonymEnabled.isPresent()
+                && mOobPseudonymEnabled.get() != oobPseudonymEnabled
+                && mOobPseudonymFeatureFlagChangedListener != null) {
+            mWifiHandler.post(
+                    () -> mOobPseudonymFeatureFlagChangedListener.accept(oobPseudonymEnabled));
+        }
+        mOobPseudonymEnabled = Optional.of(oobPseudonymEnabled);
+        mSoftwarePnoEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "software_pno_enabled", false);
     }
 
     private Set<String> getUnmodifiableSetQuoted(String key) {
@@ -822,5 +839,28 @@ public class DeviceConfigFacade {
         // reads the value set by Bluetooth device config for APM enhancement feature flag
         return Settings.Global.getInt(
                 mContext.getContentResolver(), "apm_enhancement_enabled", 0) == 1;
+    }
+
+    /**
+     * Gets the feature flag for the OOB pseudonym of EAP-SIM/AKA/AKA'
+     */
+    public boolean isOobPseudonymEnabled() {
+        return mOobPseudonymEnabled.isPresent() && mOobPseudonymEnabled.get();
+    }
+
+    /**
+     * Gets the feature flag for Software PNO
+     */
+    public boolean isSoftwarePnoEnabled() {
+        return mSoftwarePnoEnabled;
+    }
+
+    /*
+     * Sets the listener to be notified when the OOB Pseudonym feature is enabled;
+     * Only 1 listener is accepted.
+     */
+    public void setOobPseudonymFeatureFlagChangedListener(
+            Consumer<Boolean> listener) {
+        mOobPseudonymFeatureFlagChangedListener = listener;
     }
 }

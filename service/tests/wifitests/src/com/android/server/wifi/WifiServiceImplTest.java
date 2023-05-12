@@ -207,6 +207,7 @@ import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.WifiServiceImpl.LocalOnlyRequestorCallback;
 import com.android.server.wifi.WifiServiceImpl.SoftApCallbackInternal;
 import com.android.server.wifi.coex.CoexManager;
+import com.android.server.wifi.entitlement.PseudonymInfo;
 import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.hotspot2.PasspointProvisioningTestUtil;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.UserActionEvent;
@@ -241,6 +242,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Unit tests for {@link WifiServiceImpl}.
@@ -414,6 +416,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Mock AdaptiveConnectivityEnabledSettingObserver mAdaptiveConnectivityEnabledSettingObserver;
     @Mock MakeBeforeBreakManager mMakeBeforeBreakManager;
     @Mock WifiCarrierInfoManager mWifiCarrierInfoManager;
+    @Mock WifiPseudonymManager mWifiPseudonymManager;
     @Mock OpenNetworkNotifier mOpenNetworkNotifier;
     @Mock WifiNotificationManager mWifiNotificationManager;
     @Mock SarManager mSarManager;
@@ -575,6 +578,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mWifiPermissionsUtil.isTargetSdkLessThan(anyString(),
                 eq(Build.VERSION_CODES.TIRAMISU), anyInt())).thenReturn(true);
         when(mWifiInjector.getWifiCarrierInfoManager()).thenReturn(mWifiCarrierInfoManager);
+        when(mWifiInjector.getWifiPseudonymManager()).thenReturn(mWifiPseudonymManager);
         when(mWifiInjector.getOpenNetworkNotifier()).thenReturn(mOpenNetworkNotifier);
         when(mClientSoftApCallback.asBinder()).thenReturn(mAppBinder);
         when(mAnotherSoftApCallback.asBinder()).thenReturn(mAnotherAppBinder);
@@ -5326,6 +5330,56 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiMetrics).logUserActionEvent(eq(UserActionEvent.EVENT_MANUAL_CONNECT), anyInt());
     }
 
+    @Test
+    public void connectToSimBasedNetworkOobPseudonymEnabledButNotAvailable() {
+        WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE);
+        when(mContext.checkPermission(eq(android.Manifest.permission.NETWORK_SETTINGS),
+                anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_GRANTED);
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.isLocationModeEnabled()).thenReturn(true);
+        when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(config);
+        when(mWifiCarrierInfoManager.getBestMatchSubscriptionId(any())).thenReturn(TEST_SUB_ID);
+        when(mWifiCarrierInfoManager.isSimReady(TEST_SUB_ID)).thenReturn(true);
+        when(mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(anyInt())).thenReturn(true);
+        when(mWifiPseudonymManager.getValidPseudonymInfo(anyInt())).thenReturn(Optional.empty());
+
+        mWifiServiceImpl.connect(null, TEST_NETWORK_ID, mActionListener, TEST_PACKAGE_NAME);
+        mLooper.dispatchAll();
+
+        verify(mWifiPseudonymManager).retrievePseudonymOnFailureTimeoutExpired(any());
+        verify(mWifiConfigManager, never()).addOrUpdateNetwork(any(), anyInt());
+
+        verify(mConnectHelper, never()).connectToNetwork(any(), any(), anyInt(), any());
+        verify(mContextAsUser, never()).sendBroadcastWithMultiplePermissions(any(), any());
+        verify(mWifiMetrics).logUserActionEvent(eq(UserActionEvent.EVENT_MANUAL_CONNECT), anyInt());
+    }
+
+    @Test
+    public void connectToSimBasedNetworkWhenOobPseudonymEnabledAndAvailable() {
+        WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE);
+        when(mContext.checkPermission(eq(android.Manifest.permission.NETWORK_SETTINGS),
+                anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_GRANTED);
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+        when(mWifiPermissionsUtil.isLocationModeEnabled()).thenReturn(true);
+        when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(config);
+        when(mWifiCarrierInfoManager.getBestMatchSubscriptionId(any())).thenReturn(TEST_SUB_ID);
+        when(mWifiCarrierInfoManager.isSimReady(TEST_SUB_ID)).thenReturn(true);
+        when(mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(anyInt())).thenReturn(true);
+        when(mWifiPseudonymManager.getValidPseudonymInfo(anyInt()))
+                .thenReturn(Optional.of(mock(PseudonymInfo.class)));
+
+        mWifiServiceImpl.connect(null, TEST_NETWORK_ID, mActionListener, TEST_PACKAGE_NAME);
+        mLooper.dispatchAll();
+
+        verify(mWifiPseudonymManager).updateWifiConfiguration(any());
+        verify(mConnectHelper).connectToNetwork(
+                eq(new NetworkUpdateResult(TEST_NETWORK_ID)), any(), anyInt(), any());
+        verify(mContextAsUser, never()).sendBroadcastWithMultiplePermissions(any(), any());
+        verify(mWifiMetrics).logUserActionEvent(eq(UserActionEvent.EVENT_MANUAL_CONNECT), anyInt());
+    }
+
     /**
      * Verify that connecting to an admin restricted network fails to connect but saves the network
      */
@@ -9216,79 +9270,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
         assertEquals(channels2g, channels.get(0));
         verify(mWifiNative, never()).getUsableChannels(eq(WifiScanner.WIFI_BAND_24_GHZ), anyInt(),
                 anyInt());
-    }
-
-    /**
-     * Verify that if the caller has NETWORK_SETTINGS permission, and the overlay
-     * config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW is set, then it can add an
-     * insecure Enterprise network, with Root CA certificate not set and/or domain name not set.
-     */
-    @Test
-    public void testAddInsecureEnterpirseNetworkWithNetworkSettingsPerm() throws Exception {
-        when(mContext.checkPermission(eq(android.Manifest.permission.NETWORK_SETTINGS),
-                anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_GRANTED);
-
-        // First set flag to not allow
-        when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(false);
-        when(mWifiConfigManager.addOrUpdateNetwork(any(),  anyInt(), any(), eq(false))).thenReturn(
-                new NetworkUpdateResult(0));
-
-        // Create an insecure Enterprise network
-        WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
-        config.enterpriseConfig.setCaPath(null);
-        config.enterpriseConfig.setDomainSuffixMatch(null);
-
-        // Verify operation fails
-        mLooper.startAutoDispatch();
-        assertEquals(-1,
-                mWifiServiceImpl.addOrUpdateNetwork(config, TEST_PACKAGE_NAME, mAttribution));
-        mLooper.stopAutoDispatchAndIgnoreExceptions();
-        verify(mWifiConfigManager, never()).addOrUpdateNetwork(any(),  anyInt(), any(), eq(false));
-
-        // Set flag to allow
-        when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(true);
-
-        // Verify operation succeeds
-        mLooper.startAutoDispatch();
-        assertEquals(0,
-                mWifiServiceImpl.addOrUpdateNetwork(config, TEST_PACKAGE_NAME, mAttribution));
-        mLooper.stopAutoDispatchAndIgnoreExceptions();
-        verify(mWifiConfigManager).addOrUpdateNetwork(any(),  anyInt(), any(), eq(false));
-    }
-
-
-    /**
-     * Verify that if the caller does NOT have NETWORK_SETTINGS permission, then it cannot add an
-     * insecure Enterprise network, with Root CA certificate not set and/or domain name not set,
-     * regardless of the overlay config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW
-     * value.
-     */
-    @Test
-    public void testAddInsecureEnterpirseNetworkWithNoNetworkSettingsPerm() throws Exception {
-        // First set flag to not allow
-        when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(false);
-
-        // Create an insecure Enterprise network
-        WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
-        config.enterpriseConfig.setCaPath(null);
-        config.enterpriseConfig.setDomainSuffixMatch(null);
-
-        // Verify operation fails
-        mLooper.startAutoDispatch();
-        assertEquals(-1,
-                mWifiServiceImpl.addOrUpdateNetwork(config, TEST_PACKAGE_NAME, mAttribution));
-        mLooper.stopAutoDispatchAndIgnoreExceptions();
-        verify(mWifiConfigManager, never()).addOrUpdateNetwork(any(),  anyInt(), any(), eq(false));
-
-        // Set flag to allow
-        when(mWifiGlobals.isInsecureEnterpriseConfigurationAllowed()).thenReturn(true);
-
-        // Verify operation still fails
-        mLooper.startAutoDispatch();
-        assertEquals(-1,
-                mWifiServiceImpl.addOrUpdateNetwork(config, TEST_PACKAGE_NAME, mAttribution));
-        mLooper.stopAutoDispatchAndIgnoreExceptions();
-        verify(mWifiConfigManager, never()).addOrUpdateNetwork(any(),  anyInt(), any(), eq(false));
     }
 
     private List<WifiConfiguration> setupMultiTypeConfigs(
