@@ -7816,7 +7816,7 @@ public class WifiManager {
          *
          * Note: Always called with current state when a new listener gets registered.
          */
-        void onActivated(boolean activated);
+        void onActivatedStateChanged(boolean activated);
 
         /**
          * Provides UIDs (lock owners) of the applications which currently acquired low latency
@@ -7827,7 +7827,7 @@ public class WifiManager {
          *
          * @param ownerUids An array of UIDs.
          */
-        default void onOwnershipChanged(int[] ownerUids) {}
+        default void onOwnershipChanged(@NonNull int[] ownerUids) {}
 
         /**
          * Provides UIDs of the applications which acquired the low latency lock and is currently
@@ -7835,14 +7835,15 @@ public class WifiManager {
          * met for low latency lock to be active. Triggered when application acquiring the lock
          * satisfies or does not satisfy low latency conditions when the low latency mode is
          * activated. Also gets triggered when the lock becomes active, immediately after the
-         * {@link WifiLowLatencyLockListener#onActivated(boolean)} callback is triggered.
+         * {@link WifiLowLatencyLockListener#onActivatedStateChanged(boolean)} callback is
+         * triggered.
          *
          * Note: Always called with UIDs of the current active locks when a new listener gets
          * registered if the Wi-Fi chip is in low latency mode.
          *
          * @param activeUids An array of UIDs.
          */
-        default void onActiveUsersChanged(int[] activeUids) {}
+        default void onActiveUsersChanged(@NonNull int[] activeUids) {}
     }
 
     /**
@@ -7863,21 +7864,21 @@ public class WifiManager {
         }
 
         @Override
-        public void onActivated(boolean activated) {
+        public void onActivatedStateChanged(boolean activated) {
             Binder.clearCallingIdentity();
-            mExecutor.execute(() -> mListener.onActivated(activated));
+            mExecutor.execute(() -> mListener.onActivatedStateChanged(activated));
 
         }
 
         @Override
-        public void onOwnershipChanged(int[] ownerUids) {
+        public void onOwnershipChanged(@NonNull int[] ownerUids) {
             Binder.clearCallingIdentity();
             mExecutor.execute(() -> mListener.onOwnershipChanged(ownerUids));
 
         }
 
         @Override
-        public void onActiveUsersChanged(int[] activeUids) {
+        public void onActiveUsersChanged(@NonNull int[] activeUids) {
             Binder.clearCallingIdentity();
             mExecutor.execute(() -> mListener.onActiveUsersChanged(activeUids));
         }
@@ -10686,15 +10687,15 @@ public class WifiManager {
      *
      * @param band one of the following band constants defined in {@code WifiScanner#WIFI_BAND_*}
      *             constants.
-     *             1. {@code WifiScanner#WIFI_BAND_UNSPECIFIED} - no band specified; Looks for the
+     *             1. {@code WifiScanner#WIFI_BAND_UNSPECIFIED}=0 - no band specified; Looks for the
      *                channels in all the available bands - 2.4 GHz, 5 GHz, 6 GHz and 60 GHz
-     *             2. {@code WifiScanner#WIFI_BAND_24_GHZ}
-     *             3. {@code WifiScanner#WIFI_BAND_5_GHZ_WITH_DFS}
-     *             4. {@code WifiScanner#WIFI_BAND_BOTH_WITH_DFS}
-     *             5. {@code WifiScanner#WIFI_BAND_6_GHZ}
-     *             6. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_GHZ}
-     *             7. {@code WifiScanner#WIFI_BAND_60_GHZ}
-     *             8. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_60_GHZ}
+     *             2. {@code WifiScanner#WIFI_BAND_24_GHZ}=1
+     *             3. {@code WifiScanner#WIFI_BAND_5_GHZ_WITH_DFS}=6
+     *             4. {@code WifiScanner#WIFI_BAND_BOTH_WITH_DFS}=7
+     *             5. {@code WifiScanner#WIFI_BAND_6_GHZ}=8
+     *             6. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_GHZ}=15
+     *             7. {@code WifiScanner#WIFI_BAND_60_GHZ}=16
+     *             8. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_60_GHZ}=31
      * @param mode Bitwise OR of {@code WifiAvailableChannel#OP_MODE_*} constants
      *        e.g. {@link WifiAvailableChannel#OP_MODE_WIFI_AWARE}
      * @return a list of {@link WifiAvailableChannel}
@@ -10707,7 +10708,7 @@ public class WifiManager {
     @NonNull
     @RequiresPermission(NEARBY_WIFI_DEVICES)
     public List<WifiAvailableChannel> getAllowedChannels(
-            @WifiScanner.WifiBand int band,
+            int band,
             @WifiAvailableChannel.OpMode int mode) {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
@@ -10740,15 +10741,15 @@ public class WifiManager {
      *
      * @param band one of the following band constants defined in {@code WifiScanner#WIFI_BAND_*}
      *             constants.
-     *             1. {@code WifiScanner#WIFI_BAND_UNSPECIFIED} - no band specified; Looks for the
+     *             1. {@code WifiScanner#WIFI_BAND_UNSPECIFIED}=0 - no band specified; Looks for the
      *                channels in all the available bands - 2.4 GHz, 5 GHz, 6 GHz and 60 GHz
-     *             2. {@code WifiScanner#WIFI_BAND_24_GHZ}
-     *             3. {@code WifiScanner#WIFI_BAND_5_GHZ_WITH_DFS}
-     *             4. {@code WifiScanner#WIFI_BAND_BOTH_WITH_DFS}
-     *             5. {@code WifiScanner#WIFI_BAND_6_GHZ}
-     *             6. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_GHZ}
-     *             7. {@code WifiScanner#WIFI_BAND_60_GHZ}
-     *             8. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_60_GHZ}
+     *             2. {@code WifiScanner#WIFI_BAND_24_GHZ}=1
+     *             3. {@code WifiScanner#WIFI_BAND_5_GHZ_WITH_DFS}=6
+     *             4. {@code WifiScanner#WIFI_BAND_BOTH_WITH_DFS}=7
+     *             5. {@code WifiScanner#WIFI_BAND_6_GHZ}=8
+     *             6. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_GHZ}=15
+     *             7. {@code WifiScanner#WIFI_BAND_60_GHZ}=16
+     *             8. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_60_GHZ}=31
      * @param mode Bitwise OR of {@code WifiAvailableChannel#OP_MODE_*} constants
      *        e.g. {@link WifiAvailableChannel#OP_MODE_WIFI_AWARE}
      * @return a list of {@link WifiAvailableChannel}
@@ -10761,7 +10762,7 @@ public class WifiManager {
     @NonNull
     @RequiresPermission(NEARBY_WIFI_DEVICES)
     public List<WifiAvailableChannel> getUsableChannels(
-            @WifiScanner.WifiBand int band,
+            int band,
             @WifiAvailableChannel.OpMode int mode) {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
