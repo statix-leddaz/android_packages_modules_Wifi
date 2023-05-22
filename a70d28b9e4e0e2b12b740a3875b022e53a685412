@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "48a76639_c508c448",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1415877
+      },
+      "writtenOn": "2023-05-22T09:49:13Z",
+      "side": 1,
+      "message": "I doubt the generated code will expose anything to the API surface. Otherwise, should we annotate the generated code with @hide?",
+      "revId": "a70d28b9e4e0e2b12b740a3875b022e53a685412",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
