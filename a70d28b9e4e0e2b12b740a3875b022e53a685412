@@ -16,6 +16,23 @@
       "message": "I doubt the generated code will expose anything to the API surface. Otherwise, should we annotate the generated code with @hide?",
       "revId": "a70d28b9e4e0e2b12b740a3875b022e53a685412",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "c198d28b_f6e32bf9",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1415877
+      },
+      "writtenOn": "2023-05-23T03:50:19Z",
+      "side": 1,
+      "message": "Diffs against the reference build:\n```\n   system/apex/com.android.wifi.capex (3276800 bytes -\u003e 3276800 bytes)\n   system/etc/security/fsverity/BuildManifest.apk (20894 bytes -\u003e 20894 bytes)\n   system/etc/security/fsverity/BuildManifest.apk.idsig (5957 bytes -\u003e 5957 bytes)\n   system/framework/oat/x86_64/apex@com.android.wifi@javalib@service-wifi.jar@classes.odex (12561416 bytes -\u003e 12561152 bytes)\n   system/framework/oat/x86_64/apex@com.android.wifi@javalib@service-wifi.jar@classes.odex.fsv_meta (106496 bytes -\u003e 106496 bytes)\n   system/framework/oat/x86_64/apex@com.android.wifi@javalib@service-wifi.jar@classes.vdex (55952 bytes -\u003e 55952 bytes)\n   system/framework/oat/x86_64/apex@com.android.wifi@javalib@service-wifi.jar@classes.vdex.fsv_meta (8192 bytes -\u003e 8192 bytes)\ntotal size change: -264 bytes\n```\n\nThe gain is not that big. Probably because of the other optimizations like dead-code pruning. But I think this change is in general good to have before mandating \"root_elements\" for all xsd_config usage.",
+      "revId": "a70d28b9e4e0e2b12b740a3875b022e53a685412",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
