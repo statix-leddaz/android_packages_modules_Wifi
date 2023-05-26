@@ -2474,11 +2474,11 @@ public class WifiManagerTest {
         linkStats.put(0,
                 new LinkStats(0, WifiUsabilityStatsEntry.LINK_STATE_NOT_IN_USE, 0, -50, 300,
                         200,
-                        188, 2, 2, 100, 300, 100,
+                        188, 2, 2, 100, 300, 100, 100, 200,
                         contentionTimeStats, rateStats));
         linkStats.put(1,
                 new LinkStats(0, WifiUsabilityStatsEntry.LINK_STATE_IN_USE, 0, -40, 860, 600,
-                        388, 2, 2, 200, 400, 100,
+                        388, 2, 2, 200, 400, 100, 100, 200,
                         contentionTimeStats, rateStats));
         callbackCaptor.getValue().onWifiUsabilityStats(1, true,
                 new WifiUsabilityStatsEntry(System.currentTimeMillis(), -50, 100, 10, 0, 5, 5,
@@ -3981,8 +3981,10 @@ public class WifiManagerTest {
         final int policyId = 2;
         final int direction = QosPolicyParams.DIRECTION_DOWNLINK;
         final int userPriority = QosPolicyParams.USER_PRIORITY_VIDEO_LOW;
+        final int ipVersion = QosPolicyParams.IP_VERSION_4;
         QosPolicyParams policyParams = new QosPolicyParams.Builder(policyId, direction)
                 .setUserPriority(userPriority)
+                .setIpVersion(ipVersion)
                 .build();
         SynchronousExecutor executor = mock(SynchronousExecutor.class);
         Consumer<List<Integer>> resultsCallback = mock(Consumer.class);

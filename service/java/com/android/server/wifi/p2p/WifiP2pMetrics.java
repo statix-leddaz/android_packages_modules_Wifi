@@ -53,9 +53,12 @@ public class WifiP2pMetrics {
     private static final int MAX_GROUP_EVENTS = 256;
     private static final int MIN_2G_FREQUENCY_MHZ = 2412;
 
+    private static final int MAX_CONNECTION_ATTEMPT_TIME_INTERVAL_MS = 30 * 1000;
+
     private Clock mClock;
     private final Context mContext;
     private final Object mLock = new Object();
+    private boolean mIsCountryCodeWorldMode = true;
 
     /**
      * Metrics are stored within an instance of the WifiP2pStats proto during runtime,
@@ -81,6 +84,12 @@ public class WifiP2pMetrics {
      * The latest started (but un-ended) connection attempt start time
      */
     private long mCurrentConnectionEventStartTime;
+
+    private long mLastConnectionEventStartTime;
+
+    private int mLastConnectionEventUid;
+
+    private int mLastConnectionTryCount;
 
     /**
      * Group Session information that gets logged for every formed group.
@@ -234,6 +243,21 @@ public class WifiP2pMetrics {
                         sb.append("UNKNOWN DURING CONNECT");
                         break;
                 }
+
+                sb.append(", tryCount=");
+                sb.append(event.tryCount);
+                sb.append(", inviteToNeg=");
+                sb.append(event.fallbackToNegotiationOnInviteStatusInfoUnavailable);
+                sb.append(", isCcWw=");
+                sb.append(event.isCountryCodeWorldMode);
+                sb.append(", band=");
+                sb.append(event.band);
+                sb.append(", freq=");
+                sb.append(event.frequencyMhz);
+                sb.append(", sta freq=");
+                sb.append(event.staFrequencyMhz);
+                sb.append(", uid=");
+                sb.append(event.uid);
                 sb.append(", connectivityLevelFailureCode=");
                 switch (event.connectivityLevelFailureCode) {
                     case P2pConnectionEvent.CLF_NONE:
@@ -268,7 +292,6 @@ public class WifiP2pMetrics {
                         sb.append("UNKNOWN");
                         break;
                 }
-
                 if (event == mCurrentConnectionEvent) {
                     sb.append(" CURRENTLY OPEN EVENT");
                 }
@@ -392,9 +415,23 @@ public class WifiP2pMetrics {
             }
             mCurrentConnectionEvent.staFrequencyMhz = getWifiStaFrequency();
             mCurrentConnectionEvent.uid = uid;
+            if (mLastConnectionEventUid == uid && mCurrentConnectionEventStartTime < (
+                    mLastConnectionEventStartTime + MAX_CONNECTION_ATTEMPT_TIME_INTERVAL_MS)) {
+                mLastConnectionTryCount += 1;
+            } else {
+                mLastConnectionTryCount = 1;
+            }
+            mLastConnectionEventUid = uid;
+            mLastConnectionEventStartTime = mCurrentConnectionEventStartTime;
+            mCurrentConnectionEvent.tryCount = mLastConnectionTryCount;
 
             mConnectionEventList.add(mCurrentConnectionEvent);
         }
+    }
+
+    /** Returns if there is an ongoing connection */
+    public boolean hasOngoingConnection() {
+        return mCurrentConnectionEvent != null;
     }
 
     /**
@@ -418,6 +455,8 @@ public class WifiP2pMetrics {
                     (mClock.getElapsedSinceBootMillis()
                     - mCurrentConnectionEventStartTime);
             mCurrentConnectionEvent.connectivityLevelFailureCode = failure;
+            mCurrentConnectionEvent.isCountryCodeWorldMode = mIsCountryCodeWorldMode;
+
             WifiStatsLog.write(WifiStatsLog.WIFI_P2P_CONNECTION_REPORTED,
                     convertConnectionType(mCurrentConnectionEvent.connectionType),
                     mCurrentConnectionEvent.durationTakenToConnectMillis,
@@ -427,9 +466,31 @@ public class WifiP2pMetrics {
                     convertBandStatsLog(mCurrentConnectionEvent.band),
                     mCurrentConnectionEvent.frequencyMhz,
                     mCurrentConnectionEvent.staFrequencyMhz,
-                    mCurrentConnectionEvent.uid);
+                    mCurrentConnectionEvent.uid,
+                    mIsCountryCodeWorldMode,
+                    mCurrentConnectionEvent.fallbackToNegotiationOnInviteStatusInfoUnavailable,
+                    mCurrentConnectionEvent.tryCount);
             mCurrentConnectionEvent = null;
+            if (P2pConnectionEvent.CLF_NONE == failure) {
+                mLastConnectionTryCount = 0;
+            }
         }
+    }
+
+    /**
+     * Fallback to GO negotiation if device receives invitation response status code -
+     * information is currently unavailable
+     */
+    public void setFallbackToNegotiationOnInviteStatusInfoUnavailable() {
+        if (mCurrentConnectionEvent == null) {
+            return;
+        }
+        mCurrentConnectionEvent.fallbackToNegotiationOnInviteStatusInfoUnavailable = true;
+    }
+
+   /** Sets if the Country Code is in world mode */
+    public void setIsCountryCodeWorldMode(boolean isCountryCodeWorldMode) {
+        mIsCountryCodeWorldMode = isCountryCodeWorldMode;
     }
 
     private int convertConnectionType(int connectionType) {

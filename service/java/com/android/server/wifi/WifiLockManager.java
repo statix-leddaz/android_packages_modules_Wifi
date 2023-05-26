@@ -22,12 +22,14 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.net.wifi.IWifiLowLatencyLockListener;
 import android.net.wifi.WifiManager;
 import android.os.BatteryStatsManager;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import android.os.WorkSource;
 import android.os.WorkSource.WorkChain;
@@ -45,8 +47,10 @@ import com.android.wifi.resources.R;
 
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.concurrent.Executor;
 
 /**
  * WifiLockManager maintains the list of wake locks held by different applications.
@@ -95,6 +99,9 @@ public class WifiLockManager {
     private long mCurrentSessionStartTimeMs;
     private final DeviceConfigFacade mDeviceConfigFacade;
     private final WifiPermissionsUtil mWifiPermissionsUtil;
+    private final RemoteCallbackList<IWifiLowLatencyLockListener>
+            mWifiLowLatencyLockListeners = new RemoteCallbackList<>();
+    private boolean mIsLowLatencyActivated = false;
 
     WifiLockManager(Context context, BatteryStatsManager batteryStats,
             ActiveModeWarden activeModeWarden, FrameworkFacade frameworkFacade,
@@ -195,6 +202,7 @@ public class WifiLockManager {
             if (canActivateLowLatencyLock(
                     isAppScreenOnExempted(uid) ? IGNORE_SCREEN_STATE_MASK : 0)) {
                 setBlameLowLatencyUid(uid, uidRec.mIsFg);
+                notifyLowLatencyActiveUsersChanged();
             }
         });
     }
@@ -492,6 +500,7 @@ public class WifiLockManager {
             uidRec = new UidRec(uid);
             uidRec.mLockCount = 1;
             mLowLatencyUidWatchList.put(uid, uidRec);
+            notifyLowLatencyOwnershipChanged();
 
             // Now check if the uid is running in foreground
             if (isAppForeground(uid,
@@ -503,6 +512,7 @@ public class WifiLockManager {
                     uidRec)) {
                 // Share the blame for this uid
                 setBlameLowLatencyUid(uid, true);
+                notifyLowLatencyActiveUsersChanged();
             }
         }
     }
@@ -521,12 +531,14 @@ public class WifiLockManager {
         }
         if (uidRec.mLockCount == 0) {
             mLowLatencyUidWatchList.remove(uid);
+            notifyLowLatencyOwnershipChanged();
 
             // Remove blame for this UID if it was alerady set
             // Note that blame needs to be stopped only if it was started before
             // to avoid calling the API unnecessarily, since it is reference counted
             if (canActivateLowLatencyLock(0, uidRec)) {
                 setBlameLowLatencyUid(uid, false);
+                notifyLowLatencyActiveUsersChanged();
             }
         }
     }
@@ -806,6 +818,9 @@ public class WifiLockManager {
                 clientModeManager.setLowLatencyMode(!enabled);
                 return false;
             }
+            mIsLowLatencyActivated = enabled;
+            notifyLowLatencyActivated();
+            notifyLowLatencyActiveUsersChanged();
         } else if (lowLatencySupport == LOW_LATENCY_NOT_SUPPORTED) {
             // Only set power save mode
             if (!setPowerSave(clientModeManager, ClientMode.POWER_SAVE_CLIENT_WIFI_LOCK,
@@ -816,6 +831,112 @@ public class WifiLockManager {
         }
 
         return true;
+    }
+
+    private int[] getLowLatencyLockOwners() {
+        int[] owners = new int[mLowLatencyUidWatchList.size()];
+        for (int idx = 0; idx < mLowLatencyUidWatchList.size(); idx++) {
+            owners[idx] = mLowLatencyUidWatchList.valueAt(idx).mUid;
+        }
+        return owners;
+    }
+
+    private int[] getLowLatencyActiveUsers() {
+        // Return empty array if low latency mode is not activated. Otherwise, return UIDs which are
+        // in foreground or exempted.
+        if (!mIsLowLatencyActivated) return new int[0];
+        ArrayList<Integer> activeUsers = new ArrayList<>();
+        for (int idx = 0; idx < mLowLatencyUidWatchList.size(); idx++) {
+            if (mLowLatencyUidWatchList.valueAt(idx).mIsFg) {
+                activeUsers.add(mLowLatencyUidWatchList.valueAt(idx).mUid);
+            }
+        }
+        return activeUsers.stream().mapToInt(i->i).toArray();
+    }
+
+    /**
+     * See {@link WifiManager#addWifiLowLatencyLockListener(Executor,
+     * WifiManager.WifiLowLatencyLockListener)}
+     */
+    public boolean addWifiLowLatencyLockListener(@NonNull IWifiLowLatencyLockListener listener) {
+        if (!mWifiLowLatencyLockListeners.register(listener)) {
+            return false;
+        }
+        // Notify the new listener about the current enablement of low latency mode.
+        try {
+            listener.onActivatedStateChanged(mIsLowLatencyActivated);
+            listener.onOwnershipChanged(getLowLatencyLockOwners());
+            if (mIsLowLatencyActivated) {
+                listener.onActiveUsersChanged(getLowLatencyActiveUsers());
+            }
+        } catch (RemoteException e) {
+            Log.e(TAG, "addWifiLowLatencyLockListener: Failure notifying listener" + e);
+        }
+        return true;
+    }
+
+    /**
+     * See
+     * {@link WifiManager#removeWifiLowLatencyLockListener(WifiManager.WifiLowLatencyLockListener)}
+     */
+    public boolean removeWifiLowLatencyLockListener(@NonNull IWifiLowLatencyLockListener listener) {
+        return mWifiLowLatencyLockListeners.unregister(listener);
+    }
+
+    private void notifyLowLatencyActivated() {
+        int numCallbacks = mWifiLowLatencyLockListeners.beginBroadcast();
+        if (mVerboseLoggingEnabled) {
+            Log.i(TAG, "Broadcasting IWifiLowLatencyLockListener#onActivatedStateChanged activated="
+                    + mIsLowLatencyActivated);
+        }
+        for (int i = 0; i < numCallbacks; i++) {
+            try {
+                mWifiLowLatencyLockListeners.getBroadcastItem(i).onActivatedStateChanged(
+                        mIsLowLatencyActivated);
+            } catch (RemoteException e) {
+                Log.e(TAG,
+                        "Failure broadcasting IWifiLowLatencyLockListener#onActivatedStateChanged"
+                                + e);
+            }
+        }
+        mWifiLowLatencyLockListeners.finishBroadcast();
+    }
+
+    private void notifyLowLatencyOwnershipChanged() {
+        int numCallbacks = mWifiLowLatencyLockListeners.beginBroadcast();
+        int[] owners = getLowLatencyLockOwners();
+        if (mVerboseLoggingEnabled) {
+            Log.i(TAG, "Broadcasting IWifiLowLatencyLockListener#onOwnershipChanged: UIDs "
+                    + Arrays.toString(owners));
+        }
+        for (int i = 0; i < numCallbacks; i++) {
+            try {
+                mWifiLowLatencyLockListeners.getBroadcastItem(i).onOwnershipChanged(owners);
+            } catch (RemoteException e) {
+                Log.e(TAG,
+                        "Failure broadcasting IWifiLowLatencyLockListener#onOwnershipChanged" + e);
+            }
+        }
+        mWifiLowLatencyLockListeners.finishBroadcast();
+    }
+
+    private void notifyLowLatencyActiveUsersChanged() {
+        if (!mIsLowLatencyActivated) return;
+        int numCallbacks = mWifiLowLatencyLockListeners.beginBroadcast();
+        int[] activeUsers = getLowLatencyActiveUsers();
+        if (mVerboseLoggingEnabled) {
+            Log.i(TAG, "Broadcasting IWifiLowLatencyLockListener#onActiveUsersChanged: UIDs "
+                    + Arrays.toString(activeUsers));
+        }
+        for (int i = 0; i < numCallbacks; i++) {
+            try {
+                mWifiLowLatencyLockListeners.getBroadcastItem(i).onActiveUsersChanged(activeUsers);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Failure broadcasting IWifiLowLatencyLockListener#onActiveUsersChanged"
+                        + e);
+            }
+        }
+        mWifiLowLatencyLockListeners.finishBroadcast();
     }
 
     private synchronized WifiLock findLockByBinder(IBinder binder) {
@@ -885,6 +1006,7 @@ public class WifiLockManager {
     }
 
     private void setBlameLowLatencyWatchList(boolean shouldBlame) {
+        boolean notify = false;
         for (int idx = 0; idx < mLowLatencyUidWatchList.size(); idx++) {
             UidRec uidRec = mLowLatencyUidWatchList.valueAt(idx);
             // Affect the blame for only UIDs running in foreground
@@ -892,8 +1014,10 @@ public class WifiLockManager {
             // and they should remain in that state.
             if (uidRec.mIsFg) {
                 setBlameLowLatencyUid(uidRec.mUid, shouldBlame);
+                notify = true;
             }
         }
+        if (notify) notifyLowLatencyActiveUsersChanged();
     }
 
     protected synchronized void dump(PrintWriter pw) {

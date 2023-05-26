@@ -40,7 +40,6 @@ import com.android.server.wifi.hotspot2.WnmData;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
@@ -111,8 +110,8 @@ public class WifiMonitor {
     /* Transition Disable Indication */
     public static final int TRANSITION_DISABLE_INDICATION        = BASE + 72;
 
-    /* Trust On First Use Root CA Certification */
-    public static final int TOFU_ROOT_CA_CERTIFICATE             = BASE + 73;
+    /* Trust On First Use incoming certificate event */
+    public static final int TOFU_CERTIFICATE_EVENT               = BASE + 73;
 
     /* Auxiliary supplicant event */
     public static final int AUXILIARY_SUPPLICANT_EVENT           = BASE + 74;
@@ -126,6 +125,9 @@ public class WifiMonitor {
 
     /* the AT_PERMANENT_ID_REQ denied indication for EAP-SIM/AKA/AKA' */
     public static final int PERMANENT_ID_REQ_DENIED_INDICATION = BASE + 78;
+
+    /* BSS frequency changed event (when STA switches the channel due to CSA) */
+    public static final int BSS_FREQUENCY_CHANGED_EVENT = BASE + 79;
 
     /* WPS config errrors */
     private static final int CONFIG_MULTIPLE_PBC_DETECTED = 12;
@@ -624,13 +626,15 @@ public class WifiMonitor {
      * @param iface Name of iface on which this occurred.
      * @param networkId ID of the network in wpa_supplicant.
      * @param bssid BSSID of the access point.
+     * @param frequencyMhz Frequency of the connected channel in MHz
      * @param newSupplicantState New supplicant state.
      */
     public void broadcastSupplicantStateChangeEvent(String iface, int networkId, WifiSsid wifiSsid,
-                                                    String bssid,
+                                                    String bssid, int frequencyMhz,
                                                     SupplicantState newSupplicantState) {
         sendMessage(iface, SUPPLICANT_STATE_CHANGE_EVENT, 0, 0,
-                new StateChangeResult(networkId, wifiSsid, bssid, newSupplicantState));
+                new StateChangeResult(networkId, wifiSsid, bssid, frequencyMhz,
+                        newSupplicantState));
     }
 
     /**
@@ -660,11 +664,11 @@ public class WifiMonitor {
      * @param networkId ID of the network in wpa_supplicant.
      * @param ssid SSID of the network.
      * @param depth the depth of this cert in the chain, 0 is the leaf, i.e. the server cert.
-     * @param cert the certificate data.
+     * @param certificateEventInfo the certificate data.
      */
     public void broadcastCertificationEvent(String iface, int networkId, String ssid,
-            int depth, X509Certificate cert) {
-        sendMessage(iface, TOFU_ROOT_CA_CERTIFICATE, networkId, depth, cert);
+            int depth, CertificateEventInfo certificateEventInfo) {
+        sendMessage(iface, TOFU_CERTIFICATE_EVENT, networkId, depth, certificateEventInfo);
     }
 
     /**
@@ -727,5 +731,17 @@ public class WifiMonitor {
     public void broadcastMloLinksInfoChanged(String iface,
             WifiMonitor.MloLinkInfoChangeReason reason) {
         sendMessage(iface, MLO_LINKS_INFO_CHANGED, reason);
+    }
+
+    /**
+     * Broadcast the BSS frequency changed event.
+     * This message is sent when STA switches the channel due to channel
+     * switch announcement from the connected access point.
+     *
+     * @param iface Name of the iface on which this occurred.
+     * @param frequencyMhz New frequency in MHz.
+     */
+    public void broadcastBssFrequencyChanged(String iface, int frequencyMhz) {
+        sendMessage(iface, BSS_FREQUENCY_CHANGED_EVENT, frequencyMhz);
     }
 }

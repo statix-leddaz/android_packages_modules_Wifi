@@ -199,7 +199,7 @@ abstract class SupplicantStaIfaceCallbackHidlImpl extends ISupplicantStaIfaceCal
             }
             mWifiMonitor.broadcastSupplicantStateChangeEvent(
                     mIfaceName, mStaIfaceHal.getCurrentNetworkId(mIfaceName), wifiSsid,
-                    bssidStr, newSupplicantState);
+                    bssidStr, 0, newSupplicantState);
         }
     }
 
@@ -295,7 +295,7 @@ abstract class SupplicantStaIfaceCallbackHidlImpl extends ISupplicantStaIfaceCal
                             mIfaceName, WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD, -1,
                             mCurrentSsid, MacAddress.fromBytes(bssid));
                 } else if (mStateBeforeDisconnect == State.ASSOCIATED
-                        && WifiConfigurationUtil.isConfigForEapNetwork(curConfiguration)) {
+                        && WifiConfigurationUtil.isConfigForEnterpriseNetwork(curConfiguration)) {
                     mWifiMonitor.broadcastAuthenticationFailureEvent(
                             mIfaceName, WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE, -1,
                             mCurrentSsid, MacAddress.fromBytes(bssid));

@@ -21,6 +21,7 @@ import android.annotation.Nullable;
 import android.annotation.SystemApi;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.TextUtils;
@@ -40,8 +41,10 @@ import java.security.interfaces.RSAPublicKey;
 import java.security.spec.ECParameterSpec;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Enterprise configuration details for Wi-Fi. Stores details about the EAP method
@@ -124,6 +127,11 @@ public class WifiEnterpriseConfig implements Parcelable {
      * @hide
      */
     public static final String KEYSTORES_URI = "keystores://";
+
+    /**
+     * String representing a SHA-256 certificate hash used for wpa_supplicant.
+     */
+    private static final String CERT_HASH_PREFIX = "hash://server/sha256/";
 
     /**
      * String to set the engine value to when it should be enabled.
@@ -242,6 +250,30 @@ public class WifiEnterpriseConfig implements Parcelable {
     };
 
     /**
+     * Keys that can be included in {@link #mFields}.
+     */
+    private static final Set<String> SUPPORTED_KEYS = new HashSet<>(Arrays.asList(
+            ALTSUBJECT_MATCH_KEY,
+            ANON_IDENTITY_KEY,
+            CA_CERT_KEY,
+            CA_PATH_KEY,
+            CLIENT_CERT_KEY,
+            DECORATED_IDENTITY_PREFIX_KEY,
+            DOM_SUFFIX_MATCH_KEY,
+            EAP_ERP,
+            ENGINE_KEY,
+            ENGINE_ID_KEY,
+            IDENTITY_KEY,
+            OPP_KEY_CACHING,
+            PASSWORD_KEY,
+            PLMN_KEY,
+            PRIVATE_KEY_ID_KEY,
+            REALM_KEY,
+            SUBJECT_MATCH_KEY,
+            WAPI_CERT_SUITE_KEY
+    ));
+
+    /**
      * Fields that have unquoted values in {@link #mFields}.
      */
     private static final List<String> UNQUOTED_KEYS = Arrays.asList(ENGINE_KEY, OPP_KEY_CACHING,
@@ -300,6 +332,8 @@ public class WifiEnterpriseConfig implements Parcelable {
     // subscription.
     private long mSelectedRcoi = 0;
 
+    private boolean mIsStrictConservativePeerMode = false;
+
     private static final String TAG = "WifiEnterpriseConfig";
 
     public WifiEnterpriseConfig() {
@@ -308,6 +342,43 @@ public class WifiEnterpriseConfig implements Parcelable {
         // This is essential because an app may not have all fields like password
         // available. It allows modification of subset of fields.
 
+    }
+
+    /**
+     * Check whether a key is supported by {@link #mFields}.
+     * @return true if the key is supported, false otherwise.
+     */
+    private static boolean isKeySupported(String key) {
+        return SUPPORTED_KEYS.contains(key);
+    }
+
+    /**
+     * Convert the {@link #mFields} map to a Bundle for parceling.
+     * Unsupported keys will not be included in the Bundle.
+     */
+    private Bundle fieldMapToBundle() {
+        Bundle bundle = new Bundle();
+        for (Map.Entry<String, String> entry : mFields.entrySet()) {
+            if (isKeySupported(entry.getKey())) {
+                bundle.putString(entry.getKey(), entry.getValue());
+            }
+        }
+        return bundle;
+    }
+
+    /**
+     * Convert an unparceled Bundle to the {@link #mFields} map.
+     * Unsupported keys will not be included in the map.
+     */
+    private static HashMap<String, String> bundleToFieldMap(Bundle bundle) {
+        HashMap<String, String> fieldMap = new HashMap<>();
+        if (bundle == null) return fieldMap;
+        for (String key : bundle.keySet()) {
+            if (isKeySupported(key)) {
+                fieldMap.put(key, bundle.getString(key));
+            }
+        }
+        return fieldMap;
     }
 
     /**
@@ -324,7 +395,9 @@ public class WifiEnterpriseConfig implements Parcelable {
                     && TextUtils.equals(source.mFields.get(key), mask)) {
                 continue;
             }
-            mFields.put(key, source.mFields.get(key));
+            if (isKeySupported(key)) {
+                mFields.put(key, source.mFields.get(key));
+            }
         }
         if (source.mCaCerts != null) {
             mCaCerts = Arrays.copyOf(source.mCaCerts, source.mCaCerts.length);
@@ -349,6 +422,7 @@ public class WifiEnterpriseConfig implements Parcelable {
         mUserApproveNoCaCert = source.mUserApproveNoCaCert;
         mSelectedRcoi = source.mSelectedRcoi;
         mMinimumTlsVersion = source.mMinimumTlsVersion;
+        mIsStrictConservativePeerMode = source.mIsStrictConservativePeerMode;
     }
 
     /**
@@ -381,12 +455,7 @@ public class WifiEnterpriseConfig implements Parcelable {
 
     @Override
     public void writeToParcel(Parcel dest, int flags) {
-        dest.writeInt(mFields.size());
-        for (Map.Entry<String, String> entry : mFields.entrySet()) {
-            dest.writeString(entry.getKey());
-            dest.writeString(entry.getValue());
-        }
-
+        dest.writeBundle(fieldMapToBundle());
         dest.writeInt(mEapMethod);
         dest.writeInt(mPhase2Method);
         ParcelUtil.writeCertificates(dest, mCaCerts);
@@ -406,13 +475,7 @@ public class WifiEnterpriseConfig implements Parcelable {
                 @Override
                 public WifiEnterpriseConfig createFromParcel(Parcel in) {
                     WifiEnterpriseConfig enterpriseConfig = new WifiEnterpriseConfig();
-                    int count = in.readInt();
-                    for (int i = 0; i < count; i++) {
-                        String key = in.readString();
-                        String value = in.readString();
-                        enterpriseConfig.mFields.put(key, value);
-                    }
-
+                    enterpriseConfig.mFields = bundleToFieldMap(in.readBundle());
                     enterpriseConfig.mEapMethod = in.readInt();
                     enterpriseConfig.mPhase2Method = in.readInt();
                     enterpriseConfig.mCaCerts = ParcelUtil.readCertificates(in);
@@ -540,6 +603,9 @@ public class WifiEnterpriseConfig implements Parcelable {
                 || mEapMethod == WifiEnterpriseConfig.Eap.AKA
                 || mEapMethod == WifiEnterpriseConfig.Eap.AKA_PRIME;
         for (String key : mFields.keySet()) {
+            if (!isKeySupported(key)) {
+                continue;
+            }
             if (shouldNotWriteAnonIdentity && ANON_IDENTITY_KEY.equals(key)) {
                 continue;
             }
@@ -575,7 +641,9 @@ public class WifiEnterpriseConfig implements Parcelable {
     public void loadFromSupplicant(SupplicantLoader loader) {
         for (String key : SUPPLICANT_CONFIG_KEYS) {
             String value = loader.loadValue(key);
-            if (value == null) {
+            if (!isKeySupported(key)) {
+                continue;
+            } else if (value == null) {
                 mFields.put(key, EMPTY_VALUE);
             } else {
                 mFields.put(key, value);
@@ -742,6 +810,16 @@ public class WifiEnterpriseConfig implements Parcelable {
             e.printStackTrace();
             return alias;
         }
+    }
+
+    /**
+     * Set a server certificate hash instead of a CA certificate for a TOFU connection
+     *
+     * @param certHash Server certificate hash to match against in subsequent connections
+     * @hide
+     */
+    public void setServerCertificateHash(String certHash) {
+        setFieldValue(CA_CERT_KEY, certHash, CERT_HASH_PREFIX);
     }
 
     /**
@@ -1307,6 +1385,25 @@ public class WifiEnterpriseConfig implements Parcelable {
     }
 
     /**
+     * Enable or disable the conservative peer mode, this is only meaningful for
+     * EAP-SIM/AKA/AKA'
+     * @param enable true if the conservative peer mode is enabled.
+     * @hide
+     */
+    public void setStrictConservativePeerMode(boolean enable) {
+        mIsStrictConservativePeerMode = enable;
+    }
+
+    /**
+     * Check if the conservative peer mode is enabled or not, this is only meaningful for
+     * EAP-SIM/AKA/AKA'
+     * @hide
+     */
+    public boolean getStrictConservativePeerMode() {
+        return mIsStrictConservativePeerMode;
+    }
+
+    /**
      * Set plmn (Public Land Mobile Network) of the provider of Passpoint credential
      * @param plmn the plmn value derived from mcc (mobile country code) & mnc (mobile network code)
      */
@@ -1372,8 +1469,10 @@ public class WifiEnterpriseConfig implements Parcelable {
      * @hide
      */
     private String getFieldValue(String key, String prefix) {
-        // TODO: Should raise an exception if |key| is EAP_KEY or PHASE2_KEY since
-        // neither of these keys should be retrieved in this manner.
+        if (!isKeySupported(key)) {
+            return "";
+        }
+
         String value = mFields.get(key);
         // Uninitialized or known to be empty after reading from supplicant
         if (TextUtils.isEmpty(value) || EMPTY_VALUE.equals(value)) return "";
@@ -1404,8 +1503,9 @@ public class WifiEnterpriseConfig implements Parcelable {
      * @hide
      */
     private void setFieldValue(String key, String value, String prefix) {
-        // TODO: Should raise an exception if |key| is EAP_KEY or PHASE2_KEY since
-        // neither of these keys should be set in this manner.
+        if (!isKeySupported(key)) {
+            return;
+        }
         if (TextUtils.isEmpty(value)) {
             mFields.put(key, EMPTY_VALUE);
         } else {
@@ -1448,6 +1548,8 @@ public class WifiEnterpriseConfig implements Parcelable {
         sb.append(" user_approve_no_ca_cert: ").append(mUserApproveNoCaCert).append("\n");
         sb.append(" selected_rcoi: ").append(mSelectedRcoi).append("\n");
         sb.append(" minimum_tls_version: ").append(mMinimumTlsVersion).append("\n");
+        sb.append(" enable_conservative_peer_mode: ")
+                .append(mIsStrictConservativePeerMode).append("\n");
         return sb.toString();
     }
 

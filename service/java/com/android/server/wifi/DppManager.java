@@ -25,6 +25,7 @@ import android.net.wifi.IDppCallback;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiSsid;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -57,6 +58,7 @@ import java.util.List;
  */
 public class DppManager {
     private static final String TAG = "DppManager";
+    private final WifiInjector mWifiInjector;
     private final Handler mHandler;
 
     private DppRequestInfo mDppRequestInfo = null;
@@ -124,9 +126,10 @@ public class DppManager {
         }
     };
 
-    DppManager(Handler handler, WifiNative wifiNative, WifiConfigManager wifiConfigManager,
-            Context context, DppMetrics dppMetrics, ScanRequestProxy scanRequestProxy,
-            WifiPermissionsUtil wifiPermissionsUtil) {
+    DppManager(WifiInjector wifiInjector, Handler handler, WifiNative wifiNative,
+            WifiConfigManager wifiConfigManager, Context context, DppMetrics dppMetrics,
+            ScanRequestProxy scanRequestProxy, WifiPermissionsUtil wifiPermissionsUtil) {
+        mWifiInjector = wifiInjector;
         mHandler = handler;
         mWifiNative = wifiNative;
         mWifiConfigManager = wifiConfigManager;
@@ -362,7 +365,13 @@ public class DppManager {
         // Auth init
         logd("Authenticating");
 
-        String ssidEncoded = encodeStringToHex(selectedNetwork.SSID);
+        String ssidEncoded;
+        WifiSsid originalSsid = mWifiInjector.getSsidTranslator().getOriginalSsid(selectedNetwork);
+        if (originalSsid != null) {
+            ssidEncoded = encodeStringToHex(originalSsid.toString());
+        } else {
+            ssidEncoded = encodeStringToHex(selectedNetwork.SSID);
+        }
         String passwordEncoded = null;
 
         if (password != null) {
@@ -661,9 +670,12 @@ public class DppManager {
     private void onSuccessConfigReceived(WifiConfiguration newWifiConfiguration,
             boolean connStatusRequested) {
         try {
+            if (mDppRequestInfo == null) {
+                Log.e(TAG, "onSuccessConfigReceived event without a request information object");
+                return;
+            }
             logd("onSuccessConfigReceived: connection status requested: " + connStatusRequested);
-
-            if (mDppRequestInfo != null && mDppRequestInfo.isGeneratingSelfConfiguration) {
+            if (mDppRequestInfo.isGeneratingSelfConfiguration) {
                 WifiConfiguration existingWifiConfig = mWifiConfigManager
                         .getConfiguredNetworkWithoutMasking(mDppRequestInfo.networkId);
 
@@ -693,7 +705,7 @@ public class DppManager {
                 }
                 // Done with self configuration. reset flag.
                 mDppRequestInfo.isGeneratingSelfConfiguration = false;
-            } else if (mDppRequestInfo != null) {
+            } else {
                 long now = mClock.getElapsedSinceBootMillis();
                 mDppMetrics.updateDppOperationTime((int) (now - mDppRequestInfo.startTime));
 
@@ -715,8 +727,6 @@ public class DppManager {
                     mDppRequestInfo.callback.onFailure(EasyConnectStatusCallback
                             .EASY_CONNECT_EVENT_FAILURE_CONFIGURATION, null, null, new int[0]);
                 }
-            } else {
-                Log.e(TAG, "Unexpected null Wi-Fi configuration object");
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Callback failure");
@@ -1084,6 +1094,12 @@ public class DppManager {
 
                 mHandler.post(() -> {
                     dppRequestInfo.isGeneratingSelfConfiguration = false;
+                    // Clean up supplicant resource
+                    if (mDppRequestInfo.authRole == DPP_AUTH_ROLE_INITIATOR) {
+                        if (!mWifiNative.stopDppInitiator(mClientIfaceName)) {
+                            Log.e(TAG, "Failed to stop DPP Initiator");
+                        }
+                    }
                     cleanupDppResources();
                 });
             }

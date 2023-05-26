@@ -2033,6 +2033,8 @@ public class WifiManager {
             sLocalOnlyConnectionStatusListenerMap = new SparseArray();
     private static final SparseArray<IWifiNetworkStateChangedListener>
             sOnWifiNetworkStateChangedListenerMap = new SparseArray<>();
+    private static final SparseArray<IWifiLowLatencyLockListener>
+            sWifiLowLatencyLockListenerMap = new SparseArray<>();
 
     /**
      * Multi-link operation (MLO) will allow Wi-Fi devices to operate on multiple links at the same
@@ -7801,6 +7803,161 @@ public class WifiManager {
     }
 
     /**
+     * Interface for low latency lock listener. Should be extended by application and
+     * set when calling {@link WifiManager#addWifiLowLatencyLockListener(Executor,
+     * WifiLowLatencyLockListener)}.
+     *
+     * @hide
+     */
+    public interface WifiLowLatencyLockListener {
+        /**
+         * Provides low latency mode is activated or not. Triggered when Wi-Fi chip enters into low
+         * latency mode.
+         *
+         * Note: Always called with current state when a new listener gets registered.
+         */
+        void onActivatedStateChanged(boolean activated);
+
+        /**
+         * Provides UIDs (lock owners) of the applications which currently acquired low latency
+         * lock. Triggered when an application acquires or releases a lock.
+         *
+         * Note: Always called with UIDs of the current acquired locks when a new listener gets
+         * registered.
+         *
+         * @param ownerUids An array of UIDs.
+         */
+        default void onOwnershipChanged(@NonNull int[] ownerUids) {}
+
+        /**
+         * Provides UIDs of the applications which acquired the low latency lock and is currently
+         * active. See {@link WifiManager#WIFI_MODE_FULL_LOW_LATENCY} for the conditions to be
+         * met for low latency lock to be active. Triggered when application acquiring the lock
+         * satisfies or does not satisfy low latency conditions when the low latency mode is
+         * activated. Also gets triggered when the lock becomes active, immediately after the
+         * {@link WifiLowLatencyLockListener#onActivatedStateChanged(boolean)} callback is
+         * triggered.
+         *
+         * Note: Always called with UIDs of the current active locks when a new listener gets
+         * registered if the Wi-Fi chip is in low latency mode.
+         *
+         * @param activeUids An array of UIDs.
+         */
+        default void onActiveUsersChanged(@NonNull int[] activeUids) {}
+    }
+
+    /**
+     * Helper class to support wifi low latency lock listener.
+     */
+    private static class OnWifiLowLatencyLockProxy extends IWifiLowLatencyLockListener.Stub {
+        @NonNull
+        private Executor mExecutor;
+        @NonNull
+        private WifiLowLatencyLockListener mListener;
+
+        OnWifiLowLatencyLockProxy(@NonNull Executor executor,
+                @NonNull WifiLowLatencyLockListener listener) {
+            Objects.requireNonNull(executor);
+            Objects.requireNonNull(listener);
+            mExecutor = executor;
+            mListener = listener;
+        }
+
+        @Override
+        public void onActivatedStateChanged(boolean activated) {
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mListener.onActivatedStateChanged(activated));
+
+        }
+
+        @Override
+        public void onOwnershipChanged(@NonNull int[] ownerUids) {
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mListener.onOwnershipChanged(ownerUids));
+
+        }
+
+        @Override
+        public void onActiveUsersChanged(@NonNull int[] activeUids) {
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mListener.onActiveUsersChanged(activeUids));
+        }
+    }
+
+    /**
+     * Add a listener for monitoring the low latency lock. The caller can unregister a previously
+     * registered listener using {@link WifiManager#removeWifiLowLatencyLockListener(
+     * WifiLowLatencyLockListener)}.
+     *
+     * Applications should have the {@link android.Manifest.permission#NETWORK_SETTINGS} and
+     * {@link android.Manifest.permission#MANAGE_WIFI_NETWORK_SELECTION} permission. Callers
+     * without the permission will trigger a {@link java.lang.SecurityException}.
+     *
+     * @param executor The Executor on which to execute the callbacks.
+     * @param listener The listener for the latency mode change.
+     * @throws IllegalArgumentException if incorrect input arguments are provided.
+     * @throws SecurityException if the caller is not allowed to call this API
+     * @hide
+     */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    @RequiresPermission(anyOf = {android.Manifest.permission.NETWORK_SETTINGS,
+            MANAGE_WIFI_NETWORK_SELECTION})
+    public void addWifiLowLatencyLockListener(@NonNull @CallbackExecutor Executor executor,
+            @NonNull WifiLowLatencyLockListener listener) {
+        if (executor == null) throw new IllegalArgumentException("executor cannot be null");
+        if (listener == null) throw new IllegalArgumentException("listener cannot be null");
+        if (mVerboseLoggingEnabled) {
+            Log.d(TAG, "addWifiLowLatencyLockListener: listener=" + listener + ", executor="
+                    + executor);
+        }
+        final int listenerIdentifier = System.identityHashCode(listener);
+        try {
+            synchronized (sWifiLowLatencyLockListenerMap) {
+                IWifiLowLatencyLockListener.Stub listenerProxy = new OnWifiLowLatencyLockProxy(
+                        executor,
+                        listener);
+                sWifiLowLatencyLockListenerMap.put(listenerIdentifier, listenerProxy);
+                mService.addWifiLowLatencyLockListener(listenerProxy);
+            }
+        } catch (RemoteException e) {
+            sWifiLowLatencyLockListenerMap.remove(listenerIdentifier);
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Removes a listener added using {@link WifiManager#addWifiLowLatencyLockListener(Executor,
+     * WifiLowLatencyLockListener)}. After calling this method, applications will no longer
+     * receive low latency mode notifications.
+     *
+     * @param listener the listener to be removed.
+     * @throws IllegalArgumentException if incorrect input arguments are provided.
+     * @hide
+     */
+    public void removeWifiLowLatencyLockListener(@NonNull WifiLowLatencyLockListener listener) {
+        if (listener == null) throw new IllegalArgumentException("listener cannot be null");
+        if (mVerboseLoggingEnabled) {
+            Log.d(TAG, "removeWifiLowLatencyLockListener: listener=" + listener);
+        }
+        final int listenerIdentifier = System.identityHashCode(listener);
+        synchronized (sWifiLowLatencyLockListenerMap) {
+            try {
+                if (!sWifiLowLatencyLockListenerMap.contains(listenerIdentifier)) {
+                    Log.w(TAG, "Unknown external listener " + listenerIdentifier);
+                    return;
+                }
+                mService.removeWifiLowLatencyLockListener(
+                        sWifiLowLatencyLockListenerMap.get(listenerIdentifier));
+
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            } finally {
+                sWifiLowLatencyLockListenerMap.remove(listenerIdentifier);
+            }
+        }
+    }
+
+    /**
      * Creates a new WifiLock.
      *
      * @param tag a tag for the WifiLock to identify it in debugging messages.  This string is
@@ -8063,6 +8220,7 @@ public class WifiManager {
     public void enableVerboseLogging(@VerboseLoggingLevel int verbose) {
         try {
             mService.enableVerboseLogging(verbose);
+            mVerboseLoggingEnabled = verbose == VERBOSE_LOGGING_LEVEL_ENABLED;
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -10013,6 +10171,33 @@ public class WifiManager {
             mExecutor.execute(() -> mScorer.onSetScoreUpdateObserver(
                     new ScoreUpdateObserverProxy(observerImpl)));
         }
+
+        @Override
+        public void onNetworkSwitchAccepted(
+                int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "WifiConnectedNetworkScorer: onNetworkSwitchAccepted:"
+                        + " sessionId=" + sessionId
+                        + " targetNetworkId=" + targetNetworkId
+                        + " targetBssid=" + targetBssid);
+            }
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mScorer.onNetworkSwitchAccepted(
+                    sessionId, targetNetworkId, targetBssid));
+        }
+        @Override
+        public void onNetworkSwitchRejected(
+                int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "WifiConnectedNetworkScorer: onNetworkSwitchRejected:"
+                                + " sessionId=" + sessionId
+                                + " targetNetworkId=" + targetNetworkId
+                                + " targetBssid=" + targetBssid);
+            }
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mScorer.onNetworkSwitchRejected(
+                    sessionId, targetNetworkId, targetBssid));
+        }
     }
 
     /**
@@ -10502,15 +10687,15 @@ public class WifiManager {
      *
      * @param band one of the following band constants defined in {@code WifiScanner#WIFI_BAND_*}
      *             constants.
-     *             1. {@code WifiScanner#WIFI_BAND_UNSPECIFIED} - no band specified; Looks for the
+     *             1. {@code WifiScanner#WIFI_BAND_UNSPECIFIED}=0 - no band specified; Looks for the
      *                channels in all the available bands - 2.4 GHz, 5 GHz, 6 GHz and 60 GHz
-     *             2. {@code WifiScanner#WIFI_BAND_24_GHZ}
-     *             3. {@code WifiScanner#WIFI_BAND_5_GHZ_WITH_DFS}
-     *             4. {@code WifiScanner#WIFI_BAND_BOTH_WITH_DFS}
-     *             5. {@code WifiScanner#WIFI_BAND_6_GHZ}
-     *             6. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_GHZ}
-     *             7. {@code WifiScanner#WIFI_BAND_60_GHZ}
-     *             8. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_60_GHZ}
+     *             2. {@code WifiScanner#WIFI_BAND_24_GHZ}=1
+     *             3. {@code WifiScanner#WIFI_BAND_5_GHZ_WITH_DFS}=6
+     *             4. {@code WifiScanner#WIFI_BAND_BOTH_WITH_DFS}=7
+     *             5. {@code WifiScanner#WIFI_BAND_6_GHZ}=8
+     *             6. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_GHZ}=15
+     *             7. {@code WifiScanner#WIFI_BAND_60_GHZ}=16
+     *             8. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_60_GHZ}=31
      * @param mode Bitwise OR of {@code WifiAvailableChannel#OP_MODE_*} constants
      *        e.g. {@link WifiAvailableChannel#OP_MODE_WIFI_AWARE}
      * @return a list of {@link WifiAvailableChannel}
@@ -10523,7 +10708,7 @@ public class WifiManager {
     @NonNull
     @RequiresPermission(NEARBY_WIFI_DEVICES)
     public List<WifiAvailableChannel> getAllowedChannels(
-            @WifiScanner.WifiBand int band,
+            int band,
             @WifiAvailableChannel.OpMode int mode) {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
@@ -10556,15 +10741,15 @@ public class WifiManager {
      *
      * @param band one of the following band constants defined in {@code WifiScanner#WIFI_BAND_*}
      *             constants.
-     *             1. {@code WifiScanner#WIFI_BAND_UNSPECIFIED} - no band specified; Looks for the
+     *             1. {@code WifiScanner#WIFI_BAND_UNSPECIFIED}=0 - no band specified; Looks for the
      *                channels in all the available bands - 2.4 GHz, 5 GHz, 6 GHz and 60 GHz
-     *             2. {@code WifiScanner#WIFI_BAND_24_GHZ}
-     *             3. {@code WifiScanner#WIFI_BAND_5_GHZ_WITH_DFS}
-     *             4. {@code WifiScanner#WIFI_BAND_BOTH_WITH_DFS}
-     *             5. {@code WifiScanner#WIFI_BAND_6_GHZ}
-     *             6. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_GHZ}
-     *             7. {@code WifiScanner#WIFI_BAND_60_GHZ}
-     *             8. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_60_GHZ}
+     *             2. {@code WifiScanner#WIFI_BAND_24_GHZ}=1
+     *             3. {@code WifiScanner#WIFI_BAND_5_GHZ_WITH_DFS}=6
+     *             4. {@code WifiScanner#WIFI_BAND_BOTH_WITH_DFS}=7
+     *             5. {@code WifiScanner#WIFI_BAND_6_GHZ}=8
+     *             6. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_GHZ}=15
+     *             7. {@code WifiScanner#WIFI_BAND_60_GHZ}=16
+     *             8. {@code WifiScanner#WIFI_BAND_24_5_WITH_DFS_6_60_GHZ}=31
      * @param mode Bitwise OR of {@code WifiAvailableChannel#OP_MODE_*} constants
      *        e.g. {@link WifiAvailableChannel#OP_MODE_WIFI_AWARE}
      * @return a list of {@link WifiAvailableChannel}
@@ -10577,7 +10762,7 @@ public class WifiManager {
     @NonNull
     @RequiresPermission(NEARBY_WIFI_DEVICES)
     public List<WifiAvailableChannel> getUsableChannels(
-            @WifiScanner.WifiBand int band,
+            int band,
             @WifiAvailableChannel.OpMode int mode) {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
@@ -11201,8 +11386,11 @@ public class WifiManager {
                                 for (int i = 0; i < interfacesToDelete.length; ++i) {
                                     finalSet.add(
                                             new InterfaceCreationImpact(interfacesToDelete[i],
-                                                    new ArraySet<>(
-                                                            packagesForInterfaces[i].split(","))));
+                                                    packagesForInterfaces[i] == null
+                                                            ? Collections.emptySet()
+                                                            : new ArraySet<>(
+                                                                    packagesForInterfaces[i]
+                                                                            .split(","))));
                                 }
                             }
                             executor.execute(() -> resultCallback.accept(canCreate, finalSet));
@@ -11239,6 +11427,10 @@ public class WifiManager {
      *
      * Note: Policies with duplicate IDs are not allowed. To update an existing policy, first
      *       remove it using {@link #removeQosPolicies(int[])}, and then re-add it using this API.
+     *
+     * Note: All policies in a single request must have the same {@link QosPolicyParams.Direction}.
+     *
+     * Note: Currently, only the {@link QosPolicyParams#DIRECTION_DOWNLINK} direction is supported.
      *
      * @param policyParamsList List of {@link QosPolicyParams} objects describing the requested
      *                         policies. Must have a maximum length of
@@ -11408,7 +11600,7 @@ public class WifiManager {
      * @throws IllegalArgumentException if mode value is not in {@link MloMode}.
      * @throws NullPointerException if the caller provided a null input.
      * @throws SecurityException if caller does not have the required permissions.
-     * @throws UnsupportedOperationException if the set operation is not supported.
+     * @throws UnsupportedOperationException if the set operation is not supported on this SDK.
      * @hide
      */
     @SystemApi
@@ -11439,7 +11631,7 @@ public class WifiManager {
 
     /**
      * This API allows a privileged application to get Multi-Link Operation mode. Refer
-     * {@link WifiManager#setMloMode(int)} for more details.
+     * {@link WifiManager#setMloMode(int, Executor, Consumer)}  for more details.
      *
      * @param executor The executor on which callback will be invoked.
      * @param resultsCallback An asynchronous callback that will return current MLO mode. Returns
@@ -11447,7 +11639,7 @@ public class WifiManager {
      *                        e.g. if the driver/firmware doesn't provide this information.
      * @throws NullPointerException if the caller provided a null input.
      * @throws SecurityException if caller does not have the required permissions.
-     * @throws UnsupportedOperationException if the set operation is not supported.
+     * @throws UnsupportedOperationException if the get operation is not supported on this SDK.
      * @hide
      */
     @SystemApi
@@ -11467,6 +11659,141 @@ public class WifiManager {
                     });
                 }
             });
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Get the maximum number of links supported by the chip for MLO association. e.g. if the Wi-Fi
+     * chip supports eMLSR (Enhanced Multi-Link Single Radio) and STR (Simultaneous Transmit and
+     * Receive) with following capabilities,
+     * - Max MLO assoc link count = 3.
+     * - Max MLO STR link count   = 2. See
+     * {@link WifiManager#getMaxMloStrLinkCount(Executor, Consumer)}
+     * One of the possible configuration is - STR (2.4 GHz , eMLSR(5 GHz, 6 GHz)), provided the
+     * radio combination of the chip supports it.
+     *
+     * @param executor        The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return maximum MLO association link
+     *                        count supported by the chip or -1 if error or not available.
+     * @throws NullPointerException          if the caller provided a null input.
+     * @throws SecurityException             if caller does not have the required permissions.
+     * @throws UnsupportedOperationException if the get operation is not supported on this SDK.
+     * @hide
+     */
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    @RequiresPermission(MANAGE_WIFI_NETWORK_SELECTION)
+    public void getMaxMloAssociationLinkCount(@NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Integer> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            Bundle extras = new Bundle();
+            if (SdkLevel.isAtLeastS()) {
+                extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                        mContext.getAttributionSource());
+            }
+            mService.getMaxMloAssociationLinkCount(new IIntegerListener.Stub() {
+                @Override
+                public void onResult(int value) {
+                    Binder.clearCallingIdentity();
+                    executor.execute(() -> {
+                        resultsCallback.accept(value);
+                    });
+                }
+            }, extras);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Get the maximum number of STR links used in Multi-Link Operation. The maximum number of STR
+     * links used for MLO can be different from the number of radios supported by the chip. e.g. if
+     * the Wi-Fi chip supports eMLSR (Enhanced Multi-Link Single Radio) and STR (Simultaneous
+     * Transmit and Receive) with following capabilities,
+     * - Max MLO assoc link count = 3. See
+     *   {@link WifiManager#getMaxMloAssociationLinkCount(Executor, Consumer)}.
+     * - Max MLO STR link count   = 2.
+     * One of the possible configuration is - STR (2.4 GHz, eMLSR(5 GHz, 6 GHz)), provided the radio
+     * combination of the chip supports it.
+     *
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return maximum STR link count
+     *                       supported by the chip in MLO mode or -1 if error or not available.
+     * @throws NullPointerException if the caller provided a null input.
+     * @throws SecurityException if caller does not have the required permissions.
+     * @throws UnsupportedOperationException if the get operation is not supported on this SDK
+     * @hide
+     */
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    @RequiresPermission(MANAGE_WIFI_NETWORK_SELECTION)
+    public void getMaxMloStrLinkCount(@NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<Integer> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            Bundle extras = new Bundle();
+            if (SdkLevel.isAtLeastS()) {
+                extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                        mContext.getAttributionSource());
+            }
+            mService.getMaxMloStrLinkCount(new IIntegerListener.Stub() {
+                @Override
+                public void onResult(int value) {
+                    Binder.clearCallingIdentity();
+                    executor.execute(() -> {
+                        resultsCallback.accept(value);
+                    });
+                }
+            }, extras);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Get the set of band combinations supported simultaneously by the Wi-Fi Chip.
+     *
+     * Note: This method returns simultaneous band operation combination and not multichannel
+     * concurrent operation (MCC) combination.
+     *
+     * @param executor The executor on which callback will be invoked.
+     * @param resultsCallback An asynchronous callback that will return a list of possible
+     *                        simultaneous band combinations supported by the chip or empty list if
+     *                        not available. Band value is defined in {@link WifiScanner.WifiBand}.
+     * @throws NullPointerException if the caller provided a null input.
+     * @throws SecurityException if caller does not have the required permissions.
+     * @throws UnsupportedOperationException if the get operation is not supported on this SDK.
+     * @hide
+     */
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    @RequiresPermission(MANAGE_WIFI_NETWORK_SELECTION)
+    public void getSupportedSimultaneousBandCombinations(
+            @NonNull @CallbackExecutor Executor executor,
+            @NonNull Consumer<List<int[]>> resultsCallback) {
+        Objects.requireNonNull(executor, "executor cannot be null");
+        Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
+        try {
+            Bundle extras = new Bundle();
+            if (SdkLevel.isAtLeastS()) {
+                extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                        mContext.getAttributionSource());
+            }
+            mService.getSupportedSimultaneousBandCombinations(new IWifiBandsListener.Stub() {
+                @Override
+                public void onResult(WifiBands[] supportedBands) {
+                    Binder.clearCallingIdentity();
+                    List<int[]> bandCombinations = new ArrayList<>();
+                    for (WifiBands wifiBands : supportedBands) {
+                        bandCombinations.add(wifiBands.bands);
+                    }
+                    executor.execute(() -> {
+                        resultsCallback.accept(bandCombinations);
+                    });
+                }
+            }, extras);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
