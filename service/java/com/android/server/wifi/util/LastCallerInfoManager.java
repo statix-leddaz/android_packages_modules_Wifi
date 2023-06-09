@@ -67,6 +67,8 @@ public class LastCallerInfoManager {
                 return "AutojoinGlobal";
             case WifiManager.API_SET_SCAN_SCHEDULE:
                 return "SetScanScanSchedule";
+            case WifiManager.API_SET_PNO_SCAN_ENABLED:
+                return "API_SET_PNO_SCAN_ENABLED";
             default:
                 return "Unknown";
         }
