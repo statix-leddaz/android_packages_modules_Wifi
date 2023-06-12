@@ -19,6 +19,7 @@ package com.android.server.wifi;
 import static android.net.wifi.WifiConfiguration.MeteredOverride;
 
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
+import static com.android.server.wifi.proto.WifiStatsLog.WIFI_CONFIG_SAVED;
 
 import static java.lang.StrictMath.toIntExact;
 
@@ -1082,6 +1083,7 @@ public class WifiMetrics {
         private boolean mHasEverConnected;
         private boolean mIsCarrierWifi;
         private boolean mIsOobPseudonymEnabled;
+        private int mRole;
 
         private ConnectionEvent() {
             mConnectionEvent = new WifiMetricsProto.ConnectionEvent();
@@ -1826,7 +1828,7 @@ public class WifiMetrics {
      */
     public int startConnectionEvent(
             String ifaceName, WifiConfiguration config, String targetBSSID, int roamType,
-            boolean isOobPseudonymEnabled) {
+            boolean isOobPseudonymEnabled, int role) {
         synchronized (mLock) {
             int overlapWithLastConnectionMs = 0;
             ConnectionEvent currentConnectionEvent = mCurrentConnectionEventPerIface.get(ifaceName);
@@ -1877,6 +1879,7 @@ public class WifiMetrics {
             currentConnectionEvent.mScreenOn = mScreenOn;
             currentConnectionEvent.mConnectionEvent.isFirstConnectionAfterBoot =
                     mFirstConnectionAfterBoot;
+            currentConnectionEvent.mRole = role;
             mFirstConnectionAfterBoot = false;
             mConnectionEventList.add(currentConnectionEvent);
             mScanResultRssiTimestampMillis = -1;
@@ -2094,7 +2097,8 @@ public class WifiMetrics {
                         currentConnectionEvent.mHasEverConnected,
                         timeSinceConnectedSeconds,
                         currentConnectionEvent.mIsCarrierWifi,
-                        currentConnectionEvent.mIsOobPseudonymEnabled);
+                        currentConnectionEvent.mIsOobPseudonymEnabled,
+                        currentConnectionEvent.mRole);
 
                 // ConnectionEvent already added to ConnectionEvents List. Safe to remove here.
                 mCurrentConnectionEventPerIface.remove(ifaceName);
@@ -8585,5 +8589,13 @@ public class WifiMetrics {
         synchronized (mLock) {
             mRecentFailureAssociationStatus.increment(reason);
         }
+    }
+
+    /**
+     * Loggint the time it takes for save config to the storage.
+     * @param time
+     */
+    public void wifiConfigStored(int time) {
+        WifiStatsLog.write(WIFI_CONFIG_SAVED, time);
     }
 }
