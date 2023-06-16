@@ -228,6 +228,7 @@ import com.android.server.wifi.coex.CoexManager;
 import com.android.server.wifi.entitlement.PseudonymInfo;
 import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.hotspot2.PasspointProvisioningTestUtil;
+import com.android.server.wifi.proto.WifiStatsLog;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.UserActionEvent;
 import com.android.server.wifi.util.ActionListenerWrapper;
 import com.android.server.wifi.util.ApConfigUtil;
@@ -455,6 +456,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Mock SsidTranslator mSsidTranslator;
     @Mock InterfaceConflictManager mInterfaceConflictManager;
     @Mock WifiKeyStore mWifiKeyStore;
+    @Mock WifiPulledAtomLogger mWifiPulledAtomLogger;
     @Mock ScoringParams mScoringParams;
     @Mock ApplicationQosPolicyRequestHandler mApplicationQosPolicyRequestHandler;
 
@@ -550,6 +552,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mWifiInjector.getWifiNetworkSuggestionsManager())
                 .thenReturn(mWifiNetworkSuggestionsManager);
         when(mWifiInjector.makeTelephonyManager()).thenReturn(mTelephonyManager);
+        when(mWifiInjector.getWifiPulledAtomLogger()).thenReturn(mWifiPulledAtomLogger);
         when(mContext.getSystemService(TelephonyManager.class)).thenReturn(mTelephonyManager);
         when(mWifiInjector.getCoexManager()).thenReturn(mCoexManager);
         when(mWifiInjector.getWifiConfigManager()).thenReturn(mWifiConfigManager);
@@ -818,6 +821,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
         when(mSettingsStore.handleWifiToggled(anyBoolean())).thenReturn(true);
         when(mSettingsStore.isAirplaneModeOn()).thenReturn(false);
+        when(mWakeupController.isUsable()).thenReturn(false);
 
         InOrder inorder = inOrder(mWifiMetrics);
         assertTrue(mWifiServiceImpl.setWifiEnabled(TEST_PACKAGE_NAME, true));
@@ -827,9 +831,11 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(true, false);
         inorder.verify(mWifiMetrics).logUserActionEvent(UserActionEvent.EVENT_TOGGLE_WIFI_ON);
         inorder.verify(mWifiMetrics).incrementNumWifiToggles(eq(true), eq(true));
+        inorder.verify(mWifiMetrics).reportWifiStateChanged(true, false, false);
         inorder.verify(mWifiMetrics).logUserActionEvent(eq(UserActionEvent.EVENT_TOGGLE_WIFI_OFF),
                 anyInt());
         inorder.verify(mWifiMetrics).incrementNumWifiToggles(eq(true), eq(false));
+        inorder.verify(mWifiMetrics).reportWifiStateChanged(false, false, false);
         verify(mLastCallerInfoManager).put(eq(WifiManager.API_WIFI_ENABLED), anyInt(),
                 anyInt(), anyInt(), anyString(), eq(false));
     }
@@ -848,12 +854,15 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 eq(Build.VERSION_CODES.Q), anyInt())).thenReturn(true);
         when(mSettingsStore.handleWifiToggled(anyBoolean())).thenReturn(true);
         when(mSettingsStore.isAirplaneModeOn()).thenReturn(false);
+        when(mWakeupController.isUsable()).thenReturn(true);
 
         InOrder inorder = inOrder(mWifiMetrics);
         assertTrue(mWifiServiceImpl.setWifiEnabled(TEST_PACKAGE_NAME, true));
         assertTrue(mWifiServiceImpl.setWifiEnabled(TEST_PACKAGE_NAME, false));
         inorder.verify(mWifiMetrics).incrementNumWifiToggles(eq(false), eq(true));
+        inorder.verify(mWifiMetrics).reportWifiStateChanged(true, true, false);
         inorder.verify(mWifiMetrics).incrementNumWifiToggles(eq(false), eq(false));
+        inorder.verify(mWifiMetrics).reportWifiStateChanged(false, true, false);
     }
 
     /**
@@ -871,6 +880,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
         assertFalse(mWifiServiceImpl.setWifiEnabled(TEST_PACKAGE_NAME, true));
         assertFalse(mWifiServiceImpl.setWifiEnabled(TEST_PACKAGE_NAME, false));
         verify(mWifiMetrics, never()).incrementNumWifiToggles(anyBoolean(), anyBoolean());
+        verify(mWifiMetrics, never()).reportWifiStateChanged(anyBoolean(), anyBoolean(),
+                anyBoolean());
     }
 
     /**
@@ -1879,6 +1890,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
         verify(mWifiConfigManager).loadFromStore();
         verify(mActiveModeWarden).start();
+    }
+
+    @Test
+    public void testSetPulledAtomCallbacks() {
+        mWifiServiceImpl.checkAndStartWifi();
+        mLooper.dispatchAll();
+        verify(mWifiPulledAtomLogger).setPullAtomCallback(WifiStatsLog.WIFI_MODULE_INFO);
     }
 
     /**
@@ -11040,6 +11058,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
 
         assertFalse(mWifiServiceImpl.setWifiEnabled(TEST_PACKAGE_NAME, true));
         verify(mWifiMetrics, never()).incrementNumWifiToggles(anyBoolean(), anyBoolean());
+        verify(mWifiMetrics, never()).reportWifiStateChanged(anyBoolean(), anyBoolean(),
+                anyBoolean());
 
         assertFalse(mWifiServiceImpl.disconnect(TEST_PACKAGE_NAME));
         assertFalse(mWifiServiceImpl.reconnect(TEST_PACKAGE_NAME));

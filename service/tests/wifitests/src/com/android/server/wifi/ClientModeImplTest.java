@@ -4161,7 +4161,8 @@ public class ClientModeImplTest extends WifiBaseTest {
                 mTestConfig);
         verify(mWifiNetworkFactory).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_ASSOCIATION_REJECTION),
-                eq(mTestConfig), eq(TEST_BSSID_STR));
+                eq(mTestConfig), eq(TEST_BSSID_STR), eq(WifiMetricsProto.ConnectionEvent
+                        .ASSOCIATION_REJECTION_AP_UNABLE_TO_HANDLE_NEW_STA));
         verify(mWifiNetworkSuggestionsManager).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_ASSOCIATION_REJECTION),
                 eq(mTestConfig), eq(null));
@@ -4209,7 +4210,8 @@ public class ClientModeImplTest extends WifiBaseTest {
                 mTestConfig);
         verify(mWifiNetworkFactory).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE),
-                eq(mTestConfig), eq(TEST_BSSID_STR));
+                eq(mTestConfig), eq(TEST_BSSID_STR), eq(WifiMetricsProto.ConnectionEvent
+                        .AUTH_FAILURE_WRONG_PSWD));
         verify(mWifiNetworkSuggestionsManager).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE),
                 eq(mTestConfig), eq(null));
@@ -4767,7 +4769,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 mTestConfig);
         verify(mWifiNetworkFactory).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_DHCP), any(WifiConfiguration.class),
-                eq(TEST_BSSID_STR));
+                eq(TEST_BSSID_STR), eq(WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN));
         verify(mWifiNetworkSuggestionsManager).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_DHCP), any(WifiConfiguration.class),
                 any(String.class));
@@ -4802,7 +4804,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 mConnectedNetwork);
         verify(mWifiNetworkFactory).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_NONE), eq(mConnectedNetwork),
-                eq(TEST_BSSID_STR));
+                eq(TEST_BSSID_STR), eq(WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN));
         verify(mWifiNetworkSuggestionsManager).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_NONE), eq(mConnectedNetwork),
                 any(String.class));
@@ -7931,7 +7933,8 @@ public class ClientModeImplTest extends WifiBaseTest {
                 mTestConfig);
         verify(mWifiNetworkFactory).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_NETWORK_NOT_FOUND),
-                eq(mTestConfig), eq(TEST_BSSID_STR));
+                eq(mTestConfig), eq(TEST_BSSID_STR),
+                eq(WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN));
         verify(mWifiNetworkSuggestionsManager).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_NETWORK_NOT_FOUND),
                 eq(mTestConfig), eq(null));
@@ -8142,21 +8145,26 @@ public class ClientModeImplTest extends WifiBaseTest {
         mIpClientCallback.installPacketFilter(filter);
         mLooper.dispatchAll();
 
-        // just cache the data.
+        // packet filter will not be installed if the secondary STA doesn't support APF.
         verify(mWifiNative, never()).installPacketFilter(WIFI_IFACE_NAME, filter);
 
-        when(mWifiNative.readPacketFilter(WIFI_IFACE_NAME)).thenReturn(filter);
         mIpClientCallback.startReadPacketFilter();
         mLooper.dispatchAll();
-        verify(mIpClient).readPacketFilterComplete(filter);
-        // return the cached the data.
+        // Return null as packet filter is not installed.
+        verify(mIpClient).readPacketFilterComplete(eq(null));
         verify(mWifiNative, never()).readPacketFilter(WIFI_IFACE_NAME);
 
         // Now invoke role change, that should apply the APF
+        when(mWifiNative.readPacketFilter(WIFI_IFACE_NAME)).thenReturn(filter);
         when(mClientModeManager.getRole()).thenReturn(ROLE_CLIENT_PRIMARY);
         mCmi.onRoleChanged();
-        verify(mWifiNative).installPacketFilter(WIFI_IFACE_NAME, filter);
+        mIpClientCallback.installPacketFilter(filter);
+        mLooper.dispatchAll();
         verify(mWifiScoreReport, times(2)).onRoleChanged(ROLE_CLIENT_PRIMARY);
+        // verify that the APF capabilities are updated in IpClient.
+        verify(mWifiNative, times(1)).getApfCapabilities(WIFI_IFACE_NAME);
+        verify(mIpClient, times(1)).updateApfCapabilities(eq(APF_CAP));
+        verify(mWifiNative, times(1)).installPacketFilter(WIFI_IFACE_NAME, filter);
     }
 
     @Test
@@ -8185,6 +8193,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(mClientModeManager.getRole()).thenReturn(ROLE_CLIENT_PRIMARY);
         mCmi.onRoleChanged();
         // ignore (since it was already applied)
+        verify(mIpClient, never()).updateApfCapabilities(eq(APF_CAP));
         verify(mWifiNative, times(1)).installPacketFilter(WIFI_IFACE_NAME, filter);
     }
 
