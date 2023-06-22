@@ -1,6 +1,23 @@
 {
   "comments": [
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "122144bb_555c040c",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1288034
+      },
+      "writtenOn": "2023-06-22T07:12:28Z",
+      "side": 1,
+      "message": "Removed topic since this change is out-of-date and needs update. But it depends on aosp/2146962 (which could be merged independently before)",
+      "revId": "d34da0a031ef0cfa6f93bc5ae0e705765d02fe98",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "d73e7ebc_475dd27f",
