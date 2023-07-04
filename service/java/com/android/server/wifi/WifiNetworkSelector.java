@@ -1285,7 +1285,17 @@ public class WifiNetworkSelector {
         WifiConfiguration selectedNetwork =
                 mWifiConfigManager.getConfiguredNetwork(selectedNetworkId);
         if (selectedNetwork != null && legacyOverrideWanted && overrideEnabled) {
-            selectedNetwork = overrideCandidateWithUserConnectChoice(selectedNetwork);
+            WifiConfiguration tempNetwork = overrideCandidateWithUserConnectChoice(selectedNetwork);
+            for (WifiCandidates.Candidate candidate : candidates) {
+                if (candidate.getNetworkConfigId() == tempNetwork.networkId) {
+                    selectedNetwork = tempNetwork;
+                    break;
+                }
+            }
+            if (selectedNetwork != tempNetwork) {
+                localLog("user selection adjustment failed because candidates don't contains "
+                        + tempNetwork.SSID);
+            }
         }
         if (selectedNetwork != null) {
             mLastNetworkSelectionTimeStamp = mClock.getElapsedSinceBootMillis();
