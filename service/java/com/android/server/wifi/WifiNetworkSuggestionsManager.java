@@ -48,7 +48,6 @@ import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
 import android.net.wifi.hotspot2.PasspointConfiguration;
-import android.os.Handler;
 import android.os.Process;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
@@ -161,7 +160,7 @@ public class WifiNetworkSuggestionsManager {
 
     private final WifiContext mContext;
     private final Resources mResources;
-    private final Handler mHandler;
+    private final RunnerHandler mHandler;
     private final AppOpsManager mAppOps;
     private final ActivityManager mActivityManager;
     private final WifiNotificationManager mNotificationManager;
@@ -659,7 +658,7 @@ public class WifiNetworkSuggestionsManager {
         }
     }
 
-    public WifiNetworkSuggestionsManager(WifiContext context, Handler handler,
+    public WifiNetworkSuggestionsManager(WifiContext context, RunnerHandler handler,
             WifiInjector wifiInjector, WifiPermissionsUtil wifiPermissionsUtil,
             WifiConfigManager wifiConfigManager, WifiConfigStore wifiConfigStore,
             WifiMetrics wifiMetrics, WifiCarrierInfoManager wifiCarrierInfoManager,
@@ -695,7 +694,7 @@ public class WifiNetworkSuggestionsManager {
 
         mContext.registerReceiver(mBroadcastReceiver, mIntentFilter, null, handler);
         mLruConnectionTracker = lruConnectionTracker;
-        mHandler.postAtFrontOfQueue(() -> mWifiConfigManager.addOnNetworkUpdateListener(
+        mHandler.postToFront(() -> mWifiConfigManager.addOnNetworkUpdateListener(
                 new WifiNetworkSuggestionsManager.OnNetworkUpdateListener()));
     }
 
@@ -1006,8 +1005,15 @@ public class WifiNetworkSuggestionsManager {
             // auto join disabled
             if (isSimBasedPhase1Suggestion(ewns)) {
                 int carrierIdFromSuggestion = getCarrierIdFromSuggestion(ewns);
-                int subId = mWifiCarrierInfoManager
-                        .getMatchingSubId(carrierIdFromSuggestion);
+                int subId = ewns.wns.wifiConfiguration.subscriptionId;
+                if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                    if (ewns.wns.wifiConfiguration.getSubscriptionGroup() != null) {
+                        subId = mWifiCarrierInfoManager.getActiveSubscriptionIdInGroup(
+                                ewns.wns.wifiConfiguration.getSubscriptionGroup());
+                    } else {
+                        subId = mWifiCarrierInfoManager.getMatchingSubId(carrierIdFromSuggestion);
+                    }
+                }
                 if (!(mWifiCarrierInfoManager.requiresImsiEncryption(subId)
                         || mWifiCarrierInfoManager.hasUserApprovedImsiPrivacyExemptionForCarrier(
                                 carrierIdFromSuggestion)
@@ -1244,6 +1250,9 @@ public class WifiNetworkSuggestionsManager {
                 }
                 if (wifiConfiguration.subscriptionId
                         != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                    return false;
+                }
+                if (wifiConfiguration.getSubscriptionGroup() != null) {
                     return false;
                 }
                 if (passpointConfiguration == null) {
@@ -1594,6 +1603,36 @@ public class WifiNetworkSuggestionsManager {
                                 .getProfileKey());
                 if (network == null) {
                     network = ewns.createInternalWifiConfiguration(mWifiCarrierInfoManager);
+                }
+                networks.add(network);
+            }
+        }
+        return networks;
+    }
+
+    /**
+     * Get all user-approved Passpoint networks that include an SSID.
+     */
+    public List<WifiConfiguration> getAllPasspointScanOptimizationSuggestionNetworks() {
+        List<WifiConfiguration> networks = new ArrayList<>();
+        for (PerAppInfo info : mActiveNetworkSuggestionsPerApp.values()) {
+            if (!info.isApproved()) {
+                continue;
+            }
+            for (ExtendedWifiNetworkSuggestion ewns : info.extNetworkSuggestions.values()) {
+                if (ewns.wns.getPasspointConfig() == null) {
+                    continue;
+                }
+                WifiConfiguration network = mWifiConfigManager
+                        .getConfiguredNetwork(ewns.wns.getWifiConfiguration()
+                                .getProfileKey());
+                if (network == null) {
+                    network = ewns.createInternalWifiConfiguration(mWifiCarrierInfoManager);
+                }
+                network.SSID = mWifiInjector.getPasspointManager()
+                        .getMostRecentSsidForProfile(network.getPasspointUniqueId());
+                if (network.SSID == null) {
+                    continue;
                 }
                 networks.add(network);
             }

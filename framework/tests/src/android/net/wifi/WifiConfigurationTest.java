@@ -16,6 +16,7 @@
 
 package android.net.wifi;
 
+import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_DPP;
 import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_EAP;
 import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_EAP_SUITE_B;
 import static android.net.wifi.WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE;
@@ -117,6 +118,7 @@ public class WifiConfigurationTest {
         config.carrierId = 1189;
         config.restricted = true;
         config.isCurrentlyConnected = true;
+        config.setIsUserSelected(true);
         config.setSubscriptionGroup(ParcelUuid.fromString("0000110B-0000-1000-8000-00805F9B34FB"));
         config.getNetworkSelectionStatus().setDisableTime(12333);
         config.getNetworkSelectionStatus().setDisableEndTime(45666);
@@ -147,6 +149,7 @@ public class WifiConfigurationTest {
         assertEquals(config.getSubscriptionGroup(), reconfig.getSubscriptionGroup());
         assertTrue(reconfig.restricted);
         assertTrue(reconfig.isCurrentlyConnected);
+        assertTrue(reconfig.isUserSelected());
         assertEquals(config.getBssidAllowlist(), reconfig.getBssidAllowlist());
         assertEquals(
                 SecurityParams.createSecurityParamsBySecurityType(
@@ -182,6 +185,7 @@ public class WifiConfigurationTest {
         config.carrierId = 1189;
         config.restricted = true;
         config.isCurrentlyConnected = true;
+        config.setIsUserSelected(true);
 
         WifiConfiguration reconfig = new WifiConfiguration(config);
 
@@ -198,6 +202,7 @@ public class WifiConfigurationTest {
         assertEquals(config.subscriptionId, reconfig.subscriptionId);
         assertTrue(reconfig.restricted);
         assertTrue(reconfig.isCurrentlyConnected);
+        assertTrue(reconfig.isUserSelected());
     }
 
     @Test
@@ -1193,16 +1198,24 @@ public class WifiConfigurationTest {
     @Test
     public void testLegacyConfigurationConversion() {
         Pair[] keyMgmtSecurityTypePairs = new Pair[] {
+                new Pair<>(KeyMgmt.NONE, SECURITY_TYPE_OPEN),
+                new Pair<>(KeyMgmt.OWE, SECURITY_TYPE_OWE),
+                new Pair<>(KeyMgmt.OSEN, SECURITY_TYPE_OSEN),
+                new Pair<>(KeyMgmt.WPA_PSK, SECURITY_TYPE_PSK),
+                new Pair<>(KeyMgmt.WPA2_PSK, SECURITY_TYPE_PSK),
+                new Pair<>(KeyMgmt.FT_PSK, SECURITY_TYPE_PSK),
+                new Pair<>(KeyMgmt.WPA_PSK_SHA256, SECURITY_TYPE_PSK),
+                new Pair<>(KeyMgmt.SAE, SECURITY_TYPE_SAE),
+                new Pair<>(KeyMgmt.WPA_EAP, SECURITY_TYPE_EAP),
+                new Pair<>(KeyMgmt.FT_EAP, SECURITY_TYPE_EAP),
+                new Pair<>(KeyMgmt.IEEE8021X, SECURITY_TYPE_EAP),
+                new Pair<>(KeyMgmt.WPA_EAP_SHA256, SECURITY_TYPE_EAP),
+                new Pair<>(KeyMgmt.FILS_SHA256, SECURITY_TYPE_EAP),
+                new Pair<>(KeyMgmt.FILS_SHA384, SECURITY_TYPE_EAP),
+                new Pair<>(KeyMgmt.SUITE_B_192, SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT),
                 new Pair<>(KeyMgmt.WAPI_CERT, SECURITY_TYPE_WAPI_CERT),
                 new Pair<>(KeyMgmt.WAPI_PSK, SECURITY_TYPE_WAPI_PSK),
-                new Pair<>(KeyMgmt.SUITE_B_192, SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT),
-                new Pair<>(KeyMgmt.OWE, SECURITY_TYPE_OWE),
-                new Pair<>(KeyMgmt.SAE, SECURITY_TYPE_SAE),
-                new Pair<>(KeyMgmt.OSEN, SECURITY_TYPE_OSEN),
-                new Pair<>(KeyMgmt.WPA2_PSK, SECURITY_TYPE_PSK),
-                new Pair<>(KeyMgmt.WPA_EAP, SECURITY_TYPE_EAP),
-                new Pair<>(KeyMgmt.WPA_PSK, SECURITY_TYPE_PSK),
-                new Pair<>(KeyMgmt.NONE, SECURITY_TYPE_OPEN),
+                new Pair<>(KeyMgmt.DPP, SECURITY_TYPE_DPP),
         };
 
         for (Pair pair: keyMgmtSecurityTypePairs) {
@@ -1219,7 +1232,7 @@ public class WifiConfigurationTest {
 
         // If EAP key management is set and requirePmf is true, it is WPA3 Enterprise.
         WifiConfiguration wpa3EnterpriseConfig = new WifiConfiguration();
-        wpa3EnterpriseConfig.allowedKeyManagement.set(KeyMgmt.WPA_EAP);
+        wpa3EnterpriseConfig.allowedKeyManagement.set(KeyMgmt.WPA_EAP_SHA256);
         wpa3EnterpriseConfig.requirePmf = true;
         wpa3EnterpriseConfig.allowedProtocols.set(Protocol.RSN);
         wpa3EnterpriseConfig.convertLegacyFieldsToSecurityParamsIfNeeded();
