@@ -47,6 +47,7 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.wifi.IActionListener;
 import android.net.wifi.IDppCallback;
+import android.net.wifi.ILastCallerListener;
 import android.net.wifi.ILocalOnlyHotspotCallback;
 import android.net.wifi.IPnoScanResultsCallback;
 import android.net.wifi.IScoreUpdateObserver;
@@ -396,6 +397,22 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             mScoreUpdateObserver = observerImpl;
             mCountDownLatch.countDown();
         }
+        @Override
+        public void onNetworkSwitchAccepted(
+                int sessionId, int targetNetworkId, String targetBssid) {
+            Log.i(TAG, "onNetworkSwitchAccepted:"
+                    + " sessionId=" + sessionId
+                    + " targetNetworkId=" + targetNetworkId
+                    + " targetBssid=" + targetBssid);
+        }
+        @Override
+        public void onNetworkSwitchRejected(
+                int sessionId, int targetNetworkId, String targetBssid) {
+            Log.i(TAG, "onNetworkSwitchRejected:"
+                    + " sessionId=" + sessionId
+                    + " targetNetworkId=" + targetNetworkId
+                    + " targetBssid=" + targetBssid);
+        }
 
         public Integer getSessionId() {
             return mSessionId;
@@ -580,7 +597,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 }
                 case "network-requests-remove-user-approved-access-points": {
                     String packageName = getNextArgRequired();
-                    mWifiNetworkFactory.removeUserApprovedAccessPointsForApp(packageName);
+                    mWifiNetworkFactory.removeApp(packageName);
                     return 0;
                 }
                 case "clear-user-disabled-networks": {
@@ -589,6 +606,19 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 }
                 case "send-link-probe": {
                     return sendLinkProbe(pw);
+                }
+                case "get-last-caller-info": {
+                    int apiType = Integer.parseInt(getNextArgRequired());
+                    mWifiService.getLastCallerInfoForApi(apiType,
+                            new ILastCallerListener.Stub() {
+                                @Override
+                                public void onResult(String packageName, boolean enabled) {
+                                    Log.i(TAG, "getLastCallerInfoForApi " + apiType
+                                            + ": packageName=" + packageName
+                                            + ", enabled=" + enabled);
+                                }
+                            });
+                    return 0;
                 }
                 case "force-softap-band": {
                     boolean forceBandEnabled = getNextArgRequiredTrueOrFalse("enabled", "disabled");
@@ -1250,6 +1280,11 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     mActiveModeWarden.emergencyCallStateChanged(enabled);
                     return 0;
                 }
+                case "set-emergency-scan-request": {
+                    boolean enabled = getNextArgRequiredTrueOrFalse("enabled", "disabled");
+                    mWifiService.setEmergencyScanRequestInProgress(enabled);
+                    return 0;
+                }
                 case "trigger-recovery": {
                     mSelfRecovery.trigger(REASON_API_CALL);
                     return 0;
@@ -1769,6 +1804,36 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     }
                     return 0;
                 }
+                case "set-mock-wifimodem-service":
+                    String opt = null;
+                    String serviceName = null;
+                    while ((opt = getNextOption()) != null) {
+                        switch (opt) {
+                            case "-s": {
+                                serviceName = getNextArgRequired();
+                                break;
+                            }
+                            default:
+                                pw.println("set-mock-wifimodem-service requires '-s' option");
+                                return -1;
+                        }
+                    }
+                    mWifiNative.setMockWifiService(serviceName);
+                    // The result will be checked, must print result "true"
+                    pw.print("true");
+                    return 0;
+                case "get-mock-wifimodem-service":
+                    pw.print(mWifiNative.getMockWifiServiceName());
+                    return 0;
+                case "set-mock-wifimodem-methods":
+                    String methods = getNextArgRequired();
+                    if (mWifiNative.setMockWifiMethods(methods)) {
+                        pw.print("true");
+                    } else {
+                        pw.print("fail to set mock method: " + methods);
+                        return -1;
+                    }
+                    return 0;
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -1814,6 +1879,16 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             configuration.setSecurityParams(WifiConfiguration.SECURITY_TYPE_OPEN);
         } else if (TextUtils.equals(type, "dpp")) {
             configuration.setSecurityParams(WifiConfiguration.SECURITY_TYPE_DPP);
+        } else if (TextUtils.equals(type, "wep")) {
+            configuration.setSecurityParams(WifiConfiguration.SECURITY_TYPE_WEP);
+            String password = getNextArgRequired();
+            // WEP-40, WEP-104, and WEP-256
+            if ((password.length() == 10 || password.length() == 26 || password.length() == 58)
+                    && password.matches("[0-9A-Fa-f]*")) {
+                configuration.wepKeys[0] = password;
+            } else {
+                configuration.wepKeys[0] = '"' + password + '"';
+            }
         } else {
             throw new IllegalArgumentException("Unknown network type " + type);
         }
@@ -2335,12 +2410,12 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             // privileged, dump out all the client mode manager manager statuses
             for (ClientModeManager cm : mActiveModeWarden.getClientModeManagers()) {
                 pw.println("==== ClientModeManager instance: " + cm + " ====");
-                WifiInfo info = cm.syncRequestConnectionInfo();
+                WifiInfo info = cm.getConnectionInfo();
                 printWifiInfo(pw, info);
                 if (info.getSupplicantState() != SupplicantState.COMPLETED) {
                     continue;
                 }
-                Network network = cm.syncGetCurrentNetwork();
+                Network network = cm.getCurrentNetwork();
                 NetworkCapabilities capabilities =
                         mConnectivityManager.getNetworkCapabilities(network);
                 pw.println("NetworkCapabilities: " + capabilities);
@@ -2543,17 +2618,19 @@ public class WifiShellCommand extends BasicShellCommandHandler {
     }
 
     private void onHelpPrivileged(PrintWriter pw) {
-        pw.println("  connect-network <ssid> open|owe|wpa2|wpa3 [<passphrase>] [-x] [-m] [-d] "
-                + "[-b <bssid>] [-r auto|none|persistent|non_persistent]");
+        pw.println("  connect-network <ssid> open|owe|wpa2|wpa3|wep [<passphrase>] [-x] [-m] "
+                + "[-d] [-b <bssid>] [-r auto|none|persistent|non_persistent]");
         pw.println("    Connect to a network with provided params and add to saved networks list");
         pw.println("    <ssid> - SSID of the network");
-        pw.println("    open|owe|wpa2|wpa3 - Security type of the network.");
+        pw.println("    open|owe|wpa2|wpa3|wep - Security type of the network.");
         pw.println("        - Use 'open' or 'owe' for networks with no passphrase");
         pw.println("           - 'open' - Open networks (Most prevalent)");
         pw.println("           - 'owe' - Enhanced open networks");
-        pw.println("        - Use 'wpa2' or 'wpa3' for networks with passphrase");
+        pw.println("        - Use 'wpa2' or 'wpa3' or 'wep' for networks with passphrase");
         pw.println("           - 'wpa2' - WPA-2 PSK networks (Most prevalent)");
         pw.println("           - 'wpa3' - WPA-3 PSK networks");
+        pw.println("           - 'wep'  - WEP network. Passphrase should be bytes in hex or encoded"
+                + " into String using UTF-8");
         pw.println("    -x - Specifies the SSID as hex digits instead of plain text");
         pw.println("    -m - Mark the network metered.");
         pw.println("    -d - Mark the network autojoin disabled.");
@@ -2562,17 +2639,19 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    -b <bssid> - Set specific BSSID.");
         pw.println("    -r auto|none|persistent|non_persistent - MAC randomization scheme for the"
                 + " network");
-        pw.println("  add-network <ssid> open|owe|wpa2|wpa3 [<passphrase>] [-x] [-m] [-d] "
+        pw.println("  add-network <ssid> open|owe|wpa2|wpa3|wep [<passphrase>] [-x] [-m] [-d] "
                 + "[-b <bssid>] [-r auto|none|persistent|non_persistent]");
         pw.println("    Add/update saved network with provided params");
         pw.println("    <ssid> - SSID of the network");
-        pw.println("    open|owe|wpa2|wpa3 - Security type of the network.");
+        pw.println("    open|owe|wpa2|wpa3|wep - Security type of the network.");
         pw.println("        - Use 'open' or 'owe' for networks with no passphrase");
         pw.println("           - 'open' - Open networks (Most prevalent)");
         pw.println("           - 'owe' - Enhanced open networks");
         pw.println("        - Use 'wpa2' or 'wpa3' for networks with passphrase");
         pw.println("           - 'wpa2' - WPA-2 PSK networks (Most prevalent)");
         pw.println("           - 'wpa3' - WPA-3 PSK networks");
+        pw.println("           - 'wep'  - WEP network. Passphrase should be bytes in hex or encoded"
+                + " into String using UTF-8");
         pw.println("    -x - Specifies the SSID as hex digits instead of plain text");
         pw.println("    -m - Mark the network metered.");
         pw.println("    -d - Mark the network autojoin disabled.");
@@ -2673,6 +2752,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    Sets whether we are in the middle of an emergency call.");
         pw.println("Equivalent to receiving the "
                 + "TelephonyManager.ACTION_EMERGENCY_CALL_STATE_CHANGED broadcast.");
+        pw.println("  set-emergency-scan-request enabled|disabled");
+        pw.println("    Sets whether there is a emergency scan request in progress.");
         pw.println("  network-suggestions-set-as-carrier-provider <packageName> yes|no");
         pw.println("    Set the <packageName> work as carrier provider or not.");
         pw.println("  is-network-suggestions-set-as-carrier-provider <packageName>");
@@ -2773,6 +2854,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    Example: set-ssid-charset zh GBK");
         pw.println("  clear-ssid-charsets");
         pw.println("    Clears the SSID translation charsets set in set-ssid-charset.");
+        pw.println("  get-last-caller-info api_type");
+        pw.println("    Get the last caller information for a WifiManager.ApiType");
     }
 
     @Override

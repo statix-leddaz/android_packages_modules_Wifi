@@ -32,6 +32,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -139,7 +140,8 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
 
         mRandom = new Random();
         when(mWifiInjector.getMacAddressUtil()).thenReturn(mMacAddressUtil);
-        when(mMacAddressUtil.calculatePersistentMac(any(), any())).thenReturn(TEST_RANDOMIZED_MAC);
+        when(mMacAddressUtil.calculatePersistentMacForSap(any(), anyInt()))
+                .thenReturn(TEST_RANDOMIZED_MAC);
         mResources.setBoolean(R.bool.config_wifi_ap_mac_randomization_supported, true);
         mResources.setBoolean(
                 R.bool.config_wifiSoftapAutoAppendLowerBandsToBandConfigurationEnabled, true);
@@ -318,6 +320,7 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
         mDataStoreSource.fromDeserialized(expectedConfig);
         verifyApConfig(expectedConfig, store.getApConfiguration());
         assertTrue(store.getApConfiguration().isUserConfigurationInternal());
+        String lassPassphrase = store.getLastConfiguredTetheredApPassphraseSinceBoot();
 
         store.setApConfiguration(null);
         verifyDefaultApConfig(store.getApConfiguration(), TEST_DEFAULT_AP_SSID);
@@ -325,6 +328,9 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
         verify(mWifiConfigManager).saveToStore(true);
         verify(mBackupManagerProxy).notifyDataChanged();
         assertFalse(store.getApConfiguration().isUserConfigurationInternal());
+        assertNotEquals(lassPassphrase, store.getLastConfiguredTetheredApPassphraseSinceBoot());
+        assertEquals(store.getLastConfiguredTetheredApPassphraseSinceBoot(),
+                store.getApConfiguration().getPassphrase());
     }
 
     /**
@@ -686,7 +692,7 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
     public void randomizeBssid_fallbackPathWhenMacCalculationFails() throws Exception {
         mResources.setBoolean(R.bool.config_wifi_ap_mac_randomization_supported, true);
         // Setup the MAC calculation to fail.
-        when(mMacAddressUtil.calculatePersistentMac(any(), any())).thenReturn(null);
+        when(mMacAddressUtil.calculatePersistentMacForSap(any(), anyInt())).thenReturn(null);
         SoftApConfiguration baseConfig = new SoftApConfiguration.Builder().build();
 
         WifiApConfigStore store = createWifiApConfigStore();
@@ -1380,7 +1386,7 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
 
     @Test
     public void testPersistentRandomizedMacAddressWhenCalculatedMacIsNull() throws Exception {
-        when(mMacAddressUtil.calculatePersistentMac(any(), any())).thenReturn(null);
+        when(mMacAddressUtil.calculatePersistentMacForSap(any(), anyInt())).thenReturn(null);
         WifiApConfigStore store = createWifiApConfigStore();
         assertNotNull(store.getApConfiguration().getPersistentRandomizedMacAddress());
         assertNotNull(
@@ -1389,5 +1395,19 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
         assertNotNull(
                 store.generateLocalOnlyHotspotConfig(mContext, store.getApConfiguration(),
                 mSoftApCapability).getPersistentRandomizedMacAddress());
+    }
+
+    @Test
+    public void testLastPassphraseIsNonNull() throws Exception {
+        WifiApConfigStore store = createWifiApConfigStore();
+        SoftApConfiguration config = store.getApConfiguration();
+        String lastPassphrase = store.getLastConfiguredTetheredApPassphraseSinceBoot();
+        assertNotNull(lastPassphrase);
+        assertEquals(config.getPassphrase(),
+                store.getLastConfiguredTetheredApPassphraseSinceBoot());
+        // Set to none security
+        store.setApConfiguration(new SoftApConfiguration.Builder()
+                .setSsid(TEST_DEFAULT_HOTSPOT_SSID).build());
+        assertEquals(lastPassphrase, store.getLastConfiguredTetheredApPassphraseSinceBoot());
     }
 }

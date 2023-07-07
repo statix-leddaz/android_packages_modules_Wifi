@@ -53,6 +53,7 @@ import android.hardware.wifi.supplicant.V1_4.LegacyMode;
 import android.hidl.manager.V1_0.IServiceManager;
 import android.hidl.manager.V1_0.IServiceNotification;
 import android.net.MacAddress;
+import android.net.wifi.QosPolicyParams;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiAnnotations.WifiStandard;
@@ -79,7 +80,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
-import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -95,7 +95,7 @@ import javax.annotation.concurrent.ThreadSafe;
  */
 @ThreadSafe
 public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
-    private static final String TAG = "SupplicantStaIfaceHalHidlImp";
+    private static final String TAG = "SupplicantStaIfaceHalHidlImpl";
     @VisibleForTesting
     public static final String HAL_INSTANCE_NAME = "default";
     @VisibleForTesting
@@ -130,6 +130,7 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
     private SupplicantDeathRecipient mSupplicantDeathRecipient;
     // Death recipient cookie registered for current supplicant instance.
     private long mDeathRecipientCookie = 0;
+    private CountDownLatch mWaitForDeathLatch;
     private final Context mContext;
     private final WifiMonitor mWifiMonitor;
     private final FrameworkFacade mFrameworkFacade;
@@ -176,6 +177,12 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
     private class SupplicantDeathRecipient implements DeathRecipient {
         @Override
         public void serviceDied(long cookie) {
+            synchronized (mLock) {
+                if (mWaitForDeathLatch != null) {
+                    mWaitForDeathLatch.countDown();
+                }
+            }
+
             mEventHandler.post(() -> {
                 synchronized (mLock) {
                     Log.w(TAG, "ISupplicant died: cookie=" + cookie);
@@ -594,6 +601,10 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                 Log.e(TAG, "ISupplicant.removeInterface exception: " + e);
                 handleNoSuchElementException(e, "removeInterface");
                 return false;
+            } catch (IllegalArgumentException e) {
+                Log.e(TAG, "ISupplicant.removeInterface exception: " + e);
+                handleIllegalArgumentException(e, "removeInterface");
+                return false;
             }
             return true;
         }
@@ -640,6 +651,7 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                 Log.i(TAG, "Ignoring stale death recipient notification");
                 return;
             }
+            Log.i(TAG, "Handling service death");
             clearState();
             if (mDeathEventHandler != null) {
                 mDeathEventHandler.onDeath();
@@ -715,18 +727,7 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
      */
     public void terminate() {
         synchronized (mLock) {
-            // Register for a new death listener to block until supplicant is dead.
-            final long waitForDeathCookie = new Random().nextLong();
-            final CountDownLatch waitForDeathLatch = new CountDownLatch(1);
-            linkToSupplicantDeath((cookie) -> {
-                mEventHandler.post(() -> {
-                    Log.d(TAG, "ISupplicant died: cookie=" + cookie);
-                    if (cookie != waitForDeathCookie) return;
-                    supplicantServiceDiedHandler(mDeathRecipientCookie);
-                    waitForDeathLatch.countDown();
-                });
-            }, waitForDeathCookie);
-
+            mWaitForDeathLatch = new CountDownLatch(1);
             if (isV1_1()) {
                 Log.i(TAG, "Terminating supplicant using HIDL");
                 terminate_V1_1();
@@ -734,15 +735,15 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                 Log.i(TAG, "Terminating supplicant using init");
                 mFrameworkFacade.stopSupplicant();
             }
+        }
 
-            // Now wait for death listener callback to confirm that it's dead.
-            try {
-                if (!waitForDeathLatch.await(WAIT_FOR_DEATH_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                    Log.w(TAG, "Timed out waiting for confirmation of supplicant death");
-                }
-            } catch (InterruptedException e) {
-                Log.w(TAG, "Failed to wait for supplicant death");
+        // Now wait for death listener callback to confirm that it's dead.
+        try {
+            if (!mWaitForDeathLatch.await(WAIT_FOR_DEATH_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                Log.w(TAG, "Timed out waiting for confirmation of supplicant death");
             }
+        } catch (InterruptedException e) {
+            Log.w(TAG, "Failed to wait for supplicant death");
         }
     }
 
@@ -1043,11 +1044,12 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                     if (config.SSID != null) {
                         // No actual SSID supplied, so select from the network selection BSSID
                         // or the latest candidate BSSID.
+                        WifiSsid configSsid = WifiSsid.fromString(config.SSID);
                         WifiSsid supplicantSsid = mSsidTranslator.getOriginalSsid(config);
                         if (supplicantSsid != null) {
                             supplicantConfig.SSID = supplicantSsid.toString();
                             List<WifiSsid> allPossibleSsids = mSsidTranslator
-                                    .getAllPossibleOriginalSsids(WifiSsid.fromString(config.SSID));
+                                    .getAllPossibleOriginalSsids(configSsid);
                             WifiSsid selectedSsid = mSsidTranslator.getOriginalSsid(config);
                             allPossibleSsids.remove(selectedSsid);
                             if (!allPossibleSsids.isEmpty()) {
@@ -1059,6 +1061,9 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                             Log.d(TAG, "Selecting supplicant SSID " + supplicantSsid);
                             supplicantConfig.SSID = supplicantSsid.toString();
                         }
+                        // Set the actual translation of the original SSID in case the untranslated
+                        // SSID has an ambiguous encoding.
+                        mSsidTranslator.setTranslatedSsidForStaIface(configSsid, ifaceName);
                     }
                 }
                 Pair<SupplicantStaNetworkHalHidlImpl, WifiConfiguration> pair =
@@ -2021,6 +2026,7 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                 return false;
             }
             ISupplicantStaIface iface = checkSupplicantStaIfaceAndLogFailure(ifaceName, methodStr);
+            if (iface == null) return false;
             // Get a v1.4 supplicant STA Interface
             android.hardware.wifi.supplicant.V1_4.ISupplicantStaIface staIfaceV14 =
                     getStaIfaceMockableV1_4(iface);
@@ -2885,7 +2891,7 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
         String macAddressStr = getMacAddress(ifaceName);
         try {
             if (!mPmkCacheManager.add(MacAddress.fromString(macAddressStr),
-                    networkId, expirationTimeInSec, serializedEntry)) {
+                    networkId, null, expirationTimeInSec, serializedEntry)) {
                 Log.w(TAG, "Cannot add PMK cache for " + ifaceName);
             }
         } catch (IllegalArgumentException ex) {
@@ -3280,6 +3286,18 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                 return -1;
         }
     }
+
+    /**
+     * Returns signal poll results for all Wi-Fi links of the interface.
+     *
+     * @param ifaceName Name of the interface.
+     * @return Signal poll results.
+     */
+    public WifiSignalPollResults getSignalPollResults(@NonNull String ifaceName) {
+        /* Signal polling is not implemented for HIDL. */
+        return null;
+    }
+
 
     /**
      * Returns connection capabilities of the current network
@@ -3968,6 +3986,33 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
     }
 
     /**
+     * See comments for {@link ISupplicantStaIfaceHal#addQosPolicyRequestForScs(String, List)}
+     */
+    public List<SupplicantStaIfaceHal.QosPolicyStatus> addQosPolicyRequestForScs(
+            @NonNull String ifaceName, @NonNull List<QosPolicyParams> policies) {
+        Log.e(TAG, "addQosPolicyRequestForScs is not supported by the HIDL HAL");
+        return null;
+    }
+
+    /**
+     * See comments for {@link ISupplicantStaIfaceHal#removeQosPolicyForScs(String, List)}
+     */
+    public List<SupplicantStaIfaceHal.QosPolicyStatus> removeQosPolicyForScs(
+            @NonNull String ifaceName, @NonNull List<Byte> policyIds) {
+        Log.e(TAG, "removeQosPolicyForScs is not supported by the HIDL HAL");
+        return null;
+    }
+
+    /**
+     * See comments for {@link ISupplicantStaIfaceHal#registerQosScsResponseCallback(
+     *                             SupplicantStaIfaceHal.QosScsResponseCallback)}
+     */
+    public void registerQosScsResponseCallback(
+            @NonNull SupplicantStaIfaceHal.QosScsResponseCallback callback) {
+        Log.e(TAG, "registerQosScsResponseCallback is not supported by the HIDL HAL");
+    }
+
+    /**
      * Generate DPP credential for network access
      *
      * @param ifaceName Name of the interface.
@@ -3991,29 +4036,7 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
      */
     public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity,
             boolean updateToNativeService) {
-        synchronized (mLock) {
-            SupplicantStaNetworkHalHidlImpl networkHandle =
-                    checkSupplicantStaNetworkAndLogFailure(ifaceName, "setEapAnonymousIdentity");
-            if (networkHandle == null) return false;
-            if (anonymousIdentity == null) return false;
-            WifiConfiguration currentConfig = getCurrentNetworkLocalConfig(ifaceName);
-            if (currentConfig == null) return false;
-            if (!currentConfig.isEnterprise()) return false;
-
-            try {
-                if (updateToNativeService) {
-                    if (!networkHandle.setEapAnonymousIdentity(
-                            NativeUtil.stringToByteArrayList(anonymousIdentity))) {
-                        Log.w(TAG, "Cannot set EAP anonymous identity.");
-                        return false;
-                    }
-                }
-            } catch (IllegalArgumentException ex) {
-                return false;
-            }
-            // Update cached config after setting native data successfully.
-            currentConfig.enterpriseConfig.setAnonymousIdentity(anonymousIdentity);
-            return true;
-        }
+        Log.d(TAG, "setEapAnonymousIdentity is ignored for HIDL");
+        return false;
     }
 }

@@ -261,6 +261,7 @@ public class WifiBackupRestoreTest extends WifiBaseTest {
                     + "<boolean name=\"SaeIsH2eOnlyMode\" value=\"false\" />\n"
                     + "<boolean name=\"SaeIsPkOnlyMode\" value=\"false\" />\n"
                     + "<boolean name=\"IsAddedByAutoUpgrade\" value=\"false\" />\n"
+                    + "<byte-array name=\"AllowedSuiteBCiphers\" num=\"0\"></byte-array>\n"
                     + "</SecurityParams>\n"
                     + "</SecurityParamsList>\n"
                     + "<int name=\"MeteredOverride\" value=\"1\" />\n"
@@ -1067,9 +1068,7 @@ public class WifiBackupRestoreTest extends WifiBaseTest {
         expectedConfiguration.preSharedKey = WifiConfigurationTestUtil.TEST_PSK;
         expectedConfiguration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
 
-        ArrayList<WifiConfiguration> expectedConfigurations = new ArrayList<WifiConfiguration>() {{
-                add(expectedConfiguration);
-            }};
+        List<WifiConfiguration> expectedConfigurations = List.of(expectedConfiguration);
         WifiConfigurationTestUtil.assertConfigurationsEqualForBackup(
                 expectedConfigurations, retrievedConfigurations);
     }
