@@ -36,7 +36,6 @@ import android.net.wifi.WifiSsid;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.hotspot2.PasspointConfiguration;
-import android.os.Handler;
 import android.os.Looper;
 import android.os.Process;
 import android.text.TextUtils;
@@ -48,6 +47,7 @@ import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.Clock;
 import com.android.server.wifi.MacAddressUtil;
 import com.android.server.wifi.NetworkUpdateResult;
+import com.android.server.wifi.RunnerHandler;
 import com.android.server.wifi.WifiCarrierInfoManager;
 import com.android.server.wifi.WifiConfigManager;
 import com.android.server.wifi.WifiConfigStore;
@@ -120,7 +120,7 @@ public class PasspointManager {
 
     private final PasspointEventHandler mPasspointEventHandler;
     private final WifiInjector mWifiInjector;
-    private final Handler mHandler;
+    private final RunnerHandler mHandler;
     private final WifiKeyStore mKeyStore;
     private final PasspointObjectFactory mObjectFactory;
 
@@ -163,8 +163,10 @@ public class PasspointManager {
                 Log.d(TAG, "ANQP response received from BSSID "
                         + Utils.macToString(bssid) + " - List of ANQP elements:");
                 int i = 0;
-                for (Constants.ANQPElementType type : anqpElements.keySet()) {
-                    Log.d(TAG, "#" + i++ + ": " + type);
+                if (anqpElements != null) {
+                    for (Constants.ANQPElementType type : anqpElements.keySet()) {
+                        Log.d(TAG, "#" + i++ + ": " + type);
+                    }
                 }
             }
             // Notify request manager for the completion of a request.
@@ -358,7 +360,7 @@ public class PasspointManager {
         mAppOps.stopWatchingMode(appOpsChangedListener);
     }
 
-    public PasspointManager(Context context, WifiInjector wifiInjector, Handler handler,
+    public PasspointManager(Context context, WifiInjector wifiInjector, RunnerHandler handler,
             WifiNative wifiNative, WifiKeyStore keyStore, Clock clock,
             PasspointObjectFactory objectFactory, WifiConfigManager wifiConfigManager,
             WifiConfigStore wifiConfigStore,
@@ -392,7 +394,7 @@ public class PasspointManager {
         sPasspointManager = this;
         mMacAddressUtil = macAddressUtil;
         mClock = clock;
-        mHandler.postAtFrontOfQueue(() ->
+        mHandler.postToFront(() ->
                 mWifiConfigManager.addOnNetworkUpdateListener(
                         new PasspointManager.OnNetworkUpdateListener()));
         mWifiPermissionsUtil = wifiPermissionsUtil;
@@ -1230,12 +1232,46 @@ public class PasspointManager {
     }
 
     /**
+     * Returns the corresponding wifi configurations for all non-suggestion Passpoint profiles
+     * that include a recent SSID.
+     *
+     * @return List of {@link WifiConfiguration} converted from {@link PasspointProvider}.
+     */
+    public List<WifiConfiguration> getWifiConfigsForPasspointProfilesWithSsids() {
+        List<WifiConfiguration> configs = new ArrayList<>();
+        for (PasspointProvider provider : mProviders.values()) {
+            if (provider == null || provider.getMostRecentSsid() == null
+                    || provider.isFromSuggestion()) {
+                continue;
+            }
+            WifiConfiguration config = provider.getWifiConfig();
+            config.SSID = provider.getMostRecentSsid();
+            config.getNetworkSelectionStatus().setHasEverConnected(true);
+            configs.add(config);
+        }
+        return configs;
+    }
+
+    /**
+     * Get the most recent SSID observed for the specified Passpoint profile.
+     *
+     * @param uniqueId The unique identifier of the Passpoint profile.
+     * @return The most recent SSID observed for this profile, or null.
+     */
+    public @Nullable String getMostRecentSsidForProfile(String uniqueId) {
+        PasspointProvider provider = mProviders.get(uniqueId);
+        if (provider == null) return null;
+        return provider.getMostRecentSsid();
+    }
+
+    /**
      * Invoked when a Passpoint network was successfully connected based on the credentials
      * provided by the given Passpoint provider
      *
-     * @param uniqueId The unique identifier of the Passpointprofile
+     * @param uniqueId The unique identifier of the Passpoint profile.
+     * @param ssid The SSID of the connected Passpoint network.
      */
-    public void onPasspointNetworkConnected(String uniqueId) {
+    public void onPasspointNetworkConnected(String uniqueId, @Nullable String ssid) {
         PasspointProvider provider = mProviders.get(uniqueId);
         if (provider == null) {
             Log.e(TAG, "Passpoint network connected without provider: " + uniqueId);
@@ -1245,6 +1281,7 @@ public class PasspointManager {
             // First successful connection using this provider.
             provider.setHasEverConnected(true);
         }
+        provider.setMostRecentSsid(ssid);
     }
 
     /**
