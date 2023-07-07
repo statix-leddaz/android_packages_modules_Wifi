@@ -53,6 +53,7 @@ import android.hardware.wifi.supplicant.V1_4.LegacyMode;
 import android.hidl.manager.V1_0.IServiceManager;
 import android.hidl.manager.V1_0.IServiceNotification;
 import android.net.MacAddress;
+import android.net.wifi.QosPolicyParams;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiAnnotations.WifiStandard;
@@ -94,7 +95,7 @@ import javax.annotation.concurrent.ThreadSafe;
  */
 @ThreadSafe
 public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
-    private static final String TAG = "SupplicantStaIfaceHalHidlImp";
+    private static final String TAG = "SupplicantStaIfaceHalHidlImpl";
     @VisibleForTesting
     public static final String HAL_INSTANCE_NAME = "default";
     @VisibleForTesting
@@ -600,6 +601,10 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                 Log.e(TAG, "ISupplicant.removeInterface exception: " + e);
                 handleNoSuchElementException(e, "removeInterface");
                 return false;
+            } catch (IllegalArgumentException e) {
+                Log.e(TAG, "ISupplicant.removeInterface exception: " + e);
+                handleIllegalArgumentException(e, "removeInterface");
+                return false;
             }
             return true;
         }
@@ -1039,11 +1044,12 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                     if (config.SSID != null) {
                         // No actual SSID supplied, so select from the network selection BSSID
                         // or the latest candidate BSSID.
+                        WifiSsid configSsid = WifiSsid.fromString(config.SSID);
                         WifiSsid supplicantSsid = mSsidTranslator.getOriginalSsid(config);
                         if (supplicantSsid != null) {
                             supplicantConfig.SSID = supplicantSsid.toString();
                             List<WifiSsid> allPossibleSsids = mSsidTranslator
-                                    .getAllPossibleOriginalSsids(WifiSsid.fromString(config.SSID));
+                                    .getAllPossibleOriginalSsids(configSsid);
                             WifiSsid selectedSsid = mSsidTranslator.getOriginalSsid(config);
                             allPossibleSsids.remove(selectedSsid);
                             if (!allPossibleSsids.isEmpty()) {
@@ -1055,6 +1061,9 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                             Log.d(TAG, "Selecting supplicant SSID " + supplicantSsid);
                             supplicantConfig.SSID = supplicantSsid.toString();
                         }
+                        // Set the actual translation of the original SSID in case the untranslated
+                        // SSID has an ambiguous encoding.
+                        mSsidTranslator.setTranslatedSsidForStaIface(configSsid, ifaceName);
                     }
                 }
                 Pair<SupplicantStaNetworkHalHidlImpl, WifiConfiguration> pair =
@@ -2882,7 +2891,7 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
         String macAddressStr = getMacAddress(ifaceName);
         try {
             if (!mPmkCacheManager.add(MacAddress.fromString(macAddressStr),
-                    networkId, expirationTimeInSec, serializedEntry)) {
+                    networkId, null, expirationTimeInSec, serializedEntry)) {
                 Log.w(TAG, "Cannot add PMK cache for " + ifaceName);
             }
         } catch (IllegalArgumentException ex) {
@@ -3277,6 +3286,18 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                 return -1;
         }
     }
+
+    /**
+     * Returns signal poll results for all Wi-Fi links of the interface.
+     *
+     * @param ifaceName Name of the interface.
+     * @return Signal poll results.
+     */
+    public WifiSignalPollResults getSignalPollResults(@NonNull String ifaceName) {
+        /* Signal polling is not implemented for HIDL. */
+        return null;
+    }
+
 
     /**
      * Returns connection capabilities of the current network
@@ -3962,6 +3983,33 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
     public boolean removeAllQosPolicies(String ifaceName) {
         throw new UnsupportedOperationException(
                 "removeAllQosPolicies is not supported by the HIDL HAL");
+    }
+
+    /**
+     * See comments for {@link ISupplicantStaIfaceHal#addQosPolicyRequestForScs(String, List)}
+     */
+    public List<SupplicantStaIfaceHal.QosPolicyStatus> addQosPolicyRequestForScs(
+            @NonNull String ifaceName, @NonNull List<QosPolicyParams> policies) {
+        Log.e(TAG, "addQosPolicyRequestForScs is not supported by the HIDL HAL");
+        return null;
+    }
+
+    /**
+     * See comments for {@link ISupplicantStaIfaceHal#removeQosPolicyForScs(String, List)}
+     */
+    public List<SupplicantStaIfaceHal.QosPolicyStatus> removeQosPolicyForScs(
+            @NonNull String ifaceName, @NonNull List<Byte> policyIds) {
+        Log.e(TAG, "removeQosPolicyForScs is not supported by the HIDL HAL");
+        return null;
+    }
+
+    /**
+     * See comments for {@link ISupplicantStaIfaceHal#registerQosScsResponseCallback(
+     *                             SupplicantStaIfaceHal.QosScsResponseCallback)}
+     */
+    public void registerQosScsResponseCallback(
+            @NonNull SupplicantStaIfaceHal.QosScsResponseCallback callback) {
+        Log.e(TAG, "registerQosScsResponseCallback is not supported by the HIDL HAL");
     }
 
     /**
