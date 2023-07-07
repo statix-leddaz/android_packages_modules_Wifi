@@ -19,8 +19,6 @@ package com.android.server.wifi.aware;
 import static android.net.RouteInfo.RTN_UNICAST;
 
 import android.content.Context;
-import android.hardware.wifi.V1_0.NanDataPathChannelCfg;
-import android.hardware.wifi.V1_0.NanStatusType;
 import android.net.ConnectivityManager;
 import android.net.IpPrefix;
 import android.net.LinkAddress;
@@ -56,6 +54,8 @@ import android.util.SparseArray;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.Clock;
+import com.android.server.wifi.hal.WifiNanIface.NanDataPathChannelCfg;
+import com.android.server.wifi.hal.WifiNanIface.NanStatusCode;
 import com.android.server.wifi.util.NetdWrapper;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.server.wifi.util.WifiPermissionsWrapper;
@@ -498,7 +498,7 @@ public class WifiAwareDataPathStateManager {
                 NetworkInformationData.buildTlv(nnri.networkSpecifier.port,
                         nnri.networkSpecifier.transportProtocol),
                 nnri.networkSpecifier.isOutOfBand(),
-                nnri.networkSpecifier.getWifiAwareDataPathSecurityConfig());
+                nnri.networkSpecifier);
 
         return true;
     }
@@ -751,7 +751,7 @@ public class WifiAwareDataPathStateManager {
         }
         int channelFreqMHz = (ndpInfo.channelInfos != null && !ndpInfo.channelInfos.isEmpty())
                     ? ndpInfo.channelInfos.get(0).getChannelFrequencyMhz() : 0;
-        mAwareMetrics.recordNdpStatus(NanStatusType.SUCCESS, isOutOfBand,
+        mAwareMetrics.recordNdpStatus(NanStatusCode.SUCCESS, isOutOfBand,
                 nnri.networkSpecifier.role, ndpInfo.startTimestamp, nnri.networkSpecifier.sessionId,
                 channelFreqMHz);
         mAwareMetrics.recordNdpCreation(nnri.uid, nnri.packageName, mNetworkRequestsCache);
@@ -881,7 +881,7 @@ public class WifiAwareDataPathStateManager {
         }
         AwareNetworkRequestInformation nnri = nnriE.getValue();
         NdpInfo ndpInfo = nnri.ndpInfos.get(ndpId);
-        mAwareMetrics.recordNdpStatus(NanStatusType.INTERNAL_FAILURE,
+        mAwareMetrics.recordNdpStatus(NanStatusCode.INTERNAL_FAILURE,
                 nnri.networkSpecifier.isOutOfBand(), nnri.networkSpecifier.role,
                 ndpInfo.startTimestamp, nnri.networkSpecifier.sessionId);
         mMgr.endDataPath(ndpId);
@@ -1546,7 +1546,7 @@ public class WifiAwareDataPathStateManager {
             // validate passphrase & PMK (if provided)
             if (ns.getWifiAwareDataPathSecurityConfig() != null
                     && (!ns.getWifiAwareDataPathSecurityConfig().isValid()
-                    || (mgr.getCapabilities().supportedCipherSuites
+                    || (mgr.getCapabilities().supportedDataPathCipherSuites
                     & ns.getWifiAwareDataPathSecurityConfig().getCipherSuite()) == 0)) {
                     Log.e(TAG, "processNetworkSpecifier: networkSpecifier=" + ns.toString()
                             + " -- invalid security config: ");
