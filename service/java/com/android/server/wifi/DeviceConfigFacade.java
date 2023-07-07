@@ -396,11 +396,11 @@ public class DeviceConfigFacade {
         mApmEnhancementEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "apm_enhancement_enabled", false);
         mAwareSuspensionEnabled = DeviceConfig.getBoolean(NAMESPACE,
-                "aware_suspension_enabled", false);
+                "aware_suspension_enabled", true);
         mHighPerfLockDeprecated = DeviceConfig.getBoolean(NAMESPACE,
-                "high_perf_lock_deprecated", false);
+                "high_perf_lock_deprecated", true);
         boolean oobPseudonymEnabled = DeviceConfig.getBoolean(NAMESPACE,
-                "oob_pseudonym_enabled", false);
+                "oob_pseudonym_enabled", true);
         if (mOobPseudonymEnabled.isPresent()
                 && mOobPseudonymEnabled.get() != oobPseudonymEnabled
                 && mOobPseudonymFeatureFlagChangedListener != null) {
@@ -409,15 +409,15 @@ public class DeviceConfigFacade {
         }
         mOobPseudonymEnabled = Optional.of(oobPseudonymEnabled);
         mApplicationQosPolicyApiEnabled = DeviceConfig.getBoolean(NAMESPACE,
-                "application_qos_policy_api_enabled", false);
+                "application_qos_policy_api_enabled", true);
         mAdjustPollRssiIntervalEnabled = DeviceConfig.getBoolean(NAMESPACE,
-                "adjust_poll_rssi_interval_enabled", false);
+                "adjust_poll_rssi_interval_enabled", true);
         mSoftwarePnoEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "software_pno_enabled", false);
         mIncludePasspointSsidsInPnoScans = DeviceConfig.getBoolean(NAMESPACE,
-                "include_passpoint_ssids_in_pno_scans", false);
+                "include_passpoint_ssids_in_pno_scans", true);
         mHandleRssiOrganicKernelFailuresEnabled = DeviceConfig.getBoolean(NAMESPACE,
-                "handle_rssi_organic_kernel_failures_enabled", false);
+                "handle_rssi_organic_kernel_failures_enabled", true);
     }
 
     private Set<String> getUnmodifiableSetQuoted(String key) {

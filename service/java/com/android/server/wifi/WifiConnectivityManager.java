@@ -255,6 +255,8 @@ public class WifiConnectivityManager {
     private long mLatestCandidatesTimestampMs = 0;
     private int[] mCurrentSingleScanScheduleSec;
     private int[] mCurrentSingleScanType;
+    private boolean mPnoScanEnabledByFramework = true;
+    private boolean mEnablePnoScanAfterWifiToggle = true;
 
     private int mCurrentSingleScanScheduleIndex;
     // Cached WifiCandidates used in high mobility state to avoid connecting to APs that are
@@ -385,6 +387,12 @@ public class WifiConnectivityManager {
             // Firmware can choose the best BSSID when connecting the primary CMM, so we must
             // wait until the primary network was connected so the secondary can choose a BSSID on
             // a different band with the primary.
+            return false;
+        }
+        if (WifiInjector.getInstance().getHalDeviceManager()
+                .creatingIfaceWillDeletePrivilegedIface(HalDeviceManager.HDM_CREATE_IFACE_STA,
+                        mMultiInternetConnectionRequestorWs)) {
+            localLog(listenerName + ": No secondary cmm candidate");
             return false;
         }
         final WifiInfo primaryInfo = primaryCcm.getConnectionInfo();
@@ -532,6 +540,8 @@ public class WifiConnectivityManager {
             localLog("Ignore scan results while DPP is in progress to prevent auto connect");
             return;
         }
+        mWifiCountryCode.updateCountryCodeFromScanResults(scanDetails);
+
         List<WifiNetworkSelector.ClientModeManagerState> cmmStates = new ArrayList<>();
         Set<String> connectedSsids = new HashSet<>();
         boolean hasExistingSecondaryCmm = false;
@@ -778,7 +788,6 @@ public class WifiConnectivityManager {
                     secondaryCcm.disconnect();
                 }
             }
-            mWifiCountryCode.updateCountryCodeFromScanResults(scanDetails, candidate);
             connectToNetworkForPrimaryCmmUsingMbbIfAvailable(candidate);
             handleScanResultsWithCandidate(handleScanResultsListener);
         } else {
@@ -1188,7 +1197,8 @@ public class WifiConnectivityManager {
             triggerScanOnNetworkChanges();
         }
         @Override
-        public void onNetworkUpdated(WifiConfiguration newConfig, WifiConfiguration oldConfig) {
+        public void onNetworkUpdated(WifiConfiguration newConfig, WifiConfiguration oldConfig,
+                boolean hasCredentialChanged) {
             triggerScanOnNetworkChanges();
         }
 
@@ -1327,6 +1337,27 @@ public class WifiConnectivityManager {
         mWifiCountryCode = wifiCountryCode;
         mWifiDialogManager = wifiDialogManager;
 
+        // Listen to WifiConfigManager network update events
+        mEventHandler.postToFront(() ->
+                mConfigManager.addOnNetworkUpdateListener(new OnNetworkUpdateListener()));
+        // Listen to WifiNetworkSuggestionsManager suggestion update events
+        mWifiNetworkSuggestionsManager.addOnSuggestionUpdateListener(
+                new OnSuggestionUpdateListener());
+        mActiveModeWarden.registerModeChangeCallback(new ModeChangeCallback());
+        mMultiInternetManager.setConnectionStatusListener(
+                new InternalMultiInternetConnectionStatusListener());
+        mAllSingleScanListener = new AllSingleScanListener();
+        mInternalAllSingleScanListener = new WifiScannerInternal.ScanListener(
+                mAllSingleScanListener, mEventHandler);
+        mPnoScanListener = new PnoScanListener();
+        mInternalPnoScanListener = new WifiScannerInternal.ScanListener(mPnoScanListener,
+                mEventHandler);
+    }
+
+    /**
+     * Register broadcast receiver
+     */
+    public void initialization() {
         // Listen for screen state change events.
         // TODO: We should probably add a shared broadcast receiver in the wifi stack which
         // can used by various modules to listen to common system events. Creating multiple
@@ -1347,22 +1378,6 @@ public class WifiConnectivityManager {
                     }
                 }, filter, null, mEventHandler);
         handleScreenStateChanged(mPowerManager.isInteractive());
-
-        // Listen to WifiConfigManager network update events
-        mEventHandler.postToFront(() ->
-                mConfigManager.addOnNetworkUpdateListener(new OnNetworkUpdateListener()));
-        // Listen to WifiNetworkSuggestionsManager suggestion update events
-        mWifiNetworkSuggestionsManager.addOnSuggestionUpdateListener(
-                new OnSuggestionUpdateListener());
-        mActiveModeWarden.registerModeChangeCallback(new ModeChangeCallback());
-        mMultiInternetManager.setConnectionStatusListener(
-                new InternalMultiInternetConnectionStatusListener());
-        mAllSingleScanListener = new AllSingleScanListener();
-        mInternalAllSingleScanListener = new WifiScannerInternal.ScanListener(
-                mAllSingleScanListener, mEventHandler);
-        mPnoScanListener = new PnoScanListener();
-        mInternalPnoScanListener = new WifiScannerInternal.ScanListener(mPnoScanListener,
-                mEventHandler);
     }
 
     @NonNull
@@ -1449,7 +1464,8 @@ public class WifiConnectivityManager {
                 && Objects.equals(targetBssid, connectedOrConnectingBssid);
     }
 
-    private boolean mUserRejectedNetworkSwitch = false;
+    private boolean mNetworkSwitchDialogRejected = false;
+    private long mTimeToReenableNetworkSwitchDialogsMs = 0;
     private WifiDialogManager.DialogHandle mNetworkSwitchDialog = null;
     private int mDialogCandidateNetId = INVALID_NETWORK_ID;
 
@@ -1485,15 +1501,32 @@ public class WifiConnectivityManager {
     }
 
     /**
-     * Dismisses any active network switch dialogs and resets the user's choice.
+     * Dismisses any active network switch dialogs.
      */
-    public void resetNetworkSwitchDialog() {
+    private void dismissNetworkSwitchDialog() {
         if (mNetworkSwitchDialog != null) {
             mNetworkSwitchDialog.dismissDialog();
         }
         mNetworkSwitchDialog = null;
         mDialogCandidateNetId = INVALID_NETWORK_ID;
-        mUserRejectedNetworkSwitch = false;
+    }
+
+    /**
+     * Resets the network switch dialog state.
+     */
+    private void resetNetworkSwitchDialog() {
+        dismissNetworkSwitchDialog();
+        mNetworkSwitchDialogRejected = false;
+        mTimeToReenableNetworkSwitchDialogsMs = 0;
+    }
+
+    /**
+     * Rejects any active network switch dialogs and disables them from appearing again for the
+     * current connection for the specified duration.
+     */
+    public void disableNetworkSwitchDialog(int durationMs) {
+        dismissNetworkSwitchDialog();
+        mTimeToReenableNetworkSwitchDialogsMs = mClock.getElapsedSinceBootMillis() + durationMs;
     }
 
     /**
@@ -1563,6 +1596,7 @@ public class WifiConnectivityManager {
                 });
         WifiConfiguration connectedConfig = primaryManager.getConnectedWifiConfiguration();
         if (connectedConfig == null || !connectedConfig.isUserSelected()
+                || !mNetworkSelector.isSufficiencyCheckEnabled()
                 || connectedConfig.networkId == candidate.networkId
                 || !mContext.getResources().getBoolean(
                 R.bool.config_wifiAskUserBeforeSwitchingFromUserSelectedNetwork)) {
@@ -1572,8 +1606,13 @@ public class WifiConnectivityManager {
         }
 
         // User confirmation for the network switch is required.
-        if (mUserRejectedNetworkSwitch) {
+        if (mNetworkSwitchDialogRejected) {
             Log.i(TAG, "User rejected switching networks. Do not connect to candidate "
+                    + candidate.getProfileKey());
+            return;
+        }
+        if (mClock.getElapsedSinceBootMillis() < mTimeToReenableNetworkSwitchDialogsMs) {
+            Log.i(TAG, "Network switching dialog temporarily disabled. Do not connect to candidate "
                     + candidate.getProfileKey());
             return;
         }
@@ -1585,10 +1624,12 @@ public class WifiConnectivityManager {
                 + candidate.getProfileKey());
         resetNetworkSwitchDialog();
         mNetworkSwitchDialog = mWifiDialogManager.createSimpleDialog(
-                mContext.getString(R.string.wifi_network_switch_dialog_title),
-                mContext.getString(R.string.wifi_network_switch_dialog_message,
+                mContext.getString(connectedConfig.hasNoInternetAccess()
+                                ? R.string.wifi_network_switch_dialog_title_no_internet
+                                : R.string.wifi_network_switch_dialog_title_bad_internet,
                         WifiInfo.removeDoubleQuotes(connectedConfig.SSID),
                         WifiInfo.removeDoubleQuotes(candidate.SSID)),
+                /* message */ null,
                 mContext.getString(R.string.wifi_network_switch_dialog_positive_button),
                 mContext.getString(R.string.wifi_network_switch_dialog_negative_button),
                 /* neutralButtonText */ null,
@@ -1602,9 +1643,7 @@ public class WifiConnectivityManager {
                 /* onSwitchRejectedRunnable */ () -> {
                     Log.i(TAG, "User rejected network switch to "
                             + candidate.getProfileKey());
-                    mNetworkSwitchDialog = null;
-                    mDialogCandidateNetId = INVALID_NETWORK_ID;
-                    mUserRejectedNetworkSwitch = true;
+                    mNetworkSwitchDialogRejected = true;
                     primaryManager.onNetworkSwitchRejected(candidate.networkId,
                             candidate.getNetworkSelectionStatus().getNetworkSelectionBSSID());
                 }),
@@ -2266,6 +2305,8 @@ public class WifiConnectivityManager {
      */
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     public void setNetworkSelectionConfig(@NonNull WifiNetworkSelectionConfig nsConfig) {
+        boolean oldAssociatedNetworkSelectionEnabled =
+                mNetworkSelector.isAssociatedNetworkSelectionEnabled();
         mNetworkSelector.setAssociatedNetworkSelectionOverride(
                 nsConfig.getAssociatedNetworkSelectionOverride());
         mNetworkSelector.setSufficiencyCheckEnabled(
@@ -2283,6 +2324,13 @@ public class WifiConnectivityManager {
                 nsConfig.getRssiThresholds(ScanResult.WIFI_BAND_6_GHZ));
         mScoringParams.setFrequencyWeights(
                 nsConfig.getFrequencyWeights());
+        boolean newAssociatedNetworkSelectionEnabled =
+                mNetworkSelector.isAssociatedNetworkSelectionEnabled();
+        if (oldAssociatedNetworkSelectionEnabled && !newAssociatedNetworkSelectionEnabled) {
+            dismissNetworkSwitchDialog();
+        } else if (!oldAssociatedNetworkSelectionEnabled && newAssociatedNetworkSelectionEnabled) {
+            resetNetworkSwitchDialog();
+        }
     }
 
     /**
@@ -2342,8 +2390,32 @@ public class WifiConnectivityManager {
         }
     }
 
+    /**
+     * Enable/disable the PNO scan framework feature.
+     */
+    public void setPnoScanEnabledByFramework(boolean enabled,
+            boolean enablePnoScanAfterWifiToggle) {
+        mEnablePnoScanAfterWifiToggle = enablePnoScanAfterWifiToggle;
+        if (mPnoScanEnabledByFramework == enabled) {
+            return;
+        }
+        mPnoScanEnabledByFramework = enabled;
+        if (enabled) {
+            if (!mScreenOn && mWifiState == WIFI_STATE_DISCONNECTED && !mPnoScanStarted) {
+                startDisconnectedPnoScan();
+            }
+        } else {
+            stopPnoScan();
+        }
+    }
+
     // Start a DisconnectedPNO scan when screen is off and Wifi is disconnected
     private void startDisconnectedPnoScan() {
+        if (!mPnoScanEnabledByFramework) {
+            localLog("Skipping PNO scan because it's disabled by the framework.");
+            return;
+        }
+
         // Initialize PNO settings
         PnoSettings pnoSettings = new PnoSettings();
         List<PnoSettings.PnoNetwork> pnoNetworkList = retrievePnoNetworkList();
@@ -2612,6 +2684,8 @@ public class WifiConnectivityManager {
                 + " mAutoJoinEnabledExternal=" + mAutoJoinEnabledExternal
                 + " mAutoJoinEnabledExternalSetByDeviceAdmin="
                 + mAutoJoinEnabledExternalSetByDeviceAdmin
+                + " mPnoScanEnabledByFramework=" + mPnoScanEnabledByFramework
+                + " mEnablePnoScanAfterWifiToggle=" + mEnablePnoScanAfterWifiToggle
                 + " mSpecificNetworkRequestInProgress=" + mSpecificNetworkRequestInProgress
                 + " mTrustedConnectionAllowed=" + mTrustedConnectionAllowed
                 + " isSufficiencyCheckEnabled=" + mNetworkSelector.isSufficiencyCheckEnabled()
@@ -3274,6 +3348,9 @@ public class WifiConnectivityManager {
             if (mWifiGlobals.flushAnqpCacheOnWifiToggleOffEvent()) {
                 mPasspointManager.clearAnqpRequestsAndFlushCache();
             }
+            if (mEnablePnoScanAfterWifiToggle) {
+                mPnoScanEnabledByFramework = true;
+            }
         }
         mWifiEnabled = enable;
         updateRunningState();
@@ -3301,6 +3378,9 @@ public class WifiConnectivityManager {
         if (mAutoJoinEnabledExternal != enable) {
             mAutoJoinEnabledExternal = enable;
             checkAllStatesAndEnableAutoJoin();
+            if (!enable) {
+                dismissNetworkSwitchDialog();
+            }
         }
     }
 
@@ -3347,6 +3427,8 @@ public class WifiConnectivityManager {
         pw.println("Dump of WifiConnectivityManager");
         pw.println("WifiConnectivityManager - Log Begin ----");
         pw.println("mIsLocationModeEnabled: " + mIsLocationModeEnabled);
+        pw.println("mPnoScanEnabledByFramework: " + mPnoScanEnabledByFramework);
+        pw.println("mEnablePnoScanAfterWifiToggle: " + mEnablePnoScanAfterWifiToggle);
         mLocalLog.dump(fd, pw, args);
         pw.println("WifiConnectivityManager - Log End ----");
         pw.println(TAG + ": mMultiInternetConnectionState " + mMultiInternetConnectionState);

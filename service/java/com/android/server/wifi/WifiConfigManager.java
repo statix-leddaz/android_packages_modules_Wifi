@@ -149,9 +149,11 @@ public class WifiConfigManager {
          *
          * @param newConfig Updated WifiConfiguration object.
          * @param oldConfig Prev WifiConfiguration object.
+         * @param hasCredentialChanged true if credential is changed, false otherwise.
          */
         default void onNetworkUpdated(
-                @NonNull WifiConfiguration newConfig, @NonNull WifiConfiguration oldConfig) { };
+                @NonNull WifiConfiguration newConfig, @NonNull WifiConfiguration oldConfig,
+                boolean hasCredentialChanged) { };
 
         /**
          * Invoked when user connect choice is set.
@@ -235,8 +237,7 @@ public class WifiConfigManager {
 
     @VisibleForTesting
     public static final int SCAN_RESULT_MISSING_COUNT_THRESHOLD = 1;
-    @VisibleForTesting
-    protected static final String NON_PERSISTENT_MAC_RANDOMIZATION_FEATURE_FORCE_ENABLE_FLAG =
+    public static final String NON_PERSISTENT_MAC_RANDOMIZATION_FEATURE_FORCE_ENABLE_FLAG =
             "non_persistent_mac_randomization_force_enabled";
     private static final int NON_CARRIER_MERGED_NETWORKS_SCAN_CACHE_QUERY_DURATION_MS =
             10 * 60 * 1000; // 10 minutes
@@ -980,7 +981,7 @@ public class WifiConfigManager {
         intentForSystem.putExtra(WifiManager.EXTRA_MULTIPLE_NETWORKS_CHANGED, config == null);
         intentForSystem.putExtra(WifiManager.EXTRA_CHANGE_REASON, reason);
         intentForSystem.putExtra(WifiManager.EXTRA_WIFI_CONFIGURATION,
-                createExternalWifiConfiguration(config, true, -1));
+                config == null ? null : createExternalWifiConfiguration(config, true, -1));
         mContext.sendBroadcastAsUser(intentForSystem, UserHandle.SYSTEM,
                 Manifest.permission.NETWORK_STACK);
     }
@@ -1074,7 +1075,8 @@ public class WifiConfigManager {
         int newType = externalConfig.getDefaultSecurityParams().getSecurityType();
         if (oldType != newType) {
             if (internalConfig.isSecurityType(newType)) {
-                internalConfig.setSecurityParamsIsAddedByAutoUpgrade(newType, false);
+                internalConfig.setSecurityParamsIsAddedByAutoUpgrade(newType,
+                        externalConfig.getDefaultSecurityParams().isAddedByAutoUpgrade());
             } else if (externalConfig.isSecurityType(oldType)) {
                 internalConfig.setSecurityParams(newType);
                 internalConfig.addSecurityParams(oldType);
@@ -1648,7 +1650,8 @@ public class WifiConfigManager {
             } else {
                 listener.onNetworkUpdated(
                         createExternalWifiConfiguration(newConfig, true, Process.WIFI_UID),
-                        createExternalWifiConfiguration(existingConfig, true, Process.WIFI_UID));
+                        createExternalWifiConfiguration(existingConfig, true, Process.WIFI_UID),
+                        result.hasCredentialChanged());
             }
         }
         return result;
@@ -1694,7 +1697,8 @@ public class WifiConfigManager {
     private boolean isDeviceOwnerProfileOwnerOrSystem(int uid, String packageName) {
         return mWifiPermissionsUtil.isDeviceOwner(uid, packageName)
                 || mWifiPermissionsUtil.isProfileOwner(uid, packageName)
-                || mWifiPermissionsUtil.isSystem(packageName, uid);
+                || mWifiPermissionsUtil.isSystem(packageName, uid)
+                || mWifiPermissionsUtil.isSignedWithPlatformKey(uid);
     }
 
     /**
@@ -1735,7 +1739,8 @@ public class WifiConfigManager {
             numExcessNetworks = networkList.size() - maxNumTotalConfigs;
         }
 
-        if (callerIsApp && maxNumAppAddedConfigs >= 0) {
+        if (callerIsApp && maxNumAppAddedConfigs >= 0
+                && networkList.size() > maxNumAppAddedConfigs) {
             List<WifiConfiguration> appAddedNetworks = networkList
                     .stream()
                     .filter(n -> !isDeviceOwnerProfileOwnerOrSystem(n.creatorUid, n.creatorName))
@@ -3682,7 +3687,9 @@ public class WifiConfigManager {
         mRandomizedMacStoreData.setMacMapping(mRandomizedMacAddressMapping);
 
         try {
+            long start = mClock.getElapsedSinceBootMillis();
             mWifiConfigStore.write(forceWrite);
+            mWifiMetrics.wifiConfigStored((int) (mClock.getElapsedSinceBootMillis() - start));
         } catch (IOException | IllegalStateException e) {
             Log.wtf(TAG, "Writing to store failed. Saved networks maybe lost!", e);
             return false;
@@ -4179,11 +4186,15 @@ public class WifiConfigManager {
      * @param networkId networkId corresponding to the network to be updated.
      * @param caCert Root CA certificate to be updated.
      * @param serverCert Server certificate to be updated.
-     * @param certHash Server certificate hash (for TOFU case with no Root CA)
+     * @param certHash Server certificate hash (for TOFU case with no Root CA). Replaces the use of
+     *                 a Root CA certificate for authentication.
+     * @param useSystemTrustStore Indicate if to use the system trust store for authentication. If
+     *                            this flag is set, then any Root CA or certificate hash specified
+     *                            is not used.
      * @return true if updating Root CA certificate successfully; otherwise, false.
      */
     public boolean updateCaCertificate(int networkId, @NonNull X509Certificate caCert,
-            @NonNull X509Certificate serverCert, String certHash) {
+            @NonNull X509Certificate serverCert, String certHash, boolean useSystemTrustStore) {
         WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
         if (internalConfig == null) {
             Log.e(TAG, "No network for network ID " + networkId);
@@ -4215,7 +4226,10 @@ public class WifiConfigManager {
         WifiConfiguration newConfig = new WifiConfiguration(internalConfig);
         try {
             if (newConfig.enterpriseConfig.isTrustOnFirstUseEnabled()) {
-                if (TextUtils.isEmpty(certHash)) {
+                if (useSystemTrustStore) {
+                    newConfig.enterpriseConfig
+                            .setCaPath(WifiConfigurationUtil.getSystemTrustStorePath());
+                } else if (TextUtils.isEmpty(certHash)) {
                     newConfig.enterpriseConfig.setCaCertificateForTrustOnFirstUse(caCert);
                 } else {
                     newConfig.enterpriseConfig.setServerCertificateHash(certHash);

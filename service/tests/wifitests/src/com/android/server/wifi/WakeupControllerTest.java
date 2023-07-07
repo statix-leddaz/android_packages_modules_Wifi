@@ -46,7 +46,9 @@ import android.provider.Settings;
 import androidx.test.filters.SmallTest;
 
 import com.android.server.wifi.ActiveModeWarden.PrimaryClientModeManagerChangedCallback;
+import com.android.server.wifi.util.LastCallerInfoManager;
 import com.android.server.wifi.util.WifiConfigStoreEncryptionUtil;
+import com.android.server.wifi.util.WifiPermissionsUtil;
 
 import org.junit.After;
 import org.junit.Before;
@@ -92,11 +94,14 @@ public class WakeupControllerTest extends WifiBaseTest {
     @Mock private FrameworkFacade mFrameworkFacade;
     @Mock private WifiSettingsStore mWifiSettingsStore;
     @Mock private WifiWakeMetrics mWifiWakeMetrics;
+    @Mock private WifiMetrics mWifiMetrics;
+    @Mock private WifiPermissionsUtil mWifiPermissionsUtil;
     @Mock private ActiveModeWarden mActiveModeWarden;
     @Mock private WifiNative mWifiNative;
     @Mock private Clock mClock;
     @Mock private ConcreteClientModeManager mPrimaryClientModeManager;
     @Mock private WifiGlobals mWifiGlobals;
+    @Mock private LastCallerInfoManager mLastCallerInfoManager;
 
     @Captor private ArgumentCaptor<PrimaryClientModeManagerChangedCallback> mPrimaryChangedCaptor;
 
@@ -128,10 +133,15 @@ public class WakeupControllerTest extends WifiBaseTest {
         when(mWifiNative.getChannelsForBand(WifiScanner.WIFI_BAND_5_GHZ_DFS_ONLY))
                 .thenReturn(new int[]{DFS_CHANNEL_FREQ});
         when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
+        when(mWifiInjector.getLastCallerInfoManager()).thenReturn(mLastCallerInfoManager);
+        when(mWifiInjector.getWifiMetrics()).thenReturn(mWifiMetrics);
+        when(mWifiInjector.getWifiPermissionsUtil()).thenReturn(mWifiPermissionsUtil);
         when(mWifiGlobals.isWpa3SaeUpgradeEnabled()).thenReturn(true);
         when(mWifiGlobals.isOweUpgradeEnabled()).thenReturn(true);
 
         when(mWifiSettingsStore.handleWifiToggled(anyBoolean())).thenReturn(true);
+        when(mWifiSettingsStore.isScanAlwaysAvailableToggleEnabled()).thenReturn(true);
+        when(mWifiPermissionsUtil.isLocationModeEnabled()).thenReturn(true);
         // Saved network needed to start wake.
         WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
         openNetwork.getNetworkSelectionStatus().setHasEverConnected(true);
@@ -230,6 +240,8 @@ public class WakeupControllerTest extends WifiBaseTest {
 
     private void verifyDoesNotEnableWifi() {
         verify(mWifiSettingsStore, never()).handleWifiToggled(true /* wifiEnabled */);
+        verify(mLastCallerInfoManager, never()).put(eq(WifiManager.API_WIFI_ENABLED),
+                anyInt(), anyInt(), anyInt(), any(), anyBoolean());
     }
 
     /**
@@ -766,6 +778,9 @@ public class WakeupControllerTest extends WifiBaseTest {
         verify(mWakeupEvaluator).findViableNetwork(any(), any());
         verify(mWifiSettingsStore).handleWifiToggled(true /* wifiEnabled */);
         verify(mWifiWakeMetrics).recordWakeupEvent(1 /* numScans */);
+        verify(mWifiMetrics).reportWifiStateChanged(true, true, true);
+        verify(mLastCallerInfoManager).put(eq(WifiManager.API_WIFI_ENABLED), anyInt(), anyInt(),
+                anyInt(), eq("android_wifi_wake"), eq(true));
     }
 
     /**

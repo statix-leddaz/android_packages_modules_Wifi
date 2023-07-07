@@ -27,6 +27,7 @@
           <item type="bool" name="config_wifi11axSupportOverride" />
           <item type="bool" name="config_wifi11beSupportOverride" />
           <item type="bool" name="config_wifiWepDeprecated" />
+          <item type="bool" name="config_wifiWpaPersonalDeprecated" />
           <item type="bool" name="config_wifiFrameworkMaxNumSpatialStreamDeviceOverrideEnable" />
           <item type="integer" name="config_wifiFrameworkMaxNumSpatialStreamDeviceOverrideValue" />
           <item type="bool" name="config_wifi_fast_bss_transition_enabled" />
@@ -68,6 +69,7 @@
           <item type="integer" name="config_wifiFrameworkScoreGoodRssiThreshold6ghz" />
           <item type="bool" name="config_wifiAskUserBeforeSwitchingFromUserSelectedNetwork" />
           <item type="bool" name="config_wifiThroughputScorerBoostForRecentlyUserSelectedNetwork" />
+          <item type="integer" name="config_wifiNetworkSwitchDialogDisabledMsWhenMarkedUsable" />
           <item type="integer" name="config_wifiFrameworkSoftApShutDownTimeoutMilliseconds" />
           <item type="integer" name="config_wifiFrameworkSoftApShutDownIdleInstanceInBridgedModeTimeoutMillisecond" />
           <item type="bool" name="config_wifiFrameworkSoftApDisableBridgedModeShutdownIdleInstanceWhenCharging" />
@@ -128,6 +130,7 @@
           <item type="bool" name="config_wifiBridgedSoftApSupported" />
           <item type="bool" name="config_wifiStaWithBridgedSoftApConcurrencySupported" />
           <item type="array" name="config_wifiForceDisableMacRandomizationSsidList" />
+          <item type="array" name="config_wifiForceDisableMacRandomizationSsidPrefixList" />
           <item type="array" name="config_wifi_non_persistent_randomization_ssid_allowlist" />
           <item type="array" name="config_wifi_non_persistent_randomization_ssid_blocklist" />
           <item type="integer" name="config_wifiRecentFailureReasonExpirationMinutes" />
@@ -295,6 +298,7 @@
           <item type="bool" name="config_wifiUserApprovalRequiredForD2dInterfacePriority" />
           <item type="array" name="config_wifiExcludedFromUserApprovalForD2dInterfacePriority" />
           <item type="bool" name="config_wifiUserApprovalNotRequireForDisconnectedP2p" />
+          <item type="integer" name="config_disconnectedP2pIfaceLowPriorityTimeoutMs" />
           <item type="bool" name="config_wifiNetworkCentricQosPolicyFeatureEnabled" />
           <item type="bool" name="config_wifiApplicationCentricQosPolicyFeatureEnabled" />
           <item type="string" name="config_wifiDriverWorldModeCountryCode" />
@@ -317,7 +321,6 @@
           <item type="bool" name="config_wifiAwareOffloadingFirmwareHandlePriority" />
           <item type="bool" name="config_wifiLowLatencyLockDisableChipPowerSave" />
           <item type="bool" name="config_wifiNiapModeEnabled" />
-          <item type="bool" name="config_wifiUpdateCountryCodeFromScanResultSetupWizard" />
           <item type="bool" name="config_wifiP2pGoIpAddressAllocationInEapolFrames" />
           <item type="string"  name="config_wifiP2pGoEapolIpAddressRangeStart" />
           <item type="string"  name="config_wifiP2pGoEapolIpAddressRangeEnd" />
@@ -455,8 +458,8 @@
           <item type="string" name="wifi_network_disabled_by_admin_title" />
           <item type="string" name="wifi_network_disabled_by_admin_message" />
           <item type="string" name="wifi_network_disabled_by_admin_button" />
-          <item type="string" name="wifi_network_switch_dialog_title" />
-          <item type="string" name="wifi_network_switch_dialog_message" />
+          <item type="string" name="wifi_network_switch_dialog_title_no_internet" />
+          <item type="string" name="wifi_network_switch_dialog_title_bad_internet" />
           <item type="string" name="wifi_network_switch_dialog_positive_button" />
           <item type="string" name="wifi_network_switch_dialog_negative_button" />
           <!-- Params from strings.xml that can be overlayed -->

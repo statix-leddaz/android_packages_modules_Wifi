@@ -57,6 +57,8 @@ public class WifiGlobalsTest extends WifiBaseTest {
         mResources.setInteger(R.integer.config_wifiPollRssiIntervalMilliseconds, 3000);
         mResources.setInteger(R.integer.config_wifiClientModeImplNumLogRecs, 200);
         mResources.setBoolean(R.bool.config_wifiSaveFactoryMacToWifiConfigStore, true);
+        mResources.setStringArray(R.array.config_wifiForceDisableMacRandomizationSsidPrefixList,
+                new String[] {TEST_SSID});
         when(mContext.getResources()).thenReturn(mResources);
 
         mWifiGlobals = new WifiGlobals(mContext);
@@ -131,6 +133,13 @@ public class WifiGlobalsTest extends WifiBaseTest {
         assertEquals(true, mWifiGlobals.isSaveFactoryMacToConfigStoreEnabled());
     }
 
+    @Test
+    public void testQuotedStringSsidPrefixParsedCorrectly() throws Exception {
+        assertEquals(1, mWifiGlobals.getMacRandomizationUnsupportedSsidPrefixes().size());
+        assertTrue(mWifiGlobals.getMacRandomizationUnsupportedSsidPrefixes()
+                .contains(TEST_SSID.substring(0, TEST_SSID.length() - 1)));
+    }
+
 
     /**
      * Test that isDeprecatedSecurityTypeNetwork returns true due to WEP network
@@ -146,6 +155,26 @@ public class WifiGlobalsTest extends WifiBaseTest {
         config.networkId = TEST_NETWORK_ID;
         config.SSID = TEST_SSID;
         config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_WEP);
+
+        assertTrue(mWifiGlobals.isDeprecatedSecurityTypeNetwork(config));
+    }
+
+    /**
+     * Test that isDeprecatedSecurityTypeNetwork returns true due to WPA-Personal network
+     */
+    @Test
+    public void testDeprecatedNetworkSecurityTypeWpaPersonal()
+            throws Exception {
+        mResources.setBoolean(R.bool.config_wifiWpaPersonalDeprecated, true);
+        mWifiGlobals = new WifiGlobals(mContext);
+        assertTrue(mWifiGlobals.isWpaPersonalDeprecated());
+
+        WifiConfiguration config = new WifiConfiguration();
+        config.networkId = TEST_NETWORK_ID;
+        config.SSID = TEST_SSID;
+        config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+        config.allowedProtocols.set(WifiConfiguration.Protocol.WPA);
+        config.allowedProtocols.clear(WifiConfiguration.Protocol.RSN);
 
         assertTrue(mWifiGlobals.isDeprecatedSecurityTypeNetwork(config));
     }

@@ -20,6 +20,7 @@ import android.content.Context;
 import android.database.ContentObserver;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiScanner;
 import android.os.Handler;
@@ -30,6 +31,8 @@ import android.util.Log;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.HandlerExecutor;
+import com.android.server.wifi.util.LastCallerInfoManager;
+import com.android.server.wifi.util.WifiPermissionsUtil;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -68,6 +71,10 @@ public class WakeupController {
     private final WifiWakeMetrics mWifiWakeMetrics;
     private final Clock mClock;
     private final ActiveModeWarden mActiveModeWarden;
+    private final LastCallerInfoManager mLastCallerInfoManager;
+    private final WifiMetrics mWifiMetrics;
+    private final WifiPermissionsUtil mWifiPermissionsUtil;
+    private final WifiSettingsStore mSettingsStore;
     private final Object mLock = new Object();
 
     private final WifiScanner.ScanListener mScanListener = new WifiScanner.ScanListener() {
@@ -156,6 +163,10 @@ public class WakeupController {
         mFrameworkFacade = frameworkFacade;
         mWifiInjector = wifiInjector;
         mActiveModeWarden = activeModeWarden;
+        mLastCallerInfoManager = wifiInjector.getLastCallerInfoManager();
+        mWifiMetrics = wifiInjector.getWifiMetrics();
+        mWifiPermissionsUtil = wifiInjector.getWifiPermissionsUtil();
+        mSettingsStore = wifiInjector.getWifiSettingsStore();
         mContentObserver = new ContentObserver(mHandler) {
             @Override
             public void onChange(boolean selfChange) {
@@ -221,6 +232,15 @@ public class WakeupController {
         synchronized (mLock) {
             return mWifiWakeupEnabled;
         }
+    }
+
+    /**
+     * Whether the feature is currently usable.
+     */
+    public boolean isUsable() {
+        return isEnabled()
+                && mSettingsStore.isScanAlwaysAvailableToggleEnabled()
+                && mWifiPermissionsUtil.isLocationModeEnabled();
     }
 
     /**
@@ -458,6 +478,9 @@ public class WakeupController {
                         // Assumes user toggled it on from settings before.
                         mFrameworkFacade.getSettingsWorkSource(mContext));
                 mWifiWakeMetrics.recordWakeupEvent(mNumScansHandled);
+                mWifiMetrics.reportWifiStateChanged(true, isUsable(), true);
+                mLastCallerInfoManager.put(WifiManager.API_WIFI_ENABLED, Process.myTid(),
+                        Process.WIFI_UID, -1, "android_wifi_wake", true);
             }
         }
     }

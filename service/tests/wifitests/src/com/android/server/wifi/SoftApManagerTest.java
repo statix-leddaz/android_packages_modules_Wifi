@@ -375,7 +375,10 @@ public class SoftApManagerTest extends WifiBaseTest {
         mTestSoftApInfoOnSecondInstance.setAutoShutdownTimeoutMillis(
                 TEST_DEFAULT_SHUTDOWN_TIMEOUT_MILLIS);
         // Default set up all features support.
-        long testSoftApFeature = SoftApCapability.SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT
+        long testSoftApFeature = SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED
+                | SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED
+                | SoftApCapability.SOFTAP_FEATURE_BAND_6G_SUPPORTED
+                | SoftApCapability.SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT
                 | SoftApCapability.SOFTAP_FEATURE_ACS_OFFLOAD
                 | SoftApCapability.SOFTAP_FEATURE_WPA3_SAE
                 | SoftApCapability.SOFTAP_FEATURE_MAC_ADDRESS_CUSTOMIZATION;
@@ -2064,7 +2067,8 @@ public class SoftApManagerTest extends WifiBaseTest {
 
     @Test
     public void resetsFactoryMacWhenRandomizationDoesntSupport() throws Exception {
-        long testSoftApFeature = SoftApCapability.SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT
+        long testSoftApFeature = SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED
+                | SoftApCapability.SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT
                 | SoftApCapability.SOFTAP_FEATURE_ACS_OFFLOAD
                 | SoftApCapability.SOFTAP_FEATURE_WPA3_SAE;
         SoftApCapability testSoftApCapability = new SoftApCapability(testSoftApFeature);
@@ -2072,6 +2076,9 @@ public class SoftApManagerTest extends WifiBaseTest {
         configBuilder.setBand(SoftApConfiguration.BAND_2GHZ);
         configBuilder.setSsid(TEST_SSID);
         configBuilder.setBssid(null);
+        if (SdkLevel.isAtLeastS()) {
+            configBuilder.setMacRandomizationSetting(SoftApConfiguration.RANDOMIZATION_NONE);
+        }
 
         SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(), testSoftApCapability,
@@ -2440,7 +2447,8 @@ public class SoftApManagerTest extends WifiBaseTest {
 
     @Test
     public void testForceClientDisconnectNotInvokeWhenNotSupport() throws Exception {
-        long testSoftApFeature = SoftApCapability.SOFTAP_FEATURE_WPA3_SAE
+        long testSoftApFeature = SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED
+                | SoftApCapability.SOFTAP_FEATURE_WPA3_SAE
                 | SoftApCapability.SOFTAP_FEATURE_ACS_OFFLOAD
                 | SoftApCapability.SOFTAP_FEATURE_MAC_ADDRESS_CUSTOMIZATION;
         SoftApCapability noClientControlCapability = new SoftApCapability(testSoftApFeature);
@@ -2520,8 +2528,11 @@ public class SoftApManagerTest extends WifiBaseTest {
     public void testSoftApEnableFailureBecauseDaulBandConfigSetWhenACSNotSupport()
             throws Exception {
         assumeTrue(SdkLevel.isAtLeastS());
-        long testSoftApFeature = SoftApCapability.SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT
-                | SoftApCapability.SOFTAP_FEATURE_WPA3_SAE;
+        long testSoftApFeature = SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED
+                | SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED
+                | SoftApCapability.SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT
+                | SoftApCapability.SOFTAP_FEATURE_WPA3_SAE
+                | SoftApCapability.SOFTAP_FEATURE_MAC_ADDRESS_CUSTOMIZATION;
         SoftApCapability testCapability = new SoftApCapability(testSoftApFeature);
         testCapability.setSupportedChannelList(
                 SoftApConfiguration.BAND_2GHZ, TEST_SUPPORTED_24G_CHANNELS);
@@ -2546,8 +2557,11 @@ public class SoftApManagerTest extends WifiBaseTest {
     public void testSoftApEnableWhenDaulBandConfigwithChannelSetWhenACSNotSupport()
             throws Exception {
         assumeTrue(SdkLevel.isAtLeastS());
-        long testSoftApFeature = SoftApCapability.SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT
-                | SoftApCapability.SOFTAP_FEATURE_WPA3_SAE;
+        long testSoftApFeature = SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED
+                | SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED
+                | SoftApCapability.SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT
+                | SoftApCapability.SOFTAP_FEATURE_WPA3_SAE
+                | SoftApCapability.SOFTAP_FEATURE_MAC_ADDRESS_CUSTOMIZATION;
         SparseIntArray dual_channels = new SparseIntArray(2);
         dual_channels.put(SoftApConfiguration.BAND_5GHZ, 149);
         dual_channels.put(SoftApConfiguration.BAND_2GHZ, 2);
@@ -3141,6 +3155,29 @@ public class SoftApManagerTest extends WifiBaseTest {
     public void testBridgedModeFallbackToSingleModeDueToUnavailableBand()
             throws Exception {
         assumeTrue(SdkLevel.isAtLeastS());
+        int[] dual_bands = {SoftApConfiguration.BAND_5GHZ,
+                SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_6GHZ};
+        SoftApCapability testCapability = new SoftApCapability(mTestSoftApCapability);
+        testCapability.setSupportedChannelList(SoftApConfiguration.BAND_5GHZ, new int[0]);
+        testCapability.setSupportedChannelList(
+                SoftApConfiguration.BAND_6GHZ, new int[]{5, 21});
+        Builder configBuilder = new SoftApConfiguration.Builder();
+        configBuilder.setSsid(TEST_SSID);
+        configBuilder.setPassphrase("somepassword", SoftApConfiguration.SECURITY_TYPE_WPA3_SAE);
+        configBuilder.setBands(dual_bands);
+
+        SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
+                WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
+                testCapability, TEST_COUNTRY_CODE);
+        // Reset band to 2.4G | 6G to generate expected configuration
+        configBuilder.setBand(SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_6GHZ);
+        startSoftApAndVerifyEnabled(apConfig, configBuilder.build(), false);
+    }
+
+    @Test
+    public void testBridgedModeWorksEvenIfABandIsUnavailableInBandArray()
+            throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
         int[] dual_bands = {SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_6GHZ,
                 SoftApConfiguration.BAND_5GHZ};
         SoftApCapability testCapability = new SoftApCapability(mTestSoftApCapability);
@@ -3152,8 +3189,10 @@ public class SoftApManagerTest extends WifiBaseTest {
         SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
                 testCapability, TEST_COUNTRY_CODE);
-        // Reset band to 2.4G | 5G to generate expected configuration
-        configBuilder.setBand(SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ);
+        // Reset band array to {2.4G, 5G} to generate expected configuration
+        int[] expected_dual_bands = {SoftApConfiguration.BAND_2GHZ,
+                SoftApConfiguration.BAND_5GHZ};
+        configBuilder.setBands(expected_dual_bands);
         startSoftApAndVerifyEnabled(apConfig, configBuilder.build(), false);
     }
 

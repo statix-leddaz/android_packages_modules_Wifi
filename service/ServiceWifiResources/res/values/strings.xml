@@ -245,17 +245,17 @@
 
     <!-- Notifying the user that the device will remember Wi-Fi state in APM. -->
     <string name="wifi_enabled_apm_first_time_title">Wi\u2011Fi on in airplane mode</string>
-    <string name="wifi_enabled_apm_first_time_message">If you keep Wi\u2011Fi on, your phone will remember to keep it on the next time you\'re in airplane mode</string>
+    <string name="wifi_enabled_apm_first_time_message">If you keep Wi\u2011Fi on, your device will remember to keep it on the next time you\'re in airplane mode</string>
     <string name="apm_enabled_first_time_title">Wi\u2011Fi stays on</string>
-    <string name="apm_enabled_first_time_message">Your phone remembers to keep Wi\u2011Fi on in airplane mode. Turn off Wi\u2011Fi if you don\'t want it to stay on.</string>
+    <string name="apm_enabled_first_time_message">Your device remembers to keep Wi\u2011Fi on in airplane mode. Turn off Wi\u2011Fi if you don\'t want it to stay on.</string>
 
     <!-- Dialog for connecting to a network with only disabled type BSSes. -->
     <string name="wifi_network_disabled_by_admin_title">Unavailable Network</string>
     <string name="wifi_network_disabled_by_admin_message"><xliff:g id="ssid">%1$s</xliff:g> is disabled by your administrator.</string>
     <string name="wifi_network_disabled_by_admin_button">Close</string>
 
-    <string name="wifi_network_switch_dialog_title">Switch Wi\u2011Fi networks?</string>
-    <string name="wifi_network_switch_dialog_message"><xliff:g id="ssid">%1$s</xliff:g> does not appear to be connected to the internet. Switch to <xliff:g id="ssid">%2$s</xliff:g>?</string>
+    <string name="wifi_network_switch_dialog_title_no_internet"><xliff:g id="ssid">%1$s</xliff:g> does not appear to be connected to the internet. Switch to <xliff:g id="ssid">%2$s</xliff:g>?</string>
+    <string name="wifi_network_switch_dialog_title_bad_internet"><xliff:g id="ssid">%1$s</xliff:g> is low quality. Switch to <xliff:g id="ssid">%2$s</xliff:g>?</string>
     <string name="wifi_network_switch_dialog_positive_button">Switch</string>
     <string name="wifi_network_switch_dialog_negative_button">Don\u0027t switch</string>
 </resources>
