@@ -229,6 +229,7 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
         mWifiCarrierInfoManager = new WifiCarrierInfoManager(mTelephonyManager,
                 mSubscriptionManager, mWifiInjector, mFrameworkFacade, mContext, mWifiConfigStore,
                 new Handler(mLooper.getLooper()), mWifiMetrics, mClock, mWifiPseudonymManager);
+        mWifiCarrierInfoManager.enableVerboseLogging(true);
         ArgumentCaptor<WifiCarrierInfoStoreManagerData.DataSource>
                 carrierInfoSourceArgumentCaptor =
                 ArgumentCaptor.forClass(WifiCarrierInfoStoreManagerData.DataSource.class);
@@ -1986,7 +1987,7 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
                 any(), any(), any(), any(), any(), dialogCallbackCaptor.capture(), any());
         dialogCallbackCaptor.getValue().onNegativeButtonClicked();
         ArgumentCaptor<Intent> intentCaptor = ArgumentCaptor.forClass(Intent.class);
-        verify(mContext).sendBroadcast(intentCaptor.capture());
+        verify(mContext).sendBroadcast(intentCaptor.capture(), any(), any());
         assertEquals(Intent.ACTION_CLOSE_SYSTEM_DIALOGS, intentCaptor.getValue().getAction());
         verify(mWifiConfigManager).saveToStore(true);
         assertTrue(mCarrierInfoDataSource.hasNewDataToSerialize());
@@ -2026,7 +2027,7 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
                 any(), any(), any(), any(), any(), dialogCallbackCaptor.capture(), any());
         dialogCallbackCaptor.getValue().onCancelled();
         ArgumentCaptor<Intent> intentCaptor = ArgumentCaptor.forClass(Intent.class);
-        verify(mContext).sendBroadcast(intentCaptor.capture());
+        verify(mContext).sendBroadcast(intentCaptor.capture(), any(), any());
         assertEquals(Intent.ACTION_CLOSE_SYSTEM_DIALOGS, intentCaptor.getValue().getAction());
 
         // As user dismissed the notification, there will be a certain time to delay the next
@@ -2075,7 +2076,7 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
                 any(), any(), any(), any(), any(), dialogCallbackCaptor.capture(), any());
         dialogCallbackCaptor.getValue().onPositiveButtonClicked();
         ArgumentCaptor<Intent> intentCaptor = ArgumentCaptor.forClass(Intent.class);
-        verify(mContext).sendBroadcast(intentCaptor.capture());
+        verify(mContext).sendBroadcast(intentCaptor.capture(), any(), any());
         assertEquals(Intent.ACTION_CLOSE_SYSTEM_DIALOGS, intentCaptor.getValue().getAction());
         verify(mWifiConfigManager).saveToStore(true);
         assertTrue(mCarrierInfoDataSource.hasNewDataToSerialize());
@@ -2177,6 +2178,7 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
     public void testSetAndGetUnmergedCarrierNetworkOffload() {
         assertTrue(mWifiCarrierInfoManager.isCarrierNetworkOffloadEnabled(DATA_SUBID, false));
         mWifiCarrierInfoManager.setCarrierNetworkOffloadEnabled(DATA_SUBID, false, false);
+        mLooper.dispatchAll();
         verify(mWifiConfigManager).saveToStore(true);
         assertFalse(mWifiCarrierInfoManager.isCarrierNetworkOffloadEnabled(DATA_SUBID, false));
     }
@@ -2198,6 +2200,7 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
 
         listenerCaptor.getValue().onDataEnabledChanged(true, DATA_ENABLED_REASON_USER);
         mWifiCarrierInfoManager.setCarrierNetworkOffloadEnabled(DATA_SUBID, true, false);
+        mLooper.dispatchAll();
         verify(mWifiConfigManager).saveToStore(true);
         assertFalse(mWifiCarrierInfoManager.isCarrierNetworkOffloadEnabled(DATA_SUBID, true));
 
@@ -2247,9 +2250,7 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
         when(mContext.getPackageManager()).thenReturn(mockPackageManager);
         PackageInfo pi = new PackageInfo();
         pi.packageName = "com.example.app";
-        List<PackageInfo> pis = new ArrayList<>() {{
-                add(pi);
-            }};
+        List<PackageInfo> pis = List.of(pi);
         when(mockPackageManager.getPackagesHoldingPermissions(
                 eq(new String[] {android.Manifest.permission.NETWORK_CARRIER_PROVISIONING}),
                 anyInt())).thenReturn(pis);
@@ -2425,6 +2426,7 @@ public class WifiCarrierInfoManagerTest extends WifiBaseTest {
         verify(mDataTelephonyManager).registerTelephonyCallback(any(), captor.capture());
 
         mWifiCarrierInfoManager.setCarrierNetworkOffloadEnabled(DATA_SUBID, true, false);
+        mLooper.dispatchAll();
         verify(mOnCarrierOffloadDisabledListener).onCarrierOffloadDisabled(DATA_SUBID, true);
 
         captor.getValue().onDataEnabledChanged(false, DATA_ENABLED_REASON_CARRIER);
