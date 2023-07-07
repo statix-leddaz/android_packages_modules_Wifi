@@ -80,7 +80,6 @@ import android.net.wifi.WifiSsid;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.Credential;
 import android.net.wifi.hotspot2.pps.HomeSp;
-import android.os.Handler;
 import android.os.IBinder;
 import android.os.ParcelUuid;
 import android.os.RemoteException;
@@ -89,6 +88,7 @@ import android.os.test.TestLooper;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.test.suitebuilder.annotation.SmallTest;
+import android.util.LocalLog;
 import android.view.LayoutInflater;
 
 import com.android.dx.mockito.inline.extended.ExtendedMockito;
@@ -195,9 +195,9 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
             ArgumentCaptor.forClass(AppOpsManager.OnOpChangedListener.class);
     private final ArgumentCaptor<BroadcastReceiver> mBroadcastReceiverCaptor =
             ArgumentCaptor.forClass(BroadcastReceiver.class);
-    private final ArgumentCaptor<WifiCarrierInfoManager.OnUserApproveCarrierListener>
+    private final ArgumentCaptor<WifiCarrierInfoManager.OnImsiProtectedOrUserApprovedListener>
             mUserApproveCarrierListenerArgumentCaptor = ArgumentCaptor.forClass(
-            WifiCarrierInfoManager.OnUserApproveCarrierListener.class);
+            WifiCarrierInfoManager.OnImsiProtectedOrUserApprovedListener.class);
     private final ArgumentCaptor<WifiConfigManager.OnNetworkUpdateListener> mNetworkListenerCaptor =
             ArgumentCaptor.forClass(WifiConfigManager.OnNetworkUpdateListener.class);
 
@@ -300,10 +300,12 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         when(mWifiKeyStore.updateNetworkKeys(any(), any())).thenReturn(true);
 
         mWifiNetworkSuggestionsManager =
-                new WifiNetworkSuggestionsManager(mContext, new Handler(mLooper.getLooper()),
+                new WifiNetworkSuggestionsManager(mContext, new RunnerHandler(mLooper.getLooper(),
+                        100, new LocalLog(128), mWifiMetrics),
                         mWifiInjector, mWifiPermissionsUtil, mWifiConfigManager, mWifiConfigStore,
                         mWifiMetrics, mWifiCarrierInfoManager, mWifiKeyStore,
                         mLruConnectionTracker, mClock);
+        mWifiNetworkSuggestionsManager.enableVerboseLogging(true);
         mLooper.dispatchAll();
         verify(mContext).registerReceiver(mBroadcastReceiverCaptor.capture(), any(), any(), any());
 
@@ -315,11 +317,9 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         assertNotNull(mDataSource);
         mDataSource.fromDeserialized(Map.of());
 
-        verify(mWifiCarrierInfoManager).addImsiExemptionUserApprovalListener(
+        verify(mWifiCarrierInfoManager).addImsiProtectedOrUserApprovedListener(
                 mUserApproveCarrierListenerArgumentCaptor.capture());
         verify(mWifiConfigManager).addOnNetworkUpdateListener(mNetworkListenerCaptor.capture());
-
-        mWifiNetworkSuggestionsManager.enableVerboseLogging(true);
     }
 
     @After
@@ -2010,6 +2010,39 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
     }
 
     /**
+     * Verify triggering of config store write after successful addition of network suggestions.
+     * And store write is failure because out of memory.
+     */
+    @Test
+    public void testAddNetworkSuggestionsConfigStoreWriteFailedByOOM() {
+        when(mWifiConfigManager.saveToStore(anyBoolean())).thenThrow(new OutOfMemoryError())
+                .thenReturn(true);
+        WifiNetworkSuggestion networkSuggestion = createWifiNetworkSuggestion(
+                WifiConfigurationTestUtil.createOpenNetwork(), null, false, false, true, true,
+                DEFAULT_PRIORITY_GROUP);
+
+        List<WifiNetworkSuggestion> networkSuggestionList =
+                new ArrayList<WifiNetworkSuggestion>() {{
+                    add(networkSuggestion);
+                }};
+        assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_ERROR_INTERNAL,
+                mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
+                        TEST_PACKAGE_1, TEST_FEATURE));
+
+        // Verify config store interactions.
+        verify(mWifiConfigManager, times(2)).saveToStore(true);
+        assertTrue(mDataSource.hasNewDataToSerialize());
+
+        Map<String, PerAppInfo> networkSuggestionsMapToWrite = mDataSource.toSerialize();
+        assertEquals(1, networkSuggestionsMapToWrite.size());
+        assertEquals(0, networkSuggestionsMapToWrite.get(TEST_PACKAGE_1)
+                .extNetworkSuggestions.size());
+
+        // Ensure that the new data flag has been reset after read.
+        assertFalse(mDataSource.hasNewDataToSerialize());
+    }
+
+    /**
      * Verify triggering of config store write after successful removal of network suggestions.
      */
     @Test
@@ -3070,6 +3103,11 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                         TEST_PACKAGE_1, TEST_FEATURE));
         validateUserApprovalDialog(TEST_APP_NAME_1);
 
+        // As the dialog is active, notification will not be sent
+        mWifiNetworkSuggestionsManager.getNetworkSuggestionsForScanDetail(
+                createScanDetailForNetwork(networkSuggestion.wifiConfiguration));
+        verify(mWifiNotificationManager, never()).notify(anyInt(), any());
+
         // Simulate user dismissing the dialog via home/back button.
         ArgumentCaptor<WifiDialogManager.SimpleDialogCallback> dialogCallbackCaptor =
                 ArgumentCaptor.forClass(WifiDialogManager.SimpleDialogCallback.class);
@@ -4072,6 +4110,56 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         }
     }
 
+    @Test
+    public void testUpdateAutoJoinIfImsiProtectionIsEnabledAndDisabled() {
+        when(mWifiCarrierInfoManager.getCarrierIdForPackageWithCarrierPrivileges(TEST_PACKAGE_1))
+                .thenReturn(TEST_CARRIER_ID);
+        when(mWifiCarrierInfoManager.getMatchingSubId(TEST_CARRIER_ID)).thenReturn(TEST_SUBID);
+        when(mWifiCarrierInfoManager.getCarrierNameForSubId(TEST_SUBID))
+                .thenReturn(TEST_CARRIER_NAME);
+        when(mWifiCarrierInfoManager.requiresImsiEncryption(TEST_SUBID)).thenReturn(false);
+        when(mWifiCarrierInfoManager.hasUserApprovedImsiPrivacyExemptionForCarrier(TEST_CARRIER_ID))
+                .thenReturn(false);
+        when(mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(TEST_CARRIER_ID))
+                .thenReturn(false);
+        when(mPasspointManager.addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
+                anyBoolean(), eq(false))).thenReturn(true);
+
+        WifiConfiguration eapSimConfig = WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE);
+        PasspointConfiguration passpointConfiguration =
+                createTestConfigWithSimCredential(TEST_FQDN, TEST_IMSI, TEST_REALM);
+        WifiConfiguration placeholderConfig = createPlaceholderConfigForPasspoint(TEST_FQDN,
+                passpointConfiguration.getUniqueId());
+        placeholderConfig.setPasspointUniqueId(passpointConfiguration.getUniqueId());
+        WifiNetworkSuggestion networkSuggestion = createWifiNetworkSuggestion(
+                eapSimConfig, null, true, false, true, true, DEFAULT_PRIORITY_GROUP);
+        WifiNetworkSuggestion passpointSuggestion = createWifiNetworkSuggestion(
+                placeholderConfig, passpointConfiguration, true, false, true, true,
+                DEFAULT_PRIORITY_GROUP);
+        List<WifiNetworkSuggestion> networkSuggestionList =
+                Arrays.asList(networkSuggestion, passpointSuggestion);
+        assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS,
+                mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
+                        TEST_PACKAGE_1, TEST_FEATURE));
+
+        mUserApproveCarrierListenerArgumentCaptor.getValue()
+                .onImsiProtectedOrUserApprovalChanged(TEST_CARRIER_ID, true);
+
+        Set<ExtendedWifiNetworkSuggestion> matchedSuggestions = mWifiNetworkSuggestionsManager
+                .getNetworkSuggestionsForScanDetail(createScanDetailForNetwork(eapSimConfig));
+        for (ExtendedWifiNetworkSuggestion ewns : matchedSuggestions) {
+            assertTrue(ewns.isAutojoinEnabled);
+        }
+
+        mUserApproveCarrierListenerArgumentCaptor.getValue()
+                .onImsiProtectedOrUserApprovalChanged(TEST_CARRIER_ID, false);
+
+        for (ExtendedWifiNetworkSuggestion ewns : matchedSuggestions) {
+            assertFalse(ewns.isAutojoinEnabled);
+        }
+    }
+
     /**
      * Verify when matching a SIM-Based network without IMSI protection, framework will mark it
      * auto-join disable and send notification. If user click on allow, will restore the auto-join
@@ -4126,7 +4214,8 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         when(mWifiConfigManager.getConfiguredNetwork(anyString())).thenReturn(eapSimConfig);
         when(mWifiConfigManager.addOrUpdateNetwork(any(), anyInt(), anyString(), eq(false)))
                 .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
-        mUserApproveCarrierListenerArgumentCaptor.getValue().onUserAllowed(TEST_CARRIER_ID);
+        mUserApproveCarrierListenerArgumentCaptor.getValue()
+                .onImsiProtectedOrUserApprovalChanged(TEST_CARRIER_ID, true);
         when(mWifiCarrierInfoManager.hasUserApprovedImsiPrivacyExemptionForCarrier(TEST_CARRIER_ID))
                 .thenReturn(true);
         verify(mPasspointManager).enableAutojoin(anyString(), any(), eq(true));
@@ -4138,6 +4227,51 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
             assertTrue(ewns.isAutojoinEnabled);
         }
         verify(mWifiConfigManager, atLeastOnce()).saveToStore(true);
+    }
+
+    @Test
+    public void testAutoJoinIsNotChangedWhenOobPseudonymIsEnabled() {
+        when(mWifiCarrierInfoManager.getCarrierIdForPackageWithCarrierPrivileges(TEST_PACKAGE_1))
+                .thenReturn(TEST_CARRIER_ID);
+        when(mWifiCarrierInfoManager.getMatchingSubId(TEST_CARRIER_ID)).thenReturn(TEST_SUBID);
+        when(mWifiCarrierInfoManager.getCarrierNameForSubId(TEST_SUBID))
+                .thenReturn(TEST_CARRIER_NAME);
+        when(mWifiCarrierInfoManager.requiresImsiEncryption(TEST_SUBID)).thenReturn(false);
+        when(mWifiCarrierInfoManager.hasUserApprovedImsiPrivacyExemptionForCarrier(TEST_CARRIER_ID))
+                .thenReturn(false);
+        when(mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(TEST_CARRIER_ID))
+                .thenReturn(true);
+        when(mPasspointManager.addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
+                anyBoolean(), eq(false))).thenReturn(true);
+
+        WifiConfiguration eapSimConfig = WifiConfigurationTestUtil.createEapNetwork(
+                WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE);
+        PasspointConfiguration passpointConfiguration =
+                createTestConfigWithSimCredential(TEST_FQDN, TEST_IMSI, TEST_REALM);
+        WifiConfiguration placeholderConfig = createPlaceholderConfigForPasspoint(TEST_FQDN,
+                passpointConfiguration.getUniqueId());
+        placeholderConfig.setPasspointUniqueId(passpointConfiguration.getUniqueId());
+        WifiNetworkSuggestion networkSuggestion = createWifiNetworkSuggestion(
+                eapSimConfig, null, true, false, true, true, DEFAULT_PRIORITY_GROUP);
+        WifiNetworkSuggestion passpointSuggestion = createWifiNetworkSuggestion(
+                placeholderConfig, passpointConfiguration, true, false, true, true,
+                DEFAULT_PRIORITY_GROUP);
+        List<WifiNetworkSuggestion> networkSuggestionList =
+                Arrays.asList(networkSuggestion, passpointSuggestion);
+
+
+        assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS,
+                mWifiNetworkSuggestionsManager.add(networkSuggestionList, TEST_UID_1,
+                        TEST_PACKAGE_1, TEST_FEATURE));
+
+        verifyNoMoreInteractions(mWifiNotificationManager);
+        Set<ExtendedWifiNetworkSuggestion> matchedSuggestions = mWifiNetworkSuggestionsManager
+                .getNetworkSuggestionsForScanDetail(createScanDetailForNetwork(eapSimConfig));
+        verify(mWifiCarrierInfoManager)
+                .sendImsiProtectionExemptionNotificationIfRequired(TEST_CARRIER_ID);
+        for (ExtendedWifiNetworkSuggestion ewns : matchedSuggestions) {
+            assertTrue(ewns.isAutojoinEnabled);
+        }
     }
 
     @Test
@@ -4214,14 +4348,8 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                         .add(networkSuggestionList, TEST_UID_1, TEST_PACKAGE_1, TEST_FEATURE));
     }
 
-    /**
-     * Verify getAllScanOptimizationSuggestionNetworks will only return user approved,
-     * non-passpoint network.
-     */
-    @Test
-    public void testGetPnoAvailableSuggestions() {
+    private List<WifiNetworkSuggestion> setupAndGetPnoAvailableSuggestions() {
         WifiConfiguration network1 = WifiConfigurationTestUtil.createOpenNetwork();
-        WifiConfiguration network2 = WifiConfigurationTestUtil.createOpenNetwork();
         PasspointConfiguration passpointConfiguration =
                 createTestConfigWithUserCredential(TEST_FQDN, TEST_FRIENDLY_NAME);
         WifiConfiguration placeholderConfig = new WifiConfiguration();
@@ -4236,9 +4364,22 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                     add(networkSuggestion);
                     add(passpointSuggestion);
                 }};
+        when(mPasspointManager.addOrUpdateProvider(any(PasspointConfiguration.class),
+                anyInt(), anyString(), eq(true), eq(true), eq(false))).thenReturn(true);
         assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS,
                 mWifiNetworkSuggestionsManager
                         .add(networkSuggestionList, TEST_UID_1, TEST_PACKAGE_1, TEST_FEATURE));
+        return networkSuggestionList;
+    }
+
+    /**
+     * Verify getAllScanOptimizationSuggestionNetworks will only return user approved,
+     * non-passpoint network.
+     */
+    @Test
+    public void testGetPnoAvailableSuggestions() {
+        List<WifiNetworkSuggestion> suggestions = setupAndGetPnoAvailableSuggestions();
+        WifiConfiguration network1 = suggestions.get(0).wifiConfiguration;
         assertTrue(mWifiNetworkSuggestionsManager
                 .getAllScanOptimizationSuggestionNetworks().isEmpty());
         mWifiNetworkSuggestionsManager.setHasUserApprovedForApp(true, TEST_UID_1, TEST_PACKAGE_1);
@@ -4246,6 +4387,26 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 mWifiNetworkSuggestionsManager.getAllScanOptimizationSuggestionNetworks();
         assertEquals(1, pnoNetwork.size());
         assertEquals(network1.SSID, pnoNetwork.get(0).SSID);
+    }
+
+    /**
+     * Verify that getAllPasspointScanOptimizationSuggestionNetworks will only return
+     * user-approved Passpoint networks if they have a recent SSID.
+     */
+    @Test
+    public void testGetPasspointPnoAvailableSuggestions() {
+        setupAndGetPnoAvailableSuggestions();
+        mWifiNetworkSuggestionsManager.setHasUserApprovedForApp(true, TEST_UID_1, TEST_PACKAGE_1);
+        assertTrue(mWifiNetworkSuggestionsManager
+                .getAllPasspointScanOptimizationSuggestionNetworks().isEmpty());
+
+        // Expect that the Passpoint network is returned if it has a recent SSID.
+        final String ssid = "my-passpoint-network";
+        when(mPasspointManager.getMostRecentSsidForProfile(any())).thenReturn(ssid);
+        List<WifiConfiguration> configs = mWifiNetworkSuggestionsManager
+                .getAllPasspointScanOptimizationSuggestionNetworks();
+        assertEquals(1, configs.size());
+        assertEquals(ssid, configs.get(0).SSID);
     }
 
     /**
@@ -4895,11 +5056,6 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         homeSp.setFqdn(fqdn);
         homeSp.setFriendlyName(friendlyName);
         config.setHomeSp(homeSp);
-        Map<String, String> friendlyNames = new HashMap<>();
-        friendlyNames.put("en", friendlyName);
-        friendlyNames.put("kr", friendlyName + 1);
-        friendlyNames.put("jp", friendlyName + 2);
-        config.setServiceFriendlyNames(friendlyNames);
         Credential credential = new Credential();
         credential.setRealm(TEST_REALM);
         credential.setCaCertificate(FakeKeys.CA_CERT0);
