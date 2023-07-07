@@ -149,9 +149,11 @@ public class WifiConfigManager {
          *
          * @param newConfig Updated WifiConfiguration object.
          * @param oldConfig Prev WifiConfiguration object.
+         * @param hasCredentialChanged true if credential is changed, false otherwise.
          */
         default void onNetworkUpdated(
-                @NonNull WifiConfiguration newConfig, @NonNull WifiConfiguration oldConfig) { };
+                @NonNull WifiConfiguration newConfig, @NonNull WifiConfiguration oldConfig,
+                boolean hasCredentialChanged) { };
 
         /**
          * Invoked when user connect choice is set.
@@ -235,8 +237,7 @@ public class WifiConfigManager {
 
     @VisibleForTesting
     public static final int SCAN_RESULT_MISSING_COUNT_THRESHOLD = 1;
-    @VisibleForTesting
-    protected static final String NON_PERSISTENT_MAC_RANDOMIZATION_FEATURE_FORCE_ENABLE_FLAG =
+    public static final String NON_PERSISTENT_MAC_RANDOMIZATION_FEATURE_FORCE_ENABLE_FLAG =
             "non_persistent_mac_randomization_force_enabled";
     private static final int NON_CARRIER_MERGED_NETWORKS_SCAN_CACHE_QUERY_DURATION_MS =
             10 * 60 * 1000; // 10 minutes
@@ -1649,7 +1650,8 @@ public class WifiConfigManager {
             } else {
                 listener.onNetworkUpdated(
                         createExternalWifiConfiguration(newConfig, true, Process.WIFI_UID),
-                        createExternalWifiConfiguration(existingConfig, true, Process.WIFI_UID));
+                        createExternalWifiConfiguration(existingConfig, true, Process.WIFI_UID),
+                        result.hasCredentialChanged());
             }
         }
         return result;
@@ -1737,7 +1739,8 @@ public class WifiConfigManager {
             numExcessNetworks = networkList.size() - maxNumTotalConfigs;
         }
 
-        if (callerIsApp && maxNumAppAddedConfigs >= 0) {
+        if (callerIsApp && maxNumAppAddedConfigs >= 0
+                && networkList.size() > maxNumAppAddedConfigs) {
             List<WifiConfiguration> appAddedNetworks = networkList
                     .stream()
                     .filter(n -> !isDeviceOwnerProfileOwnerOrSystem(n.creatorUid, n.creatorName))
@@ -3684,7 +3687,9 @@ public class WifiConfigManager {
         mRandomizedMacStoreData.setMacMapping(mRandomizedMacAddressMapping);
 
         try {
+            long start = mClock.getElapsedSinceBootMillis();
             mWifiConfigStore.write(forceWrite);
+            mWifiMetrics.wifiConfigStored((int) (mClock.getElapsedSinceBootMillis() - start));
         } catch (IOException | IllegalStateException e) {
             Log.wtf(TAG, "Writing to store failed. Saved networks maybe lost!", e);
             return false;

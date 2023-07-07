@@ -218,6 +218,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         when(wifiInjector.getActiveModeWarden()).thenReturn(mActiveModeWarden);
         when(wifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
         when(wifiInjector.getDppManager()).thenReturn(mDppManager);
+        when(wifiInjector.getHalDeviceManager()).thenReturn(mHalDeviceManager);
         lenient().when(WifiInjector.getInstance()).thenReturn(wifiInjector);
         when(mSsidTranslator.getAllPossibleOriginalSsids(any())).thenAnswer(
                 (Answer<List<WifiSsid>>) invocation -> Arrays.asList(invocation.getArgument(0),
@@ -325,6 +326,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     @Mock private DppManager mDppManager;
     @Mock private WifiDialogManager mWifiDialogManager;
     @Mock private WifiDialogManager.DialogHandle mDialogHandle;
+    @Mock private WifiInjector mWifiInjector;
+    @Mock private HalDeviceManager mHalDeviceManager;
     @Mock WifiCandidates.Candidate mCandidate1;
     @Mock WifiCandidates.Candidate mCandidate2;
     @Mock WifiCandidates.Candidate mCandidate3;
@@ -412,7 +415,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         private Message mMessage;
 
         TestHandler(Looper looper) {
-            super(looper, 100, new LocalLog(128));
+            super(looper, 100, new LocalLog(128), mWifiMetrics);
         }
 
         public List<Long> getIntervals() {
@@ -611,6 +614,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
                 mFacade, mWifiGlobals, mExternalPnoScanRequestManager, mSsidTranslator,
                 mWifiPermissionsUtil, mWifiCarrierInfoManager, mWifiCountryCode,
                 mWifiDialogManager);
+        wCm.initialization();
         mLooper.dispatchAll();
         verify(mActiveModeWarden, atLeastOnce()).registerModeChangeCallback(
                 mModeChangeCallbackCaptor.capture());
@@ -1567,6 +1571,14 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         when(mMultiInternetManager.getSpecifiedBssids()).thenReturn(specifiedBssids);
         testMultiInternetSecondaryConnectionRequest(false, true, false,
                 mCandidate2.getKey().bssid.toString());
+    }
+
+    @Test
+    public void multiInternetSecondaryConnectionRequestFailsIfWouldDeletePrivilegedIface() {
+        setupMocksForMultiInternetTests(false);
+        when(mHalDeviceManager.creatingIfaceWillDeletePrivilegedIface(anyInt(), any()))
+                .thenReturn(true);
+        testMultiInternetSecondaryConnectionRequest(true, true, false, CANDIDATE_BSSID_3);
     }
 
     /**
@@ -5104,6 +5116,74 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         // Enable untrusted connection. This should trigger a pno scan for auto-join.
         mWifiConnectivityManager.setUntrustedConnectionAllowed(true);
         verify(mWifiScanner, times(3)).startPnoScan(any(), any(), any());
+    }
+
+    @Test
+    public void verifySetPnoScanEnabledByFramework() {
+        mWifiConnectivityManager = createConnectivityManager();
+
+        // set wifi on & disconnected to trigger pno scans when PNO scan is enabled.
+        setWifiEnabled(true);
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+
+        // Enable trusted connection. This should trigger a pno scan for auto-join.
+        mWifiConnectivityManager.setTrustedConnectionAllowed(true);
+        verify(mWifiScanner).startPnoScan(any(), any(), any());
+
+        // Verify disabling PNO scan stops the on-going PNO scan
+        mWifiConnectivityManager.setPnoScanEnabledByFramework(false, false);
+        verify(mWifiScanner).stopPnoScan(any());
+
+        // Verify that PNO scan is no longer triggered
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        verify(mWifiScanner).startPnoScan(any(), any(), any());
+
+        // Verify that PNO scan is not triggered after wifi toggle, since it's not configured to do
+        // so.
+        setWifiEnabled(false);
+        setWifiEnabled(true);
+        verify(mWifiScanner).startPnoScan(any(), any(), any());
+
+        // Verify that PNO scan is triggered again after being enabled explicitly
+        mWifiConnectivityManager.setPnoScanEnabledByFramework(true, false);
+        verify(mWifiScanner, times(2)).startPnoScan(any(), any(), any());
+    }
+
+    @Test
+    public void verifySetPnoScanEnabledAfterWifiToggle() {
+        mWifiConnectivityManager = createConnectivityManager();
+
+        // set wifi on & disconnected to trigger pno scans when PNO scan is enabled.
+        setWifiEnabled(true);
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+
+        // Enable trusted connection. This should trigger a pno scan for auto-join.
+        mWifiConnectivityManager.setTrustedConnectionAllowed(true);
+        verify(mWifiScanner).startPnoScan(any(), any(), any());
+
+        // Verify disabling PNO scan stops the on-going PNO scan
+        mWifiConnectivityManager.setPnoScanEnabledByFramework(false, true);
+        verify(mWifiScanner).stopPnoScan(any());
+
+        // Verify that PNO scan is no longer triggered
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        verify(mWifiScanner).startPnoScan(any(), any(), any());
+
+        // Verify that PNO scan is triggered again after wifi toggle
+        setWifiEnabled(false);
+        setWifiEnabled(true);
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        verify(mWifiScanner, times(2)).startPnoScan(any(), any(), any());
     }
 
     /**

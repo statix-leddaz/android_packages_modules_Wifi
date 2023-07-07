@@ -21,6 +21,8 @@ import static android.Manifest.permission.ACCESS_WIFI_STATE;
 import static android.Manifest.permission.CHANGE_WIFI_STATE;
 import static android.Manifest.permission.MANAGE_WIFI_NETWORK_SELECTION;
 import static android.Manifest.permission.NEARBY_WIFI_DEVICES;
+import static android.Manifest.permission.NETWORK_SETTINGS;
+import static android.Manifest.permission.NETWORK_SETUP_WIZARD;
 import static android.Manifest.permission.READ_WIFI_CREDENTIAL;
 import static android.Manifest.permission.REQUEST_COMPANION_PROFILE_AUTOMOTIVE_PROJECTION;
 
@@ -847,10 +849,19 @@ public class WifiManager {
     public static final int API_SET_TDLS_ENABLED_WITH_MAC_ADDRESS = 35;
 
     /**
+     * A constant used in
+     * {@link WifiManager#getLastCallerInfoForApi(int, Executor, BiConsumer)}
+     * Tracks usage of
+     * {@link WifiManager#setPnoScanEnabled(boolean, boolean)}
+     * @hide
+     */
+    public static final int API_SET_PNO_SCAN_ENABLED = 36;
+
+    /**
      * Used internally to keep track of boundary.
      * @hide
      */
-    public static final int API_MAX = 36;
+    public static final int API_MAX = 37;
 
     /**
      * Broadcast intent action indicating that a Passpoint provider icon has been received.
@@ -7648,7 +7659,13 @@ public class WifiManager {
             synchronized (mBinder) {
                 if (mRefCounted ? (++mRefCount == 1) : (!mHeld)) {
                     try {
-                        mService.acquireWifiLock(mBinder, mLockType, mTag, mWorkSource);
+                        Bundle extras = new Bundle();
+                        if (SdkLevel.isAtLeastS()) {
+                            extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                                    mContext.getAttributionSource());
+                        }
+                        mService.acquireWifiLock(mBinder, mLockType, mTag, mWorkSource,
+                                mContext.getOpPackageName(), extras);
                         synchronized (WifiManager.this) {
                             if (mActiveLockCount >= MAX_ACTIVE_LOCKS) {
                                 mService.releaseWifiLock(mBinder);
@@ -7744,7 +7761,13 @@ public class WifiManager {
                 }
                 if (changed && mHeld) {
                     try {
-                        mService.updateWifiLockWorkSource(mBinder, mWorkSource);
+                        Bundle extras = new Bundle();
+                        if (SdkLevel.isAtLeastS()) {
+                            extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                                    mContext.getAttributionSource());
+                        }
+                        mService.updateWifiLockWorkSource(mBinder, mWorkSource,
+                                mContext.getOpPackageName(), extras);
                     } catch (RemoteException e) {
                         throw e.rethrowFromSystemServer();
                     }
@@ -10263,6 +10286,38 @@ public class WifiManager {
     }
 
     /**
+     * Wi-Fi Preferred Network Offload (PNO) scanning offloads scanning to the chip to save power
+     * when Wi-Fi is disconnected and the screen is off. See
+     * {@link https://source.android.com/docs/core/connect/wifi-scan} for more details.
+     * <p>
+     * This API can be used to enable or disable PNO scanning. After boot, PNO scanning is enabled
+     * by default. When PNO scanning is disabled, the Wi-Fi framework will not trigger scans at all
+     * when the screen is off. This can be used to save power on devices with small batteries.
+     *
+     * @param enabled True - enable PNO scanning
+     *                False - disable PNO scanning
+     * @param enablePnoScanAfterWifiToggle True - Wifi being enabled by
+     *                                     {@link #setWifiEnabled(boolean)} will re-enable PNO
+     *                                     scanning.
+     *                                     False - Wifi being enabled by
+     *                                     {@link #setWifiEnabled(boolean)} will not re-enable PNO
+     *                                     scanning.
+     *
+     * @throws SecurityException if the caller does not have permission.
+     * @hide
+     */
+    @RequiresPermission(anyOf = {MANAGE_WIFI_NETWORK_SELECTION, NETWORK_SETTINGS,
+            NETWORK_SETUP_WIZARD})
+    public void setPnoScanEnabled(boolean enabled, boolean enablePnoScanAfterWifiToggle) {
+        try {
+            mService.setPnoScanEnabled(enabled, enablePnoScanAfterWifiToggle,
+                    mContext.getOpPackageName());
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
      * Clear the current PNO scan request that's been set by the calling UID. Note, the call will
      * be no-op if the current PNO scan request is set by a different UID.
      *
@@ -11600,7 +11655,7 @@ public class WifiManager {
      * @throws IllegalArgumentException if mode value is not in {@link MloMode}.
      * @throws NullPointerException if the caller provided a null input.
      * @throws SecurityException if caller does not have the required permissions.
-     * @throws UnsupportedOperationException if the set operation is not supported.
+     * @throws UnsupportedOperationException if the set operation is not supported on this SDK.
      * @hide
      */
     @SystemApi
@@ -11639,7 +11694,7 @@ public class WifiManager {
      *                        e.g. if the driver/firmware doesn't provide this information.
      * @throws NullPointerException if the caller provided a null input.
      * @throws SecurityException if caller does not have the required permissions.
-     * @throws UnsupportedOperationException if the set operation is not supported.
+     * @throws UnsupportedOperationException if the get operation is not supported on this SDK.
      * @hide
      */
     @SystemApi
@@ -11679,7 +11734,7 @@ public class WifiManager {
      *                        count supported by the chip or -1 if error or not available.
      * @throws NullPointerException          if the caller provided a null input.
      * @throws SecurityException             if caller does not have the required permissions.
-     * @throws UnsupportedOperationException if the get operation is not supported.
+     * @throws UnsupportedOperationException if the get operation is not supported on this SDK.
      * @hide
      */
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
@@ -11724,7 +11779,7 @@ public class WifiManager {
      *                       supported by the chip in MLO mode or -1 if error or not available.
      * @throws NullPointerException if the caller provided a null input.
      * @throws SecurityException if caller does not have the required permissions.
-     * @throws UnsupportedOperationException if the set operation is not supported.
+     * @throws UnsupportedOperationException if the get operation is not supported on this SDK
      * @hide
      */
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
@@ -11765,7 +11820,7 @@ public class WifiManager {
      *                        not available. Band value is defined in {@link WifiScanner.WifiBand}.
      * @throws NullPointerException if the caller provided a null input.
      * @throws SecurityException if caller does not have the required permissions.
-     * @throws UnsupportedOperationException if the set operation is not supported.
+     * @throws UnsupportedOperationException if the get operation is not supported on this SDK.
      * @hide
      */
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)

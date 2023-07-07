@@ -198,9 +198,9 @@ interface IWifiManager
 
     boolean isScanAlwaysAvailable();
 
-    boolean acquireWifiLock(IBinder lock, int lockType, String tag, in WorkSource ws);
+    boolean acquireWifiLock(IBinder lock, int lockType, String tag, in WorkSource ws, in String packageName, in Bundle extras);
 
-    void updateWifiLockWorkSource(IBinder lock, in WorkSource ws);
+    void updateWifiLockWorkSource(IBinder lock, in WorkSource ws, in String packageName, in Bundle extras);
 
     boolean releaseWifiLock(IBinder lock);
 
@@ -369,6 +369,8 @@ interface IWifiManager
     void clearWifiConnectedNetworkScorer();
 
     void setExternalPnoScanRequest(in IBinder binder, in IPnoScanResultsCallback callback, in List<WifiSsid> ssids, in int[] frequencies, String packageName, String featureId);
+
+    void setPnoScanEnabled(boolean enabled, boolean enablePnoScanAfterWifiToggle, String packageName);
 
     void clearExternalPnoScanRequest();
 
