@@ -90,6 +90,11 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public void getNetworkSelectionConfig(@NonNull IWifiNetworkSelectionConfigListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void setThirdPartyAppEnablingWifiConfirmationDialogEnabled(boolean enable) {
         throw new UnsupportedOperationException();
     }
@@ -245,6 +250,12 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public void getChannelData(@NonNull IListListener listener, String packageName,
+            Bundle extras) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public boolean disconnect(String packageName) {
         throw new UnsupportedOperationException();
     }
@@ -276,6 +287,16 @@ public class BaseWifiService extends IWifiManager.Stub {
 
     @Override
     public void unregisterSubsystemRestartCallback(ISubsystemRestartCallback callback) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void addWifiNetworkStateChangedListener(IWifiNetworkStateChangedListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void removeWifiNetworkStateChangedListener(IWifiNetworkStateChangedListener listener) {
         throw new UnsupportedOperationException();
     }
 
@@ -438,6 +459,11 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public boolean validateSoftApConfiguration(SoftApConfiguration config) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public int startLocalOnlyHotspot(ILocalOnlyHotspotCallback callback, String packageName,
             String featureId, SoftApConfiguration customConfig, Bundle extras) {
         throw new UnsupportedOperationException();
@@ -484,6 +510,11 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public void queryLastConfiguredTetheredApPassphraseSinceBoot(IStringListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public boolean setWifiApConfiguration(WifiConfiguration wifiConfig, String packageName) {
         throw new UnsupportedOperationException();
     }
@@ -504,7 +535,34 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public void enableTdlsWithRemoteIpAddress(String remoteIPAddress, boolean enable,
+            @NonNull IBooleanListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void enableTdlsWithMacAddress(String remoteMacAddress, boolean enable) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void enableTdlsWithRemoteMacAddress(String remoteMacAddress, boolean enable,
+            @NonNull IBooleanListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void isTdlsOperationCurrentlyAvailable(@NonNull IBooleanListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getMaxSupportedConcurrentTdlsSessions(@NonNull IIntegerListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getNumberOfEnabledTdlsSessions(@NonNull IIntegerListener listener) {
         throw new UnsupportedOperationException();
     }
 
@@ -754,6 +812,12 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public void setPnoScanEnabled(boolean enabled, boolean enablePnoScanAfterWifiToggle,
+            String packageName) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public List<WifiConfiguration> getWifiConfigForMatchedNetworkSuggestionsSharedWithUser(
             List<ScanResult> scanResults) {
         throw new UnsupportedOperationException();
@@ -854,9 +918,15 @@ public class BaseWifiService extends IWifiManager.Stub {
         throw new UnsupportedOperationException();
     }
 
-    @Override
+    /** TO BE REMOVED */
     public List<WifiAvailableChannel> getUsableChannels(
             int band, int mode, int filter) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public List<WifiAvailableChannel> getUsableChannels(
+            int band, int mode, int filter, String packageName, Bundle extras) {
         throw new UnsupportedOperationException();
     }
 
@@ -920,6 +990,85 @@ public class BaseWifiService extends IWifiManager.Stub {
     @Override
     public void reportCreateInterfaceImpact(String packageName, int interfaceType,
             boolean requireNewInterface, IInterfaceCreationInfoCallback callback) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int getMaxNumberOfChannelsPerRequest() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void addQosPolicies(@NonNull List<QosPolicyParams> policyParamsList,
+            @NonNull IBinder binder, @NonNull String packageName, @NonNull IListListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void removeQosPolicies(@NonNull int[] policyIdList, @NonNull String packageName) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void removeAllQosPolicies(@NonNull String packageName) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void addLocalOnlyConnectionStatusListener(ILocalOnlyConnectionStatusListener listener,
+            String packageName, String featureId) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void removeLocalOnlyConnectionStatusListener(ILocalOnlyConnectionStatusListener listener,
+            String packageName) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void setLinkLayerStatsPollingInterval(int intervalMs) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getLinkLayerStatsPollingInterval(@NonNull IIntegerListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void setMloMode(@WifiManager.MloMode int mode, IBooleanListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getMloMode(IIntegerListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void addWifiLowLatencyLockListener(IWifiLowLatencyLockListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void removeWifiLowLatencyLockListener(IWifiLowLatencyLockListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getMaxMloAssociationLinkCount(IIntegerListener listener, Bundle extras) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getMaxMloStrLinkCount(IIntegerListener listener, Bundle extras) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getSupportedSimultaneousBandCombinations(IWifiBandsListener listener,
+            Bundle extras) {
         throw new UnsupportedOperationException();
     }
 }

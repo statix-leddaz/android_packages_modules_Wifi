@@ -21,6 +21,7 @@ import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_AP_BRIDG
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_NAN;
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_P2P;
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_STA;
+import static com.android.server.wifi.util.WorkSourceHelper.PRIORITY_INTERNAL;
 
 import android.annotation.IntDef;
 import android.content.BroadcastReceiver;
@@ -32,6 +33,7 @@ import android.net.NetworkInfo;
 import android.net.wifi.WifiContext;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Message;
+import android.os.Process;
 import android.os.WorkSource;
 import android.text.TextUtils;
 import android.util.ArraySet;
@@ -167,7 +169,7 @@ public class InterfaceConflictManager {
         // Check if priority level can get user approval.
         if (newRequestorWsHelper.getRequestorWsPriority() <= WorkSourceHelper.PRIORITY_BG
                 || existingRequestorWsHelper.getRequestorWsPriority()
-                == WorkSourceHelper.PRIORITY_INTERNAL) {
+                == PRIORITY_INTERNAL) {
             return false;
         }
         // Check if the conflicting interface types can get user approval.
@@ -332,11 +334,18 @@ public class InterfaceConflictManager {
                 return ICM_EXECUTE_COMMAND;
             }
 
-            // Auto-approve dialog if we only need to delete a disconnected P2P.
+            // Auto-approve dialog if we need to delete a disconnected P2P.
             if (mUserApprovalNotRequireForDisconnectedP2p && !mIsP2pConnected
                     && impact.size() == 1 && impact.get(0).first == HDM_CREATE_IFACE_P2P) {
-                localLog(tag
-                        + ": existing inferface is p2p and it is not connected - proceeding");
+                localLog(TAG
+                        + ": existing interface is p2p and it is not connected - proceeding");
+                return ICM_EXECUTE_COMMAND;
+            }
+
+            // Auto-approve dialog if we need to delete a opportunistic Aware.
+            if (impact.size() == 1 && impact.get(0).first == HDM_CREATE_IFACE_NAN
+                    && impact.get(0).second.equals(new WorkSource(Process.WIFI_UID))) {
+                localLog(TAG + ": existing interface is NAN and it is opportunistic - proceeding");
                 return ICM_EXECUTE_COMMAND;
             }
 
