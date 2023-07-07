@@ -132,7 +132,6 @@ public class HostapdHalAidlImp implements IHostapdHal {
     /**
      * Enable/Disable verbose logging.
      *
-     * @param enable true to enable, false to disable.
      */
     @Override
     public void enableVerboseLogging(boolean verboseEnabled, boolean halVerboseEnabled) {
@@ -175,6 +174,9 @@ public class HostapdHalAidlImp implements IHostapdHal {
     private boolean registerCallback(IHostapdCallback callback) {
         synchronized (mLock) {
             String methodStr = "registerCallback";
+            if (!checkHostapdAndLogFailure(methodStr)) {
+                return false;
+            }
             try {
                 mIHostapd.registerCallback(callback);
                 return true;
@@ -473,8 +475,11 @@ public class HostapdHalAidlImp implements IHostapdHal {
     @VisibleForTesting
     protected IHostapd getHostapdMockable() {
         synchronized (mLock) {
-            return IHostapd.Stub.asInterface(
-                    ServiceManager.waitForDeclaredService(HAL_INSTANCE_NAME));
+            if (SdkLevel.isAtLeastT()) {
+                return IHostapd.Stub.asInterface(
+                        ServiceManager.waitForDeclaredService(HAL_INSTANCE_NAME));
+            }
+            return null;
         }
     }
 
@@ -501,12 +506,11 @@ public class HostapdHalAidlImp implements IHostapdHal {
                 if (serviceBinder == null) return false;
                 mWaitForDeathLatch = null;
                 serviceBinder.linkToDeath(new HostapdDeathRecipient(serviceBinder), /* flags= */ 0);
-                setDebugParams();
+                if (!setDebugParams()) return false;
             } catch (RemoteException e) {
                 handleRemoteException(e, methodStr);
                 return false;
             }
-
             if (!registerCallback(new HostapdCallback())) {
                 Log.e(TAG, "Failed to register callback, stopping hostapd AIDL startup");
                 mIHostapd = null;

@@ -69,7 +69,7 @@ public final class WifiSsid implements Parcelable {
      */
     @NonNull
     public byte[] getBytes() {
-        return mBytes;
+        return mBytes.clone();
     }
 
     /**
@@ -129,7 +129,7 @@ public final class WifiSsid implements Parcelable {
     public String toString() {
         String utf8String = decodeSsid(mBytes, StandardCharsets.UTF_8);
         if (TextUtils.isEmpty(utf8String)) {
-            return HexEncoding.encodeToString(mBytes);
+            return HexEncoding.encodeToString(mBytes, false /* upperCase */);
         }
         return "\"" + utf8String + "\"";
     }
