@@ -69,7 +69,6 @@ import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.Credential;
 import android.net.wifi.hotspot2.pps.HomeSp;
-import android.os.Handler;
 import android.os.Looper;
 import android.os.UserHandle;
 import android.os.test.TestLooper;
@@ -77,6 +76,7 @@ import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.util.Base64;
+import android.util.LocalLog;
 import android.util.Pair;
 
 import androidx.test.filters.SmallTest;
@@ -87,6 +87,7 @@ import com.android.server.wifi.FakeKeys;
 import com.android.server.wifi.FrameworkFacade;
 import com.android.server.wifi.MacAddressUtil;
 import com.android.server.wifi.NetworkUpdateResult;
+import com.android.server.wifi.RunnerHandler;
 import com.android.server.wifi.WifiBaseTest;
 import com.android.server.wifi.WifiCarrierInfoManager;
 import com.android.server.wifi.WifiConfigManager;
@@ -225,7 +226,7 @@ public class PasspointManagerTest extends WifiBaseTest {
     @Mock DeviceConfigFacade mDeviceConfigFacade;
     @Mock ActivityManager mActivityManager;
 
-    Handler mHandler;
+    RunnerHandler mHandler;
     TestLooper mLooper;
     PasspointManager mManager;
     boolean mConfigSettingsPasspointEnabled = true;
@@ -278,7 +279,7 @@ public class PasspointManagerTest extends WifiBaseTest {
         when(mWifiSettingsStore.isWifiPasspointEnabled())
                 .thenReturn(mConfigSettingsPasspointEnabled);
         mLooper = new TestLooper();
-        mHandler = new Handler(mLooper.getLooper());
+        mHandler = new RunnerHandler(mLooper.getLooper(), 100, new LocalLog(128), mWifiMetrics);
         mWifiCarrierInfoManager = new WifiCarrierInfoManager(mTelephonyManager,
                 mSubscriptionManager, mWifiInjector, mock(FrameworkFacade.class),
                 mock(WifiContext.class), mWifiConfigStore, mHandler, mWifiMetrics, mClock,
@@ -289,6 +290,7 @@ public class PasspointManagerTest extends WifiBaseTest {
                 mWifiKeyStore, mClock, mObjectFactory, mWifiConfigManager,
                 mWifiConfigStore, mWifiSettingsStore, mWifiMetrics, mWifiCarrierInfoManager,
                 mMacAddressUtil, mWifiPermissionsUtil);
+        mManager.enableVerboseLogging(true);
         mManager.setPasspointNetworkNominateHelper(mPasspointNetworkNominateHelper);
         // Verify Passpoint is disabled on creation.
         assertFalse(mManager.isWifiPasspointEnabled());
@@ -1361,6 +1363,26 @@ public class PasspointManagerTest extends WifiBaseTest {
     }
 
     /**
+     * Verify that {@link PasspointManager#getWifiConfigsForPasspointProfilesWithSsids()}
+     * only returns configs for providers that have been assigned a recent SSID.
+     */
+    @Test
+    public void testGetWifiConfigsForPasspointProfilesWithSsids() {
+        PasspointProvider provider1 = addTestProvider(TEST_FQDN, TEST_FRIENDLY_NAME,
+                TEST_PACKAGE, false, null, false);
+        PasspointProvider provider2 = addTestProvider(TEST_FQDN + 1, TEST_FRIENDLY_NAME,
+                TEST_PACKAGE, false, null, false);
+        when(provider2.getMostRecentSsid()).thenReturn(TEST_SSID); // assign a recent SSID
+
+        // Only entry should be for the provider that was assigned a recent SSID.
+        List<WifiConfiguration> configs = mManager.getWifiConfigsForPasspointProfilesWithSsids();
+        assertEquals(1, configs.size());
+        assertEquals(provider2.getConfig().getUniqueId(), configs.get(0).getPasspointUniqueId());
+        assertEquals(TEST_SSID, configs.get(0).SSID);
+        assertTrue(configs.get(0).getNetworkSelectionStatus().hasEverConnected());
+    }
+
+    /**
      * Verify that an empty map will be returned when trying to get all matching FQDN for a {@code
      * null} {@link ScanResult}.
      */
@@ -1888,8 +1910,9 @@ public class PasspointManagerTest extends WifiBaseTest {
         PasspointProvider provider =
                 addTestProvider(TEST_FQDN, TEST_FRIENDLY_NAME, TEST_PACKAGE, false, null, false);
         when(provider.getHasEverConnected()).thenReturn(false);
-        mManager.onPasspointNetworkConnected(provider.getConfig().getUniqueId());
+        mManager.onPasspointNetworkConnected(provider.getConfig().getUniqueId(), TEST_SSID);
         verify(provider).setHasEverConnected(eq(true));
+        verify(provider).setMostRecentSsid(eq(TEST_SSID));
     }
 
     /**
@@ -1904,7 +1927,7 @@ public class PasspointManagerTest extends WifiBaseTest {
         PasspointProvider provider =
                 addTestProvider(TEST_FQDN, TEST_FRIENDLY_NAME, TEST_PACKAGE, false, null, false);
         when(provider.getHasEverConnected()).thenReturn(true);
-        mManager.onPasspointNetworkConnected(TEST_FQDN);
+        mManager.onPasspointNetworkConnected(TEST_FQDN, TEST_SSID);
         verify(provider, never()).setHasEverConnected(anyBoolean());
     }
 

@@ -80,7 +80,6 @@ import android.net.wifi.WifiSsid;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.Credential;
 import android.net.wifi.hotspot2.pps.HomeSp;
-import android.os.Handler;
 import android.os.IBinder;
 import android.os.ParcelUuid;
 import android.os.RemoteException;
@@ -89,6 +88,7 @@ import android.os.test.TestLooper;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.test.suitebuilder.annotation.SmallTest;
+import android.util.LocalLog;
 import android.view.LayoutInflater;
 
 import com.android.dx.mockito.inline.extended.ExtendedMockito;
@@ -300,10 +300,12 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         when(mWifiKeyStore.updateNetworkKeys(any(), any())).thenReturn(true);
 
         mWifiNetworkSuggestionsManager =
-                new WifiNetworkSuggestionsManager(mContext, new Handler(mLooper.getLooper()),
+                new WifiNetworkSuggestionsManager(mContext, new RunnerHandler(mLooper.getLooper(),
+                        100, new LocalLog(128), mWifiMetrics),
                         mWifiInjector, mWifiPermissionsUtil, mWifiConfigManager, mWifiConfigStore,
                         mWifiMetrics, mWifiCarrierInfoManager, mWifiKeyStore,
                         mLruConnectionTracker, mClock);
+        mWifiNetworkSuggestionsManager.enableVerboseLogging(true);
         mLooper.dispatchAll();
         verify(mContext).registerReceiver(mBroadcastReceiverCaptor.capture(), any(), any(), any());
 
@@ -318,8 +320,6 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
         verify(mWifiCarrierInfoManager).addImsiProtectedOrUserApprovedListener(
                 mUserApproveCarrierListenerArgumentCaptor.capture());
         verify(mWifiConfigManager).addOnNetworkUpdateListener(mNetworkListenerCaptor.capture());
-
-        mWifiNetworkSuggestionsManager.enableVerboseLogging(true);
     }
 
     @After
@@ -4348,14 +4348,8 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                         .add(networkSuggestionList, TEST_UID_1, TEST_PACKAGE_1, TEST_FEATURE));
     }
 
-    /**
-     * Verify getAllScanOptimizationSuggestionNetworks will only return user approved,
-     * non-passpoint network.
-     */
-    @Test
-    public void testGetPnoAvailableSuggestions() {
+    private List<WifiNetworkSuggestion> setupAndGetPnoAvailableSuggestions() {
         WifiConfiguration network1 = WifiConfigurationTestUtil.createOpenNetwork();
-        WifiConfiguration network2 = WifiConfigurationTestUtil.createOpenNetwork();
         PasspointConfiguration passpointConfiguration =
                 createTestConfigWithUserCredential(TEST_FQDN, TEST_FRIENDLY_NAME);
         WifiConfiguration placeholderConfig = new WifiConfiguration();
@@ -4370,9 +4364,22 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                     add(networkSuggestion);
                     add(passpointSuggestion);
                 }};
+        when(mPasspointManager.addOrUpdateProvider(any(PasspointConfiguration.class),
+                anyInt(), anyString(), eq(true), eq(true), eq(false))).thenReturn(true);
         assertEquals(WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS,
                 mWifiNetworkSuggestionsManager
                         .add(networkSuggestionList, TEST_UID_1, TEST_PACKAGE_1, TEST_FEATURE));
+        return networkSuggestionList;
+    }
+
+    /**
+     * Verify getAllScanOptimizationSuggestionNetworks will only return user approved,
+     * non-passpoint network.
+     */
+    @Test
+    public void testGetPnoAvailableSuggestions() {
+        List<WifiNetworkSuggestion> suggestions = setupAndGetPnoAvailableSuggestions();
+        WifiConfiguration network1 = suggestions.get(0).wifiConfiguration;
         assertTrue(mWifiNetworkSuggestionsManager
                 .getAllScanOptimizationSuggestionNetworks().isEmpty());
         mWifiNetworkSuggestionsManager.setHasUserApprovedForApp(true, TEST_UID_1, TEST_PACKAGE_1);
@@ -4380,6 +4387,26 @@ public class WifiNetworkSuggestionsManagerTest extends WifiBaseTest {
                 mWifiNetworkSuggestionsManager.getAllScanOptimizationSuggestionNetworks();
         assertEquals(1, pnoNetwork.size());
         assertEquals(network1.SSID, pnoNetwork.get(0).SSID);
+    }
+
+    /**
+     * Verify that getAllPasspointScanOptimizationSuggestionNetworks will only return
+     * user-approved Passpoint networks if they have a recent SSID.
+     */
+    @Test
+    public void testGetPasspointPnoAvailableSuggestions() {
+        setupAndGetPnoAvailableSuggestions();
+        mWifiNetworkSuggestionsManager.setHasUserApprovedForApp(true, TEST_UID_1, TEST_PACKAGE_1);
+        assertTrue(mWifiNetworkSuggestionsManager
+                .getAllPasspointScanOptimizationSuggestionNetworks().isEmpty());
+
+        // Expect that the Passpoint network is returned if it has a recent SSID.
+        final String ssid = "my-passpoint-network";
+        when(mPasspointManager.getMostRecentSsidForProfile(any())).thenReturn(ssid);
+        List<WifiConfiguration> configs = mWifiNetworkSuggestionsManager
+                .getAllPasspointScanOptimizationSuggestionNetworks();
+        assertEquals(1, configs.size());
+        assertEquals(ssid, configs.get(0).SSID);
     }
 
     /**

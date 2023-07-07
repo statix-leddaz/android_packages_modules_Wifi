@@ -16,14 +16,18 @@
 
 package com.android.server.wifi.aware;
 
+import static android.net.wifi.aware.Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128;
+import static android.net.wifi.aware.Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_256;
+
 import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_VERBOSE_LOGGING_ENABLED;
 
 import android.Manifest;
 import android.annotation.NonNull;
-import android.app.AppOpsManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.hardware.wifi.V1_0.NanStatusType;
+import android.net.wifi.IBooleanListener;
+import android.net.wifi.IIntegerListener;
+import android.net.wifi.IListListener;
 import android.net.wifi.WifiManager;
 import android.net.wifi.aware.AwareParams;
 import android.net.wifi.aware.AwareResources;
@@ -55,8 +59,10 @@ import com.android.server.wifi.Clock;
 import com.android.server.wifi.FrameworkFacade;
 import com.android.server.wifi.InterfaceConflictManager;
 import com.android.server.wifi.SystemBuildProperties;
+import com.android.server.wifi.WifiInjector;
 import com.android.server.wifi.WifiSettingsConfigStore;
 import com.android.server.wifi.WifiThreadRunner;
+import com.android.server.wifi.hal.WifiNanIface.NanStatusCode;
 import com.android.server.wifi.util.NetdWrapper;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.server.wifi.util.WifiPermissionsWrapper;
@@ -76,8 +82,6 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
     private boolean mVerboseLoggingEnabled = false;
     private boolean mVerboseHalLoggingEnabled = false;
 
-    private Context mContext;
-    private AppOpsManager mAppOps;
     private WifiPermissionsUtil mWifiPermissionsUtil;
     private WifiAwareStateManager mStateManager;
     private WifiAwareNativeManager mWifiAwareNativeManager;
@@ -91,12 +95,12 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
             new SparseArray<>();
     private int mNextClientId = 1;
     private final SparseIntArray mUidByClientId = new SparseIntArray();
+    private final Context mContext;
     private final BuildProperties mBuildProperties;
     private final FrameworkFacade mFrameworkFacade;
 
     public WifiAwareServiceImpl(Context context) {
         mContext = context;
-        mAppOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
         mBuildProperties = new SystemBuildProperties();
         mFrameworkFacade = new FrameworkFacade();
     }
@@ -182,7 +186,8 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
         enforceAccessPermission();
 
         return mStateManager.getCapabilities() == null ? null
-                : mStateManager.getCapabilities().toPublicCharacteristics();
+                : mStateManager.getCapabilities().toPublicCharacteristics(
+                        WifiInjector.getInstance().getDeviceConfigFacade());
     }
 
     @Override
@@ -237,9 +242,56 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
     }
 
     @Override
+    public void resetPairedDevices(String callingPackage) {
+        int uid = getMockableCallingUid();
+        mWifiPermissionsUtil.checkPackage(uid, callingPackage);
+        enforceChangePermission();
+        mStateManager.resetPairedDevices(callingPackage);
+    }
+
+    @Override
+    public void removePairedDevice(String callingPackage, String alias) {
+        int uid = getMockableCallingUid();
+        mWifiPermissionsUtil.checkPackage(uid, callingPackage);
+        enforceChangePermission();
+        mStateManager.removePairedDevice(callingPackage, alias);
+    }
+
+    @Override
+    public void getPairedDevices(String callingPackage, @NonNull IListListener listener) {
+        if (listener == null) {
+            throw new IllegalArgumentException("listener should not be null");
+        }
+        int uid = getMockableCallingUid();
+        mWifiPermissionsUtil.checkPackage(uid, callingPackage);
+        enforceAccessPermission();
+        mStateManager.getPairedDevices(callingPackage, listener);
+    }
+
+    @Override
+    public void setOpportunisticModeEnabled(String callingPackage, boolean enabled) {
+        int uid = getMockableCallingUid();
+        mWifiPermissionsUtil.checkPackage(uid, callingPackage);
+        enforceChangePermission();
+        mStateManager.setOpportunisticPackage(callingPackage, enabled);
+    }
+
+    @Override
+    public void isOpportunisticModeEnabled(String callingPackage,
+            @NonNull IBooleanListener listener) {
+        if (listener == null) {
+            throw new IllegalArgumentException("listener should not be null");
+        }
+        int uid = getMockableCallingUid();
+        mWifiPermissionsUtil.checkPackage(uid, callingPackage);
+        enforceAccessPermission();
+        mStateManager.isOpportunistic(callingPackage, listener);
+    }
+
+    @Override
     public void connect(final IBinder binder, String callingPackage, String callingFeatureId,
             IWifiAwareEventCallback callback, ConfigRequest configRequest,
-            boolean notifyOnIdentityChanged, Bundle extras) {
+            boolean notifyOnIdentityChanged, Bundle extras, boolean forOffloading) {
         enforceAccessPermission();
         enforceChangePermission();
 
@@ -260,6 +312,10 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
         if (notifyOnIdentityChanged) {
             enforceNearbyOrLocationPermission(callingPackage, callingFeatureId,
                     getMockableCallingUid(), extras, "Wifi Aware attach");
+        }
+        if (forOffloading && !mWifiPermissionsUtil.checkConfigOverridePermission(uid)) {
+            throw new SecurityException("Enable Wifi Aware for offloading require"
+                    + "OVERRIDE_WIFI_CONFIG permission");
         }
 
         if (configRequest != null) {
@@ -302,7 +358,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
         } catch (RemoteException e) {
             Log.e(TAG, "Error on linkToDeath - " + e);
             try {
-                callback.onConnectFail(NanStatusType.INTERNAL_FAILURE);
+                callback.onConnectFail(NanStatusCode.INTERNAL_FAILURE);
             } catch (RemoteException e1) {
                 Log.e(TAG, "Error on onConnectFail()");
             }
@@ -315,7 +371,7 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
         }
 
         mStateManager.connect(clientId, uid, pid, callingPackage, callingFeatureId, callback,
-                configRequest, notifyOnIdentityChanged, extras);
+                configRequest, notifyOnIdentityChanged, extras, forOffloading);
     }
 
     @Override
@@ -344,6 +400,53 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
 
         mStateManager.disconnect(clientId);
     }
+
+    @Override
+    public void setMasterPreference(int clientId, IBinder binder, int mp) {
+        int uid = getMockableCallingUid();
+        enforceClientValidity(uid, clientId);
+        if (binder == null) {
+            throw new IllegalArgumentException("Binder must not be null");
+        }
+        if (!mWifiPermissionsUtil.checkConfigOverridePermission(uid)) {
+            throw new SecurityException("setMasterPreference requires "
+                    + "OVERRIDE_WIFI_CONFIG permission");
+        }
+
+        if (mp < 0) {
+            throw new IllegalArgumentException(
+                    "Master Preference specification must be non-negative");
+        }
+        if (mp == 1 || mp == 255 || mp > 255) {
+            throw new IllegalArgumentException("Master Preference specification must not "
+                    + "exceed 255 or use 1 or 255 (reserved values)");
+        }
+
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "setMasterPreference: uid=" + uid + ", clientId=" + clientId);
+        }
+
+        mStateManager.setMasterPreference(clientId, mp);
+    }
+
+    @Override
+    public void getMasterPreference(int clientId, IBinder binder, IIntegerListener listener) {
+        int uid = getMockableCallingUid();
+        enforceClientValidity(uid, clientId);
+        if (binder == null) {
+            throw new IllegalArgumentException("Binder must not be null");
+        }
+        if (!mWifiPermissionsUtil.checkConfigOverridePermission(uid)) {
+            throw new SecurityException("getMasterPreference requires "
+                    + "OVERRIDE_WIFI_CONFIG permission");
+        }
+
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "getMasterPreference: uid=" + uid + ", clientId=" + clientId);
+        }
+        mStateManager.getMasterPreference(clientId, listener);
+    }
+
 
     @Override
     public void terminateSession(int clientId, int sessionId) {
@@ -380,8 +483,13 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
             throw new IllegalArgumentException("PublishConfig must not be null");
         }
         publishConfig.assertValid(mStateManager.getCharacteristics(),
-                mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT)
-        );
+                mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT));
+
+        if (SdkLevel.isAtLeastU() && publishConfig.isSuspendable()
+                && !mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(uid)) {
+            throw new SecurityException("App not allowed to use Aware suspension"
+                    + "(uid = " + uid + ")");
+        }
 
         enforceClientValidity(uid, clientId);
         if (mVerboseLoggingEnabled) {
@@ -401,10 +509,15 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
             throw new IllegalArgumentException("PublishConfig must not be null");
         }
         publishConfig.assertValid(mStateManager.getCharacteristics(),
-                mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT)
-        );
+                mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT));
 
         int uid = getMockableCallingUid();
+        if (SdkLevel.isAtLeastU() && publishConfig.isSuspendable()
+                && !mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(uid)) {
+            throw new SecurityException("App not allowed to use Aware suspension"
+                    + "(uid = " + uid + ")");
+        }
+
         enforceClientValidity(uid, clientId);
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "updatePublish: uid=" + uid + ", clientId=" + clientId + ", sessionId="
@@ -434,8 +547,13 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
             throw new IllegalArgumentException("SubscribeConfig must not be null");
         }
         subscribeConfig.assertValid(mStateManager.getCharacteristics(),
-                mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT)
-        );
+                mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT));
+
+        if (SdkLevel.isAtLeastU() && subscribeConfig.isSuspendable()
+                && !mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(uid)) {
+            throw new SecurityException("App not allowed to use Aware suspension"
+                    + "(uid = " + uid + ")");
+        }
 
         enforceClientValidity(uid, clientId);
         if (mVerboseLoggingEnabled) {
@@ -455,10 +573,15 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
             throw new IllegalArgumentException("SubscribeConfig must not be null");
         }
         subscribeConfig.assertValid(mStateManager.getCharacteristics(),
-                mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT)
-        );
+                mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_RTT));
 
         int uid = getMockableCallingUid();
+        if (SdkLevel.isAtLeastU() && subscribeConfig.isSuspendable()
+                && !mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(uid)) {
+            throw new SecurityException("App not allowed to use Aware suspension"
+                    + "(uid = " + uid + ")");
+        }
+
         enforceClientValidity(uid, clientId);
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "updateSubscribe: uid=" + uid + ", clientId=" + clientId + ", sessionId="
@@ -505,6 +628,134 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
         enforceNetworkStackPermission();
 
         mStateManager.requestMacAddresses(uid, peerIds, callback);
+    }
+
+    @Override
+    public void initiateNanPairingSetupRequest(int clientId, int sessionId, int peerId,
+            String password, String pairingDeviceAlias, int cipherSuite) {
+        enforceAccessPermission();
+        enforceChangePermission();
+        if (!mStateManager.getCharacteristics().isAwarePairingSupported()) {
+            throw new IllegalArgumentException(
+                    "NAN pairing is not supported");
+        }
+        if (pairingDeviceAlias == null) {
+            throw new IllegalArgumentException(
+                    "initiateNanPairingRequest: invalid pairingDeviceAlias - must be non-null");
+        }
+        if (cipherSuite != WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128
+                && cipherSuite != WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_256) {
+            throw new IllegalArgumentException(
+                    "initiateNanPairingRequest: cipher suite is invalid");
+        }
+        int uid = getMockableCallingUid();
+        enforceClientValidity(uid, clientId);
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG,
+                    "initiateNanPairingRequest: sessionId=" + sessionId + ", uid=" + uid
+                            + ", clientId=" + clientId + ", peerId=" + peerId);
+        }
+        mStateManager.initiateNanPairingSetupRequest(clientId, sessionId, peerId, password,
+                pairingDeviceAlias, cipherSuite);
+    }
+
+    @Override
+    public void responseNanPairingSetupRequest(int clientId, int sessionId, int peerId,
+            int requestId, String password, String pairingDeviceAlias, boolean accept,
+            int cipherSuite) {
+        enforceAccessPermission();
+        enforceChangePermission();
+        if (!mStateManager.getCharacteristics().isAwarePairingSupported()) {
+            throw new IllegalArgumentException(
+                    "NAN pairing is not supported");
+        }
+        if (accept) {
+            if (pairingDeviceAlias == null) {
+                throw new IllegalArgumentException(
+                        "responseNanPairingSetupRequest: invalid pairingDeviceAlias - "
+                                + "must be non-null");
+            }
+            if (cipherSuite != WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128
+                    && cipherSuite != WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_256) {
+                throw new IllegalArgumentException(
+                        "responseNanPairingSetupRequest: cipher suite is invalid");
+            }
+        }
+        int uid = getMockableCallingUid();
+        enforceClientValidity(uid, clientId);
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG,
+                    "responsePairingRequest: sessionId=" + sessionId + ", uid=" + uid
+                            + ", clientId=" + clientId + ", peerId=" + peerId);
+        }
+        mStateManager.responseNanPairingSetupRequest(clientId, sessionId, peerId, requestId,
+                password, pairingDeviceAlias, accept, cipherSuite);
+    }
+
+    @Override
+    public void initiateBootStrappingSetupRequest(int clientId, int sessionId, int peerId,
+            int method) {
+        enforceAccessPermission();
+        enforceChangePermission();
+        if (!mStateManager.getCharacteristics().isAwarePairingSupported()) {
+            throw new IllegalArgumentException(
+                    "NAN pairing is not supported");
+        }
+        int uid = getMockableCallingUid();
+        enforceClientValidity(uid, clientId);
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG,
+                    "initiateBootStrappingSetupRequest: sessionId=" + sessionId
+                            + ", uid=" + uid + ", clientId=" + clientId + ", peerId=" + peerId);
+        }
+        mStateManager.initiateBootStrappingSetupRequest(clientId, sessionId, peerId, method, 0,
+                null);
+    }
+
+    @Override
+    public void suspend(int clientId, int sessionId) {
+        enforceAccessPermission();
+        enforceChangePermission();
+
+        int uid = getMockableCallingUid();
+        enforceClientValidity(uid, clientId);
+        if (!mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(uid)) {
+            throw new SecurityException("App not allowed to use Aware suspension"
+                    + "(uid = " + uid + ")");
+        }
+
+        if (!mStateManager.getCharacteristics().isSuspensionSupported()) {
+            throw new UnsupportedOperationException("NAN suspension is not supported.");
+        }
+
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "suspend: clientId=" + clientId + ", sessionId=" + sessionId);
+        }
+
+        mStateManager.suspend(clientId, sessionId);
+    }
+
+    @Override
+    public void resume(int clientId, int sessionId) {
+        enforceAccessPermission();
+        enforceChangePermission();
+
+        int uid = getMockableCallingUid();
+        enforceClientValidity(uid, clientId);
+        if (!mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(uid)) {
+            throw new SecurityException("App not allowed to use Aware suspension"
+                    + "(uid = " + uid + ")");
+        }
+
+        if (!mStateManager.getCharacteristics().isSuspensionSupported()) {
+            throw new UnsupportedOperationException("NAN suspension is not supported.");
+        }
+
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "resume: clientId=" + clientId + ", sessionId=" + sessionId);
+        }
+
+        mStateManager.resume(clientId, sessionId);
     }
 
     @Override
@@ -561,7 +812,6 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
             mWifiPermissionsUtil.enforceNearbyDevicesPermission(extras.getParcelable(
                     WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE), true, message);
         }
-
     }
 
     private void enforceNetworkStackPermission() {
