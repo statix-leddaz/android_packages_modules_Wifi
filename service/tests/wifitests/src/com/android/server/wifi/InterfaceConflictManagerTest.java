@@ -70,7 +70,7 @@ import java.util.Collections;
  * Unit test harness for InterfaceConflictManager.
  */
 @SmallTest
-public class InterfaceConflictManagerTest {
+public class InterfaceConflictManagerTest extends WifiBaseTest{
     private TestLooper mTestLooper;
     private InterfaceConflictManager mDut;
 
@@ -135,6 +135,7 @@ public class InterfaceConflictManagerTest {
         mDut = new InterfaceConflictManager(mWifiInjector, mWifiContext, mFrameworkFacade, mHdm,
                 new WifiThreadRunner(new Handler(mTestLooper.getLooper())), mWifiDialogManager,
                 mLocalLog);
+        mDut.enableVerboseLogging(true);
         mDut.handleBootCompleted();
     }
 
