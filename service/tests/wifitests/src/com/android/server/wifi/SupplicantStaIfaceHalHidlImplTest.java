@@ -117,11 +117,10 @@ import java.util.Random;
  */
 @SmallTest
 public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
-    private static final Map<Integer, String> NETWORK_ID_TO_SSID = new HashMap<Integer, String>() {{
-            put(1, "\"ssid1\"");
-            put(2, "\"ssid2\"");
-            put(3, "\"ssid3\"");
-        }};
+    private static final Map<Integer, String> NETWORK_ID_TO_SSID = Map.of(
+            1, "\"ssid1\"",
+            2, "\"ssid2\"",
+            3, "\"ssid3\"");
     private static final int SUPPLICANT_NETWORK_ID = 2;
     private static final String SUPPLICANT_SSID = NETWORK_ID_TO_SSID.get(SUPPLICANT_NETWORK_ID);
     private static final WifiSsid TRANSLATED_SUPPLICANT_SSID =
@@ -303,7 +302,8 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 .getMacAddress(any(ISupplicantStaIface.getMacAddressCallback.class));
         when(mFrameworkFacade.startSupplicant()).thenReturn(true);
         mHandler = spy(new Handler(mLooper.getLooper()));
-        when(mSsidTranslator.getTranslatedSsid(any())).thenReturn(TRANSLATED_SUPPLICANT_SSID);
+        when(mSsidTranslator.getTranslatedSsidForStaIface(any(), anyString()))
+                .thenReturn(TRANSLATED_SUPPLICANT_SSID);
         when(mSsidTranslator.getOriginalSsid(any())).thenAnswer((Answer<WifiSsid>) invocation ->
                 WifiSsid.fromString(((WifiConfiguration) invocation.getArgument(0)).SSID));
         when(mSsidTranslator.getAllPossibleOriginalSsids(TRANSLATED_SUPPLICANT_SSID)).thenAnswer(
@@ -1163,7 +1163,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         // Can't compare WifiSsid instances because they lack an equals.
         verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(WifiConfiguration.INVALID_NETWORK_ID),
-                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(SupplicantState.INACTIVE));
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(0), eq(SupplicantState.INACTIVE));
     }
 
     /**
@@ -1184,7 +1184,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
 
         verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId),
-                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(SupplicantState.ASSOCIATED));
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(0), eq(SupplicantState.ASSOCIATED));
     }
 
     /**
@@ -1209,7 +1209,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID));
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId),
-                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(SupplicantState.COMPLETED));
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(0), eq(SupplicantState.COMPLETED));
     }
 
     /**
@@ -2448,7 +2448,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         executeAndValidateInitializationSequenceV1_3();
         assertTrue(mDut.connectToNetwork(WLAN0_IFACE_NAME, config));
 
-        verify(mPmkCacheManager, never()).add(any(), anyInt(), anyLong(), any());
+        verify(mPmkCacheManager, never()).add(any(), anyInt(), any(), anyLong(), any());
         verify(mSupplicantStaNetworkMock, never()).setPmkCache(any(ArrayList.class));
         verify(mISupplicantStaIfaceCallbackV13, never()).onPmkCacheAdded(
                 anyLong(), any(ArrayList.class));
@@ -3163,6 +3163,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 .saveWifiConfiguration(configCaptor.capture());
         assertTrue(TextUtils.equals(configCaptor.getValue().SSID, ssid));
         verify(mSupplicantStaNetworkMock, times(numNetworkAdditions)).select();
+        verify(mSsidTranslator).setTranslatedSsidForStaIface(any(), anyString());
     }
 
     /**
@@ -3565,7 +3566,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
         // Can't compare WifiSsid instances because they lack an equals.
         verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(WifiConfiguration.INVALID_NETWORK_ID),
-                any(WifiSsid.class), eq(BSSID), eq(SupplicantState.INACTIVE));
+                any(WifiSsid.class), eq(BSSID), eq(0), eq(SupplicantState.INACTIVE));
     }
 
     /**
@@ -3588,7 +3589,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
 
         verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId),
-                any(WifiSsid.class), eq(BSSID), eq(SupplicantState.ASSOCIATED));
+                any(WifiSsid.class), eq(BSSID), eq(0), eq(SupplicantState.ASSOCIATED));
     }
 
     /**
@@ -3615,7 +3616,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID));
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId),
-                any(WifiSsid.class), eq(BSSID), eq(SupplicantState.COMPLETED));
+                any(WifiSsid.class), eq(BSSID), eq(0), eq(SupplicantState.COMPLETED));
     }
 
     /**
@@ -3698,7 +3699,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID));
         wifiMonitorInOrder.verify(mWifiMonitor).broadcastSupplicantStateChangeEvent(
                 eq(WLAN0_IFACE_NAME), eq(frameworkNetworkId),
-                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(SupplicantState.COMPLETED));
+                eq(TRANSLATED_SUPPLICANT_SSID), eq(BSSID), eq(0), eq(SupplicantState.COMPLETED));
     }
 
     @Test
@@ -3831,6 +3832,10 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 WifiConfiguration.SECURITY_TYPE_PSK, null, false);
         mISupplicantStaIfaceCallback.onStateChanged(
                 ISupplicantStaIfaceCallback.State.ASSOCIATING,
+                NativeUtil.macAddressToByteArray(BSSID), SUPPLICANT_NETWORK_ID,
+                NativeUtil.decodeSsid(SUPPLICANT_SSID));
+        mISupplicantStaIfaceCallback.onStateChanged(
+                ISupplicantStaIfaceCallback.State.FOURWAY_HANDSHAKE,
                 NativeUtil.macAddressToByteArray(BSSID), SUPPLICANT_NETWORK_ID,
                 NativeUtil.decodeSsid(SUPPLICANT_SSID));
         mISupplicantStaIfaceCallback.onAuthenticationTimeout(
