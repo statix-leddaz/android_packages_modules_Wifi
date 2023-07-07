@@ -17,9 +17,12 @@
 package com.android.server.wifi;
 
 import static android.Manifest.permission.NETWORK_SETTINGS;
+import static android.app.BroadcastOptions.DEFERRAL_POLICY_UNTIL_ACTIVE;
+import static android.app.BroadcastOptions.DELIVERY_GROUP_POLICY_MOST_RECENT;
 
 import android.annotation.IntDef;
 import android.annotation.NonNull;
+import android.app.BroadcastOptions;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -40,6 +43,7 @@ import android.net.wifi.WifiStringResourceWrapper;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.Credential;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.ParcelUuid;
 import android.os.PersistableBundle;
@@ -59,6 +63,7 @@ import android.util.SparseBooleanArray;
 
 import androidx.annotation.RequiresApi;
 
+import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
 import com.android.modules.utils.HandlerExecutor;
@@ -198,8 +203,11 @@ public class WifiCarrierInfoManager {
     private boolean mVerboseLogEnabled = false;
     private SparseBooleanArray mImsiEncryptionInfoAvailable = new SparseBooleanArray();
     private final Map<Integer, Boolean> mImsiPrivacyProtectionExemptionMap = new HashMap<>();
-    private final Map<Integer, Boolean> mMergedCarrierNetworkOffloadMap = new HashMap<>();
-    private final Map<Integer, Boolean> mUnmergedCarrierNetworkOffloadMap = new HashMap<>();
+    private final Object mCarrierNetworkOffloadMapLock = new Object();
+    @GuardedBy("mCarrierNetworkOffloadMapLock")
+    private SparseBooleanArray mMergedCarrierNetworkOffloadMap = new SparseBooleanArray();
+    @GuardedBy("mCarrierNetworkOffloadMapLock")
+    private SparseBooleanArray mUnmergedCarrierNetworkOffloadMap = new SparseBooleanArray();
     private final List<OnImsiProtectedOrUserApprovedListener>
             mOnImsiProtectedOrUserApprovedListeners = new ArrayList<>();
     private final SparseBooleanArray mUserDataEnabled = new SparseBooleanArray();
@@ -336,13 +344,11 @@ public class WifiCarrierInfoManager {
             WifiCarrierInfoStoreManagerData.DataSource {
 
         @Override
-        public Map<Integer, Boolean> toSerializeMergedCarrierNetworkOffloadMap() {
-            return mMergedCarrierNetworkOffloadMap;
-        }
-
-        @Override
-        public Map<Integer, Boolean> toSerializeUnmergedCarrierNetworkOffloadMap() {
-            return mUnmergedCarrierNetworkOffloadMap;
+        public SparseBooleanArray getCarrierNetworkOffloadMap(boolean isMerged) {
+            synchronized (mCarrierNetworkOffloadMapLock) {
+                return isMerged ? mMergedCarrierNetworkOffloadMap
+                        : mUnmergedCarrierNetworkOffloadMap;
+            }
         }
 
         @Override
@@ -350,19 +356,16 @@ public class WifiCarrierInfoManager {
             mHasNewSharedDataToSerialize = false;
         }
 
-
         @Override
-        public void fromMergedCarrierNetworkOffloadMapDeserialized(
-                Map<Integer, Boolean> carrierOffloadMap) {
-            mMergedCarrierNetworkOffloadMap.clear();
-            mMergedCarrierNetworkOffloadMap.putAll(carrierOffloadMap);
-        }
-
-        @Override
-        public void fromUnmergedCarrierNetworkOffloadMapDeserialized(
-                Map<Integer, Boolean> subscriptionOffloadMap) {
-            mUnmergedCarrierNetworkOffloadMap.clear();
-            mUnmergedCarrierNetworkOffloadMap.putAll(subscriptionOffloadMap);
+        public void setCarrierNetworkOffloadMap(SparseBooleanArray carrierOffloadMap,
+                boolean isMerged) {
+            synchronized (mCarrierNetworkOffloadMapLock) {
+                if (isMerged) {
+                    mMergedCarrierNetworkOffloadMap = carrierOffloadMap;
+                } else {
+                    mUnmergedCarrierNetworkOffloadMap = carrierOffloadMap;
+                }
+            }
         }
 
         @Override
@@ -385,8 +388,10 @@ public class WifiCarrierInfoManager {
 
         @Override
         public void reset() {
-            mMergedCarrierNetworkOffloadMap.clear();
-            mUnmergedCarrierNetworkOffloadMap.clear();
+            synchronized (mCarrierNetworkOffloadMapLock) {
+                mMergedCarrierNetworkOffloadMap.clear();
+                mUnmergedCarrierNetworkOffloadMap.clear();
+            }
         }
 
         @Override
@@ -447,7 +452,16 @@ public class WifiCarrierInfoManager {
                         case NOTIFICATION_USER_CLICKED_INTENT_ACTION:
                             sendImsiPrivacyConfirmationDialog(carrierName, carrierId);
                             // Collapse the notification bar
-                            mContext.sendBroadcast(new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
+                            Bundle options = null;
+                            if (SdkLevel.isAtLeastU()) {
+                                options = BroadcastOptions.makeBasic()
+                                        .setDeliveryGroupPolicy(DELIVERY_GROUP_POLICY_MOST_RECENT)
+                                        .setDeferralPolicy(DEFERRAL_POLICY_UNTIL_ACTIVE)
+                                        .toBundle();
+                            }
+                            final Intent broadcast = new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
+                                    .addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
+                            mContext.sendBroadcast(broadcast, null, options);
                             break;
                         case NOTIFICATION_USER_DISMISSED_INTENT_ACTION:
                             handleUserDismissAction();
@@ -2074,17 +2088,22 @@ public class WifiCarrierInfoManager {
      */
     public void setCarrierNetworkOffloadEnabled(int subscriptionId, boolean merged,
             boolean enabled) {
-        if (merged) {
-            mMergedCarrierNetworkOffloadMap.put(subscriptionId, enabled);
-        } else {
-            mUnmergedCarrierNetworkOffloadMap.put(subscriptionId, enabled);
-        }
-        if (!enabled) {
-            for (OnCarrierOffloadDisabledListener listener : mOnCarrierOffloadDisabledListeners) {
-                listener.onCarrierOffloadDisabled(subscriptionId, merged);
+        synchronized (mCarrierNetworkOffloadMapLock) {
+            if (merged) {
+                mMergedCarrierNetworkOffloadMap.put(subscriptionId, enabled);
+            } else {
+                mUnmergedCarrierNetworkOffloadMap.put(subscriptionId, enabled);
             }
         }
-        saveToStore();
+        mHandler.post(() -> {
+            if (!enabled) {
+                for (OnCarrierOffloadDisabledListener listener :
+                        mOnCarrierOffloadDisabledListeners) {
+                    listener.onCarrierOffloadDisabled(subscriptionId, merged);
+                }
+            }
+            saveToStore();
+        });
     }
 
     /**
@@ -2094,11 +2113,13 @@ public class WifiCarrierInfoManager {
      * @return True to indicate carrier offload is enabled, false otherwise.
      */
     public boolean isCarrierNetworkOffloadEnabled(int subId, boolean merged) {
-        if (merged) {
-            return mMergedCarrierNetworkOffloadMap.getOrDefault(subId, true)
-                    && isMobileDataEnabled(subId);
-        } else {
-            return mUnmergedCarrierNetworkOffloadMap.getOrDefault(subId, true);
+        synchronized (mCarrierNetworkOffloadMapLock) {
+            if (merged) {
+                return mMergedCarrierNetworkOffloadMap.get(subId, true)
+                        && isMobileDataEnabled(subId);
+            } else {
+                return mUnmergedCarrierNetworkOffloadMap.get(subId, true);
+            }
         }
     }
 
@@ -2135,9 +2156,11 @@ public class WifiCarrierInfoManager {
      * Helper method for user factory reset network setting.
      */
     public void clear() {
+        synchronized (mCarrierNetworkOffloadMapLock) {
+            mMergedCarrierNetworkOffloadMap.clear();
+            mUnmergedCarrierNetworkOffloadMap.clear();
+        }
         mImsiPrivacyProtectionExemptionMap.clear();
-        mMergedCarrierNetworkOffloadMap.clear();
-        mUnmergedCarrierNetworkOffloadMap.clear();
         mUserDataEnabled.clear();
         mCarrierPrivilegedPackagesBySimSlot.clear();
         if (SdkLevel.isAtLeastS()) {
@@ -2278,7 +2301,6 @@ public class WifiCarrierInfoManager {
         if (!mDeviceConfigFacade.isOobPseudonymEnabled()) {
             return false;
         }
-
         boolean ret = isOobPseudonymFeatureEnabledInResource(carrierId);
         vlogd("isOobPseudonymFeatureEnabled() = " + ret);
         return ret;

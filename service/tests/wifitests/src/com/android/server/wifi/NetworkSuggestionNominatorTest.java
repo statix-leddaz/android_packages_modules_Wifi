@@ -1903,12 +1903,9 @@ public class NetworkSuggestionNominatorTest extends WifiBaseTest {
         for (int i = 0; i < minLength; i++) {
             ScanDetail scanDetail = scanDetails[i];
             final ExtendedWifiNetworkSuggestion matchingSuggestion = suggestions[i];
-            HashSet<ExtendedWifiNetworkSuggestion> matchingSuggestions =
-                    new HashSet<ExtendedWifiNetworkSuggestion>() {{
-                        add(matchingSuggestion);
-                    }};
+            Set<ExtendedWifiNetworkSuggestion> matchingSuggestions = Set.of(matchingSuggestion);
             when(mWifiNetworkSuggestionsManager.getNetworkSuggestionsForScanDetail(eq(scanDetail)))
-                    .thenReturn((matchingSuggestions));
+                    .thenReturn(matchingSuggestions);
         }
         if (scanDetails.length > suggestions.length) {
             // No match for the remaining scan details.
@@ -1923,7 +1920,7 @@ public class NetworkSuggestionNominatorTest extends WifiBaseTest {
                     Arrays.asList(suggestions).subList(minLength - 1, suggestions.length));
             ScanDetail lastScanDetail = scanDetails[minLength - 1];
             when(mWifiNetworkSuggestionsManager.getNetworkSuggestionsForScanDetail(
-                    eq(lastScanDetail))).thenReturn((matchingSuggestions));
+                    eq(lastScanDetail))).thenReturn(matchingSuggestions);
         }
     }
 
