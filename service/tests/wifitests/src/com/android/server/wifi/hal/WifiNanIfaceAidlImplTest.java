@@ -43,6 +43,7 @@ import android.net.wifi.aware.WifiAwareDataPathSecurityConfig;
 import android.os.RemoteException;
 import android.util.Pair;
 
+import com.android.server.wifi.WifiBaseTest;
 import com.android.server.wifi.aware.Capabilities;
 
 import org.junit.Before;
@@ -53,7 +54,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
-public class WifiNanIfaceAidlImplTest {
+public class WifiNanIfaceAidlImplTest extends WifiBaseTest {
     private static final Capabilities TEST_CAPABILITIES = new Capabilities();
 
     private WifiNanIfaceAidlImpl mDut;
@@ -474,6 +475,7 @@ public class WifiNanIfaceAidlImplTest {
             throws Exception {
         short tid = 44;
         int peerId = 555;
+        byte pubSubId = 1;
         int channelRequestType =
                 android.hardware.wifi.NanDataPathChannelCfg.CHANNEL_NOT_REQUESTED;
         int channel = 2146;
@@ -500,7 +502,7 @@ public class WifiNanIfaceAidlImplTest {
         }
 
         mDut.initiateDataPath(tid, peerId, channelRequestType, channel, peer, interfaceName,
-                isOutOfBand, appInfo, TEST_CAPABILITIES, securityConfig);
+                isOutOfBand, appInfo, TEST_CAPABILITIES, securityConfig, pubSubId);
 
         verify(mIWifiNanIfaceMock).initiateDataPathRequest(eq((char) tid), captor.capture());
 
@@ -512,6 +514,7 @@ public class WifiNanIfaceAidlImplTest {
                 equalTo(nidpr.channelRequestType));
         collector.checkThat("channel", channel, equalTo(nidpr.channel));
         collector.checkThat("ifaceName", interfaceName, equalTo(nidpr.ifaceName));
+        collector.checkThat("pubSubId", pubSubId, equalTo(nidpr.discoverySessionId));
 
         if (usePmk) {
             collector.checkThat("securityConfig.securityType",
@@ -551,6 +554,7 @@ public class WifiNanIfaceAidlImplTest {
             throws Exception {
         short tid = 33;
         int ndpId = 44;
+        byte pubSubId = 1;
         String interfaceName = "aware_whatever22";
         final byte[] pmk = "01234567890123456789012345678901".getBytes();
         String passphrase = "blahblah";
@@ -573,7 +577,7 @@ public class WifiNanIfaceAidlImplTest {
         }
 
         mDut.respondToDataPathRequest(tid, accept, ndpId, interfaceName,
-                appInfo, isOutOfBand, TEST_CAPABILITIES, securityConfig);
+                appInfo, isOutOfBand, TEST_CAPABILITIES, securityConfig, pubSubId);
 
         verify(mIWifiNanIfaceMock)
                 .respondToDataPathIndicationRequest(eq((char) tid), captor.capture());
@@ -583,6 +587,7 @@ public class WifiNanIfaceAidlImplTest {
         collector.checkThat("acceptRequest", accept, equalTo(nrtdpir.acceptRequest));
         collector.checkThat("ndpInstanceId", ndpId, equalTo(nrtdpir.ndpInstanceId));
         collector.checkThat("ifaceName", interfaceName, equalTo(nrtdpir.ifaceName));
+        collector.checkThat("pubSubId", pubSubId, equalTo(nrtdpir.discoverySessionId));
 
         if (accept) {
             if (usePmk) {

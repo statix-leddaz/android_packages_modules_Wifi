@@ -84,6 +84,12 @@ public class WifiSettingsConfigStore {
             new Key<>("wifi_p2p_device_name", null);
 
     /**
+     * The Wi-Fi peer-to-peer device mac address
+     */
+    public static final Key<String> WIFI_P2P_DEVICE_ADDRESS =
+            new Key<>("wifi_p2p_device_address", null);
+
+    /**
      * Whether Wifi scoring is enabled or not.
      */
     public static final Key<Boolean> WIFI_SCORING_ENABLED =
@@ -139,6 +145,19 @@ public class WifiSettingsConfigStore {
     public static final Key<String> WIFI_STATIC_CHIP_INFO = new Key<>("wifi_static_chip_info", "");
 
     /**
+     * Store the last country code used by Soft AP.
+     */
+    public static final Key<String> WIFI_SOFT_AP_COUNTRY_CODE =
+            new Key<>("wifi_last_country_code", "");
+
+    /**
+     * Store the available channel frequencies in a JSON array for Soft AP for the last country
+     * code used.
+     */
+    public static final Key<String> WIFI_AVAILABLE_SOFT_AP_FREQS_MHZ =
+            new Key<>("wifi_available_soft_ap_freqs_mhz", "[]");
+
+    /**
      * Whether to show a dialog when third party apps attempt to enable wifi.
      */
     public static final Key<Boolean> SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI =
@@ -151,6 +170,12 @@ public class WifiSettingsConfigStore {
      */
     public static final Key<Boolean> SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI_SET_BY_API =
             new Key<>("show_dialog_when_third_party_apps_enable_wifi_set_by_api", false);
+
+    /**
+     * AIDL version implemented by the Supplicant service.
+     */
+    public static final Key<Integer> SUPPLICANT_HAL_AIDL_SERVICE_VERSION =
+            new Key<>("supplicant_hal_aidl_service_version", -1);
 
     /******** Wifi shared pref keys ***************/
 

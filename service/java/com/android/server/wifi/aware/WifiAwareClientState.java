@@ -23,7 +23,6 @@ import static com.android.server.wifi.aware.WifiAwareStateManager.INSTANT_MODE_D
 import android.annotation.Nullable;
 import android.app.AppOpsManager;
 import android.content.Context;
-import android.net.MacAddress;
 import android.net.wifi.aware.ConfigRequest;
 import android.net.wifi.aware.IWifiAwareEventCallback;
 import android.net.wifi.aware.IdentityChangedListener;
@@ -63,7 +62,7 @@ public class WifiAwareClientState {
     private final int mUid;
     private final int mPid;
     private final String mCallingPackage;
-    private final @Nullable String mCallingFeatureId;
+    public final @Nullable String mCallingFeatureId;
     private final boolean mNotifyIdentityChange;
     private final WifiPermissionsUtil mWifiPermissionsUtil;
     private final Object mAttributionSource;
@@ -71,6 +70,7 @@ public class WifiAwareClientState {
     private final AppOpsManager mAppOps;
     private final long mCreationTime;
     private final boolean mAwareOffload;
+    public final int mCallerType;
 
     private static final byte[] ALL_ZERO_MAC = new byte[] {0, 0, 0, 0, 0, 0};
     private byte[] mLastDiscoveryInterfaceMac = ALL_ZERO_MAC;
@@ -81,7 +81,7 @@ public class WifiAwareClientState {
             IWifiAwareEventCallback callback, ConfigRequest configRequest,
             boolean notifyIdentityChange, long creationTime,
             WifiPermissionsUtil wifiPermissionsUtil, Object attributionSource, LocalLog localLog,
-            boolean awareOffload) {
+            boolean awareOffload, int callerType) {
         mContext = context;
         mClientId = clientId;
         mUid = uid;
@@ -98,6 +98,7 @@ public class WifiAwareClientState {
         mWifiPermissionsUtil = wifiPermissionsUtil;
         mAttributionSource = attributionSource;
         mLocalLog = localLog;
+        mCallerType = callerType;
     }
 
     /**
@@ -255,10 +256,10 @@ public class WifiAwareClientState {
                 + ", mLastDiscoveryInterfaceMac="
                 + String.valueOf(HexEncoding.encode(mLastDiscoveryInterfaceMac)));
         if (mNotifyIdentityChange && !Arrays.equals(mac, mLastDiscoveryInterfaceMac)) {
+            boolean hasPermission = mWifiPermissionsUtil.checkCallersLocationPermission(
+                    mCallingPackage, mCallingFeatureId, mUid,
+                    /* coarseForTargetSdkLessThanQ */ true, null);
             try {
-                boolean hasPermission = mWifiPermissionsUtil.checkCallersLocationPermission(
-                        mCallingPackage, mCallingFeatureId, mUid,
-                        /* coarseForTargetSdkLessThanQ */ true, null);
                 if (VDBG) Log.v(TAG, "hasPermission=" + hasPermission);
                 mCallback.onIdentityChanged(hasPermission ? mac : ALL_ZERO_MAC);
             } catch (RemoteException e) {
@@ -293,13 +294,17 @@ public class WifiAwareClientState {
                             + ", mLastClusterId="
                             + String.valueOf(HexEncoding.encode(mLastClusterId)));
         }
-        if (mNotifyIdentityChange && !Arrays.equals(currentDiscoveryInterfaceMac,
-                mLastDiscoveryInterfaceMac)) {
+        if (!mNotifyIdentityChange) {
+            mLastDiscoveryInterfaceMac = currentDiscoveryInterfaceMac;
+            mLastClusterId = clusterId;
+            return;
+        }
+        boolean hasPermission = mWifiPermissionsUtil.checkCallersLocationPermission(
+                mCallingPackage, mCallingFeatureId, mUid,
+                /* coarseForTargetSdkLessThanQ */ true, null);
+        if (VDBG) Log.v(TAG, "hasPermission=" + hasPermission);
+        if (!Arrays.equals(currentDiscoveryInterfaceMac, mLastDiscoveryInterfaceMac)) {
             try {
-                boolean hasPermission = mWifiPermissionsUtil.checkCallersLocationPermission(
-                        mCallingPackage, mCallingFeatureId, mUid,
-                        /* coarseForTargetSdkLessThanQ */ true, null);
-                if (VDBG) Log.v(TAG, "hasPermission=" + hasPermission);
                 mCallback.onIdentityChanged(
                         hasPermission ? currentDiscoveryInterfaceMac : ALL_ZERO_MAC);
             } catch (RemoteException e) {
@@ -309,17 +314,7 @@ public class WifiAwareClientState {
 
         mLastDiscoveryInterfaceMac = currentDiscoveryInterfaceMac;
 
-        if (mNotifyIdentityChange && !Arrays.equals(clusterId, mLastClusterId)) {
-            boolean hasPermission = mWifiPermissionsUtil.checkCallersLocationPermission(
-                    mCallingPackage, mCallingFeatureId, mUid,
-                    /* coarseForTargetSdkLessThanQ */ true, null);
-            if (VDBG) Log.v(TAG, "hasPermission=" + hasPermission);
-            MacAddress clusterIdToMacAddress = null;
-            try {
-                clusterIdToMacAddress = MacAddress.fromBytes(clusterId);
-            } catch (IllegalArgumentException iae) {
-                Log.e(TAG, " Invalid MAC address, " + iae);
-            }
+        if (!Arrays.equals(clusterId, mLastClusterId)) {
             try {
                 mCallback.onClusterIdChanged(clusterEventType,
                         hasPermission ? clusterId : ALL_ZERO_MAC);

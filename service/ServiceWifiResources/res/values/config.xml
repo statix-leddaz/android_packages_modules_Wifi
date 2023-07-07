@@ -48,6 +48,12 @@
            be checked via NL80211 interface -->
     <bool translatable="false" name="config_wifi11beSupportOverride">false</bool>
 
+    <!-- Indicates whether networks using the WEP Wi-Fi security protocol is deprecated -->
+    <bool translatable="false" name="config_wifiWepDeprecated">false</bool>
+
+    <!-- Indicates whether networks using the WPA-Personal Wi-Fi security protocol is deprecated. -->
+    <bool translatable="false" name="config_wifiWpaPersonalDeprecated">false</bool>
+
     <!-- Indicates whether to enable overriding the max number of spatial stream supported by the device
          If true, config_wifiFrameworkMaxNumSpatialStreamDeviceOverrideValue
          will be used to override the max number of spatial stream supported by the device.
@@ -161,6 +167,13 @@
     <integer translatable="false" name="config_wifiFrameworkScoreEntryRssiThreshold6ghz">-77</integer>
     <integer translatable="false" name="config_wifiFrameworkScoreLowRssiThreshold6ghz">-70</integer>
     <integer translatable="false" name="config_wifiFrameworkScoreGoodRssiThreshold6ghz">-57</integer>
+    <!-- boolean indicating whether or not to ask for user approval before switching away from a user-selected network -->
+    <bool translatable="false" name="config_wifiAskUserBeforeSwitchingFromUserSelectedNetwork">false</bool>
+    <!-- boolean indicating whether or not to apply an unbeatable score boost for a recently user-selected network -->
+    <bool translatable="false" name="config_wifiThroughputScorerBoostForRecentlyUserSelectedNetwork">true</bool>
+    <!-- Duration in milliseconds to disable network switch dialogs for the current connection when
+         the network is marked usable by an external scorer. -->
+    <integer translatable="false" name="config_wifiNetworkSwitchDialogDisabledMsWhenMarkedUsable">300000</integer>
 
     <!-- Integer delay in milliseconds before shutting down soft AP when there
          are no connected devices. -->
@@ -370,6 +383,14 @@
         <!-- SSIDs are expected in quoted format:
         <item>\"SSID_1\"</item>
         <item>\"SSID_2\"</item>
+        -->
+    </string-array>
+
+    <!-- list of SSID prefixes. Disable MAC randomization on all SSIDs matching any prefix -->
+    <string-array translatable="false" name="config_wifiForceDisableMacRandomizationSsidPrefixList">
+        <!-- SSID prefixes are expected in quoted format:
+        <item>\"SSID_PREFIX_1\"</item>
+        <item>\"SSID_PREFIX_2\"</item>
         -->
     </string-array>
 
@@ -616,6 +637,10 @@
     then count it as a failure with reason code REASON_ABNORMAL_DISCONNECT (default = 30 seconds) -->
     <integer translatable="false" name="config_wifiBssidBlocklistAbnormalDisconnectTimeWindowMs"> 30000 </integer>
 
+    <!-- Controls whether a wifi connection with RSSI lower than the sufficient RSSI will be
+    temporarily disabled when it is unwanted by core networking -->
+    <bool translatable="false" name="config_wifiDisableUnwantedNetworkOnLowRssi">false</bool>
+
     <!-- Indicates that hidden networks are to be scanned during scan only mode -->
     <bool translatable="false" name="config_wifiScanHiddenNetworksScanOnlyMode">false</bool>
 
@@ -645,6 +670,11 @@
     config_wifiPnoWatchdogIntervalMs in case PNO scan failed. (default = 20 minutes)-->
     <integer translatable="false" name="config_wifiPnoWatchdogIntervalMs">1200000</integer>
 
+    <!-- Indicates whether the PNO Watchdog timer can wakeup the system when expires in order to
+    perform a single scan.
+    If set to false, single scans will be triggered only when the system awakes for other reasons-->
+    <bool translatable="false" name="config_wifiPnoWatchdogCanWakeUp">false</bool>
+
     <!-- Enable the Software PNO feature. If Hardware PNO is not enabled, the device is in
     standby and Wifi is disconnected, periodic scans are performed according to the
     following schedule:
@@ -661,7 +691,7 @@
     other reasons, the scan might be performed as well in order to avoid subsequent awakening.
     If no spontaneous awakening happens at the end of the time window, the device is awakened to
     perform the scan.-->
-    <bool translatable="false" name="config_wifiSwPnoEnabled">true</bool>
+    <bool translatable="false" name="config_wifiSwPnoEnabled">false</bool>
 
     <!-- When disconnected and Sw PNO scan is enabled, wake up to do a single scan every
     config_wifiSwPnoFastTimerSec for config_wifiSwPnoFastTimerIterations iterations-->
@@ -718,7 +748,11 @@
     milliseconds when device is connected and screen is on. The long interval is to reduce
     power consumption of link layer stats polling. This value should be greater than the regular
     interval -->
-    <integer translatable="false" name="config_wifiPollRssiLongIntervalMilliseconds">9000</integer>
+    <integer translatable="false" name="config_wifiPollRssiLongIntervalMilliseconds">6000</integer>
+
+    <!-- Integer indicating the maximum number of consecutive NETWORK_NOT_FOUND_EVENT event to allow
+    before attempting to temporarily disable the network -->
+    <integer translatable="false" name="config_wifiNetworkNotFoundEventThreshold">3</integer>
 
     <!-- RSSI threshold in dBm to decide the RSSI and link layer stats polling interval, and also
     for the client mode RSSI monitor. When the polling is enabled, if the device is stationary
@@ -897,6 +931,19 @@
     <integer translatable="false" name="config_wifiP2pExtListenPeriodMs">500</integer>
     <!-- Indicate how long p2p extended listen interval (in milliseconds) is. -->
     <integer translatable="false" name="config_wifiP2pExtListenIntervalMs">500</integer>
+    <!-- Whether to wait for Peer to restart invitation procedure when device receives invitation
+         response with status code "information is currently unavailable".
+         Defaults to false as existing implementations fall back to GO negotiation to avoid
+         connection failure with devices which doesn't support persistent re-invocation.
+         As per P2P specification, 3.1.5.3 "A P2P Device that receives an Invitation Request frame
+         to re-invoke a persistent Group and responds with a P2P Invitation Response frame with a
+         Status attribute with the Status Code field set to “Fail: information is currently
+         unavailable” shall restart the Invitation procedure by sending an Invitation Request
+         frame to the requesting P2P Device". So the device which invited the peer should wait for
+         the new request from Peer. But the current implementation is violating the specification by
+         restarting the negotiation. This was done long back to fix connection failure issues with
+         devices which doesn't support persistent re-invocation. -->
+    <bool translatable="false" name="config_p2pWaitForPeerInviteOnInviteStatusInfoUnavailable">false</bool>
 
     <!-- Integer threshold for max number of WifiConfigurations that can be saved on the device.
          A value of -1 indicates no limit. If a max number is specified, then under-used configs will
@@ -1011,7 +1058,10 @@
     <!-- Indicates whether or not P2P interface removal can be approved automatically when P2P
          is not connected. -->
     <bool translatable="false" name="config_wifiUserApprovalNotRequireForDisconnectedP2p">false</bool>
-
+    <!-- Indicates the time in milliseconds to wait after creating a P2P interface before treating
+         it as low priority when disconnected, allowing it to be deleted to create other
+         interfaces. A negative value disables this behavior. -->
+    <integer translatable="false" name="config_disconnectedP2pIfaceLowPriorityTimeoutMs">-1</integer>
     <!-- boolean indicating whether the Easy Connect (DPP) AKM is supported -->
     <bool translatable="false" name ="config_wifiDppAkmSupported">false</bool>
     <!-- Indicates the number of octets to mask for each BSSID in the SecurityLog output.
@@ -1020,7 +1070,7 @@
     <!-- Indicates whether the network-centric QoS policy feature is enabled. -->
     <bool translatable="false" name="config_wifiNetworkCentricQosPolicyFeatureEnabled">false</bool>
     <!-- Indicates whether the application-centric QoS policy feature is enabled. -->
-    <bool translatable="false" name="config_wifiApplicationCentricQosPolicyFeatureEnabled">false</bool>
+    <bool translatable="false" name="config_wifiApplicationCentricQosPolicyFeatureEnabled">true</bool>
 
     <!-- The world mode country code value definition in the wifi driver -->
     <string translatable="false" name="config_wifiDriverWorldModeCountryCode">00</string>
@@ -1129,4 +1179,25 @@
     <bool translatable="false" name ="config_wifiLowLatencyLockDisableChipPowerSave">true</bool>
     <!-- Boolean indicating whether NIAP mode is enabled by default for Wi-Fi. -->
     <bool translatable="false" name="config_wifiNiapModeEnabled">false</bool>
+    <!-- IP address configurations required for P2P GO to assign IP address in EAPOL frame.
+         Refer - Wi-Fi P2P Technical Specification v1.7 - Section  4.2.8 IP Address Allocation
+         in EAPOL-Key Frames (4-Way Handshake) for more details.
+         To enable this feature, configure below three items,
+         1. config_tether_enable_legacy_wifi_p2p_dedicated_ip in tethering module overlay file,
+            i.e.,  in packages/modules/Connectivity/Tethering/res/values/config.xml
+         2. config_p2p_leases_subnet_prefix_length in tethering module overlay config file,
+            i.e., in packages/modules/Connectivity/Tethering/res/values/config.xml
+         3. Set config_wifiP2pGoIpAddressAllocationInEapolFrames to true in wifi overlay file -->
+    <!-- Boolean indicating whether IP address allocation in EAPOL is enabled by default in Wi-Fi.
+         The GO fixed IP address is set to 192.168.49.1 and subnet mask to 255.255.255.0 -->
+    <bool translatable="false" name ="config_wifiP2pGoIpAddressAllocationInEapolFrames">false</bool>
+    <!-- The optional P2P GO IP address range reserved for IP assignment in EAPOL frame. If not
+         configured, the default range is 192.168.49.128 to 192.168.49.254 -->
+    <string translatable="false" name="config_wifiP2pGoEapolIpAddressRangeStart"/>
+    <string translatable="false" name="config_wifiP2pGoEapolIpAddressRangeEnd"/>
+    <!-- Boolean indicating whether the framework updates country from scan results when there is
+         no telephony country code. This is applied to all generic cases and might require the
+         regulatory approval (for example, FCC pre-approval is required according to "594280 D01
+         Software Configuration Control v02r01").-->
+    <bool translatable="false" name ="config_wifiUpdateCountryCodeFromScanResultGeneric">false</bool>
 </resources>

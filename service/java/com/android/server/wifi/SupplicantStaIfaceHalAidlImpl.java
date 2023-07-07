@@ -51,6 +51,7 @@ import android.hardware.wifi.supplicant.ISupplicantStaIfaceCallback;
 import android.hardware.wifi.supplicant.ISupplicantStaNetwork;
 import android.hardware.wifi.supplicant.IfaceInfo;
 import android.hardware.wifi.supplicant.IfaceType;
+import android.hardware.wifi.supplicant.IpVersion;
 import android.hardware.wifi.supplicant.KeyMgmtMask;
 import android.hardware.wifi.supplicant.LegacyMode;
 import android.hardware.wifi.supplicant.MloLinksInfo;
@@ -131,7 +132,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     private boolean mVerboseLoggingEnabled = false;
     private boolean mVerboseHalLoggingEnabled = false;
     private boolean mServiceDeclared = false;
-    private int mServiceVersion;
+    private int mServiceVersion = -1;
 
     // Supplicant HAL interface objects
     private ISupplicant mISupplicant = null;
@@ -156,6 +157,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     private final WifiMetrics mWifiMetrics;
     private final WifiGlobals mWifiGlobals;
     private final SsidTranslator mSsidTranslator;
+    private final WifiInjector mWifiInjector;
     private CountDownLatch mWaitForDeathLatch;
     private INonStandardCertCallback mNonStandardCertCallback;
     private SupplicantStaIfaceHal.QosScsResponseCallback mQosScsResponseCallback;
@@ -168,22 +170,28 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         @Override
         public void binderDied(@NonNull IBinder who) {
             synchronized (mLock) {
+                IBinder supplicantBinder = getServiceBinderMockable();
                 Log.w(TAG, "ISupplicant binder died. who=" + who + ", service="
-                        + getServiceBinderMockable());
-                if (who == getServiceBinderMockable()) {
-                    if (mWaitForDeathLatch != null) {
-                        mWaitForDeathLatch.countDown();
-                    }
-                    Log.w(TAG, "Handle supplicant death");
-                    supplicantServiceDiedHandler(who);
+                        + supplicantBinder);
+                if (supplicantBinder == null) {
+                    Log.w(TAG, "Supplicant Death EventHandler called"
+                            + " when ISupplicant/binder service is already cleared");
+                } else if (supplicantBinder != who) {
+                    Log.w(TAG, "Ignoring stale death recipient notification");
+                    return;
                 }
+                if (mWaitForDeathLatch != null) {
+                    mWaitForDeathLatch.countDown();
+                }
+                Log.w(TAG, "Handle supplicant death");
+                supplicantServiceDiedHandler();
             }
         }
     }
 
     public SupplicantStaIfaceHalAidlImpl(Context context, WifiMonitor monitor, Handler handler,
             Clock clock, WifiMetrics wifiMetrics, WifiGlobals wifiGlobals,
-            @NonNull SsidTranslator ssidTranslator) {
+            @NonNull SsidTranslator ssidTranslator, WifiInjector wifiInjector) {
         mContext = context;
         mWifiMonitor = monitor;
         mEventHandler = handler;
@@ -193,6 +201,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         mSsidTranslator = ssidTranslator;
         mSupplicantDeathRecipient = new SupplicantDeathRecipient();
         mPmkCacheManager = new PmkCacheManager(mClock, mEventHandler);
+        mWifiInjector = wifiInjector;
     }
 
     /**
@@ -415,12 +424,8 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         }
     }
 
-    private void supplicantServiceDiedHandler(IBinder who) {
+    private void supplicantServiceDiedHandler() {
         synchronized (mLock) {
-            if (who != getServiceBinderMockable()) {
-                Log.w(TAG, "Ignoring stale death recipient notification");
-                return;
-            }
             clearState();
             if (mDeathEventHandler != null) {
                 mDeathEventHandler.onDeath();
@@ -451,7 +456,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
             Log.i(TAG, "Local Version: " + ISupplicant.VERSION);
 
             try {
-                mServiceVersion = mISupplicant.getInterfaceVersion();
+                getServiceVersion();
                 Log.i(TAG, "Remote Version: " + mServiceVersion);
                 IBinder serviceBinder = getServiceBinderMockable();
                 if (serviceBinder == null) {
@@ -465,6 +470,20 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
             } catch (RemoteException e) {
                 handleRemoteException(e, methodStr);
                 return false;
+            }
+        }
+    }
+
+    private void getServiceVersion() throws RemoteException {
+        synchronized (mLock) {
+            if (mISupplicant == null) return;
+            if (mServiceVersion == -1) {
+                int serviceVersion = mISupplicant.getInterfaceVersion();
+                mWifiInjector.getSettingsConfigStore().put(
+                        WifiSettingsConfigStore.SUPPLICANT_HAL_AIDL_SERVICE_VERSION,
+                        serviceVersion);
+                mServiceVersion = serviceVersion;
+                Log.i(TAG, "Remote service version was cached");
             }
         }
     }
@@ -506,8 +525,12 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     protected ISupplicant getSupplicantMockable() {
         synchronized (mLock) {
             try {
-                return ISupplicant.Stub.asInterface(
-                        ServiceManager.waitForDeclaredService(HAL_INSTANCE_NAME));
+                if (SdkLevel.isAtLeastT()) {
+                    return ISupplicant.Stub.asInterface(
+                            ServiceManager.waitForDeclaredService(HAL_INSTANCE_NAME));
+                } else {
+                    return null;
+                }
             } catch (Exception e) {
                 Log.e(TAG, "Unable to get ISupplicant service, " + e);
                 return null;
@@ -675,11 +698,12 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                     if (config.SSID != null) {
                         // No actual SSID supplied, so select from the network selection BSSID
                         // or the latest candidate BSSID.
+                        WifiSsid configSsid = WifiSsid.fromString(config.SSID);
                         WifiSsid supplicantSsid = mSsidTranslator.getOriginalSsid(config);
                         if (supplicantSsid != null) {
                             supplicantConfig.SSID = supplicantSsid.toString();
                             List<WifiSsid> allPossibleSsids = mSsidTranslator
-                                    .getAllPossibleOriginalSsids(WifiSsid.fromString(config.SSID));
+                                    .getAllPossibleOriginalSsids(configSsid);
                             WifiSsid selectedSsid = mSsidTranslator.getOriginalSsid(config);
                             allPossibleSsids.remove(selectedSsid);
                             if (!allPossibleSsids.isEmpty()) {
@@ -691,6 +715,9 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                             Log.d(TAG, "Selecting supplicant SSID " + supplicantSsid);
                             supplicantConfig.SSID = supplicantSsid.toString();
                         }
+                        // Set the actual translation of the original SSID in case the untranslated
+                        // SSID has an ambiguous encoding.
+                        mSsidTranslator.setTranslatedSsidForStaIface(configSsid, ifaceName);
                     }
                 }
                 Pair<SupplicantStaNetworkHalAidlImpl, WifiConfiguration> pair =
@@ -1086,7 +1113,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                             network, ifaceName, mContext,
                             mWifiMonitor, mWifiGlobals,
                             getAdvancedCapabilities(ifaceName),
-                            getWpaDriverCapabilities(ifaceName));
+                            getWpaDriverFeatureSet(ifaceName));
             if (networkWrapper != null) {
                 networkWrapper.enableVerboseLogging(
                         mVerboseLoggingEnabled, mVerboseHalLoggingEnabled);
@@ -2472,14 +2499,14 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         }
     }
 
-    protected void addPmkCacheEntry(
-            String ifaceName, int networkId,
+    protected void addPmkCacheEntry(String ifaceName, int networkId, byte[/* 6 */] bssid,
             long expirationTimeInSec, ArrayList<Byte> serializedEntry) {
         synchronized (mLock) {
             String macAddressStr = getMacAddress(ifaceName);
             try {
-                if (!mPmkCacheManager.add(MacAddress.fromString(macAddressStr),
-                        networkId, expirationTimeInSec, serializedEntry)) {
+                MacAddress bssAddr = bssid != null ? MacAddress.fromBytes(bssid) : null;
+                if (!mPmkCacheManager.add(MacAddress.fromString(macAddressStr), networkId,
+                        bssAddr, expirationTimeInSec, serializedEntry)) {
                     Log.w(TAG, "Cannot add PMK cache for " + ifaceName);
                 }
             } catch (IllegalArgumentException ex) {
@@ -2582,6 +2609,10 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         }
     }
 
+    /**
+     * Get the bitmask of supplicant/driver supported key management capabilities in
+     * AIDL KeyMgmtMask format.
+     */
     private int getKeyMgmtCapabilities(@NonNull String ifaceName) {
         synchronized (mLock) {
             final String methodStr = "getKeyMgmtCapabilities";
@@ -2675,6 +2706,10 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         }
     }
 
+    /**
+     * Get the bitmask of supplicant/driver supported features in
+     * AIDL WpaDriverCapabilitiesMask format.
+     */
     private int getWpaDriverCapabilities(@NonNull String ifaceName) {
         synchronized (mLock) {
             final String methodStr = "getWpaDriverCapabilities";
@@ -2869,14 +2904,18 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         classifierParams.srcIp = new byte[0];
         classifierParams.dstIp = new byte[0];
         classifierParams.dstPortRange = new PortRange();
+        classifierParams.flowLabelIpv6 = new byte[0];
+        classifierParams.domainName = "";
+        classifierParams.ipVersion = params.getIpVersion() == QosPolicyParams.IP_VERSION_4
+                ? IpVersion.VERSION_4 : IpVersion.VERSION_6;
 
         if (params.getSourceAddress() != null) {
             paramsMask |= QosPolicyClassifierParamsMask.SRC_IP;
-            classifierParams.srcIp = params.getSourceAddress().toByteArray();
+            classifierParams.srcIp = params.getSourceAddress().getAddress();
         }
         if (params.getDestinationAddress() != null) {
             paramsMask |= QosPolicyClassifierParamsMask.DST_IP;
-            classifierParams.dstIp = params.getDestinationAddress().toByteArray();
+            classifierParams.dstIp = params.getDestinationAddress().getAddress();
         }
         if (params.getSourcePort() != DscpPolicy.SOURCE_PORT_ANY) {
             paramsMask |= QosPolicyClassifierParamsMask.SRC_PORT;
@@ -2894,6 +2933,10 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         if (params.getDscp() != QosPolicyParams.DSCP_ANY) {
             paramsMask |= QosPolicyClassifierParamsMask.DSCP;
             classifierParams.dscp = (byte) params.getDscp();
+        }
+        if (params.getFlowLabel() != null) {
+            paramsMask |= QosPolicyClassifierParamsMask.FLOW_LABEL;
+            classifierParams.flowLabelIpv6 = params.getFlowLabel();
         }
 
         classifierParams.classifierParamMask = paramsMask;
@@ -3618,29 +3661,6 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     }
 
     /**
-     * See comments for {@link ISupplicantStaIfaceHal#removeAllQosPoliciesForScs(String)}
-     */
-    public List<SupplicantStaIfaceHal.QosPolicyStatus> removeAllQosPoliciesForScs(
-            @NonNull String ifaceName) {
-        synchronized (mLock) {
-            final String methodStr = "removeAllQosPoliciesForScs";
-            ISupplicantStaIface iface = checkStaIfaceAndLogFailure(ifaceName, methodStr);
-            if (iface == null) {
-                return null;
-            }
-            try {
-                QosPolicyScsRequestStatus[] halStatusList = iface.removeAllQosPoliciesForScs();
-                return halToFrameworkQosPolicyScsRequestStatusList(halStatusList);
-            } catch (RemoteException e) {
-                handleRemoteException(e, methodStr);
-            } catch (ServiceSpecificException e) {
-                handleServiceSpecificException(e, methodStr);
-            }
-            return null;
-        }
-    }
-
-    /**
      * See comments for {@link ISupplicantStaIfaceHal#registerQosScsResponseCallback(
      *                             SupplicantStaIfaceHal.QosScsResponseCallback)}
      */
@@ -3726,8 +3746,11 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
     private class NonStandardCertCallback extends INonStandardCertCallback.Stub {
         @Override
         public byte[] getBlob(String alias) {
-            Log.i(TAG, "Non-standard certificate requested");
-            byte[] blob = WifiKeystore.get(alias);
+            byte[] blob = null;
+            if (SdkLevel.isAtLeastU()) {
+                Log.i(TAG, "Non-standard certificate requested");
+                blob = WifiKeystore.get(alias);
+            }
             if (blob != null) {
                 return blob;
             } else {
@@ -3739,7 +3762,7 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         @Override
         public String[] listAliases(String prefix) {
             Log.i(TAG, "Alias list was requested");
-            return WifiKeystore.list(prefix);
+            return SdkLevel.isAtLeastU() ? WifiKeystore.list(prefix) : null;
         }
 
         @Override

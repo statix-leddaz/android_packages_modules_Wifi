@@ -18,7 +18,7 @@ package com.android.server.wifi.util;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.compat.Compatibility;
+import android.app.compat.CompatChanges;
 import android.net.InetAddresses;
 import android.net.IpConfiguration;
 import android.net.IpConfiguration.IpAssignment;
@@ -498,6 +498,9 @@ public class XmlUtil {
                 XmlUtil.writeNextValue(
                         out, XML_TAG_IS_ADDED_BY_AUTO_UPGRADE,
                         params.isAddedByAutoUpgrade());
+                XmlUtil.writeNextValue(
+                        out, XML_TAG_ALLOWED_SUITE_B_CIPHERS,
+                        params.getAllowedSuiteBCiphers().toByteArray());
                 XmlUtil.writeNextSectionEnd(out, XML_TAG_SECURITY_PARAMS);
             }
 
@@ -776,6 +779,16 @@ public class XmlUtil {
                             throw new XmlPullParserException("Missing security type.");
                         }
                         params.setIsAddedByAutoUpgrade((boolean) value);
+                        break;
+                    case WifiConfigurationXmlUtil.XML_TAG_ALLOWED_SUITE_B_CIPHERS:
+                        if (null == params) {
+                            throw new XmlPullParserException("Missing security type.");
+                        }
+                        byte[] suiteBCiphers = (byte[]) value;
+                        BitSet suiteBCiphersBitSet = BitSet.valueOf(suiteBCiphers);
+                        params.enableSuiteBCiphers(
+                                suiteBCiphersBitSet.get(WifiConfiguration.SuiteBCipher.ECDHE_ECDSA),
+                                suiteBCiphersBitSet.get(WifiConfiguration.SuiteBCipher.ECDHE_RSA));
                         break;
                 }
             }
@@ -2210,7 +2223,7 @@ public class XmlUtil {
                                     shutDownMillis = (long) value;
                                 }
                                 if (shutDownMillis == 0
-                                        && Compatibility.isChangeEnabled(
+                                        && CompatChanges.isChangeEnabled(
                                         SoftApConfiguration.REMOVE_ZERO_FOR_TIMEOUT_SETTING)) {
                                     shutDownMillis = SoftApConfiguration.DEFAULT_TIMEOUT;
                                 }

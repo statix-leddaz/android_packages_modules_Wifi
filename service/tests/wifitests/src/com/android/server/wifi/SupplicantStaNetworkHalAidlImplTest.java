@@ -45,6 +45,7 @@ import android.hardware.wifi.supplicant.NetworkRequestEapSimUmtsAuthParams;
 import android.hardware.wifi.supplicant.NetworkResponseEapSimGsmAuthParams;
 import android.hardware.wifi.supplicant.NetworkResponseEapSimUmtsAuthParams;
 import android.hardware.wifi.supplicant.PairwiseCipherMask;
+import android.hardware.wifi.supplicant.ProtoMask;
 import android.hardware.wifi.supplicant.SaeH2eMode;
 import android.hardware.wifi.supplicant.SupplicantStatusCode;
 import android.hardware.wifi.supplicant.TlsVersion;
@@ -116,6 +117,7 @@ public class SupplicantStaNetworkHalAidlImplTest extends WifiBaseTest {
         mResources = new MockResources();
         when(mContext.getResources()).thenReturn(mResources);
         when(mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()).thenReturn(true);
+        when(mWifiGlobals.isWpaPersonalDeprecated()).thenReturn(false);
 
         mAdvanceKeyMgmtFeatures |= WifiManager.WIFI_FEATURE_WPA3_SUITE_B;
         mSupplicantNetwork = new SupplicantStaNetworkHalAidlImpl(1,
@@ -191,6 +193,25 @@ public class SupplicantStaNetworkHalAidlImplTest extends WifiBaseTest {
         verify(mISupplicantStaNetworkMock).getPsk();
         verify(mISupplicantStaNetworkMock, never()).setPskPassphrase(anyString());
         verify(mISupplicantStaNetworkMock).getPskPassphrase();
+        verify(mISupplicantStaNetworkMock).setProto(ProtoMask.RSN | ProtoMask.WPA);
+    }
+
+    /**
+     * Tests the saving/loading of WifiConfiguration to wpa_supplicant with raw psk - WPA
+     * deprecated.
+     */
+    @Test
+    public void testPskNetworkWifiConfigurationSaveLoadWpaDeprecated() throws Exception {
+        when(mWifiGlobals.isWpaPersonalDeprecated()).thenReturn(true);
+
+        WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork();
+        config.preSharedKey = "945ef00c463c2a7c2496376b13263d1531366b46377179a4b17b393687450779";
+        testWifiConfigurationSaveLoad(config);
+        verify(mISupplicantStaNetworkMock).setPsk(any(byte[].class));
+        verify(mISupplicantStaNetworkMock).getPsk();
+        verify(mISupplicantStaNetworkMock, never()).setPskPassphrase(anyString());
+        verify(mISupplicantStaNetworkMock).getPskPassphrase();
+        verify(mISupplicantStaNetworkMock).setProto(ProtoMask.RSN);
     }
 
     /**
@@ -1229,6 +1250,58 @@ public class SupplicantStaNetworkHalAidlImplTest extends WifiBaseTest {
         assertTrue(Arrays.equals(TEST_SELECTED_RCOI_BYTE_ARRAY, mSupplicantVariables.selectedRcoi));
     }
 
+    @Test
+    public void testSetStrictConservativePeerModeToNonEapSimConfiguration() throws Exception {
+        WifiConfiguration config = WifiConfigurationTestUtil
+                .createEapNetwork(WifiEnterpriseConfig.Eap.PEAP, WifiEnterpriseConfig.Phase2.AKA);
+        config.enterpriseConfig.setStrictConservativePeerMode(true);
+        when(mISupplicantStaNetworkMock.getInterfaceVersion()).thenReturn(2);
+        // Assume that the default params is used for this test.
+        config.getNetworkSelectionStatus().setCandidateSecurityParams(
+                config.getDefaultSecurityParams());
+        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
+        verify(mISupplicantStaNetworkMock, never()).setStrictConservativePeerMode(anyBoolean());
+    }
+
+    @Test
+    public void testStrictConservativePeerModeIsSupported() throws Exception {
+        WifiConfiguration config = WifiConfigurationTestUtil
+                .createEapNetwork(WifiEnterpriseConfig.Eap.AKA, WifiEnterpriseConfig.Phase2.NONE);
+        config.enterpriseConfig.setStrictConservativePeerMode(true);
+        when(mISupplicantStaNetworkMock.getInterfaceVersion()).thenReturn(2);
+        // Assume that the default params is used for this test.
+        config.getNetworkSelectionStatus().setCandidateSecurityParams(
+                config.getDefaultSecurityParams());
+        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
+        verify(mISupplicantStaNetworkMock).setStrictConservativePeerMode(eq(true));
+    }
+
+    @Test
+    public void testStrictConservativePeerModeIsNotSupported() throws Exception {
+        WifiConfiguration config = WifiConfigurationTestUtil
+                .createEapNetwork(WifiEnterpriseConfig.Eap.AKA, WifiEnterpriseConfig.Phase2.NONE);
+        config.enterpriseConfig.setStrictConservativePeerMode(true);
+        when(mISupplicantStaNetworkMock.getInterfaceVersion()).thenReturn(1);
+        // Assume that the default params is used for this test.
+        config.getNetworkSelectionStatus().setCandidateSecurityParams(
+                config.getDefaultSecurityParams());
+        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
+        verify(mISupplicantStaNetworkMock, never()).setStrictConservativePeerMode(anyBoolean());
+    }
+
+    @Test
+    public void testStrictConservativePeerModeNeverSetFalse() throws Exception {
+        WifiConfiguration config = WifiConfigurationTestUtil
+                .createEapNetwork(WifiEnterpriseConfig.Eap.AKA, WifiEnterpriseConfig.Phase2.NONE);
+        config.enterpriseConfig.setStrictConservativePeerMode(false);
+        when(mISupplicantStaNetworkMock.getInterfaceVersion()).thenReturn(2);
+        // Assume that the default params is used for this test.
+        config.getNetworkSelectionStatus().setCandidateSecurityParams(
+                config.getDefaultSecurityParams());
+        assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
+        verify(mISupplicantStaNetworkMock, never()).setStrictConservativePeerMode(anyBoolean());
+    }
+
     /**
      * Tests setting TLS minimum version API with AIDL v1
      */
@@ -1281,7 +1354,7 @@ public class SupplicantStaNetworkHalAidlImplTest extends WifiBaseTest {
         config.getNetworkSelectionStatus().setCandidateSecurityParams(
                 config.getDefaultSecurityParams());
         assertTrue(mSupplicantNetwork.saveWifiConfiguration(config));
-        // Should fallback to TLS v1.2
+        // Should set minimum TLS version to TLS v1.3
         verify(mISupplicantStaNetworkMock).setMinimumTlsVersionEapPhase1Param(TlsVersion.TLS_V1_3);
     }
 

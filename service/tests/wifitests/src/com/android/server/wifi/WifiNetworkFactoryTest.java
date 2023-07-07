@@ -18,6 +18,7 @@ package com.android.server.wifi;
 
 import static android.content.Intent.ACTION_SCREEN_OFF;
 import static android.content.Intent.ACTION_SCREEN_ON;
+import static android.net.wifi.WifiManager.STATUS_LOCAL_ONLY_CONNECTION_FAILURE_AUTHENTICATION;
 import static android.net.wifi.WifiManager.STATUS_LOCAL_ONLY_CONNECTION_FAILURE_IP_PROVISIONING;
 
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
@@ -479,6 +480,17 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         verify(mConnectivityManager).declareNetworkRequestUnfulfillable(eq(mNetworkRequest));
     }
 
+    @Test
+    public void testNetworkRequestFromGuestUserWithSpecifier() {
+        mockPackageImportance(TEST_PACKAGE_NAME_1, true, true);
+        when(mWifiPermissionsUtil.isGuestUser()).thenReturn(true);
+        attachDefaultWifiNetworkSpecifierAndAppInfo(TEST_UID_1, false, new int[0]);
+
+        assertFalse(mWifiNetworkFactory.acceptRequest(mNetworkRequest));
+        mLooper.dispatchAll();
+        verify(mConnectivityManager).declareNetworkRequestUnfulfillable(eq(mNetworkRequest));
+    }
+
     /**
      * Validates handling of acceptNetwork with a network specifier from a foreground
      * app.
@@ -620,7 +632,8 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1,
+                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Make request 2 which will be accepted because a fg app request can
         // override an existing fg app request.
@@ -643,7 +656,8 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1,
+                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Make request 2 which will be rejected because a fg service request cannot
         // override a fg app request.
@@ -670,7 +684,8 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1,
+                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Resend the request from a fg service (should be accepted since it is already connected).
         assertTrue(mWifiNetworkFactory.acceptRequest(mNetworkRequest));
@@ -1749,7 +1764,8 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // handling.
         for (int i = 0; i <= WifiNetworkFactory.USER_SELECTED_NETWORK_CONNECT_RETRY_MAX; i++) {
             mWifiNetworkFactory.handleConnectionAttemptEnded(
-                    WifiMetrics.ConnectionEvent.FAILURE_DHCP, mSelectedNetwork, TEST_BSSID_1);
+                    WifiMetrics.ConnectionEvent.FAILURE_DHCP, mSelectedNetwork, TEST_BSSID_1,
+                    WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
             mLooper.dispatchAll();
         }
 
@@ -1773,6 +1789,41 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
     }
 
     /**
+     * Verify handling of authentication failure.
+     * The connection failures should not trigger connection retries.
+     */
+    @Test
+    public void testNetworkSpecifierHandleAuthFailure() throws Exception {
+        sendNetworkRequestAndSetupForConnectionStatus();
+
+        assertNotNull(mSelectedNetwork);
+        mWifiNetworkFactory.addLocalOnlyConnectionStatusListener(mLocalOnlyConnectionStatusListener,
+                TEST_PACKAGE_NAME_1, null);
+
+        mWifiNetworkFactory.handleConnectionAttemptEnded(
+                    WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE, mSelectedNetwork,
+                TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.AUTH_FAILURE_WRONG_PSWD);
+        mLooper.dispatchAll();
+
+        mInOrder = inOrder(mAlarmManager, mClientModeManager, mConnectHelper);
+
+        verify(mNetworkRequestMatchCallback).onAbort();
+        // Verify that we sent the connection failure callback.
+        verify(mNetworkRequestMatchCallback).onUserSelectionConnectFailure(
+                argThat(new WifiConfigMatcher(mSelectedNetwork)));
+        // verify we canceled the timeout alarm.
+        mInOrder.verify(mAlarmManager).cancel(
+                mConnectionTimeoutAlarmListenerArgumentCaptor.getValue());
+        // Verify we reset the network request handling.
+        verify(mWifiConnectivityManager).setSpecificNetworkRequestInProgress(false);
+        verify(mActiveModeWarden).removeClientModeManager(any());
+        verify(mConnectivityManager).declareNetworkRequestUnfulfillable(eq(mNetworkRequest));
+        verify(mLocalOnlyConnectionStatusListener).onConnectionStatus(
+                eq((WifiNetworkSpecifier) mNetworkRequest.getNetworkSpecifier()),
+                eq(STATUS_LOCAL_ONLY_CONNECTION_FAILURE_AUTHENTICATION));
+    }
+
+    /**
      * Verify handling of connection failure to a different network.
      */
     @Test
@@ -1784,7 +1835,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         WifiConfiguration connectedNetwork = new WifiConfiguration(mSelectedNetwork);
         connectedNetwork.SSID = TEST_SSID_2;
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_DHCP, connectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_DHCP, connectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Verify that we did not send the connection failure callback.
         verify(mNetworkRequestMatchCallback, never()).onUserSelectionConnectFailure(any());
@@ -1799,7 +1850,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // handling.
         for (int i = 0; i <= WifiNetworkFactory.USER_SELECTED_NETWORK_CONNECT_RETRY_MAX; i++) {
             mWifiNetworkFactory.handleConnectionAttemptEnded(
-                    WifiMetrics.ConnectionEvent.FAILURE_DHCP, mSelectedNetwork, TEST_BSSID_1);
+                    WifiMetrics.ConnectionEvent.FAILURE_DHCP, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
             mLooper.dispatchAll();
         }
 
@@ -1828,7 +1879,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection failure to a different bssid indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_DHCP, mSelectedNetwork, TEST_BSSID_2);
+                WifiMetrics.ConnectionEvent.FAILURE_DHCP, mSelectedNetwork, TEST_BSSID_2, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Verify that we did not send the connection failure callback.
         verify(mNetworkRequestMatchCallback, never()).onUserSelectionConnectFailure(any());
@@ -1843,7 +1894,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // handling.
         for (int i = 0; i <= WifiNetworkFactory.USER_SELECTED_NETWORK_CONNECT_RETRY_MAX; i++) {
             mWifiNetworkFactory.handleConnectionAttemptEnded(
-                    WifiMetrics.ConnectionEvent.FAILURE_DHCP, mSelectedNetwork, TEST_BSSID_1);
+                    WifiMetrics.ConnectionEvent.FAILURE_DHCP, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
             mLooper.dispatchAll();
         }
 
@@ -1872,7 +1923,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Verify that we sent the connection success callback.
         verify(mNetworkRequestMatchCallback).onUserSelectionConnectSuccess(
@@ -1906,7 +1957,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Verify that we sent the connection success callback.
         verify(mNetworkRequestMatchCallback).onUserSelectionConnectSuccess(
@@ -1938,7 +1989,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Verify that we sent the connection success callback.
         verify(mNetworkRequestMatchCallback).onUserSelectionConnectSuccess(
@@ -1969,7 +2020,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Verify that we sent the connection success callback.
         verify(mNetworkRequestMatchCallback).onUserSelectionConnectSuccess(
@@ -1983,7 +2034,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Disconnect from AP
         mWifiNetworkFactory.handleConnectionAttemptEnded(
                 WifiMetrics.ConnectionEvent.FAILURE_NETWORK_DISCONNECTION, mSelectedNetwork,
-                TEST_BSSID_1);
+                TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
 
         // Verify framework will clean up for the connected network.
@@ -2007,7 +2058,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Verify that we sent the connection success callback.
         verify(mNetworkRequestMatchCallback).onUserSelectionConnectSuccess(
@@ -2020,7 +2071,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
 
         // Send second network connection success indication which should be ignored.
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         verifyNoMoreInteractions(mNetworkRequestMatchCallback);
     }
@@ -2037,7 +2088,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         WifiConfiguration connectedNetwork = new WifiConfiguration(mSelectedNetwork);
         connectedNetwork.SSID = TEST_SSID_2;
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, connectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, connectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // verify that we did not send out the success callback and did not stop the alarm timeout.
         verify(mNetworkRequestMatchCallback, never()).onUserSelectionConnectSuccess(any());
@@ -2046,7 +2097,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
 
         // Send network connection success to the correct network indication.
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Verify that we sent the connection success callback.
         verify(mNetworkRequestMatchCallback).onUserSelectionConnectSuccess(
@@ -2065,7 +2116,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success to a different network indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_2);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_2, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // verify that we did not send out the success callback and did not stop the alarm timeout.
         verify(mNetworkRequestMatchCallback, never()).onUserSelectionConnectSuccess(any());
@@ -2074,7 +2125,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
 
         // Send network connection success to the correct network indication.
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Verify that we sent the connection success callback.
         verify(mNetworkRequestMatchCallback).onUserSelectionConnectSuccess(
@@ -2125,7 +2176,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Verify that we sent the connection success callback.
         verify(mNetworkRequestMatchCallback).onUserSelectionConnectSuccess(
@@ -2172,7 +2223,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         // Verify that we sent the connection success callback.
         verify(mNetworkRequestMatchCallback).onUserSelectionConnectSuccess(
@@ -2217,7 +2268,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         verify(mCmiMonitor).registerListener(mCmiListenerCaptor.capture());
 
@@ -2537,7 +2588,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
         // Cancel the connection timeout.
         verify(mAlarmManager).cancel(mConnectionTimeoutAlarmListenerArgumentCaptor.getValue());
         verify(mClientModeManager).enableRoaming(false);
@@ -2587,7 +2638,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
         // Cancel the connection timeout.
         verify(mAlarmManager).cancel(mConnectionTimeoutAlarmListenerArgumentCaptor.getValue());
 
@@ -2613,7 +2664,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
         // Cancel the connection timeout.
         verify(mAlarmManager).cancel(mConnectionTimeoutAlarmListenerArgumentCaptor.getValue());
         verify(mClientModeManager).enableRoaming(false);
@@ -2625,7 +2676,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
                 (WifiNetworkSpecifier) mNetworkRequest.networkCapabilities.getNetworkSpecifier();
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_2);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_2, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
         verify(mClientModeManager, times(2)).enableRoaming(false);
         // Cancel the connection timeout.
         verify(mAlarmManager).cancel(mConnectionTimeoutAlarmListenerArgumentCaptor.getValue());
@@ -2669,7 +2720,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         // Send network connection success indication.
         assertNotNull(mSelectedNetwork);
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
         // Cancel the connection timeout.
         verify(mAlarmManager).cancel(mConnectionTimeoutAlarmListenerArgumentCaptor.getValue());
 
@@ -3454,7 +3505,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         assertNotNull(mSelectedNetwork);
         mSelectedNetwork.BSSID = TEST_BSSID_1;
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         reset(mClientModeManager);
         reset(mConnectHelper);
@@ -3521,7 +3572,7 @@ public class WifiNetworkFactoryTest extends WifiBaseTest {
         assertNotNull(mSelectedNetwork);
         mSelectedNetwork.BSSID = TEST_BSSID_1;
         mWifiNetworkFactory.handleConnectionAttemptEnded(
-                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1);
+                WifiMetrics.ConnectionEvent.FAILURE_NONE, mSelectedNetwork, TEST_BSSID_1, WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
 
         reset(mClientModeManager);
         reset(mConnectHelper);

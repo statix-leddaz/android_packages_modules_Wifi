@@ -329,16 +329,6 @@ public class WifiNanIface implements WifiHal.WifiInterface {
     }
 
     /**
-     * See comments for {@link IWifiNanIface#getNanIface()}
-     *
-     * TODO: Remove this API. Will only be used temporarily until HalDeviceManager is refactored.
-     */
-    public android.hardware.wifi.V1_0.IWifiNanIface getNanIface() {
-        return validateAndCall("getNanIface", null,
-                () -> mWifiNanIface.getNanIface());
-    }
-
-    /**
      * See comments for {@link IWifiNanIface#registerFrameworkCallback(Callback)}
      */
     public boolean registerFrameworkCallback(Callback cb) {
@@ -448,31 +438,31 @@ public class WifiNanIface implements WifiHal.WifiInterface {
     }
 
     /**
-     * See comments for {@link IWifiNanIface#initiateDataPath(short, int, int, int, MacAddress,
-     *                         String, boolean, byte[], Capabilities,
-     *                         WifiAwareDataPathSecurityConfig)}
+     * See comments for
+     * {@link IWifiNanIface#initiateDataPath(short, int, int, int, MacAddress, String, boolean, byte[], Capabilities, WifiAwareDataPathSecurityConfig, byte)}
      */
     public boolean initiateDataPath(short transactionId, int peerId, int channelRequestType,
             int channel, MacAddress peer, String interfaceName,
             boolean isOutOfBand, byte[] appInfo, Capabilities capabilities,
-            WifiAwareDataPathSecurityConfig securityConfig) {
+            WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId) {
         return validateAndCall("initiateDataPath", false,
                 () -> mWifiNanIface.initiateDataPath(transactionId, peerId, channelRequestType,
                         channel, peer, interfaceName, isOutOfBand, appInfo, capabilities,
-                        securityConfig));
+                        securityConfig, pubSubId));
     }
 
     /**
-     * See comments for {@link IWifiNanIface#respondToDataPathRequest(short, boolean, int, String,
-     *                         byte[], boolean, Capabilities, WifiAwareDataPathSecurityConfig)}
+     * See comments for
+     * {@link IWifiNanIface#respondToDataPathRequest(short, boolean, int, String, byte[], boolean, Capabilities, WifiAwareDataPathSecurityConfig, byte)}
      */
     public boolean respondToDataPathRequest(short transactionId, boolean accept, int ndpId,
             String interfaceName, byte[] appInfo,
             boolean isOutOfBand, Capabilities capabilities,
-            WifiAwareDataPathSecurityConfig securityConfig) {
+            WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId) {
         return validateAndCall("respondToDataPathRequest", false,
                 () -> mWifiNanIface.respondToDataPathRequest(transactionId, accept, ndpId,
-                        interfaceName, appInfo, isOutOfBand, capabilities, securityConfig));
+                        interfaceName, appInfo, isOutOfBand, capabilities, securityConfig,
+                        pubSubId));
     }
 
     /**
@@ -515,13 +505,13 @@ public class WifiNanIface implements WifiHal.WifiInterface {
                         cipherSuite));
     }
     /**
-     * {@link IWifiNanIface#initiateNanBootstrappingRequest(short, int, MacAddress, int)}
+     * {@link IWifiNanIface#initiateNanBootstrappingRequest(short, int, MacAddress, int, byte[])}
      */
     public boolean initiateBootstrapping(short transactionId, int peerId, MacAddress peer,
-            int method) {
+            int method, byte[] cookie) {
         return validateAndCall("initiateBootstrapping", false,
                 () -> mWifiNanIface.initiateNanBootstrappingRequest(transactionId, peerId, peer,
-                        method));
+                        method, cookie));
     }
     /**
      * {@link IWifiNanIface#respondToNanBootstrappingRequest(short, int, boolean)}
@@ -850,5 +840,11 @@ public class WifiNanIface implements WifiHal.WifiInterface {
          */
         void eventBootstrappingConfirm(int pairingId, int responseCode, int reason,
                 int comebackDelay, byte[] cookie);
+
+        /**
+         * Indicates that the suspension mode has changed, i.e., the device has entered or exited
+         * the suspension mode
+         */
+        void eventSuspensionModeChanged(boolean isSuspended);
     }
 }

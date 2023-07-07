@@ -378,7 +378,7 @@ public class DiscoverySession implements AutoCloseable {
      * The peer will check if the method can be fulfilled by
      * {@link AwarePairingConfig.Builder#setBootstrappingMethods(int)}
      * When the Aware Bootstrapping setup finished, both side will receive
-     * {@link DiscoverySessionCallback#onBootstrappingSucceeded(PeerHandle, boolean, int)}
+     * {@link DiscoverySessionCallback#onBootstrappingSucceeded(PeerHandle, int)}
      * @param peerHandle The peer's handle for the pairing request. Must be a result of an
      * {@link DiscoverySessionCallback#onServiceDiscovered(ServiceDiscoveryInfo)} or
      * {@link DiscoverySessionCallback#onMessageReceived(PeerHandle, byte[])} events.
@@ -401,7 +401,8 @@ public class DiscoverySession implements AutoCloseable {
     }
 
     /**
-     * Put Aware connection into suspension mode to save power.
+     * Put Aware connection into suspension mode to save power. Suspend mode pauses all Wi-Fi Aware
+     * activities for this discovery session including any active NDPs.
      * <p>
      * This method would work only for a {@link DiscoverySession} which has been created using
      * a suspendable {@link PublishConfig} or {@link SubscribeConfig}.
@@ -431,7 +432,10 @@ public class DiscoverySession implements AutoCloseable {
     }
 
     /**
-     * Wake up Aware connection from suspension mode to transmit data.
+     * Wake up Aware connection from suspension mode to transmit data. Resumes all paused
+     * Wi-Fi Aware activities and any associated NDPs to a state before they were suspended. Resume
+     * operation will be faster than recreating the corresponding discovery session and NDPs with
+     * the same benefit of power.
      * <p>
      * This method would work only for a {@link DiscoverySession} which has been created using
      * a suspendable {@link PublishConfig} or {@link SubscribeConfig}.

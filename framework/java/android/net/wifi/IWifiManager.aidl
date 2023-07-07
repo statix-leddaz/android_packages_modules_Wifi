@@ -47,7 +47,9 @@ import android.net.wifi.ISubsystemRestartCallback;
 import android.net.wifi.ISuggestionConnectionStatusListener;
 import android.net.wifi.ISuggestionUserApprovalStatusListener;
 import android.net.wifi.ITrafficStateCallback;
+import android.net.wifi.IWifiBandsListener;
 import android.net.wifi.IWifiConnectedNetworkScorer;
+import android.net.wifi.IWifiLowLatencyLockListener;
 import android.net.wifi.IWifiNetworkSelectionConfigListener;
 import android.net.wifi.IWifiVerboseLoggingStatusChangedListener;
 import android.net.wifi.QosPolicyParams;
@@ -196,9 +198,9 @@ interface IWifiManager
 
     boolean isScanAlwaysAvailable();
 
-    boolean acquireWifiLock(IBinder lock, int lockType, String tag, in WorkSource ws);
+    boolean acquireWifiLock(IBinder lock, int lockType, String tag, in WorkSource ws, in String packageName, in Bundle extras);
 
-    void updateWifiLockWorkSource(IBinder lock, in WorkSource ws);
+    void updateWifiLockWorkSource(IBinder lock, in WorkSource ws, in String packageName, in Bundle extras);
 
     boolean releaseWifiLock(IBinder lock);
 
@@ -368,6 +370,8 @@ interface IWifiManager
 
     void setExternalPnoScanRequest(in IBinder binder, in IPnoScanResultsCallback callback, in List<WifiSsid> ssids, in int[] frequencies, String packageName, String featureId);
 
+    void setPnoScanEnabled(boolean enabled, boolean enablePnoScanAfterWifiToggle, String packageName);
+
     void clearExternalPnoScanRequest();
 
     void getLastCallerInfoForApi(int api, in ILastCallerListener listener);
@@ -454,4 +458,14 @@ interface IWifiManager
     void setMloMode(int mode, in IBooleanListener listener);
 
     void getMloMode(in IIntegerListener listener);
+
+    void addWifiLowLatencyLockListener(in IWifiLowLatencyLockListener listener);
+
+    void removeWifiLowLatencyLockListener(in IWifiLowLatencyLockListener listener);
+
+    void getMaxMloAssociationLinkCount(in IIntegerListener listener, in Bundle extras);
+
+    void getMaxMloStrLinkCount(in IIntegerListener listener, in Bundle extras);
+
+    void getSupportedSimultaneousBandCombinations(in IWifiBandsListener listener, in Bundle extras);
 }

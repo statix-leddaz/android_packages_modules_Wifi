@@ -22,13 +22,15 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.SystemApi;
 import android.net.DscpPolicy;
-import android.net.MacAddress;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.util.Log;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -155,6 +157,35 @@ public final class QosPolicyParams implements Parcelable {
     public @interface UserPriority {}
 
     /**
+     * Indicates that the policy does not specify an IP version.
+     */
+    public static final int IP_VERSION_ANY = -1;
+
+    /**
+     * Policy should match packets using IPv4.
+     */
+    public static final int IP_VERSION_4 = 4;
+
+    /**
+     * Policy should match packets using IPv6.
+     */
+    public static final int IP_VERSION_6 = 6;
+
+    /** @hide */
+    @IntDef(prefix = { "IP_VERSION_" }, value = {
+            IP_VERSION_ANY,
+            IP_VERSION_4,
+            IP_VERSION_6
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface IpVersion {}
+
+    /**
+     * Indicates that the policy does not specify a destination port.
+     */
+    public static final int DESTINATION_PORT_ANY = -1;
+
+    /**
      * Unique policy ID. See {@link Builder#Builder(int, int)} for more information.
      */
     private final int mPolicyId;
@@ -171,11 +202,11 @@ public final class QosPolicyParams implements Parcelable {
     // User priority to apply to packets matching the policy. Only applicable to downlink requests.
     private final int mUserPriority;
 
-    // Source address.
-    private final @Nullable MacAddress mSrcAddr;
+    // Source IP address.
+    private final @Nullable InetAddress mSrcIp;
 
-    // Destination address.
-    private final @Nullable MacAddress mDstAddr;
+    // Destination IP address.
+    private final @Nullable InetAddress mDstIp;
 
     // Source port.
     private final int mSrcPort;
@@ -183,24 +214,37 @@ public final class QosPolicyParams implements Parcelable {
     // IP protocol that the policy requires.
     private final @Protocol int mProtocol;
 
-    // Destination port range. Inclusive range.
+    // Single destination port. Only applicable to downlink requests.
+    private final int mDstPort;
+
+    // Destination port range. Inclusive range. Only applicable to uplink requests.
     private final @Nullable int[] mDstPortRange;
 
     // Direction of traffic stream.
     private final @Direction int mDirection;
 
+    // IP version. Only applicable to downlink requests.
+    private final @IpVersion int mIpVersion;
+
+    // Flow label. Only applicable to downlink requests using IPv6.
+    private final @Nullable byte[] mFlowLabel;
+
     private QosPolicyParams(int policyId, int dscp, @UserPriority int userPriority,
-            @Nullable MacAddress srcAddr, @Nullable MacAddress dstAddr, int srcPort,
-            @Protocol int protocol, @Nullable int[] dstPortRange, @Direction int direction) {
+            @Nullable InetAddress srcIp, @Nullable InetAddress dstIp, int srcPort,
+            @Protocol int protocol, @Nullable int[] dstPortRange, @Direction int direction,
+            @IpVersion int ipVersion, int dstPort, @Nullable byte[] flowLabel) {
         this.mPolicyId = policyId;
         this.mDscp = dscp;
         this.mUserPriority = userPriority;
-        this.mSrcAddr = srcAddr;
-        this.mDstAddr = dstAddr;
+        this.mSrcIp = srcIp;
+        this.mDstIp = dstIp;
         this.mSrcPort = srcPort;
         this.mProtocol = protocol;
+        this.mDstPort = dstPort;
         this.mDstPortRange = dstPortRange;
         this.mDirection = direction;
+        this.mIpVersion = ipVersion;
+        this.mFlowLabel = flowLabel;
     }
 
     /**
@@ -226,6 +270,10 @@ public final class QosPolicyParams implements Parcelable {
             Log.e(TAG, "Source port not in valid range: " + mSrcPort);
             return false;
         }
+        if (mDstPort < DESTINATION_PORT_ANY || mDstPort > 65535) {
+            Log.e(TAG, "Destination port not in valid range: " + mDstPort);
+            return false;
+        }
         if (mDstPortRange != null && (mDstPortRange[0] < 0 || mDstPortRange[0] > 65535
                 || mDstPortRange[1] < 0 || mDstPortRange[1] > 65535)) {
             Log.e(TAG, "Dst port range value not valid. start="
@@ -236,15 +284,74 @@ public final class QosPolicyParams implements Parcelable {
             Log.e(TAG, "Invalid direction enum: " + mDirection);
             return false;
         }
-
-        // Check DSCP and User Priority based on direction
-        if (mDirection == DIRECTION_UPLINK && mDscp == DSCP_ANY) {
-            Log.e(TAG, "DSCP must be provided for uplink requests");
+        if (!(mIpVersion == IP_VERSION_ANY || mIpVersion == IP_VERSION_4
+                || mIpVersion == IP_VERSION_6)) {
+            Log.e(TAG, "Invalid ipVersion enum: " + mIpVersion);
             return false;
         }
-        if (mDirection == DIRECTION_DOWNLINK && mUserPriority == USER_PRIORITY_ANY) {
-            Log.e(TAG, "User priority must be provided for downlink requests");
-            return false;
+        if (mIpVersion == IP_VERSION_4) {
+            if (mSrcIp != null && !(mSrcIp instanceof Inet4Address)) {
+                Log.e(TAG, "Src address does not match IP version " + mIpVersion);
+                return false;
+            }
+            if (mDstIp != null && !(mDstIp instanceof Inet4Address)) {
+                Log.e(TAG, "Dst address does not match IP version " + mIpVersion);
+                return false;
+            }
+        }
+        if (mIpVersion == IP_VERSION_6) {
+            if (mSrcIp != null && !(mSrcIp instanceof Inet6Address)) {
+                Log.e(TAG, "Src address does not match IP version " + mIpVersion);
+                return false;
+            }
+            if (mDstIp != null && !(mDstIp instanceof Inet6Address)) {
+                Log.e(TAG, "Dst address does not match IP version " + mIpVersion);
+                return false;
+            }
+        }
+
+        // Check required parameters based on direction.
+        if (mDirection == DIRECTION_UPLINK) {
+            if (mDscp == DSCP_ANY) {
+                Log.e(TAG, "DSCP must be provided for uplink requests");
+                return false;
+            }
+            if (mIpVersion != IP_VERSION_ANY) {
+                Log.e(TAG, "IP Version should not be set for uplink requests");
+                return false;
+            }
+            if (mDstPort != DESTINATION_PORT_ANY) {
+                Log.e(TAG, "Single destination port should not be set for uplink requests");
+                return false;
+            }
+            if (mFlowLabel != null) {
+                Log.e(TAG, "Flow label should not be set for uplink requests");
+                return false;
+            }
+        } else {
+            if (mUserPriority == USER_PRIORITY_ANY) {
+                Log.e(TAG, "User priority must be provided for downlink requests");
+                return false;
+            }
+            if (mIpVersion == IP_VERSION_ANY) {
+                Log.e(TAG, "IP version must be provided for downlink requests");
+                return false;
+            }
+            if (mDstPortRange != null) {
+                Log.e(TAG, "Destination port range should not be set for downlink requests");
+                return false;
+            }
+            if (mFlowLabel != null) {
+                if (mIpVersion != IP_VERSION_6) {
+                    Log.e(TAG, "Flow label can only be used with IP version 6");
+                    return false;
+                }
+                if (mFlowLabel.length != 3) {
+                    Log.e(TAG, "Flow label must be of size 3, provided size is "
+                            + mFlowLabel.length);
+                    return false;
+                }
+            }
         }
         return true;
     }
@@ -304,25 +411,25 @@ public final class QosPolicyParams implements Parcelable {
     }
 
     /**
-     * Get the source address for this policy.
+     * Get the source IP address for this policy.
      *
-     * See {@link Builder#setSourceAddress(MacAddress)} for more information.
+     * See {@link Builder#setSourceAddress(InetAddress)} for more information.
      *
-     * @return source address, or null if not assigned.
+     * @return source IP address, or null if not assigned.
      */
-    public @Nullable MacAddress getSourceAddress() {
-        return mSrcAddr;
+    public @Nullable InetAddress getSourceAddress() {
+        return mSrcIp;
     }
 
     /**
-     * Get the destination address for this policy.
+     * Get the destination IP address for this policy.
      *
-     * See {@link Builder#setDestinationAddress(MacAddress)} for more information.
+     * See {@link Builder#setDestinationAddress(InetAddress)} for more information.
      *
-     * @return destination address, or null if not assigned.
+     * @return destination IP address, or null if not assigned.
      */
-    public @Nullable MacAddress getDestinationAddress() {
-        return mDstAddr;
+    public @Nullable InetAddress getDestinationAddress() {
+        return mDstIp;
     }
 
     /**
@@ -349,6 +456,18 @@ public final class QosPolicyParams implements Parcelable {
     }
 
     /**
+     * Get the destination port for this policy.
+     *
+     * See {@link Builder#setDestinationPort(int)} for more information.
+     *
+     * @return destination port, or {@link #DESTINATION_PORT_ANY} if not assigned.
+     */
+    @IntRange(from = DESTINATION_PORT_ANY, to = 65535)
+    public int getDestinationPort() {
+        return mDstPort;
+    }
+
+    /**
      * Get the destination port range for this policy.
      *
      * See {@link Builder#setDestinationPortRange(int, int)} for more information.
@@ -368,6 +487,28 @@ public final class QosPolicyParams implements Parcelable {
         return mDirection;
     }
 
+    /**
+     * Get the IP version for this policy.
+     *
+     * See {@link Builder#setIpVersion(int)} for more information.
+     *
+     * @return IP version, or {@link #IP_VERSION_ANY} if not assigned.
+     */
+    public @IpVersion int getIpVersion() {
+        return mIpVersion;
+    }
+
+    /**
+     * Get the flow label for this policy.
+     *
+     * See {@link Builder#setFlowLabel(byte[])} for more information.
+     *
+     * @return flow label, or null if not assigned.
+     */
+    public @Nullable byte[] getFlowLabel() {
+        return mFlowLabel;
+    }
+
     @Override
     public boolean equals(@Nullable Object o) {
         if (this == o) return true;
@@ -376,18 +517,22 @@ public final class QosPolicyParams implements Parcelable {
         return mPolicyId == that.mPolicyId
                 && mDscp == that.mDscp
                 && mUserPriority == that.mUserPriority
-                && mSrcAddr.equals(that.mSrcAddr)
-                && mDstAddr.equals(that.mDstAddr)
+                && mSrcIp.equals(that.mSrcIp)
+                && mDstIp.equals(that.mDstIp)
                 && mSrcPort == that.mSrcPort
                 && mProtocol == that.mProtocol
+                && mDstPort == that.mDstPort
                 && Arrays.equals(mDstPortRange, that.mDstPortRange)
-                && mDirection == that.mDirection;
+                && mDirection == that.mDirection
+                && mIpVersion == that.mIpVersion
+                && mFlowLabel == that.mFlowLabel;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(mPolicyId, mDscp, mUserPriority, mSrcAddr, mDstAddr, mSrcPort,
-                mProtocol, Arrays.hashCode(mDstPortRange), mDirection);
+        return Objects.hash(mPolicyId, mDscp, mUserPriority, mSrcIp, mDstIp, mSrcPort,
+                mProtocol, Arrays.hashCode(mDstPortRange), mDirection, mIpVersion, mDstPort,
+                Arrays.hashCode(mFlowLabel));
     }
 
     @Override
@@ -395,12 +540,15 @@ public final class QosPolicyParams implements Parcelable {
         return "{policyId=" + mPolicyId + ", "
                 + "dscp=" + mDscp + ", "
                 + "userPriority=" + mUserPriority + ", "
-                + "srcAddr=" + mSrcAddr + ", "
-                + "dstAddr=" + mDstAddr + ", "
+                + "srcIp=" + mSrcIp + ", "
+                + "dstIp=" + mDstIp + ", "
                 + "srcPort=" + mSrcPort + ", "
                 + "protocol=" + mProtocol + ", "
+                + "dstPort=" + mDstPort + ", "
                 + "dstPortRange=" + Arrays.toString(mDstPortRange) + ", "
-                + "direction=" + mDirection + "}";
+                + "direction=" + mDirection + ", "
+                + "ipVersion=" + mIpVersion + ", "
+                + "flowLabel=" + Arrays.toString(mFlowLabel) + "}";
     }
 
     /** @hide */
@@ -409,18 +557,30 @@ public final class QosPolicyParams implements Parcelable {
         return 0;
     }
 
+    private InetAddress getInetAddrOrNull(byte[] byteAddr) {
+        if (byteAddr == null) return null;
+        try {
+            return InetAddress.getByAddress(byteAddr);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** @hide */
     @Override
     public void writeToParcel(@NonNull Parcel dest, int flags) {
         dest.writeInt(mPolicyId);
         dest.writeInt(mDscp);
         dest.writeInt(mUserPriority);
-        dest.writeParcelable(mSrcAddr, 0);
-        dest.writeParcelable(mDstAddr, 0);
+        dest.writeByteArray(mSrcIp != null ? mSrcIp.getAddress() : null);
+        dest.writeByteArray(mDstIp != null ? mDstIp.getAddress() : null);
         dest.writeInt(mSrcPort);
         dest.writeInt(mProtocol);
+        dest.writeInt(mDstPort);
         dest.writeIntArray(mDstPortRange);
         dest.writeInt(mDirection);
+        dest.writeInt(mIpVersion);
+        dest.writeByteArray(mFlowLabel);
     }
 
     /** @hide */
@@ -428,12 +588,15 @@ public final class QosPolicyParams implements Parcelable {
         this.mPolicyId = in.readInt();
         this.mDscp = in.readInt();
         this.mUserPriority = in.readInt();
-        this.mSrcAddr = in.readParcelable(MacAddress.class.getClassLoader());
-        this.mDstAddr = in.readParcelable(MacAddress.class.getClassLoader());
+        this.mSrcIp = getInetAddrOrNull(in.createByteArray());
+        this.mDstIp = getInetAddrOrNull(in.createByteArray());
         this.mSrcPort = in.readInt();
         this.mProtocol = in.readInt();
+        this.mDstPort = in.readInt();
         this.mDstPortRange = in.createIntArray();
         this.mDirection = in.readInt();
+        this.mIpVersion = in.readInt();
+        this.mFlowLabel = in.createByteArray();
     }
 
     public static final @NonNull Parcelable.Creator<QosPolicyParams> CREATOR =
@@ -455,13 +618,16 @@ public final class QosPolicyParams implements Parcelable {
     public static final class Builder {
         private final int mPolicyId;
         private final @Direction int mDirection;
-        private @Nullable MacAddress mSrcAddr;
-        private @Nullable MacAddress mDstAddr;
+        private @Nullable InetAddress mSrcIp;
+        private @Nullable InetAddress mDstIp;
         private int mDscp = DSCP_ANY;
         private @UserPriority int mUserPriority = USER_PRIORITY_ANY;
         private int mSrcPort = DscpPolicy.SOURCE_PORT_ANY;
         private int mProtocol = PROTOCOL_ANY;
+        private int mDstPort = DESTINATION_PORT_ANY;
         private @Nullable int[] mDstPortRange;
+        private @IpVersion int mIpVersion = IP_VERSION_ANY;
+        private byte[] mFlowLabel;
 
         /**
          * Constructor for {@link Builder}.
@@ -481,20 +647,18 @@ public final class QosPolicyParams implements Parcelable {
         }
 
         /**
-         * Specifies that this policy matches packets with the provided source address.
+         * Specifies that this policy matches packets with the provided source IP address.
          */
-        public @NonNull Builder setSourceAddress(@NonNull MacAddress value) {
-            Objects.requireNonNull(value, "Source address cannot be null");
-            mSrcAddr = value;
+        public @NonNull Builder setSourceAddress(@Nullable InetAddress value) {
+            mSrcIp = value;
             return this;
         }
 
         /**
-         * Specifies that this policy matches packets with the provided destination address.
+         * Specifies that this policy matches packets with the provided destination IP address.
          */
-        public @NonNull Builder setDestinationAddress(@NonNull MacAddress value) {
-            Objects.requireNonNull(value, "Destination address cannot be null");
-            mDstAddr = value;
+        public @NonNull Builder setDestinationAddress(@Nullable InetAddress value) {
+            mDstIp = value;
             return this;
         }
 
@@ -534,7 +698,18 @@ public final class QosPolicyParams implements Parcelable {
         }
 
         /**
+         * Specifies that this policy matches packets with the provided destination port.
+         * Only applicable to downlink requests.
+         */
+        public @NonNull Builder setDestinationPort(
+                @IntRange(from = DESTINATION_PORT_ANY, to = 65535) int value) {
+            mDstPort = value;
+            return this;
+        }
+
+        /**
          * Specifies that this policy matches packets with the provided destination port range.
+         * Only applicable to uplink requests.
          */
         public @NonNull Builder setDestinationPortRange(
                 @IntRange(from = 0, to = 65535) int start,
@@ -544,11 +719,30 @@ public final class QosPolicyParams implements Parcelable {
         }
 
         /**
+         * Specifies that this policy matches packets with the provided IP version.
+         * This argument is mandatory for downlink requests, and is ignored for uplink requests.
+         */
+        public @NonNull Builder setIpVersion(@IpVersion int value) {
+            mIpVersion = value;
+            return this;
+        }
+
+        /**
+         * Specifies that this policy matches packets with the provided flow label.
+         * Only applicable to downlink requests using IPv6.
+         */
+        public @NonNull Builder setFlowLabel(@Nullable byte[] value) {
+            mFlowLabel = value;
+            return this;
+        }
+
+        /**
          * Construct a QosPolicyParams object with the specified parameters.
          */
         public @NonNull QosPolicyParams build() {
-            QosPolicyParams params = new QosPolicyParams(mPolicyId, mDscp, mUserPriority, mSrcAddr,
-                    mDstAddr, mSrcPort, mProtocol, mDstPortRange, mDirection);
+            QosPolicyParams params = new QosPolicyParams(mPolicyId, mDscp, mUserPriority, mSrcIp,
+                    mDstIp, mSrcPort, mProtocol, mDstPortRange, mDirection, mIpVersion, mDstPort,
+                    mFlowLabel);
             if (!params.validate()) {
                 throw new IllegalArgumentException("Provided parameters are invalid");
             }

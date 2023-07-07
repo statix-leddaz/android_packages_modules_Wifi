@@ -383,13 +383,35 @@ public class BaseWifiService extends IWifiManager.Stub {
         throw new UnsupportedOperationException();
     }
 
-    @Override
+    /**
+     * Following method is deprecated with
+     * {@link BaseWifiService#acquireWifiLock(IBinder, int, String, WorkSource, String, Bundle)}
+     * @deprecated This is no longer supported.
+     */
+    @Deprecated
     public boolean acquireWifiLock(IBinder lock, int lockType, String tag, WorkSource ws) {
         throw new UnsupportedOperationException();
     }
 
     @Override
+    public boolean acquireWifiLock(IBinder lock, int lockType, String tag, WorkSource ws,
+            String packageName, Bundle extras) {
+        throw new UnsupportedOperationException();
+    }
+
+    /**
+     * Following method is deprecated with
+     * {@link BaseWifiService#updateWifiLockWorkSource(IBinder, WorkSource, String, Bundle)}
+     * @deprecated This is no longer supported.
+     */
+    @Deprecated
     public void updateWifiLockWorkSource(IBinder lock, WorkSource ws) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void updateWifiLockWorkSource(IBinder lock, WorkSource ws, String packageName,
+            Bundle extras) {
         throw new UnsupportedOperationException();
     }
 
@@ -812,6 +834,12 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public void setPnoScanEnabled(boolean enabled, boolean enablePnoScanAfterWifiToggle,
+            String packageName) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public List<WifiConfiguration> getWifiConfigForMatchedNetworkSuggestionsSharedWithUser(
             List<ScanResult> scanResults) {
         throw new UnsupportedOperationException();
@@ -1040,4 +1068,29 @@ public class BaseWifiService extends IWifiManager.Stub {
         throw new UnsupportedOperationException();
     }
 
+    @Override
+    public void addWifiLowLatencyLockListener(IWifiLowLatencyLockListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void removeWifiLowLatencyLockListener(IWifiLowLatencyLockListener listener) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getMaxMloAssociationLinkCount(IIntegerListener listener, Bundle extras) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getMaxMloStrLinkCount(IIntegerListener listener, Bundle extras) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void getSupportedSimultaneousBandCombinations(IWifiBandsListener listener,
+            Bundle extras) {
+        throw new UnsupportedOperationException();
+    }
 }

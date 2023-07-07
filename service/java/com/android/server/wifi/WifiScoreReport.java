@@ -264,6 +264,12 @@ public class WifiScoreReport {
             if (mShouldReduceNetworkScore) {
                 return;
             }
+            if (!mIsUsable && isUsable) {
+                // Disable the network switch dialog temporarily if the status changed to usable.
+                int durationMs = mContext.getResources().getInteger(
+                        R.integer.config_wifiNetworkSwitchDialogDisabledMsWhenMarkedUsable);
+                mWifiConnectivityManager.disableNetworkSwitchDialog(durationMs);
+            }
             mIsUsable = isUsable;
             // Wifi is set to be usable if adaptive connectivity is disabled.
             if (!mAdaptiveConnectivityEnabledSettingObserver.get()
@@ -489,6 +495,28 @@ public class WifiScoreReport {
                 mScorer.onStop(sessionId);
             } catch (RemoteException e) {
                 Log.e(TAG, "Unable to stop Wifi connected network scorer " + this, e);
+                revertToDefaultConnectedScorer();
+            }
+        }
+
+        public void onNetworkSwitchAccepted(
+                int sessionId, int targetNetworkId, String targetBssid) {
+            try {
+                mScorer.onNetworkSwitchAccepted(sessionId, targetNetworkId, targetBssid);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Unable to notify network switch accepted for Wifi connected network"
+                        + " scorer " + this, e);
+                revertToDefaultConnectedScorer();
+            }
+        }
+
+        public void onNetworkSwitchRejected(
+                int sessionId, int targetNetworkId, String targetBssid) {
+            try {
+                mScorer.onNetworkSwitchRejected(sessionId, targetNetworkId, targetBssid);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Unable to notify network switch rejected for Wifi connected network"
+                        + " scorer " + this, e);
                 revertToDefaultConnectedScorer();
             }
         }
@@ -932,6 +960,28 @@ public class WifiScoreReport {
         }
         mWifiConnectedNetworkScorerHolder.reset();
         revertToDefaultConnectedScorer();
+    }
+
+    /**
+     * Notify the connected network scorer of the user accepting a network switch.
+     */
+    public void onNetworkSwitchAccepted(int targetNetworkId, String targetBssid) {
+        if (mWifiConnectedNetworkScorerHolder == null) {
+            return;
+        }
+        mWifiConnectedNetworkScorerHolder.onNetworkSwitchAccepted(
+                getCurrentSessionId(), targetNetworkId, targetBssid);
+    }
+
+    /**
+     * Notify the connected network scorer of the user rejecting a network switch.
+     */
+    public void onNetworkSwitchRejected(int targetNetworkId, String targetBssid) {
+        if (mWifiConnectedNetworkScorerHolder == null) {
+            return;
+        }
+        mWifiConnectedNetworkScorerHolder.onNetworkSwitchRejected(
+                getCurrentSessionId(), targetNetworkId, targetBssid);
     }
 
     /**
