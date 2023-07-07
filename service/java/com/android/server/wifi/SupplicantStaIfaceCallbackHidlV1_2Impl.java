@@ -29,6 +29,7 @@ import android.util.Log;
 import com.android.server.wifi.util.NativeUtil;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 abstract class SupplicantStaIfaceCallbackHidlV1_2Impl extends
         android.hardware.wifi.supplicant.V1_2.ISupplicantStaIfaceCallback.Stub {
@@ -182,7 +183,7 @@ abstract class SupplicantStaIfaceCallbackHidlV1_2Impl extends
         if (password != null) {
             newWifiConfiguration.preSharedKey = "\"" + password + "\"";
         } else if (psk != null) {
-            newWifiConfiguration.preSharedKey = psk.toString();
+            newWifiConfiguration.preSharedKey = Arrays.toString(psk);
         }
 
         // Set up key management: SAE or PSK
@@ -201,7 +202,8 @@ abstract class SupplicantStaIfaceCallbackHidlV1_2Impl extends
                 .getNameForUid(Process.WIFI_UID);
         newWifiConfiguration.status = WifiConfiguration.Status.ENABLED;
 
-        mStaIfaceHal.getDppCallback().onSuccessConfigReceived(newWifiConfiguration);
+        mStaIfaceHal.getDppCallback().onSuccessConfigReceived(newWifiConfiguration,
+                false);
     }
 
     @Override

@@ -38,6 +38,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,6 +52,9 @@ import android.os.test.TestLooper;
 import android.provider.Settings;
 
 import androidx.test.filters.SmallTest;
+
+import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
+import com.android.wifi.resources.R;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -68,6 +72,7 @@ public class WifiSettingsStoreTest extends WifiBaseTest {
 
     @Mock private WifiContext mContext;
     @Mock private ContentResolver mContentResolver;
+    @Mock private Clock mClock;
     @Mock private DeviceConfigFacade mDeviceConfigFacade;
     @Mock private FrameworkFacade mFrameworkFacade;
     @Mock private Notification mNotification;
@@ -75,6 +80,7 @@ public class WifiSettingsStoreTest extends WifiBaseTest {
     @Mock private Resources mResources;
     @Mock private WifiNotificationManager mNotificationManager;
     @Mock private WifiSettingsConfigStore mWifiSettingsConfigStore;
+    @Mock private WifiMetrics mWifiMetrics;
 
     @Before
     public void setUp() throws Exception {
@@ -85,6 +91,7 @@ public class WifiSettingsStoreTest extends WifiBaseTest {
         when(mContext.getContentResolver()).thenReturn(mContentResolver);
         when(mContext.getResources()).thenReturn(mResources);
         when(mContext.getWifiOverlayApkPkgName()).thenReturn("test.com.android.wifi.resources");
+        when(mContext.getString(R.string.config_wifiApmEnhancementHelpLink)).thenReturn("test URL");
         when(mResources.getString(anyInt())).thenReturn("resource");
         when(mFrameworkFacade.getIntegerSetting(mContentResolver, Settings.Global.AIRPLANE_MODE_ON,
                 APM_DISABLED)).thenReturn(APM_DISABLED);
@@ -101,13 +108,17 @@ public class WifiSettingsStoreTest extends WifiBaseTest {
         when(mNotificationBuilder.setSmallIcon(any())).thenReturn(mNotificationBuilder);
         when(mNotificationBuilder.setContentTitle(any())).thenReturn(mNotificationBuilder);
         when(mNotificationBuilder.setContentText(any())).thenReturn(mNotificationBuilder);
+        when(mNotificationBuilder.setContentIntent(any())).thenReturn(mNotificationBuilder);
         when(mNotificationBuilder.setStyle(any())).thenReturn(mNotificationBuilder);
         when(mNotificationBuilder.setLocalOnly(anyBoolean())).thenReturn(mNotificationBuilder);
         when(mNotificationBuilder.setAutoCancel(anyBoolean())).thenReturn(mNotificationBuilder);
+        when(mNotificationBuilder.setVisibility(Notification.VISIBILITY_PUBLIC))
+                .thenReturn(mNotificationBuilder);
         when(mNotificationBuilder.build()).thenReturn(mNotification);
 
         mWifiSettingsStore = new WifiSettingsStore(mContext, mWifiSettingsConfigStore,
-                mWifiThreadRunner, mFrameworkFacade, mNotificationManager, mDeviceConfigFacade);
+                mWifiThreadRunner, mFrameworkFacade, mNotificationManager, mDeviceConfigFacade,
+                mWifiMetrics, mClock);
     }
 
     @Test
@@ -130,7 +141,8 @@ public class WifiSettingsStoreTest extends WifiBaseTest {
                 Settings.Global.WIFI_ON, WIFI_ENABLED_APM_OVERRIDE);
         verify(mFrameworkFacade).setSecureIntegerSetting(
                 mContext, WIFI_APM_STATE, WIFI_REMAINS_ON_IN_APM);
-        verify(mNotificationManager).notify(anyInt(), any(Notification.class));
+        verify(mNotificationManager).notify(eq(SystemMessage.NOTE_WIFI_APM_NOTIFICATION),
+                any(Notification.class));
         verify(mFrameworkFacade).setSecureIntegerSetting(
                 mContext, APM_WIFI_ENABLED_NOTIFICATION, NOTIFICATION_SHOWN);
 
@@ -167,7 +179,8 @@ public class WifiSettingsStoreTest extends WifiBaseTest {
         mLooper.dispatchAll();
         verify(mFrameworkFacade).setIntegerSetting(mContentResolver,
                 Settings.Global.WIFI_ON, WIFI_ENABLED_APM_OVERRIDE);
-        verify(mNotificationManager, never()).notify(anyInt(), any(Notification.class));
+        verify(mNotificationManager, never()).notify(eq(SystemMessage.NOTE_WIFI_APM_NOTIFICATION),
+                any(Notification.class));
         verify(mFrameworkFacade, never()).setSecureIntegerSetting(
                 mContext, APM_WIFI_NOTIFICATION, NOTIFICATION_SHOWN);
 
@@ -178,7 +191,8 @@ public class WifiSettingsStoreTest extends WifiBaseTest {
 
         mWifiSettingsStore.handleAirplaneModeToggled();
         mLooper.dispatchAll();
-        verify(mNotificationManager).notify(anyInt(), any(Notification.class));
+        verify(mNotificationManager).notify(eq(SystemMessage.NOTE_WIFI_APM_NOTIFICATION),
+                any(Notification.class));
         verify(mFrameworkFacade).setSecureIntegerSetting(
                 mContext, APM_WIFI_NOTIFICATION, NOTIFICATION_SHOWN);
 
@@ -190,5 +204,78 @@ public class WifiSettingsStoreTest extends WifiBaseTest {
         mWifiSettingsStore.handleAirplaneModeToggled();
         verify(mFrameworkFacade).setIntegerSetting(mContentResolver,
                 Settings.Global.WIFI_ON, WIFI_DISABLED_APM_ON);
+    }
+
+    @Test
+    public void testApmSessionMetrics() {
+        // Wi-Fi is enabled
+        mWifiSettingsStore.setPersistWifiState(WIFI_ENABLED);
+        // Airplane mode is enabled
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(10L);
+        when(mFrameworkFacade.getIntegerSetting(mContentResolver, Settings.Global.AIRPLANE_MODE_ON,
+                APM_DISABLED)).thenReturn(APM_ENABLED);
+        assertTrue(mWifiSettingsStore.updateAirplaneModeTracker());
+        mWifiSettingsStore.handleAirplaneModeToggled();
+        mLooper.dispatchAll();
+        // Airplane mode is disabled
+        when(mFrameworkFacade.getIntegerSetting(mContentResolver, Settings.Global.AIRPLANE_MODE_ON,
+                APM_DISABLED)).thenReturn(APM_DISABLED);
+        assertTrue(mWifiSettingsStore.updateAirplaneModeTracker());
+        mWifiSettingsStore.handleAirplaneModeToggled();
+        mLooper.dispatchAll();
+        // Verify metrics logged correctly
+        verify(mWifiMetrics).reportAirplaneModeSession(true, false, false, false, false, false);
+
+        // APM Enhancement feature and Wi-Fi is enabled
+        mWifiSettingsStore.setPersistWifiState(WIFI_ENABLED);
+        when(mFrameworkFacade.getSecureIntegerSetting(mContext, APM_WIFI_ENABLED_NOTIFICATION,
+                NOTIFICATION_NOT_SHOWN)).thenReturn(NOTIFICATION_SHOWN);
+        when(mFrameworkFacade.getSecureIntegerSetting(mContext, WIFI_APM_STATE,
+                WIFI_TURNS_OFF_IN_APM)).thenReturn(WIFI_REMAINS_ON_IN_APM);
+        when(mDeviceConfigFacade.isApmEnhancementEnabled()).thenReturn(true);
+        // Airplane mode is enabled
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(20L);
+        when(mFrameworkFacade.getIntegerSetting(mContentResolver, Settings.Global.AIRPLANE_MODE_ON,
+                APM_DISABLED)).thenReturn(APM_ENABLED);
+        assertTrue(mWifiSettingsStore.updateAirplaneModeTracker());
+        mWifiSettingsStore.handleAirplaneModeToggled();
+        mLooper.dispatchAll();
+        // Wi-Fi is disabled
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(30L);
+        assertTrue(mWifiSettingsStore.handleWifiToggled(false));
+        mLooper.dispatchAll();
+        // Airplane mode is disabled
+        when(mFrameworkFacade.getIntegerSetting(mContentResolver, Settings.Global.AIRPLANE_MODE_ON,
+                APM_DISABLED)).thenReturn(APM_DISABLED);
+        assertTrue(mWifiSettingsStore.updateAirplaneModeTracker());
+        mWifiSettingsStore.handleAirplaneModeToggled();
+        mLooper.dispatchAll();
+        // Verify metrics logged correctly
+        verify(mWifiMetrics).reportAirplaneModeSession(true, true, false, true, true, true);
+
+        // Wi-Fi is disabled
+        mWifiSettingsStore.setPersistWifiState(WIFI_DISABLED);
+        when(mFrameworkFacade.getSecureIntegerSetting(mContext, WIFI_APM_STATE,
+                WIFI_TURNS_OFF_IN_APM)).thenReturn(WIFI_REMAINS_ON_IN_APM);
+        when(mDeviceConfigFacade.isApmEnhancementEnabled()).thenReturn(true);
+        // Airplane mode is enabled
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(40L);
+        when(mFrameworkFacade.getIntegerSetting(mContentResolver, Settings.Global.AIRPLANE_MODE_ON,
+                APM_DISABLED)).thenReturn(APM_ENABLED);
+        assertTrue(mWifiSettingsStore.updateAirplaneModeTracker());
+        mWifiSettingsStore.handleAirplaneModeToggled();
+        mLooper.dispatchAll();
+        // Wi-Fi is enabled
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(100_000L);
+        assertTrue(mWifiSettingsStore.handleWifiToggled(true));
+        mLooper.dispatchAll();
+        // Airplane mode is disabled
+        when(mFrameworkFacade.getIntegerSetting(mContentResolver, Settings.Global.AIRPLANE_MODE_ON,
+                APM_DISABLED)).thenReturn(APM_DISABLED);
+        assertTrue(mWifiSettingsStore.updateAirplaneModeTracker());
+        mWifiSettingsStore.handleAirplaneModeToggled();
+        mLooper.dispatchAll();
+        // Verify metrics logged correctly
+        verify(mWifiMetrics).reportAirplaneModeSession(false, false, true, true, true, false);
     }
 }
