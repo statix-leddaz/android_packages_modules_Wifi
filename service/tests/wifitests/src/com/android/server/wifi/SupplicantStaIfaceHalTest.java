@@ -58,7 +58,7 @@ import java.util.Map;
  * which service (HIDL or AIDL) is available. Test the initialization logic and
  * verify that calls to all public methods are forwarded to the actual implementation.
  */
-public class SupplicantStaIfaceHalTest {
+public class SupplicantStaIfaceHalTest extends WifiBaseTest {
     private SupplicantStaIfaceHalSpy mDut;
     private @Mock SupplicantStaIfaceHalHidlImpl mStaIfaceHalHidlMock;
     private @Mock SupplicantStaIfaceHalAidlImpl mStaIfaceHalAidlMock;
@@ -71,6 +71,7 @@ public class SupplicantStaIfaceHalTest {
     private @Mock WifiMetrics mWifiMetrics;
     private @Mock WifiGlobals mWifiGlobals;
     private @Mock SsidTranslator mSsidTranslator;
+    private @Mock WifiInjector mWifiInjector;
 
     private static final String IFACE_NAME = "wlan0";
     private static final String BSSID = "fa:45:23:23:12:12";
@@ -93,7 +94,7 @@ public class SupplicantStaIfaceHalTest {
     private class SupplicantStaIfaceHalSpy extends SupplicantStaIfaceHal {
         SupplicantStaIfaceHalSpy() {
             super(mContext, mWifiMonitor, mFrameworkFacade,
-                    mHandler, mClock, mWifiMetrics, mWifiGlobals, mSsidTranslator);
+                    mHandler, mClock, mWifiMetrics, mWifiGlobals, mSsidTranslator, mWifiInjector);
         }
 
         @Override

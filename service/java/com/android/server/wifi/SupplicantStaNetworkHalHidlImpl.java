@@ -309,8 +309,8 @@ public class SupplicantStaNetworkHalHidlImpl {
             }
             Log.d(TAG, "The target security params: " + securityParams);
 
-            boolean isRequirePmf = getOptimalPmfSettingForConfig(config,
-                    securityParams.isRequirePmf());
+            boolean isRequirePmf = NativeUtil.getOptimalPmfSettingForConfig(config,
+                    securityParams.isRequirePmf(), mWifiGlobals);
             /** RequirePMF */
             if (!setRequirePmf(isRequirePmf)) {
                 Log.e(TAG, config.SSID + ": failed to set requirePMF: " + config.requirePmf);
@@ -339,8 +339,9 @@ public class SupplicantStaNetworkHalHidlImpl {
             }
             /** Security Protocol */
             BitSet allowedProtocols = securityParams.getAllowedProtocols();
-            if (allowedProtocols.cardinality() != 0
-                    && !setProto(wifiConfigurationToSupplicantProtoMask(allowedProtocols))) {
+            if (allowedProtocols.cardinality() != 0 && !setProto(
+                    wifiConfigurationToSupplicantProtoMask(allowedProtocols, mWifiGlobals,
+                            WifiConfigurationUtil.isConfigForEnterpriseNetwork(config)))) {
                 Log.e(TAG, "failed to set Security Protocol");
                 return false;
             }
@@ -353,7 +354,8 @@ public class SupplicantStaNetworkHalHidlImpl {
                 return false;
             }
             /** Group Cipher */
-            BitSet allowedGroupCiphers = securityParams.getAllowedGroupCiphers();
+            BitSet allowedGroupCiphers = NativeUtil.getOptimalGroupCiphersForConfig(
+                    config, securityParams.getAllowedGroupCiphers(), mWifiGlobals);
             if (allowedGroupCiphers.cardinality() != 0
                     && (!setGroupCipher(wifiConfigurationToSupplicantGroupCipherMask(
                     allowedGroupCiphers)))) {
@@ -361,7 +363,8 @@ public class SupplicantStaNetworkHalHidlImpl {
                 return false;
             }
             /** Pairwise Cipher*/
-            BitSet allowedPairwiseCiphers = securityParams.getAllowedPairwiseCiphers();
+            BitSet allowedPairwiseCiphers = NativeUtil.getOptimalPairwiseCiphersForConfig(
+                    config, securityParams.getAllowedPairwiseCiphers(), mWifiGlobals);
             if (allowedPairwiseCiphers.cardinality() != 0
                     && !setPairwiseCipher(wifiConfigurationToSupplicantPairwiseCipherMask(
                     allowedPairwiseCiphers))) {
@@ -908,13 +911,16 @@ public class SupplicantStaNetworkHalHidlImpl {
         return mask;
     }
 
-    private static int wifiConfigurationToSupplicantProtoMask(BitSet protoMask) {
+    private static int wifiConfigurationToSupplicantProtoMask(BitSet protoMask,
+            WifiGlobals wifiGlobals, boolean isEnterprise) {
         int mask = 0;
         for (int bit = protoMask.nextSetBit(0); bit != -1;
                 bit = protoMask.nextSetBit(bit + 1)) {
             switch (bit) {
                 case WifiConfiguration.Protocol.WPA:
-                    mask |= ISupplicantStaNetwork.ProtoMask.WPA;
+                    if (isEnterprise || !wifiGlobals.isWpaPersonalDeprecated()) {
+                        mask |= ISupplicantStaNetwork.ProtoMask.WPA;
+                    }
                     break;
                 case WifiConfiguration.Protocol.RSN:
                     mask |= ISupplicantStaNetwork.ProtoMask.RSN;
@@ -1613,6 +1619,9 @@ public class SupplicantStaNetworkHalHidlImpl {
         synchronized (mLock) {
             final String methodStr = "setGroupCipher";
             if (!checkISupplicantStaNetworkAndLogFailure(methodStr)) return false;
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, String.format("setGroupCipher: 0x%x", groupCipherMask));
+            }
             try {
                 SupplicantStatus status;
                 android.hardware.wifi.supplicant.V1_2.ISupplicantStaNetwork
@@ -1721,6 +1730,9 @@ public class SupplicantStaNetworkHalHidlImpl {
         synchronized (mLock) {
             final String methodStr = "setPairwiseCipher";
             if (!checkISupplicantStaNetworkAndLogFailure(methodStr)) return false;
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, String.format("setPairwiseCipher: 0x%x", pairwiseCipherMask));
+            }
             try {
                 SupplicantStatus status;
                 android.hardware.wifi.supplicant.V1_2.ISupplicantStaNetwork
@@ -1845,6 +1857,9 @@ public class SupplicantStaNetworkHalHidlImpl {
         synchronized (mLock) {
             final String methodStr = "setRequirePmf";
             if (!checkISupplicantStaNetworkAndLogFailure(methodStr)) return false;
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "setRequirePmf: " + enable);
+            }
             try {
                 SupplicantStatus status = mISupplicantStaNetwork.setRequirePmf(enable);
                 return checkStatusAndLogFailure(status, methodStr);
@@ -3826,29 +3841,6 @@ public class SupplicantStaNetworkHalHidlImpl {
             modifiedFlags.clear(WifiConfiguration.KeyMgmt.WPA_EAP_SHA256);
             return modifiedFlags;
         }
-    }
-
-    /**
-     * Update PMF requirement if auto-upgrade offload is supported.
-     *
-     * If SAE auto-upgrade offload is supported and this config enables
-     * both PSK and SAE, do not set PMF requirement to
-     * mandatory to allow the device to roam between PSK and SAE BSSes.
-     * wpa_supplicant will set PMF requirement to optional by default.
-     */
-    private boolean getOptimalPmfSettingForConfig(WifiConfiguration config,
-            boolean isPmfRequiredFromSelectedSecurityParams) {
-        if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)
-                && config.getSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK).isEnabled()
-                && config.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE)
-                && config.getSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE).isEnabled()
-                && mWifiGlobals.isWpa3SaeUpgradeOffloadEnabled()) {
-            if (mVerboseLoggingEnabled) {
-                Log.d(TAG, "Keep optional PMF for SAE auto-upgrade offload.");
-            }
-            return false;
-        }
-        return isPmfRequiredFromSelectedSecurityParams;
     }
 
     /**
