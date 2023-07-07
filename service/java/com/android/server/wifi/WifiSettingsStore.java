@@ -28,6 +28,7 @@ import android.net.wifi.WifiContext;
 import android.provider.Settings;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
 import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
@@ -110,6 +111,17 @@ public class WifiSettingsStore {
     @VisibleForTesting
     public static final int NOTIFICATION_SHOWN = 1;
 
+    /**
+     * @hide constant copied from {@link Settings.Global}
+     * TODO(b/274636414): Migrate to official API in Android V.
+     */
+    static final String SETTINGS_SATELLITE_MODE_RADIOS = "satellite_mode_radios";
+    /**
+     * @hide constant copied from {@link Settings.Global}
+     * TODO(b/274636414): Migrate to official API in Android V.
+     */
+    static final String SETTINGS_SATELLITE_MODE_ENABLED = "satellite_mode_enabled";
+
     /* Persisted state that tracks the wifi & airplane interaction from settings */
     private int mPersistWifiState = WIFI_DISABLED;
 
@@ -131,10 +143,6 @@ public class WifiSettingsStore {
     /* Tracks when airplane mode has been enabled in milliseconds since boot */
     private long mApmEnabledTimeSinceBootMillis = 0;
 
-    // TODO(b/240650689): Replace NOTE_WIFI_APM_NOTIFICATION with
-    // SystemMessage.NOTE_WIFI_APM_NOTIFICATION
-    private static final int WIFI_APM_NOTIFICATION_ID = 73;
-
     private final String mApmEnhancementHelpLink;
     private final WifiContext mContext;
     private final WifiSettingsConfigStore mSettingsConfigStore;
@@ -144,6 +152,7 @@ public class WifiSettingsStore {
     private final DeviceConfigFacade mDeviceConfigFacade;
     private final WifiMetrics mWifiMetrics;
     private final Clock mClock;
+    private boolean mSatelliteModeOn;
 
     WifiSettingsStore(WifiContext context, WifiSettingsConfigStore sharedPreferences,
             WifiThreadRunner wifiThread, FrameworkFacade frameworkFacade,
@@ -160,6 +169,7 @@ public class WifiSettingsStore {
         mAirplaneModeOn = getPersistedAirplaneModeOn();
         mPersistWifiState = getPersistedWifiState();
         mApmEnhancementHelpLink = mContext.getString(R.string.config_wifiApmEnhancementHelpLink);
+        mSatelliteModeOn = getPersistedSatelliteModeOn();
     }
 
     private int getUserSecureIntegerSetting(String name, int def) {
@@ -201,6 +211,10 @@ public class WifiSettingsStore {
         return getPersistedWifiPasspointEnabled();
     }
 
+    public synchronized boolean isWifiScanThrottleEnabled() {
+        return getPersistedWifiScanThrottleEnabled();
+    }
+
     public synchronized int getWifiMultiInternetMode() {
         return getPersistedWifiMultiInternetMode();
     }
@@ -232,7 +246,7 @@ public class WifiSettingsStore {
                 .setStyle(new Notification.BigTextStyle().bigText(message))
                 .setSmallIcon(Icon.createWithResource(mContext.getWifiOverlayApkPkgName(),
                         R.drawable.ic_wifi_settings));
-        mNotificationManager.notify(WIFI_APM_NOTIFICATION_ID, builder.build());
+        mNotificationManager.notify(SystemMessage.NOTE_WIFI_APM_NOTIFICATION, builder.build());
     }
 
     public synchronized boolean handleWifiToggled(boolean wifiEnabled) {
@@ -369,6 +383,14 @@ public class WifiSettingsStore {
                 == BT_REMAINS_ON_IN_APM;
     }
 
+    synchronized void updateSatelliteModeTracker() {
+        mSatelliteModeOn = getPersistedSatelliteModeOn();
+    }
+
+    public boolean isSatelliteModeOn() {
+        return mSatelliteModeOn;
+    }
+
     void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         pw.println("WifiState " + getPersistedWifiState());
         pw.println("AirplaneModeOn " + getPersistedAirplaneModeOn());
@@ -389,6 +411,7 @@ public class WifiSettingsStore {
             pw.println("UserToggledWifiAfterEnteringApmWithinMinute "
                     + mUserToggledWifiAfterEnteringApmWithinMinute);
         }
+        pw.println("SatelliteModeOn " + mSatelliteModeOn);
     }
 
     private void persistWifiState(int state) {
@@ -463,8 +486,27 @@ public class WifiSettingsStore {
                 WifiSettingsConfigStore.WIFI_PASSPOINT_ENABLED);
     }
 
+    private boolean getPersistedWifiScanThrottleEnabled() {
+        return mSettingsConfigStore.get(
+                WifiSettingsConfigStore.WIFI_SCAN_THROTTLE_ENABLED);
+    }
+
     private int getPersistedWifiMultiInternetMode() {
         return mSettingsConfigStore.get(
                 WifiSettingsConfigStore.WIFI_MULTI_INTERNET_MODE);
+    }
+
+    private boolean getPersistedIsSatelliteModeSensitive() {
+        String satelliteRadios = mFrameworkFacade.getStringSetting(mContext,
+                SETTINGS_SATELLITE_MODE_RADIOS);
+        return satelliteRadios != null
+                && satelliteRadios.contains(Settings.Global.RADIO_WIFI);
+    }
+
+    /** Returns true if satellite mode is turned on. */
+    private boolean getPersistedSatelliteModeOn() {
+        if (!getPersistedIsSatelliteModeSensitive()) return false;
+        return  mFrameworkFacade.getIntegerSetting(
+                mContext, SETTINGS_SATELLITE_MODE_ENABLED, 0) == 1;
     }
 }

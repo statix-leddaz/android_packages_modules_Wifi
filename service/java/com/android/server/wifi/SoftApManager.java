@@ -25,7 +25,7 @@ import static com.android.server.wifi.util.ApConfigUtil.SUCCESS;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.compat.Compatibility;
+import android.app.compat.CompatChanges;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -99,6 +99,7 @@ public class SoftApManager implements ActiveModeManager {
     private final ActiveModeWarden mActiveModeWarden;
     private final SoftApNotifier mSoftApNotifier;
     private final InterfaceConflictManager mInterfaceConflictManager;
+    private final WifiInjector mWifiInjector;
 
     @VisibleForTesting
     static final long SOFT_AP_PENDING_DISCONNECTION_CHECK_DELAY_MS = 1000;
@@ -312,7 +313,7 @@ public class SoftApManager implements ActiveModeManager {
         // Compatibility check is used for unit test only since the SoftApManager is created by
         // the unit test thread (not the system_server) when running unit test. In other cases,
         // the SoftApManager would run in system server(i.e. always bypasses the app compat check).
-        if (Compatibility.isChangeEnabled(SoftApConfiguration.REMOVE_ZERO_FOR_TIMEOUT_SETTING)
+        if (CompatChanges.isChangeEnabled(SoftApConfiguration.REMOVE_ZERO_FOR_TIMEOUT_SETTING)
                 && newShutdownTimeoutMillis == 0) {
             newShutdownTimeoutMillis = SoftApConfiguration.DEFAULT_TIMEOUT;
         }
@@ -337,6 +338,7 @@ public class SoftApManager implements ActiveModeManager {
             @NonNull Looper looper,
             @NonNull FrameworkFacade framework,
             @NonNull WifiNative wifiNative,
+            @NonNull WifiInjector wifiInjector,
             @NonNull CoexManager coexManager,
             @NonNull InterfaceConflictManager interfaceConflictManager,
             @NonNull Listener<SoftApManager> listener,
@@ -357,6 +359,7 @@ public class SoftApManager implements ActiveModeManager {
         mFrameworkFacade = framework;
         mSoftApNotifier = softApNotifier;
         mWifiNative = wifiNative;
+        mWifiInjector = wifiInjector;
         mCoexManager = coexManager;
         mInterfaceConflictManager = interfaceConflictManager;
         if (SdkLevel.isAtLeastS()) {
@@ -604,7 +607,7 @@ public class SoftApManager implements ActiveModeManager {
     private void onL2Connected(@NonNull ConcreteClientModeManager clientModeManager) {
         Log.d(getTag(), "onL2Connected called");
         mStateMachine.sendMessage(SoftApStateMachine.CMD_HANDLE_WIFI_CONNECTED,
-                clientModeManager.syncRequestConnectionInfo());
+                clientModeManager.getConnectionInfo());
     }
 
 
@@ -734,11 +737,6 @@ public class SoftApManager implements ActiveModeManager {
             return result;
         }
 
-        result = setCountryCode();
-        if (result != SUCCESS) {
-            return result;
-        }
-
         // Make a copy of configuration for updating AP band and channel.
         SoftApConfiguration.Builder localConfigBuilder =
                 new SoftApConfiguration.Builder(mCurrentSoftApConfiguration);
@@ -775,6 +773,24 @@ public class SoftApManager implements ActiveModeManager {
         Log.d(getTag(), "Soft AP is started ");
 
         return SUCCESS;
+    }
+
+    private void handleStartSoftApFailure(int result) {
+        if (result == SUCCESS) {
+            return;
+        }
+        int failureReason = WifiManager.SAP_START_FAILURE_GENERAL;
+        if (result == ERROR_NO_CHANNEL) {
+            failureReason = WifiManager.SAP_START_FAILURE_NO_CHANNEL;
+        } else if (result == ERROR_UNSUPPORTED_CONFIGURATION) {
+            failureReason = WifiManager.SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION;
+        }
+        updateApState(WifiManager.WIFI_AP_STATE_FAILED,
+                WifiManager.WIFI_AP_STATE_ENABLING,
+                failureReason);
+        stopSoftAp();
+        mWifiMetrics.incrementSoftApStartResult(false, failureReason);
+        mModeListener.onStartFailure(SoftApManager.this);
     }
 
     /**
@@ -889,12 +905,15 @@ public class SoftApManager implements ActiveModeManager {
         public static final int CMD_SAFE_CHANNEL_FREQUENCY_CHANGED = 14;
         public static final int CMD_HANDLE_WIFI_CONNECTED = 15;
         public static final int CMD_UPDATE_COUNTRY_CODE = 16;
-        public static final int CMD_PLUGGED_STATE_CHANGED = 17;
+        public static final int CMD_DRIVER_COUNTRY_CODE_CHANGED = 17;
+        public static final int CMD_DRIVER_COUNTRY_CODE_CHANGE_TIMED_OUT = 18;
+        public static final int CMD_PLUGGED_STATE_CHANGED = 19;
 
         private final State mActiveState = new ActiveState();
-        private final State mIdleState = new IdleState();
-        private final WaitingState mWaitingState = new WaitingState(this);
-        private final State mStartedState = new StartedState();
+        private final State mIdleState;
+        private final State mWaitingForDriverCountryCodeChangedState;
+        private final WaitingState mWaitingForIcmDialogState = new WaitingState(this);
+        private final State mStartedState;
 
         private final InterfaceCallback mWifiNativeInterfaceCallback = new InterfaceCallback() {
             @Override
@@ -922,16 +941,24 @@ public class SoftApManager implements ActiveModeManager {
         SoftApStateMachine(Looper looper) {
             super(TAG, looper);
 
+            final int threshold =  mContext.getResources().getInteger(
+                    R.integer.config_wifiConfigurationWifiRunnerThresholdInMs);
+            mIdleState = new IdleState(threshold);
+            mWaitingForDriverCountryCodeChangedState =
+                    new WaitingForDriverCountryCodeChangedState(threshold);
+            mStartedState = new StartedState(threshold);
             // CHECKSTYLE:OFF IndentationCheck
             addState(mActiveState);
                 addState(mIdleState, mActiveState);
-                addState(mWaitingState, mActiveState);
+                addState(mWaitingForDriverCountryCodeChangedState, mActiveState);
+                addState(mWaitingForIcmDialogState, mActiveState);
                 addState(mStartedState, mActiveState);
             // CHECKSTYLE:ON IndentationCheck
 
             setInitialState(mIdleState);
             start();
         }
+
 
         private class ActiveState extends State {
             @Override
@@ -941,16 +968,80 @@ public class SoftApManager implements ActiveModeManager {
             }
         }
 
-        private class IdleState extends State {
+        @Override
+        protected String getWhatToString(int what) {
+            switch (what) {
+                case CMD_START:
+                    return "CMD_START";
+                case CMD_STOP:
+                    return "CMD_STOP";
+                case CMD_FAILURE:
+                    return "CMD_FAILURE";
+                case CMD_INTERFACE_STATUS_CHANGED:
+                    return "CMD_INTERFACE_STATUS_CHANGED";
+                case CMD_ASSOCIATED_STATIONS_CHANGED:
+                    return "CMD_ASSOCIATED_STATIONS_CHANGED";
+                case CMD_NO_ASSOCIATED_STATIONS_TIMEOUT:
+                    return "CMD_NO_ASSOCIATED_STATIONS_TIMEOUT";
+                case CMD_INTERFACE_DESTROYED:
+                    return "CMD_INTERFACE_DESTROYED";
+                case CMD_INTERFACE_DOWN:
+                    return "CMD_INTERFACE_DOWN";
+                case CMD_AP_INFO_CHANGED:
+                    return "CMD_AP_INFO_CHANGED";
+                case CMD_UPDATE_CAPABILITY:
+                    return "CMD_UPDATE_CAPABILITY";
+                case CMD_UPDATE_CONFIG:
+                    return "CMD_UPDATE_CONFIG";
+                case CMD_FORCE_DISCONNECT_PENDING_CLIENTS:
+                    return "CMD_FORCE_DISCONNECT_PENDING_CLIENTS";
+                case CMD_NO_ASSOCIATED_STATIONS_TIMEOUT_ON_ONE_INSTANCE:
+                    return "CMD_NO_ASSOCIATED_STATIONS_TIMEOUT_ON_ONE_INSTANCE";
+                case CMD_SAFE_CHANNEL_FREQUENCY_CHANGED:
+                    return "CMD_SAFE_CHANNEL_FREQUENCY_CHANGED";
+                case CMD_HANDLE_WIFI_CONNECTED:
+                    return "CMD_HANDLE_WIFI_CONNECTED";
+                case CMD_UPDATE_COUNTRY_CODE:
+                    return "CMD_UPDATE_COUNTRY_CODE";
+                case CMD_DRIVER_COUNTRY_CODE_CHANGED:
+                    return "CMD_DRIVER_COUNTRY_CODE_CHANGED";
+                case CMD_DRIVER_COUNTRY_CODE_CHANGE_TIMED_OUT:
+                    return "CMD_DRIVER_COUNTRY_CODE_CHANGE_TIMED_OUT";
+                case CMD_PLUGGED_STATE_CHANGED:
+                    return "CMD_PLUGGED_STATE_CHANGED";
+                case RunnerState.STATE_ENTER_CMD:
+                    return "Enter";
+                case RunnerState.STATE_EXIT_CMD:
+                    return "Exit";
+                default:
+                    return "what:" + what;
+            }
+        }
+
+        private class IdleState extends RunnerState {
+            IdleState(int threshold) {
+                super(threshold, mWifiInjector.getWifiHandlerLocalLog());
+            }
+
             @Override
-            public void enter() {
+            public void enterImpl() {
                 mApInterfaceName = null;
                 mIfaceIsUp = false;
                 mIfaceIsDestroyed = false;
             }
 
             @Override
-            public boolean processMessage(Message message) {
+            public void exitImpl() {
+            }
+
+            @Override
+            String getMessageLogRec(int what) {
+                return SoftApManager.class.getSimpleName() + "." + IdleState.class.getSimpleName()
+                        + "." + getWhatToString(what);
+            }
+
+            @Override
+            public boolean processMessageImpl(Message message) {
                 switch (message.what) {
                     case CMD_STOP:
                         quitNow();
@@ -971,7 +1062,6 @@ public class SoftApManager implements ActiveModeManager {
                         }
                         if (isBridgedMode()) {
                             boolean isFallbackToSingleAp = false;
-                            int newSingleApBand = 0;
                             final List<ClientModeManager> cmms =
                                     mActiveModeWarden.getClientModeManagers();
                             // Checking STA status only when device supports STA + AP concurrency
@@ -980,8 +1070,7 @@ public class SoftApManager implements ActiveModeManager {
                                 if (ApConfigUtil.isStaWithBridgedModeSupported(mContext)) {
                                     for (ClientModeManager cmm
                                             : mActiveModeWarden.getClientModeManagers()) {
-                                        WifiInfo wifiConnectedInfo =
-                                                cmm.syncRequestConnectionInfo();
+                                        WifiInfo wifiConnectedInfo = cmm.getConnectionInfo();
                                         int wifiFrequency = wifiConnectedInfo.getFrequency();
                                         if (wifiFrequency > 0
                                                 && !mSafeChannelFrequencyList.contains(
@@ -1008,14 +1097,19 @@ public class SoftApManager implements ActiveModeManager {
                                         + ", base country in SoftApCapability = "
                                         + mCurrentSoftApCapability.getCountryCode());
                             } else {
-                                for (int configuredBand : mCurrentSoftApConfiguration.getBands()) {
-                                    int availableBand = ApConfigUtil.removeUnavailableBands(
-                                            mCurrentSoftApCapability,
-                                            configuredBand, mCoexManager);
-                                    if (configuredBand != availableBand) {
-                                        isFallbackToSingleAp = true;
-                                    }
-                                    newSingleApBand |= availableBand;
+                                SoftApConfiguration tempConfig =
+                                        ApConfigUtil.removeUnavailableBandsFromConfig(
+                                                mCurrentSoftApConfiguration,
+                                                mCurrentSoftApCapability, mCoexManager, mContext);
+                                if (tempConfig == null) {
+                                    handleStartSoftApFailure(ERROR_UNSUPPORTED_CONFIGURATION);
+                                    break;
+                                }
+                                mCurrentSoftApConfiguration = tempConfig;
+                                if (mCurrentSoftApConfiguration.getBands().length == 1) {
+                                    isFallbackToSingleAp = true;
+                                    Log.i(getTag(), "Removed unavailable bands"
+                                            + " - fallback to single AP");
                                 }
                             }
                             // Fall back to Single AP if it's not possible to create a Bridged AP.
@@ -1030,6 +1124,10 @@ public class SoftApManager implements ActiveModeManager {
                                 isFallbackToSingleAp = true;
                             }
                             if (isFallbackToSingleAp) {
+                                int newSingleApBand = 0;
+                                for (int configuredBand : mCurrentSoftApConfiguration.getBands()) {
+                                    newSingleApBand |= configuredBand;
+                                }
                                 newSingleApBand = ApConfigUtil.append24GToBandIf24GSupported(
                                         newSingleApBand, mContext);
                                 Log.i(getTag(), "Fallback to single AP mode with band "
@@ -1043,15 +1141,20 @@ public class SoftApManager implements ActiveModeManager {
 
                         // Remove 6GHz from requested bands if security type is restricted
                         // Note: 6GHz only band is already handled by initial validation
-                        mCurrentSoftApConfiguration =
+                        SoftApConfiguration tempConfig =
                                 ApConfigUtil.remove6gBandForUnsupportedSecurity(
                                     mCurrentSoftApConfiguration);
+                        if (tempConfig == null) {
+                            handleStartSoftApFailure(ERROR_UNSUPPORTED_CONFIGURATION);
+                            break;
+                        }
+                        mCurrentSoftApConfiguration = tempConfig;
                         // Don't show the ICM dialog if this is for tethering.
                         boolean bypassDialog = mOriginalModeConfiguration.getTargetMode()
                                 == WifiManager.IFACE_IP_MODE_TETHERED;
                         int icmResult = mInterfaceConflictManager
                                 .manageInterfaceConflictForStateMachine(
-                                        TAG, message, mStateMachine, mWaitingState,
+                                        TAG, message, mStateMachine, mWaitingForIcmDialogState,
                                         mIdleState, isBridgeRequired()
                                                 ? HalDeviceManager.HDM_CREATE_IFACE_AP_BRIDGE
                                                 : HalDeviceManager.HDM_CREATE_IFACE_AP,
@@ -1085,21 +1188,24 @@ public class SoftApManager implements ActiveModeManager {
                         mSoftApNotifier.dismissSoftApShutdownTimeoutExpiredNotification();
                         updateApState(WifiManager.WIFI_AP_STATE_ENABLING,
                                 WifiManager.WIFI_AP_STATE_DISABLED, 0);
-                        int result = startSoftAp();
+                        int result = setCountryCode();
                         if (result != SUCCESS) {
-                            int failureReason = WifiManager.SAP_START_FAILURE_GENERAL;
-                            if (result == ERROR_NO_CHANNEL) {
-                                failureReason = WifiManager.SAP_START_FAILURE_NO_CHANNEL;
-                            } else if (result == ERROR_UNSUPPORTED_CONFIGURATION) {
-                                failureReason = WifiManager
-                                        .SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION;
-                            }
-                            updateApState(WifiManager.WIFI_AP_STATE_FAILED,
-                                    WifiManager.WIFI_AP_STATE_ENABLING,
-                                    failureReason);
-                            stopSoftAp();
-                            mWifiMetrics.incrementSoftApStartResult(false, failureReason);
-                            mModeListener.onStartFailure(SoftApManager.this);
+                            handleStartSoftApFailure(result);
+                            break;
+                        }
+                        if (mContext.getResources().getBoolean(
+                                R.bool.config_wifiDriverSupportedNl80211RegChangedEvent)
+                                && !TextUtils.isEmpty(mCountryCode)
+                                && !TextUtils.equals(
+                                        mCountryCode, mCurrentSoftApCapability.getCountryCode())) {
+                            Log.i(getTag(), "Need to wait for driver country code update before"
+                                    + " starting");
+                            transitionTo(mWaitingForDriverCountryCodeChangedState);
+                            break;
+                        }
+                        result = startSoftAp();
+                        if (result != SUCCESS) {
+                            handleStartSoftApFailure(result);
                             break;
                         }
                         transitionTo(mStartedState);
@@ -1131,7 +1237,73 @@ public class SoftApManager implements ActiveModeManager {
             }
         }
 
-        private class StartedState extends State {
+        private class WaitingForDriverCountryCodeChangedState extends RunnerState {
+            private static final int TIMEOUT_MS = 5_000;
+
+            private final WifiCountryCode.ChangeListener mCountryCodeChangeListener =
+                    countryCode -> sendMessage(CMD_DRIVER_COUNTRY_CODE_CHANGED, countryCode);
+
+            WaitingForDriverCountryCodeChangedState(int threshold) {
+                super(threshold, mWifiInjector.getWifiHandlerLocalLog());
+            }
+
+            @Override
+            void enterImpl() {
+                mWifiInjector.getWifiCountryCode().registerListener(mCountryCodeChangeListener);
+                sendMessageDelayed(CMD_DRIVER_COUNTRY_CODE_CHANGE_TIMED_OUT, TIMEOUT_MS);
+            }
+
+            @Override
+            void exitImpl() {
+                mWifiInjector.getWifiCountryCode().unregisterListener(mCountryCodeChangeListener);
+                removeMessages(CMD_DRIVER_COUNTRY_CODE_CHANGE_TIMED_OUT);
+            }
+
+            @Override
+            boolean processMessageImpl(Message message) {
+                if (message.what == CMD_DRIVER_COUNTRY_CODE_CHANGED) {
+                    if (!TextUtils.equals(mCountryCode, (String) message.obj)) {
+                        Log.i(getTag(), "Ignore country code changed: " + message.obj);
+                        return HANDLED;
+                    }
+                    Log.i(getTag(), "Driver country code change to " + message.obj
+                            + ", continue starting.");
+                    mCurrentSoftApCapability.setCountryCode(mCountryCode);
+                    mCurrentSoftApCapability =
+                            ApConfigUtil.updateSoftApCapabilityWithAvailableChannelList(
+                                    mCurrentSoftApCapability, mContext, mWifiNative);
+                    updateSafeChannelFrequencyList();
+                } else if (message.what == CMD_DRIVER_COUNTRY_CODE_CHANGE_TIMED_OUT) {
+                    Log.i(getTag(), "Timed out waiting for driver country code change, "
+                            + "continue starting anyway.");
+                } else {
+                    Log.i(getTag(), "Defer " + getWhatToString(message.what)
+                            + " while waiting for driver country code change.");
+                    deferMessage(message);
+                    return HANDLED;
+                }
+                int result = startSoftAp();
+                if (result != SUCCESS) {
+                    handleStartSoftApFailure(result);
+                    transitionTo(mIdleState);
+                    return HANDLED;
+                }
+                transitionTo(mStartedState);
+                return HANDLED;
+            }
+
+            @Override
+            String getMessageLogRec(int what) {
+                return SoftApManager.class.getSimpleName() + "." + RunnerState.class.getSimpleName()
+                        + "." + getWhatToString(what);
+            }
+        }
+
+        private class StartedState extends RunnerState {
+            StartedState(int threshold) {
+                super(threshold, mWifiInjector.getWifiHandlerLocalLog());
+            }
+
             BroadcastReceiver mBatteryPluggedReceiver = new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context context, Intent intent) {
@@ -1475,7 +1647,7 @@ public class SoftApManager implements ActiveModeManager {
             }
 
             @Override
-            public void enter() {
+            public void enterImpl() {
                 mIfaceIsUp = false;
                 mIfaceIsDestroyed = false;
                 onUpChanged(mWifiNative.isInterfaceUp(mApInterfaceName));
@@ -1497,7 +1669,7 @@ public class SoftApManager implements ActiveModeManager {
             }
 
             @Override
-            public void exit() {
+            public void exitImpl() {
                 if (!mIfaceIsDestroyed) {
                     stopSoftAp();
                 }
@@ -1568,7 +1740,13 @@ public class SoftApManager implements ActiveModeManager {
             }
 
             @Override
-            public boolean processMessage(Message message) {
+            String getMessageLogRec(int what) {
+                return SoftApManager.class.getSimpleName() + "." + RunnerState.class.getSimpleName()
+                        + "." + getWhatToString(what);
+            }
+
+            @Override
+            public boolean processMessageImpl(Message message) {
                 switch (message.what) {
                     case CMD_ASSOCIATED_STATIONS_CHANGED:
                         if (!(message.obj instanceof WifiClient)) {
