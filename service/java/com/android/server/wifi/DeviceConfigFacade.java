@@ -36,7 +36,7 @@ import java.util.function.Consumer;
  * This class allows getting all configurable flags from DeviceConfig.
  */
 public class DeviceConfigFacade {
-    private Context mContext;
+    private final Context mContext;
     private final WifiMetrics mWifiMetrics;
 
     private static final String NAMESPACE = "wifi";
@@ -204,15 +204,20 @@ public class DeviceConfigFacade {
     private int mMinConfirmationDurationSendLowScoreMs;
     private int mMinConfirmationDurationSendHighScoreMs;
     private int mRssiThresholdNotSendLowScoreToCsDbm;
-    private boolean mAllowNonPersistentMacRandomizationOnOpenSsids;
     private int mTrafficStatsThresholdMaxKbyte;
     private int mBandwidthEstimatorLargeTimeConstantSec;
     private boolean mInterfaceFailureBugreportEnabled;
     private boolean mP2pFailureBugreportEnabled;
     private boolean mApmEnhancementEnabled;
+    private boolean mAwareSuspensionEnabled;
+    private boolean mHighPerfLockDeprecated;
     private Optional<Boolean> mOobPseudonymEnabled = Optional.empty();
     private Consumer<Boolean> mOobPseudonymFeatureFlagChangedListener = null;
+    private boolean mApplicationQosPolicyApiEnabled;
+    private boolean mAdjustPollRssiIntervalEnabled;
     private boolean mSoftwarePnoEnabled;
+    private boolean mIncludePasspointSsidsInPnoScans;
+    private boolean mHandleRssiOrganicKernelFailuresEnabled;
 
     private final Handler mWifiHandler;
 
@@ -379,8 +384,6 @@ public class DeviceConfigFacade {
         mRssiThresholdNotSendLowScoreToCsDbm = DeviceConfig.getInt(NAMESPACE,
                 "rssi_threshold_not_send_low_score_to_cs_dbm",
                 DEFAULT_RSSI_THRESHOLD_NOT_SEND_LOW_SCORE_TO_CS_DBM);
-        mAllowNonPersistentMacRandomizationOnOpenSsids = DeviceConfig.getBoolean(NAMESPACE,
-                "allow_enhanced_mac_randomization_on_open_ssids", false);
         mTrafficStatsThresholdMaxKbyte = DeviceConfig.getInt(NAMESPACE,
                 "traffic_stats_threshold_max_kbyte", DEFAULT_TRAFFIC_STATS_THRESHOLD_MAX_KB);
         mBandwidthEstimatorLargeTimeConstantSec = DeviceConfig.getInt(NAMESPACE,
@@ -392,8 +395,12 @@ public class DeviceConfigFacade {
                 "p2p_failure_bugreport_enabled", false);
         mApmEnhancementEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "apm_enhancement_enabled", false);
+        mAwareSuspensionEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "aware_suspension_enabled", true);
+        mHighPerfLockDeprecated = DeviceConfig.getBoolean(NAMESPACE,
+                "high_perf_lock_deprecated", true);
         boolean oobPseudonymEnabled = DeviceConfig.getBoolean(NAMESPACE,
-                "oob_pseudonym_enabled", false);
+                "oob_pseudonym_enabled", true);
         if (mOobPseudonymEnabled.isPresent()
                 && mOobPseudonymEnabled.get() != oobPseudonymEnabled
                 && mOobPseudonymFeatureFlagChangedListener != null) {
@@ -401,8 +408,16 @@ public class DeviceConfigFacade {
                     () -> mOobPseudonymFeatureFlagChangedListener.accept(oobPseudonymEnabled));
         }
         mOobPseudonymEnabled = Optional.of(oobPseudonymEnabled);
+        mApplicationQosPolicyApiEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "application_qos_policy_api_enabled", false);
+        mAdjustPollRssiIntervalEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "adjust_poll_rssi_interval_enabled", true);
         mSoftwarePnoEnabled = DeviceConfig.getBoolean(NAMESPACE,
                 "software_pno_enabled", false);
+        mIncludePasspointSsidsInPnoScans = DeviceConfig.getBoolean(NAMESPACE,
+                "include_passpoint_ssids_in_pno_scans", false);
+        mHandleRssiOrganicKernelFailuresEnabled = DeviceConfig.getBoolean(NAMESPACE,
+                "handle_rssi_organic_kernel_failures_enabled", true);
     }
 
     private Set<String> getUnmodifiableSetQuoted(String key) {
@@ -798,13 +813,6 @@ public class DeviceConfigFacade {
     }
 
     /**
-     * Gets whether non-persistent MAC randomization should be allowed on open networks.
-     */
-    public boolean allowNonPersistentMacRandomizationOnOpenSsids() {
-        return mAllowNonPersistentMacRandomizationOnOpenSsids;
-    }
-
-    /**
      * Gets traffic stats maximum threshold in KByte
      */
     public int getTrafficStatsThresholdMaxKbyte() {
@@ -842,6 +850,20 @@ public class DeviceConfigFacade {
     }
 
     /**
+     * Gets the feature flag for Aware suspension
+     */
+    public boolean isAwareSuspensionEnabled() {
+        return mAwareSuspensionEnabled;
+    }
+
+    /**
+     * Gets the feature flag for High Perf lock deprecation
+     */
+    public boolean isHighPerfLockDeprecated() {
+        return mHighPerfLockDeprecated;
+    }
+
+    /**
      * Gets the feature flag for the OOB pseudonym of EAP-SIM/AKA/AKA'
      */
     public boolean isOobPseudonymEnabled() {
@@ -849,10 +871,39 @@ public class DeviceConfigFacade {
     }
 
     /**
+     * Gets the feature flag indicating whether the application QoS policy API is enabled.
+     */
+    public boolean isApplicationQosPolicyApiEnabled() {
+        return mApplicationQosPolicyApiEnabled;
+    }
+
+    /**
+     * Gets the feature flag for adjusting link layer stats and RSSI polling interval
+     */
+    public boolean isAdjustPollRssiIntervalEnabled() {
+        return mAdjustPollRssiIntervalEnabled;
+    }
+
+    /**
      * Gets the feature flag for Software PNO
      */
     public boolean isSoftwarePnoEnabled() {
         return mSoftwarePnoEnabled;
+    }
+
+    /**
+     * Gets the feature flag indicating whether Passpoint SSIDs should be included in PNO scans.
+     */
+    public boolean includePasspointSsidsInPnoScans() {
+        return mIncludePasspointSsidsInPnoScans;
+    }
+
+    /**
+     * Gets the feature flag indicating whether handling IP reachability failures triggered from
+     * Wi-Fi RSSI polling or organic kernel probes the same as failure post roaming.
+     */
+    public boolean isHandleRssiOrganicKernelFailuresEnabled() {
+        return mHandleRssiOrganicKernelFailuresEnabled;
     }
 
     /*
