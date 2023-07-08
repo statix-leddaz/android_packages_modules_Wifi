@@ -1148,12 +1148,9 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         ArrayList<String> ifaceList = interfaces.stream().map(
                                 p -> p.getInterface()).collect(
                                 Collectors.toCollection(ArrayList::new));
-                        if (interfaces.stream().anyMatch(
-                                p -> p.getType() == TetheringManager.TETHERING_WIFI_P2P)) {
-                            logd(getName() + " Tethering localOnlyInterfacesChanged"
-                                    + " callback for ifaceList: " + ifaceList);
-                            sendMessage(TETHER_INTERFACE_STATE_CHANGED, ifaceList);
-                        }
+                        logd(getName() + " Tethering localOnlyInterfacesChanged"
+                                + " callback for ifaceList: " + ifaceList);
+                        sendMessage(TETHER_INTERFACE_STATE_CHANGED, ifaceList);
                     }
                 };
 
@@ -2781,7 +2778,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                                 true);
                         // do not send service discovery request while normal find operation.
                         clearSupplicantServiceRequest();
-                        Log.e(TAG, "-------discover_peers before p2pFind");
                         if (p2pFind(scanType, freq, DISCOVER_TIMEOUT_S)) {
                             mWifiP2pMetrics.incrementPeerScans();
                             replyToMessage(message, WifiP2pManager.DISCOVER_PEERS_SUCCEEDED);
@@ -3681,9 +3677,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             if (join) {
                                 mWifiNative.p2pCancelConnect();
                                 mWifiNative.p2pStopFind();
-                                sendP2pConnectionChangedBroadcast();
                             }
                             sendP2pRejection();
+                            mDetailedState = NetworkInfo.DetailedState.DISCONNECTED;
+                            sendP2pConnectionChangedBroadcast();
                             mSavedPeerConfig.invalidate();
                         } else {
                             mWifiNative.p2pCancelConnect();
@@ -4369,7 +4366,17 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         if (mVerboseLoggingEnabled) {
                             logd("mDhcpResultsParcelable: " + mDhcpResultsParcelable);
                         }
-                        setWifiP2pInfoOnGroupFormation(mDhcpResultsParcelable.serverAddress);
+                        if (mDhcpResultsParcelable.serverAddress != null) {
+                            setWifiP2pInfoOnGroupFormation(mDhcpResultsParcelable.serverAddress);
+                        } else {
+                            // In case of static IP (IP address received via EAPOL-Key exchange),
+                            // the DHCP server address is null. So look for the gateway address.
+                            InetAddress addr =
+                                    mDhcpResultsParcelable.baseConfiguration.getGateway();
+                            if (addr != null) {
+                                setWifiP2pInfoOnGroupFormation(addr.getHostAddress());
+                            }
+                        }
                         try {
                             final String ifname = mGroup.getInterface();
                             if (mDhcpResultsParcelable != null) {

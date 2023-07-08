@@ -52,6 +52,7 @@ import android.provider.Settings;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.LocalLog;
 import android.util.Log;
@@ -149,9 +150,11 @@ public class WifiConfigManager {
          *
          * @param newConfig Updated WifiConfiguration object.
          * @param oldConfig Prev WifiConfiguration object.
+         * @param hasCredentialChanged true if credential is changed, false otherwise.
          */
         default void onNetworkUpdated(
-                @NonNull WifiConfiguration newConfig, @NonNull WifiConfiguration oldConfig) { };
+                @NonNull WifiConfiguration newConfig, @NonNull WifiConfiguration oldConfig,
+                boolean hasCredentialChanged) { };
 
         /**
          * Invoked when user connect choice is set.
@@ -235,8 +238,7 @@ public class WifiConfigManager {
 
     @VisibleForTesting
     public static final int SCAN_RESULT_MISSING_COUNT_THRESHOLD = 1;
-    @VisibleForTesting
-    protected static final String NON_PERSISTENT_MAC_RANDOMIZATION_FEATURE_FORCE_ENABLE_FLAG =
+    public static final String NON_PERSISTENT_MAC_RANDOMIZATION_FEATURE_FORCE_ENABLE_FLAG =
             "non_persistent_mac_randomization_force_enabled";
     private static final int NON_CARRIER_MERGED_NETWORKS_SCAN_CACHE_QUERY_DURATION_MS =
             10 * 60 * 1000; // 10 minutes
@@ -1649,7 +1651,8 @@ public class WifiConfigManager {
             } else {
                 listener.onNetworkUpdated(
                         createExternalWifiConfiguration(newConfig, true, Process.WIFI_UID),
-                        createExternalWifiConfiguration(existingConfig, true, Process.WIFI_UID));
+                        createExternalWifiConfiguration(existingConfig, true, Process.WIFI_UID),
+                        result.hasCredentialChanged());
             }
         }
         return result;
@@ -1700,6 +1703,43 @@ public class WifiConfigManager {
     }
 
     /**
+     * Filter non app-added networks from the input list.
+     *
+     * Note: Optimized to avoid checking the permissions for each config in the input list,
+     * since {@link WifiPermissionsUtil#isProfileOwner(int, String)} is fairly expensive.
+     *
+     * Many configs will have the same creator, so we can cache the permissions per-creator.
+     *
+     * @param networks List of WifiConfigurations to filter.
+     * @return List of app-added networks.
+     */
+    @VisibleForTesting
+    protected List<WifiConfiguration> filterNonAppAddedNetworks(List<WifiConfiguration> networks) {
+        List<WifiConfiguration> appAddedNetworks = new ArrayList<>();
+        Map<Pair<Integer, String>, Boolean> isAppAddedCache = new ArrayMap<>();
+
+        for (WifiConfiguration network : networks) {
+            Pair<Integer, String> identityPair =
+                    new Pair<>(network.creatorUid, network.creatorName);
+            boolean isAppAdded;
+
+            // Checking the DO/PO/System permissions is expensive - cache the result.
+            if (isAppAddedCache.containsKey(identityPair)) {
+                isAppAdded = isAppAddedCache.get(identityPair);
+            } else {
+                isAppAdded = !isDeviceOwnerProfileOwnerOrSystem(
+                        network.creatorUid, network.creatorName);
+                isAppAddedCache.put(identityPair, isAppAdded);
+            }
+
+            if (isAppAdded) {
+                appAddedNetworks.add(network);
+            }
+        }
+        return appAddedNetworks;
+    }
+
+    /**
      * Removes excess networks in case the number of saved networks exceeds the max limit
      * specified in config_wifiMaxNumWifiConfigurations.
      *
@@ -1737,11 +1777,9 @@ public class WifiConfigManager {
             numExcessNetworks = networkList.size() - maxNumTotalConfigs;
         }
 
-        if (callerIsApp && maxNumAppAddedConfigs >= 0) {
-            List<WifiConfiguration> appAddedNetworks = networkList
-                    .stream()
-                    .filter(n -> !isDeviceOwnerProfileOwnerOrSystem(n.creatorUid, n.creatorName))
-                    .collect(Collectors.toList());
+        if (callerIsApp && maxNumAppAddedConfigs >= 0
+                && networkList.size() > maxNumAppAddedConfigs) {
+            List<WifiConfiguration> appAddedNetworks = filterNonAppAddedNetworks(networkList);
             int numExcessAppAddedNetworks = appAddedNetworks.size() - maxNumAppAddedConfigs;
             if (numExcessAppAddedNetworks > 0) {
                 // Only enforce the limit on app-added networks if it has been exceeded.
@@ -3684,7 +3722,9 @@ public class WifiConfigManager {
         mRandomizedMacStoreData.setMacMapping(mRandomizedMacAddressMapping);
 
         try {
+            long start = mClock.getElapsedSinceBootMillis();
             mWifiConfigStore.write(forceWrite);
+            mWifiMetrics.wifiConfigStored((int) (mClock.getElapsedSinceBootMillis() - start));
         } catch (IOException | IllegalStateException e) {
             Log.wtf(TAG, "Writing to store failed. Saved networks maybe lost!", e);
             return false;

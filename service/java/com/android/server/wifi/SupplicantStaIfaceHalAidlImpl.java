@@ -51,6 +51,7 @@ import android.hardware.wifi.supplicant.ISupplicantStaIfaceCallback;
 import android.hardware.wifi.supplicant.ISupplicantStaNetwork;
 import android.hardware.wifi.supplicant.IfaceInfo;
 import android.hardware.wifi.supplicant.IfaceType;
+import android.hardware.wifi.supplicant.IpVersion;
 import android.hardware.wifi.supplicant.KeyMgmtMask;
 import android.hardware.wifi.supplicant.LegacyMode;
 import android.hardware.wifi.supplicant.MloLinksInfo;
@@ -169,15 +170,21 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         @Override
         public void binderDied(@NonNull IBinder who) {
             synchronized (mLock) {
+                IBinder supplicantBinder = getServiceBinderMockable();
                 Log.w(TAG, "ISupplicant binder died. who=" + who + ", service="
-                        + getServiceBinderMockable());
-                if (who == getServiceBinderMockable()) {
-                    if (mWaitForDeathLatch != null) {
-                        mWaitForDeathLatch.countDown();
-                    }
-                    Log.w(TAG, "Handle supplicant death");
-                    supplicantServiceDiedHandler(who);
+                        + supplicantBinder);
+                if (supplicantBinder == null) {
+                    Log.w(TAG, "Supplicant Death EventHandler called"
+                            + " when ISupplicant/binder service is already cleared");
+                } else if (supplicantBinder != who) {
+                    Log.w(TAG, "Ignoring stale death recipient notification");
+                    return;
                 }
+                if (mWaitForDeathLatch != null) {
+                    mWaitForDeathLatch.countDown();
+                }
+                Log.w(TAG, "Handle supplicant death");
+                supplicantServiceDiedHandler();
             }
         }
     }
@@ -417,12 +424,8 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         }
     }
 
-    private void supplicantServiceDiedHandler(IBinder who) {
+    private void supplicantServiceDiedHandler() {
         synchronized (mLock) {
-            if (who != getServiceBinderMockable()) {
-                Log.w(TAG, "Ignoring stale death recipient notification");
-                return;
-            }
             clearState();
             if (mDeathEventHandler != null) {
                 mDeathEventHandler.onDeath();
@@ -695,11 +698,12 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                     if (config.SSID != null) {
                         // No actual SSID supplied, so select from the network selection BSSID
                         // or the latest candidate BSSID.
+                        WifiSsid configSsid = WifiSsid.fromString(config.SSID);
                         WifiSsid supplicantSsid = mSsidTranslator.getOriginalSsid(config);
                         if (supplicantSsid != null) {
                             supplicantConfig.SSID = supplicantSsid.toString();
                             List<WifiSsid> allPossibleSsids = mSsidTranslator
-                                    .getAllPossibleOriginalSsids(WifiSsid.fromString(config.SSID));
+                                    .getAllPossibleOriginalSsids(configSsid);
                             WifiSsid selectedSsid = mSsidTranslator.getOriginalSsid(config);
                             allPossibleSsids.remove(selectedSsid);
                             if (!allPossibleSsids.isEmpty()) {
@@ -711,6 +715,9 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                             Log.d(TAG, "Selecting supplicant SSID " + supplicantSsid);
                             supplicantConfig.SSID = supplicantSsid.toString();
                         }
+                        // Set the actual translation of the original SSID in case the untranslated
+                        // SSID has an ambiguous encoding.
+                        mSsidTranslator.setTranslatedSsidForStaIface(configSsid, ifaceName);
                     }
                 }
                 Pair<SupplicantStaNetworkHalAidlImpl, WifiConfiguration> pair =
@@ -2899,6 +2906,8 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
         classifierParams.dstPortRange = new PortRange();
         classifierParams.flowLabelIpv6 = new byte[0];
         classifierParams.domainName = "";
+        classifierParams.ipVersion = params.getIpVersion() == QosPolicyParams.IP_VERSION_4
+                ? IpVersion.VERSION_4 : IpVersion.VERSION_6;
 
         if (params.getSourceAddress() != null) {
             paramsMask |= QosPolicyClassifierParamsMask.SRC_IP;

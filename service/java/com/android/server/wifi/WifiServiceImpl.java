@@ -192,6 +192,7 @@ import com.android.server.wifi.coex.CoexManager;
 import com.android.server.wifi.entitlement.PseudonymInfo;
 import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.hotspot2.PasspointProvider;
+import com.android.server.wifi.proto.WifiStatsLog;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.UserActionEvent;
 import com.android.server.wifi.util.ActionListenerWrapper;
 import com.android.server.wifi.util.ApConfigUtil;
@@ -362,6 +363,8 @@ public class WifiServiceImpl extends BaseWifiService {
     private final MakeBeforeBreakManager mMakeBeforeBreakManager;
     private final LastCallerInfoManager mLastCallerInfoManager;
     private final @NonNull WifiDialogManager mWifiDialogManager;
+    private final WifiPulledAtomLogger mWifiPulledAtomLogger;
+
     private final SparseArray<WifiDialogManager.DialogHandle> mWifiEnableRequestDialogHandles =
             new SparseArray<>();
 
@@ -547,6 +550,7 @@ public class WifiServiceImpl extends BaseWifiService {
         mMultiInternetManager = mWifiInjector.getMultiInternetManager();
         mDeviceConfigFacade = mWifiInjector.getDeviceConfigFacade();
         mApplicationQosPolicyRequestHandler = mWifiInjector.getApplicationQosPolicyRequestHandler();
+        mWifiPulledAtomLogger = mWifiInjector.getWifiPulledAtomLogger();
     }
 
     /**
@@ -575,6 +579,8 @@ public class WifiServiceImpl extends BaseWifiService {
 
             mWifiInjector.getWifiScanAlwaysAvailableSettingsCompatibility().initialize();
             mWifiInjector.getWifiNotificationManager().createNotificationChannels();
+            mWifiMetrics.start();
+            mWifiConnectivityManager.initialization();
             mContext.registerReceiver(
                     new BroadcastReceiver() {
                         @Override
@@ -682,6 +688,7 @@ public class WifiServiceImpl extends BaseWifiService {
                 mWifiTetheringDisallowed = mUserManager.getUserRestrictions()
                         .getBoolean(UserManager.DISALLOW_WIFI_TETHERING);
             }
+            setPulledAtomCallbacks();
 
             // Adding optimizations of only receiving broadcasts when wifi is enabled
             // can result in race conditions when apps toggle wifi in the background
@@ -694,6 +701,12 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiInjector.getAdaptiveConnectivityEnabledSettingObserver().initialize();
             mIsWifiServiceStarted = true;
         });
+    }
+
+    private void setPulledAtomCallbacks() {
+        mWifiPulledAtomLogger.setPullAtomCallback(WifiStatsLog.WIFI_MODULE_INFO);
+        mWifiPulledAtomLogger.setPullAtomCallback(WifiStatsLog.WIFI_SETTING_INFO);
+        mWifiPulledAtomLogger.setPullAtomCallback(WifiStatsLog.WIFI_COMPLEX_SETTING_INFO);
     }
 
     private void updateLocationMode() {
@@ -1307,6 +1320,8 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiInjector.getInterfaceConflictManager().reset();
         }
         mWifiMetrics.incrementNumWifiToggles(isPrivileged, enable);
+        mWifiMetrics.reportWifiStateChanged(enable, mWifiInjector.getWakeupController().isUsable(),
+                false);
         mActiveModeWarden.wifiToggled(new WorkSource(callingUid, packageName));
         mLastCallerInfoManager.put(WifiManager.API_WIFI_ENABLED, Process.myTid(),
                 callingUid, callingPid, packageName, enable);
@@ -5309,17 +5324,22 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     @Override
-    public boolean acquireWifiLock(IBinder binder, int lockMode, String tag, WorkSource ws) {
-        mLog.info("acquireWifiLock uid=% lockMode=%")
+    public boolean acquireWifiLock(IBinder binder, int lockMode, String tag, WorkSource ws,
+            @NonNull String packageName, Bundle extras) {
+        mLog.info("acquireWifiLock uid=% lockMode=% packageName=%")
                 .c(Binder.getCallingUid())
-                .c(lockMode).flush();
+                .c(lockMode).c(getPackageName(extras)).flush();
+
+        if (packageName == null) {
+            throw new NullPointerException("Package name should not be null");
+        }
 
         // Check on permission to make this call
         mContext.enforceCallingOrSelfPermission(android.Manifest.permission.WAKE_LOCK, null);
 
         // If no UID is provided in worksource, use the calling UID
         WorkSource updatedWs = (ws == null || ws.isEmpty())
-                ? new WorkSource(Binder.getCallingUid()) : ws;
+                ? new WorkSource(Binder.getCallingUid(), packageName) : ws;
 
         if (!WifiLockManager.isValidLockMode(lockMode)) {
             throw new IllegalArgumentException("lockMode =" + lockMode);
@@ -5330,8 +5350,11 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     @Override
-    public void updateWifiLockWorkSource(IBinder binder, WorkSource ws) {
-        mLog.info("updateWifiLockWorkSource uid=%").c(Binder.getCallingUid()).flush();
+    public void updateWifiLockWorkSource(IBinder binder, WorkSource ws, String packageName,
+            Bundle extras) {
+        mLog.info("updateWifiLockWorkSource uid=% package name=%")
+                .c(Binder.getCallingUid())
+                .c(getPackageName(extras)).flush();
 
         // Check on permission to make this call
         mContext.enforceCallingOrSelfPermission(
@@ -5339,7 +5362,7 @@ public class WifiServiceImpl extends BaseWifiService {
 
         // If no UID is provided in worksource, use the calling UID
         WorkSource updatedWs = (ws == null || ws.isEmpty())
-                ? new WorkSource(Binder.getCallingUid()) : ws;
+                ? new WorkSource(Binder.getCallingUid(), packageName) : ws;
 
         mWifiThreadRunner.run(() ->
                 mWifiLockManager.updateWifiLockWorkSource(binder, updatedWs));
@@ -5389,7 +5412,11 @@ public class WifiServiceImpl extends BaseWifiService {
     @Override
     public void enableVerboseLogging(int verbose) {
         enforceAccessPermission();
-        enforceNetworkSettingsPermission();
+        if (!checkNetworkSettingsPermission(Binder.getCallingPid(), Binder.getCallingUid())
+                && mContext.checkPermission(android.Manifest.permission.DUMP,
+                Binder.getCallingPid(), Binder.getCallingUid()) != PERMISSION_GRANTED) {
+            throw new SecurityException("Caller has neither NETWORK_SETTING nor dump permissions");
+        }
         mLog.info("enableVerboseLogging uid=% verbose=%")
                 .c(Binder.getCallingUid())
                 .c(verbose).flush();
@@ -5446,6 +5473,7 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiMulticastLockManager.enableVerboseLogging(mVerboseLoggingEnabled);
         mWifiInjector.enableVerboseLogging(mVerboseLoggingEnabled, halVerboseEnabled);
         mWifiInjector.getSarManager().enableVerboseLogging(mVerboseLoggingEnabled);
+        mWifiThreadRunner.mVerboseLoggingEnabled = mVerboseLoggingEnabled;
         WifiScanner wifiScanner = mWifiInjector.getWifiScanner();
         if (wifiScanner != null) {
             wifiScanner.enableVerboseLogging(mVerboseLoggingEnabled);
@@ -6647,6 +6675,39 @@ public class WifiServiceImpl extends BaseWifiService {
     @Override
     public int calculateSignalLevel(int rssi) {
         return RssiUtil.calculateSignalLevel(mContext, rssi);
+    }
+
+    /**
+     * See {@link WifiManager#setPnoScanEnabled(boolean, boolean)}
+     */
+    @Override
+    public void setPnoScanEnabled(boolean enabled, boolean enablePnoScanAfterWifiToggle,
+            String packageName) {
+        int callingUid = Binder.getCallingUid();
+        boolean hasPermission = mWifiPermissionsUtil.checkNetworkSettingsPermission(callingUid)
+                || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(callingUid);
+        if (!hasPermission && SdkLevel.isAtLeastT()) {
+            // MANAGE_WIFI_NETWORK_SELECTION is a new permission added in T.
+            hasPermission = mWifiPermissionsUtil.checkManageWifiNetworkSelectionPermission(
+                    callingUid);
+        }
+        if (!hasPermission) {
+            throw new SecurityException("Uid " + callingUid
+                    + " is not allowed to set PNO scan state");
+        }
+
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "setPnoScanEnabled " + Binder.getCallingUid() + " enabled=" + enabled
+                    + ", enablePnoScanAfterWifiToggle=" + enablePnoScanAfterWifiToggle);
+        }
+        mLastCallerInfoManager.put(
+                WifiManager.API_SET_PNO_SCAN_ENABLED,
+                Process.myTid(), Binder.getCallingUid(), Binder.getCallingPid(), packageName,
+                enabled);
+        mWifiThreadRunner.post(() -> {
+            mWifiConnectivityManager.setPnoScanEnabledByFramework(enabled,
+                    enablePnoScanAfterWifiToggle);
+        });
     }
 
     /**

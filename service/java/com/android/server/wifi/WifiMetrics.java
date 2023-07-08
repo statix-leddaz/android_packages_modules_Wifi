@@ -19,6 +19,8 @@ package com.android.server.wifi;
 import static android.net.wifi.WifiConfiguration.MeteredOverride;
 
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
+import static com.android.server.wifi.proto.WifiStatsLog.WIFI_CONFIG_SAVED;
+import static com.android.server.wifi.proto.WifiStatsLog.WIFI_THREAD_TASK_EXECUTED;
 
 import static java.lang.StrictMath.toIntExact;
 
@@ -1082,6 +1084,7 @@ public class WifiMetrics {
         private boolean mHasEverConnected;
         private boolean mIsCarrierWifi;
         private boolean mIsOobPseudonymEnabled;
+        private int mRole;
 
         private ConnectionEvent() {
             mConnectionEvent = new WifiMetricsProto.ConnectionEvent();
@@ -1534,11 +1537,15 @@ public class WifiMetrics {
         mCurrentDeviceMobilityStateStartMs = mClock.getElapsedSinceBootMillis();
         mCurrentDeviceMobilityStatePnoScanStartMs = -1;
         mOnWifiUsabilityListeners = new RemoteCallbackList<>();
+        mScanMetrics = new ScanMetrics(context, clock);
+    }
 
+    /** Begin listening to broadcasts */
+    public void start() {
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_SCREEN_ON);
         filter.addAction(Intent.ACTION_SCREEN_OFF);
-        context.registerReceiver(
+        mContext.registerReceiver(
                 new BroadcastReceiver() {
                     @Override
                     public void onReceive(Context context, Intent intent) {
@@ -1550,9 +1557,7 @@ public class WifiMetrics {
                         }
                     }
                 }, filter, null, mHandler);
-        setScreenState(context.getSystemService(PowerManager.class).isInteractive());
-
-        mScanMetrics = new ScanMetrics(context, clock);
+        setScreenState(mContext.getSystemService(PowerManager.class).isInteractive());
     }
 
     /** Sets internal ScoringParams member */
@@ -1826,7 +1831,7 @@ public class WifiMetrics {
      */
     public int startConnectionEvent(
             String ifaceName, WifiConfiguration config, String targetBSSID, int roamType,
-            boolean isOobPseudonymEnabled) {
+            boolean isOobPseudonymEnabled, int role) {
         synchronized (mLock) {
             int overlapWithLastConnectionMs = 0;
             ConnectionEvent currentConnectionEvent = mCurrentConnectionEventPerIface.get(ifaceName);
@@ -1877,6 +1882,7 @@ public class WifiMetrics {
             currentConnectionEvent.mScreenOn = mScreenOn;
             currentConnectionEvent.mConnectionEvent.isFirstConnectionAfterBoot =
                     mFirstConnectionAfterBoot;
+            currentConnectionEvent.mRole = role;
             mFirstConnectionAfterBoot = false;
             mConnectionEventList.add(currentConnectionEvent);
             mScanResultRssiTimestampMillis = -1;
@@ -2094,7 +2100,8 @@ public class WifiMetrics {
                         currentConnectionEvent.mHasEverConnected,
                         timeSinceConnectedSeconds,
                         currentConnectionEvent.mIsCarrierWifi,
-                        currentConnectionEvent.mIsOobPseudonymEnabled);
+                        currentConnectionEvent.mIsOobPseudonymEnabled,
+                        currentConnectionEvent.mRole);
 
                 // ConnectionEvent already added to ConnectionEvents List. Safe to remove here.
                 mCurrentConnectionEventPerIface.remove(ifaceName);
@@ -2165,6 +2172,19 @@ public class WifiMetrics {
                 wifiOnBeforeEnteringApm, wifiOnAfterEnteringApm, wifiOnBeforeExitingApm,
                 apmEnhancementActive, userToggledWifiDuringApm,
                 userToggledWifiAfterEnteringApmWithinMinute, false);
+    }
+
+    /**
+     * Report a Wi-Fi state change.
+     *
+     * @param wifiState Whether Wi-Fi is enabled
+     * @param wifiWakeState Whether Wi-Fi Wake is enabled
+     * @param enabledByWifiWake Whether Wi-Fi was enabled by Wi-Fi Wake
+     */
+    public void reportWifiStateChanged(boolean wifiState, boolean wifiWakeState,
+            boolean enabledByWifiWake) {
+        WifiStatsLog.write(WifiStatsLog.WIFI_STATE_CHANGED, wifiState, wifiWakeState,
+                enabledByWifiWake);
     }
 
     private int getConnectionResultFailureCode(int level2FailureCode, int level2FailureReason) {
@@ -7589,33 +7609,51 @@ public class WifiMetrics {
         }
     }
 
-    /** Add a WifiLock acqusition session */
-    public void addWifiLockAcqSession(int lockType, long duration) {
+    /** Add a WifiLock acquisition session */
+    public void addWifiLockAcqSession(int lockType, int[] attrUids, String[] attrTags,
+            int callerType, long duration, boolean isPowersaveDisableAllowed,
+            boolean isAppExemptedFromScreenOn, boolean isAppExemptedFromForeground) {
+        int lockMode;
         switch (lockType) {
             case WifiManager.WIFI_MODE_FULL_HIGH_PERF:
                 mWifiLockHighPerfAcqDurationSecHistogram.increment((int) (duration / 1000));
+                lockMode = WifiStatsLog.WIFI_LOCK_RELEASED__MODE__WIFI_MODE_FULL_HIGH_PERF;
                 break;
 
             case WifiManager.WIFI_MODE_FULL_LOW_LATENCY:
                 mWifiLockLowLatencyAcqDurationSecHistogram.increment((int) (duration / 1000));
+                lockMode = WifiStatsLog.WIFI_LOCK_RELEASED__MODE__WIFI_MODE_FULL_LOW_LATENCY;
                 break;
-
             default:
                 Log.e(TAG, "addWifiLockAcqSession: Invalid lock type: " + lockType);
-                break;
+                return;
         }
+        WifiStatsLog.write(WifiStatsLog.WIFI_LOCK_RELEASED,
+                attrUids,
+                attrTags,
+                callerType,
+                lockMode,
+                duration,
+                isPowersaveDisableAllowed,
+                isAppExemptedFromScreenOn,
+                isAppExemptedFromForeground);
     }
 
     /** Add a WifiLock active session */
-    public void addWifiLockActiveSession(int lockType, long duration) {
+    public void addWifiLockActiveSession(int lockType, int[] attrUids, String[] attrTags,
+            long duration, boolean isPowersaveDisableAllowed,
+            boolean isAppExemptedFromScreenOn, boolean isAppExemptedFromForeground) {
+        int lockMode;
         switch (lockType) {
             case WifiManager.WIFI_MODE_FULL_HIGH_PERF:
+                lockMode = WifiStatsLog.WIFI_LOCK_DEACTIVATED__MODE__WIFI_MODE_FULL_HIGH_PERF;
                 mWifiLockStats.highPerfActiveTimeMs += duration;
                 mWifiLockHighPerfActiveSessionDurationSecHistogram.increment(
                         (int) (duration / 1000));
                 break;
 
             case WifiManager.WIFI_MODE_FULL_LOW_LATENCY:
+                lockMode = WifiStatsLog.WIFI_LOCK_DEACTIVATED__MODE__WIFI_MODE_FULL_LOW_LATENCY;
                 mWifiLockStats.lowLatencyActiveTimeMs += duration;
                 mWifiLockLowLatencyActiveSessionDurationSecHistogram.increment(
                         (int) (duration / 1000));
@@ -7623,8 +7661,16 @@ public class WifiMetrics {
 
             default:
                 Log.e(TAG, "addWifiLockActiveSession: Invalid lock type: " + lockType);
-                break;
+                return;
         }
+        WifiStatsLog.write(WifiStatsLog.WIFI_LOCK_DEACTIVATED,
+                attrUids,
+                attrTags,
+                lockMode,
+                duration,
+                isPowersaveDisableAllowed,
+                isAppExemptedFromScreenOn,
+                isAppExemptedFromForeground);
     }
 
     /** Increments metrics counting number of addOrUpdateNetwork calls. **/
@@ -8585,5 +8631,23 @@ public class WifiMetrics {
         synchronized (mLock) {
             mRecentFailureAssociationStatus.increment(reason);
         }
+    }
+
+    /**
+     * Logging the time it takes for save config to the storage.
+     * @param time the time it take to write to the storage
+     */
+    public void wifiConfigStored(int time) {
+        WifiStatsLog.write(WIFI_CONFIG_SAVED, time);
+    }
+
+    /**
+     * Logged when the task on the Wifi Thread has been excuted
+     * @param taskName The name of the task
+     * @param delay The dalay time after post the task on the thread
+     * @param runningTime The time usesd for executing the task
+     */
+    public void wifiThreadTaskExecuted(String taskName, int delay, int runningTime) {
+        WifiStatsLog.write(WIFI_THREAD_TASK_EXECUTED, runningTime, delay, taskName);
     }
 }

@@ -1351,16 +1351,41 @@ public class ClientModeImplTest extends WifiBaseTest {
         String expectedDecoratedPseudonym = "abc-123@wlan.mnc456.mcc123.3gppnetwork.org";
         when(mWifiCarrierInfoManager.decoratePseudonymWith3GppRealm(any(), eq(expectedPseudonym)))
                 .thenReturn(expectedDecoratedPseudonym);
+        when(mWifiNative.isSupplicantAidlServiceVersionAtLeast(1)).thenReturn(true);
         listenerCaptor.getValue().onUpdated(CARRIER_ID_1, expectedPseudonym);
         mLooper.dispatchAll();
 
-        if (SdkLevel.isAtLeastT()) {
-            verify(mWifiNative).setEapAnonymousIdentity(
-                    anyString(), eq(expectedDecoratedPseudonym), eq(true));
-        } else {
-            verify(mWifiNative, never()).setEapAnonymousIdentity(
-                    anyString(), anyString(), anyBoolean());
-        }
+        verify(mWifiNative).setEapAnonymousIdentity(
+                anyString(), eq(expectedDecoratedPseudonym), eq(true));
+
+        mCmi.sendMessage(WifiMonitor.NETWORK_DISCONNECTION_EVENT,
+                new DisconnectEventInfo(mConnectedNetwork.SSID, TEST_BSSID_STR, 0, false));
+        mLooper.dispatchAll();
+
+        assertEquals("DisconnectedState", getCurrentState().getName());
+        verify(mWifiPseudonymManager)
+                .unregisterPseudonymUpdatingListener(eq(listenerCaptor.getValue()));
+    }
+
+    @Test
+    public void testNotUpdatingOobPseudonymToSupplicant() throws Exception {
+        when(mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(anyInt())).thenReturn(true);
+        when(mDeviceConfigFacade.isOobPseudonymEnabled()).thenReturn(true);
+
+        ArgumentCaptor<WifiPseudonymManager.PseudonymUpdatingListener> listenerCaptor =
+                ArgumentCaptor.forClass(WifiPseudonymManager.PseudonymUpdatingListener.class);
+        setupEapSimConnection();
+        verify(mWifiPseudonymManager).registerPseudonymUpdatingListener(listenerCaptor.capture());
+        String expectedPseudonym = "abc-123";
+        String expectedDecoratedPseudonym = "abc-123@wlan.mnc456.mcc123.3gppnetwork.org";
+        when(mWifiCarrierInfoManager.decoratePseudonymWith3GppRealm(any(), eq(expectedPseudonym)))
+                .thenReturn(expectedDecoratedPseudonym);
+        when(mWifiNative.isSupplicantAidlServiceVersionAtLeast(1)).thenReturn(false);
+        listenerCaptor.getValue().onUpdated(CARRIER_ID_1, expectedPseudonym);
+        mLooper.dispatchAll();
+
+        verify(mWifiNative, never()).setEapAnonymousIdentity(
+                anyString(), anyString(), anyBoolean());
 
         mCmi.sendMessage(WifiMonitor.NETWORK_DISCONNECTION_EVENT,
                 new DisconnectEventInfo(mConnectedNetwork.SSID, TEST_BSSID_STR, 0, false));
@@ -1479,7 +1504,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         verify(mSimRequiredNotifier).showSimRequiredNotification(any(), any());
         verify(mWifiNative, times(2)).removeAllNetworks(WIFI_IFACE_NAME);
         verify(mWifiMetrics).startConnectionEvent(
-                anyString(), any(), anyString(), anyInt(), eq(true));
+                anyString(), any(), anyString(), anyInt(), eq(true), anyInt());
     }
 
     /**
@@ -1605,6 +1630,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 getGoogleGuestScanDetail(TEST_RSSI, TEST_BSSID_STR, sFreq).getScanResult());
         when(mWifiNative.getEapAnonymousIdentity(anyString()))
                 .thenReturn(pseudonym);
+        when(mWifiNative.isSupplicantAidlServiceVersionAtLeast(1)).thenReturn(true);
 
         WifiSsid wifiSsid = WifiSsid.fromBytes(
                 NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(mConnectedNetwork.SSID)));
@@ -1613,12 +1639,8 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
-        if (SdkLevel.isAtLeastT()) {
-            // No decorated pseudonum, only update the cached data.
-            verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym), eq(false));
-        } else {
-            verify(mWifiNative, never()).setEapAnonymousIdentity(any(), any(), anyBoolean());
-        }
+        // No decorated pseudonum, only update the cached data.
+        verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym), eq(false));
         assertEquals(pseudonym,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
         // Verify that WifiConfigManager#addOrUpdateNetwork() was called if there we received a
@@ -1667,6 +1689,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 getGoogleGuestScanDetail(TEST_RSSI, TEST_BSSID_STR, sFreq).getScanResult());
         when(mWifiNative.getEapAnonymousIdentity(anyString()))
                 .thenReturn(pseudonym);
+        when(mWifiNative.isSupplicantAidlServiceVersionAtLeast(1)).thenReturn(true);
 
         WifiSsid wifiSsid = WifiSsid.fromBytes(
                 NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(mConnectedNetwork.SSID)));
@@ -1675,12 +1698,8 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
-        if (SdkLevel.isAtLeastT()) {
-            verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym + "@" + realm),
-                    eq(true));
-        } else {
-            verify(mWifiNative, never()).setEapAnonymousIdentity(any(), any(), anyBoolean());
-        }
+        verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym + "@" + realm),
+                eq(true));
         assertEquals(pseudonym + "@" + realm,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
         // Verify that WifiConfigManager#addOrUpdateNetwork() was called if there we received a
@@ -1726,6 +1745,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 getGoogleGuestScanDetail(TEST_RSSI, TEST_BSSID_STR, sFreq).getScanResult());
         when(mWifiNative.getEapAnonymousIdentity(anyString()))
                 .thenReturn(pseudonym);
+        when(mWifiNative.isSupplicantAidlServiceVersionAtLeast(1)).thenReturn(true);
 
         WifiSsid wifiSsid = WifiSsid.fromBytes(
                 NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(mConnectedNetwork.SSID)));
@@ -1734,12 +1754,8 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
-        if (SdkLevel.isAtLeastT()) {
-            // No decorated pseudonum, only update the cached data.
-            verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym), eq(false));
-        } else {
-            verify(mWifiNative, never()).setEapAnonymousIdentity(any(), any(), anyBoolean());
-        }
+        // No decorated pseudonum, only update the cached data.
+        verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym), eq(false));
         assertEquals(pseudonym,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
         // Verify that WifiConfigManager#addOrUpdateNetwork() was called if there we received a
@@ -1785,6 +1801,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 getGoogleGuestScanDetail(TEST_RSSI, TEST_BSSID_STR, sFreq).getScanResult());
         when(mWifiNative.getEapAnonymousIdentity(anyString()))
                 .thenReturn(pseudonymFromSupplicant);
+        when(mWifiNative.isSupplicantAidlServiceVersionAtLeast(1)).thenReturn(true);
 
         WifiSsid wifiSsid = WifiSsid.fromBytes(
                 NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(mConnectedNetwork.SSID)));
@@ -1793,13 +1810,9 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
-        if (SdkLevel.isAtLeastT()) {
-            // No decorated pseudonum, only update the cached data.
-            verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonymFromSupplicant),
-                    eq(false));
-        } else {
-            verify(mWifiNative, never()).setEapAnonymousIdentity(any(), any(), anyBoolean());
-        }
+        // No decorated pseudonum, only update the cached data.
+        verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonymFromSupplicant),
+                eq(false));
         verify(mWifiPseudonymManager).setInBandPseudonym(anyInt(), eq(pseudonymFromSupplicant));
         assertEquals(pseudonymFromSupplicant,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
@@ -1843,6 +1856,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 getGoogleGuestScanDetail(TEST_RSSI, TEST_BSSID_STR, sFreq).getScanResult());
         when(mWifiNative.getEapAnonymousIdentity(anyString()))
                 .thenReturn(pseudonym);
+        when(mWifiNative.isSupplicantAidlServiceVersionAtLeast(1)).thenReturn(true);
 
         WifiSsid wifiSsid = WifiSsid.fromBytes(
                 NativeUtil.byteArrayFromArrayList(NativeUtil.decodeSsid(mConnectedNetwork.SSID)));
@@ -1851,12 +1865,8 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiNative).getEapAnonymousIdentity(any());
-        if (SdkLevel.isAtLeastT()) {
-            // No decorated pseudonum, only update the cached data.
-            verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym), eq(false));
-        } else {
-            verify(mWifiNative, never()).setEapAnonymousIdentity(any(), any(), anyBoolean());
-        }
+        // No decorated pseudonum, only update the cached data.
+        verify(mWifiNative).setEapAnonymousIdentity(any(), eq(pseudonym), eq(false));
         assertEquals(pseudonym,
                 mConnectedNetwork.enterpriseConfig.getAnonymousIdentity());
         // Verify that WifiConfigManager#addOrUpdateNetwork() was called if there we received a
@@ -2648,8 +2658,8 @@ public class ClientModeImplTest extends WifiBaseTest {
      */
     @Test
     public void testEapSimErrorVendorSpecific() throws Exception {
-        when(mWifiMetrics.startConnectionEvent(any(), any(), anyString(), anyInt(), anyBoolean()))
-                .thenReturn(80000);
+        when(mWifiMetrics.startConnectionEvent(any(), any(), anyString(), anyInt(), anyBoolean(),
+                anyInt())).thenReturn(80000);
         initializeAndAddNetworkAndVerifySuccess();
 
         startConnectSuccess();
@@ -2679,8 +2689,8 @@ public class ClientModeImplTest extends WifiBaseTest {
 
     @Test
     public void testEapAkaRetrieveOobPseudonymTriggeredByAuthenticationFailure() throws Exception {
-        when(mWifiMetrics.startConnectionEvent(any(), any(), anyString(), anyInt(), anyBoolean()))
-                .thenReturn(80000);
+        when(mWifiMetrics.startConnectionEvent(any(), any(), anyString(), anyInt(), anyBoolean(),
+                anyInt())).thenReturn(80000);
         when(mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(anyInt())).thenReturn(true);
         initializeAndAddNetworkAndVerifySuccess();
 
@@ -4161,7 +4171,8 @@ public class ClientModeImplTest extends WifiBaseTest {
                 mTestConfig);
         verify(mWifiNetworkFactory).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_ASSOCIATION_REJECTION),
-                eq(mTestConfig), eq(TEST_BSSID_STR));
+                eq(mTestConfig), eq(TEST_BSSID_STR), eq(WifiMetricsProto.ConnectionEvent
+                        .ASSOCIATION_REJECTION_AP_UNABLE_TO_HANDLE_NEW_STA));
         verify(mWifiNetworkSuggestionsManager).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_ASSOCIATION_REJECTION),
                 eq(mTestConfig), eq(null));
@@ -4209,7 +4220,8 @@ public class ClientModeImplTest extends WifiBaseTest {
                 mTestConfig);
         verify(mWifiNetworkFactory).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE),
-                eq(mTestConfig), eq(TEST_BSSID_STR));
+                eq(mTestConfig), eq(TEST_BSSID_STR), eq(WifiMetricsProto.ConnectionEvent
+                        .AUTH_FAILURE_WRONG_PSWD));
         verify(mWifiNetworkSuggestionsManager).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE),
                 eq(mTestConfig), eq(null));
@@ -4476,11 +4488,14 @@ public class ClientModeImplTest extends WifiBaseTest {
         connect();
         // Disconnection with reason = DISASSOC_AP_BUSY
         DisconnectEventInfo disconnectEventInfo =
-                new DisconnectEventInfo(TEST_SSID, TEST_BSSID_STR, 5, false);
+                new DisconnectEventInfo(TEST_SSID, TEST_BSSID_STR,
+                        SupplicantStaIfaceHal.StaIfaceReasonCode.DISASSOC_AP_BUSY, false);
         mCmi.sendMessage(WifiMonitor.NETWORK_DISCONNECTION_EVENT, disconnectEventInfo);
         mLooper.dispatchAll();
         verify(mWifiConfigManager).setRecentFailureAssociationStatus(anyInt(),
                 eq(WifiConfiguration.RECENT_FAILURE_DISCONNECTION_AP_BUSY));
+        verify(mWifiBlocklistMonitor).blockBssidForDurationMs(any(), any(),
+                anyLong(), eq(WifiBlocklistMonitor.REASON_AP_UNABLE_TO_HANDLE_NEW_STA), anyInt());
     }
 
     /**
@@ -4767,7 +4782,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 mTestConfig);
         verify(mWifiNetworkFactory).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_DHCP), any(WifiConfiguration.class),
-                eq(TEST_BSSID_STR));
+                eq(TEST_BSSID_STR), eq(WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN));
         verify(mWifiNetworkSuggestionsManager).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_DHCP), any(WifiConfiguration.class),
                 any(String.class));
@@ -4802,7 +4817,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 mConnectedNetwork);
         verify(mWifiNetworkFactory).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_NONE), eq(mConnectedNetwork),
-                eq(TEST_BSSID_STR));
+                eq(TEST_BSSID_STR), eq(WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN));
         verify(mWifiNetworkSuggestionsManager).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_NONE), eq(mConnectedNetwork),
                 any(String.class));
@@ -6710,7 +6725,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         for (WifiConfigManager.OnNetworkUpdateListener listener : mConfigUpdateListenerCaptor
                 .getAllValues()) {
-            listener.onNetworkUpdated(mConnectedNetwork, oldConfig);
+            listener.onNetworkUpdated(mConnectedNetwork, oldConfig, false);
         }
         mLooper.dispatchAll();
         verify(mWifiNative).disconnect(WIFI_IFACE_NAME);
@@ -6735,7 +6750,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         for (WifiConfigManager.OnNetworkUpdateListener listener : mConfigUpdateListenerCaptor
                 .getAllValues()) {
-            listener.onNetworkUpdated(mConnectedNetwork, oldConfig);
+            listener.onNetworkUpdated(mConnectedNetwork, oldConfig, false);
         }
         mLooper.dispatchAll();
         assertEquals("L3ConnectedState", getCurrentState().getName());
@@ -6768,7 +6783,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         for (WifiConfigManager.OnNetworkUpdateListener listener : mConfigUpdateListenerCaptor
                 .getAllValues()) {
-            listener.onNetworkUpdated(mConnectedNetwork, oldConfig);
+            listener.onNetworkUpdated(mConnectedNetwork, oldConfig, false);
         }
         mLooper.dispatchAll();
         verify(mWifiNative).disconnect(WIFI_IFACE_NAME);
@@ -6796,7 +6811,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         for (WifiConfigManager.OnNetworkUpdateListener listener : mConfigUpdateListenerCaptor
                 .getAllValues()) {
-            listener.onNetworkUpdated(mConnectedNetwork, oldConfig);
+            listener.onNetworkUpdated(mConnectedNetwork, oldConfig, false);
         }
         mLooper.dispatchAll();
         assertEquals("L3ConnectedState", getCurrentState().getName());
@@ -6828,7 +6843,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         for (WifiConfigManager.OnNetworkUpdateListener listener : mConfigUpdateListenerCaptor
                 .getAllValues()) {
-            listener.onNetworkUpdated(mConnectedNetwork, oldConfig);
+            listener.onNetworkUpdated(mConnectedNetwork, oldConfig, false);
         }
         mLooper.dispatchAll();
         assertEquals("L3ConnectedState", getCurrentState().getName());
@@ -6858,7 +6873,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         for (WifiConfigManager.OnNetworkUpdateListener listener : mConfigUpdateListenerCaptor
                 .getAllValues()) {
-            listener.onNetworkUpdated(mConnectedNetwork, oldConfig);
+            listener.onNetworkUpdated(mConnectedNetwork, oldConfig, false);
         }
         mLooper.dispatchAll();
         assertEquals("L3ConnectedState", getCurrentState().getName());
@@ -6960,7 +6975,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         for (WifiConfigManager.OnNetworkUpdateListener listener : mConfigUpdateListenerCaptor
                 .getAllValues()) {
-            listener.onNetworkUpdated(mConnectedNetwork, oldConfig);
+            listener.onNetworkUpdated(mConnectedNetwork, oldConfig, true);
         }
         mLooper.dispatchAll();
         verify(mWifiNative).removeNetworkCachedData(eq(oldConfig.networkId));
@@ -7931,7 +7946,8 @@ public class ClientModeImplTest extends WifiBaseTest {
                 mTestConfig);
         verify(mWifiNetworkFactory).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_NETWORK_NOT_FOUND),
-                eq(mTestConfig), eq(TEST_BSSID_STR));
+                eq(mTestConfig), eq(TEST_BSSID_STR),
+                eq(WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN));
         verify(mWifiNetworkSuggestionsManager).handleConnectionAttemptEnded(
                 eq(WifiMetrics.ConnectionEvent.FAILURE_NETWORK_NOT_FOUND),
                 eq(mTestConfig), eq(null));
@@ -8142,21 +8158,26 @@ public class ClientModeImplTest extends WifiBaseTest {
         mIpClientCallback.installPacketFilter(filter);
         mLooper.dispatchAll();
 
-        // just cache the data.
+        // packet filter will not be installed if the secondary STA doesn't support APF.
         verify(mWifiNative, never()).installPacketFilter(WIFI_IFACE_NAME, filter);
 
-        when(mWifiNative.readPacketFilter(WIFI_IFACE_NAME)).thenReturn(filter);
         mIpClientCallback.startReadPacketFilter();
         mLooper.dispatchAll();
-        verify(mIpClient).readPacketFilterComplete(filter);
-        // return the cached the data.
+        // Return null as packet filter is not installed.
+        verify(mIpClient).readPacketFilterComplete(eq(null));
         verify(mWifiNative, never()).readPacketFilter(WIFI_IFACE_NAME);
 
         // Now invoke role change, that should apply the APF
+        when(mWifiNative.readPacketFilter(WIFI_IFACE_NAME)).thenReturn(filter);
         when(mClientModeManager.getRole()).thenReturn(ROLE_CLIENT_PRIMARY);
         mCmi.onRoleChanged();
-        verify(mWifiNative).installPacketFilter(WIFI_IFACE_NAME, filter);
+        mIpClientCallback.installPacketFilter(filter);
+        mLooper.dispatchAll();
         verify(mWifiScoreReport, times(2)).onRoleChanged(ROLE_CLIENT_PRIMARY);
+        // verify that the APF capabilities are updated in IpClient.
+        verify(mWifiNative, times(1)).getApfCapabilities(WIFI_IFACE_NAME);
+        verify(mIpClient, times(1)).updateApfCapabilities(eq(APF_CAP));
+        verify(mWifiNative, times(1)).installPacketFilter(WIFI_IFACE_NAME, filter);
     }
 
     @Test
@@ -8185,6 +8206,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(mClientModeManager.getRole()).thenReturn(ROLE_CLIENT_PRIMARY);
         mCmi.onRoleChanged();
         // ignore (since it was already applied)
+        verify(mIpClient, never()).updateApfCapabilities(eq(APF_CAP));
         verify(mWifiNative, times(1)).installPacketFilter(WIFI_IFACE_NAME, filter);
     }
 
@@ -8843,7 +8865,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         for (WifiConfigManager.OnNetworkUpdateListener listener : mConfigUpdateListenerCaptor
                 .getAllValues()) {
-            listener.onNetworkUpdated(mConnectedNetwork, oldConfig);
+            listener.onNetworkUpdated(mConnectedNetwork, oldConfig, false);
         }
         mLooper.dispatchAll();
         verify(mWifiNative).disconnect(WIFI_IFACE_NAME);
@@ -8869,7 +8891,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         for (WifiConfigManager.OnNetworkUpdateListener listener : mConfigUpdateListenerCaptor
                 .getAllValues()) {
-            listener.onNetworkUpdated(mConnectedNetwork, oldConfig);
+            listener.onNetworkUpdated(mConnectedNetwork, oldConfig, false);
         }
         mLooper.dispatchAll();
         assertEquals("L3ConnectedState", getCurrentState().getName());
@@ -8896,7 +8918,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         for (WifiConfigManager.OnNetworkUpdateListener listener : mConfigUpdateListenerCaptor
                 .getAllValues()) {
-            listener.onNetworkUpdated(mConnectedNetwork, oldConfig);
+            listener.onNetworkUpdated(mConnectedNetwork, oldConfig, false);
         }
         mLooper.dispatchAll();
         verify(mWifiNative, never()).disconnect(WIFI_IFACE_NAME);
@@ -8922,7 +8944,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         for (WifiConfigManager.OnNetworkUpdateListener listener : mConfigUpdateListenerCaptor
                 .getAllValues()) {
-            listener.onNetworkUpdated(mConnectedNetwork, oldConfig);
+            listener.onNetworkUpdated(mConnectedNetwork, oldConfig, false);
         }
         mLooper.dispatchAll();
         assertEquals("L3ConnectedState", getCurrentState().getName());

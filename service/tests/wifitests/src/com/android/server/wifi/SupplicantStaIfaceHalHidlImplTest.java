@@ -302,7 +302,8 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 .getMacAddress(any(ISupplicantStaIface.getMacAddressCallback.class));
         when(mFrameworkFacade.startSupplicant()).thenReturn(true);
         mHandler = spy(new Handler(mLooper.getLooper()));
-        when(mSsidTranslator.getTranslatedSsid(any())).thenReturn(TRANSLATED_SUPPLICANT_SSID);
+        when(mSsidTranslator.getTranslatedSsidForStaIface(any(), anyString()))
+                .thenReturn(TRANSLATED_SUPPLICANT_SSID);
         when(mSsidTranslator.getOriginalSsid(any())).thenAnswer((Answer<WifiSsid>) invocation ->
                 WifiSsid.fromString(((WifiConfiguration) invocation.getArgument(0)).SSID));
         when(mSsidTranslator.getAllPossibleOriginalSsids(TRANSLATED_SUPPLICANT_SSID)).thenAnswer(
@@ -3162,6 +3163,7 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 .saveWifiConfiguration(configCaptor.capture());
         assertTrue(TextUtils.equals(configCaptor.getValue().SSID, ssid));
         verify(mSupplicantStaNetworkMock, times(numNetworkAdditions)).select();
+        verify(mSsidTranslator).setTranslatedSsidForStaIface(any(), anyString());
     }
 
     /**
@@ -3830,6 +3832,10 @@ public class SupplicantStaIfaceHalHidlImplTest extends WifiBaseTest {
                 WifiConfiguration.SECURITY_TYPE_PSK, null, false);
         mISupplicantStaIfaceCallback.onStateChanged(
                 ISupplicantStaIfaceCallback.State.ASSOCIATING,
+                NativeUtil.macAddressToByteArray(BSSID), SUPPLICANT_NETWORK_ID,
+                NativeUtil.decodeSsid(SUPPLICANT_SSID));
+        mISupplicantStaIfaceCallback.onStateChanged(
+                ISupplicantStaIfaceCallback.State.FOURWAY_HANDSHAKE,
                 NativeUtil.macAddressToByteArray(BSSID), SUPPLICANT_NETWORK_ID,
                 NativeUtil.decodeSsid(SUPPLICANT_SSID));
         mISupplicantStaIfaceCallback.onAuthenticationTimeout(
