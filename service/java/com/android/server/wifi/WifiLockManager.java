@@ -104,10 +104,6 @@ public class WifiLockManager {
     private boolean mIsLowLatencyActivated = false;
     private WorkSource mLowLatencyBlamedWorkSource = new WorkSource();
     private WorkSource mHighPerfBlamedWorkSource = new WorkSource();
-    private enum BlameReason {
-        WIFI_CONNECTION_STATE_CHANGED,
-        SCREEN_STATE_CHANGED,
-    };
 
     WifiLockManager(Context context, BatteryStatsManager batteryStats,
             ActiveModeWarden activeModeWarden, FrameworkFacade frameworkFacade,
@@ -418,7 +414,7 @@ public class WifiLockManager {
             // Update the running mode
             updateOpMode();
             // Adjust blaming for UIDs in foreground
-            setBlameLowLatencyWatchList(BlameReason.SCREEN_STATE_CHANGED, screenOn);
+            setBlameLowLatencyWatchList(screenOn);
         }
     }
 
@@ -441,10 +437,8 @@ public class WifiLockManager {
         mWifiConnected = hasAtLeastOneConnection;
 
         // Adjust blaming for UIDs in foreground carrying low latency locks
-        if (canActivateLowLatencyLock(countFgLowLatencyUids(/*isScreenOnExempted*/ true) > 0
-                ? IGNORE_SCREEN_STATE_MASK | IGNORE_WIFI_STATE_MASK
-                : IGNORE_WIFI_STATE_MASK)) {
-            setBlameLowLatencyWatchList(BlameReason.WIFI_CONNECTION_STATE_CHANGED, mWifiConnected);
+        if (canActivateLowLatencyLock(IGNORE_WIFI_STATE_MASK)) {
+            setBlameLowLatencyWatchList(mWifiConnected);
         }
 
         // Adjust blaming for UIDs carrying high perf locks
@@ -568,17 +562,16 @@ public class WifiLockManager {
         if (uidRec.mLockCount > 0) {
             uidRec.mLockCount--;
         } else {
-            Log.e(TAG, "Error, uid record contains no locks");
+            Log.e(TAG, "Error, uid record conatains no locks");
         }
         if (uidRec.mLockCount == 0) {
             mLowLatencyUidWatchList.remove(uid);
             notifyLowLatencyOwnershipChanged();
 
-            // Remove blame for this UID if it was already set
+            // Remove blame for this UID if it was alerady set
             // Note that blame needs to be stopped only if it was started before
             // to avoid calling the API unnecessarily, since it is reference counted
-            if (canActivateLowLatencyLock(uidRec.mIsScreenOnExempted ? IGNORE_SCREEN_STATE_MASK : 0,
-                    uidRec)) {
+            if (canActivateLowLatencyLock(0, uidRec)) {
                 setBlameLowLatencyUid(uid, false);
                 notifyLowLatencyActiveUsersChanged();
             }
@@ -1080,15 +1073,10 @@ public class WifiLockManager {
         }
     }
 
-    private void setBlameLowLatencyWatchList(BlameReason reason, boolean shouldBlame) {
+    private void setBlameLowLatencyWatchList(boolean shouldBlame) {
         boolean notify = false;
         for (int idx = 0; idx < mLowLatencyUidWatchList.size(); idx++) {
             UidRec uidRec = mLowLatencyUidWatchList.valueAt(idx);
-            // The blame state of the UIDs should not be changed if the app is exempted from
-            // screen-on and the reason for blaming is screen state change.
-            if (uidRec.mIsScreenOnExempted && reason == BlameReason.SCREEN_STATE_CHANGED) {
-                continue;
-            }
             // Affect the blame for only UIDs running in foreground
             // UIDs running in the background are already not blamed,
             // and they should remain in that state.
@@ -1181,7 +1169,7 @@ public class WifiLockManager {
         final int mUid;
         // Count of locks owned or co-owned by this UID
         int mLockCount;
-        // Is this UID running in foreground or in exempted state (e.g. foreground-service)
+        // Is this UID running in foreground
         boolean mIsFg;
         boolean mIsFgExempted = false;
         boolean mIsScreenOnExempted = false;
