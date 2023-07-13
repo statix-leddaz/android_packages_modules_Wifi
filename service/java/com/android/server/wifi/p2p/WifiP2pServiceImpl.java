@@ -4290,6 +4290,9 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         deviceAddress = device.deviceAddress;
                         // Clear timeout that was set when group was started.
                         mWifiNative.setP2pGroupIdle(mGroup.getInterface(), 0);
+                        // Mediatek Android Patch Begin
+                        mPeers.updateInterfaceAddress(device);
+                        // Mediatek Android Patch End
                         if (deviceAddress != null) {
                             if (mPeers.get(deviceAddress) != null) {
                                 mGroup.addClient(mPeers.get(deviceAddress));

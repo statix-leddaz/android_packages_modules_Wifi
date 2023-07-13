@@ -108,6 +108,20 @@ public class WifiP2pDeviceList implements Parcelable {
         mDevices.put(device.deviceAddress, device);
     }
 
+    // Mediatek Android Patch Begin
+    /** Only updates interface address after AP_STA_CONNECTED @hide */
+    public void updateInterfaceAddress(WifiP2pDevice device) {
+            validateDevice(device);
+            WifiP2pDevice d = mDevices.get(device.deviceAddress);
+            if (d != null) {
+                d.interfaceAddress = device.interfaceAddress;
+                return;
+            }
+            //Not found, add a new one
+            mDevices.put(device.deviceAddress, device);
+    }
+    // Mediatek Android Patch End
+
     /** @hide */
     public void updateGroupCapability(String deviceAddress, int groupCapab) {
         validateDeviceAddress(deviceAddress);

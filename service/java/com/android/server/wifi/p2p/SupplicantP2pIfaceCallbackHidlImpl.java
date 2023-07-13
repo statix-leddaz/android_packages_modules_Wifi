@@ -500,6 +500,9 @@ public class SupplicantP2pIfaceCallbackHidlImpl extends ISupplicantP2pIfaceCallb
         }
         try {
             device.deviceAddress = NativeUtil.macAddressFromByteArray(deviceAddressBytes);
+            // Mediatek Android Patch Begin
+            device.interfaceAddress = NativeUtil.macAddressFromByteArray(srcAddress);
+            // Mediatek Android Patch Begin
         } catch (Exception e) {
             Log.e(TAG, "Could not decode MAC address", e);
             return null;

@@ -1280,6 +1280,7 @@ package android.net.wifi.p2p {
     field public static final int UNAVAILABLE = 4; // 0x4
     field public String deviceAddress;
     field public String deviceName;
+    field public String interfaceAddress;
     field public String primaryDeviceType;
     field public String secondaryDeviceType;
     field public int status;

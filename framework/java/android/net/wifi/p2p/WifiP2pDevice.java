@@ -53,6 +53,12 @@ public class WifiP2pDevice implements Parcelable {
      * The device MAC address uniquely identifies a Wi-Fi p2p device
      */
     public String deviceAddress = "";
+    // Mediatek Android Patch Begin
+    /**
+         * The device interface address uniquely identifies a Wi-Fi p2p device
+         */
+    public String interfaceAddress = "";
+    // Mediatek Android Patch End
 
     /**
      * Primary device type identifies the type of device. For example, an application
@@ -326,6 +332,9 @@ public class WifiP2pDevice implements Parcelable {
             throw new IllegalArgumentException("deviceAddress does not match");
         }
         deviceName = device.deviceName;
+        // Mediatek Android Patch Begin
+        interfaceAddress = device.interfaceAddress;
+        // Mediatek Android Patch End
         primaryDeviceType = device.primaryDeviceType;
         secondaryDeviceType = device.secondaryDeviceType;
         wpsConfigMethodsSupported = device.wpsConfigMethodsSupported;
@@ -382,6 +391,9 @@ public class WifiP2pDevice implements Parcelable {
         StringBuffer sbuf = new StringBuffer();
         sbuf.append("Device: ").append(deviceName);
         sbuf.append("\n deviceAddress: ").append(deviceAddress);
+        // Mediatek Android Patch Begin
+        sbuf.append("\n interfaceAddress: ").append(interfaceAddress);
+        // Mediatek Android Patch End
         sbuf.append("\n primary type: ").append(primaryDeviceType);
         sbuf.append("\n secondary type: ").append(secondaryDeviceType);
         sbuf.append("\n wps: ").append(wpsConfigMethodsSupported);
@@ -404,6 +416,9 @@ public class WifiP2pDevice implements Parcelable {
         if (source != null) {
             deviceName = source.deviceName;
             deviceAddress = source.deviceAddress;
+            // Mediatek Android Patch Begin
+            interfaceAddress = source.interfaceAddress;
+            // Mediatek Android Patch End
             primaryDeviceType = source.primaryDeviceType;
             secondaryDeviceType = source.secondaryDeviceType;
             wpsConfigMethodsSupported = source.wpsConfigMethodsSupported;
@@ -424,6 +439,9 @@ public class WifiP2pDevice implements Parcelable {
     public void writeToParcel(Parcel dest, int flags) {
         dest.writeString(deviceName);
         dest.writeString(deviceAddress);
+        // Mediatek Android Patch Begin
+        dest.writeString(interfaceAddress);
+        // Mediatek Android Patch End
         dest.writeString(primaryDeviceType);
         dest.writeString(secondaryDeviceType);
         dest.writeInt(wpsConfigMethodsSupported);
@@ -447,6 +465,9 @@ public class WifiP2pDevice implements Parcelable {
                 WifiP2pDevice device = new WifiP2pDevice();
                 device.deviceName = in.readString();
                 device.deviceAddress = in.readString();
+                // Mediatek Android Patch Begin
+                device.interfaceAddress = in.readString();
+                // Mediatek Android Patch End
                 device.primaryDeviceType = in.readString();
                 device.secondaryDeviceType = in.readString();
                 device.wpsConfigMethodsSupported = in.readInt();

@@ -6,6 +6,13 @@ GenericException: android.net.wifi.WifiManager.MulticastLock#finalize():
 GenericException: android.net.wifi.WifiManager.WifiLock#finalize():
     Methods must not throw generic exceptions (`java.lang.Throwable`)
 
+MissingNullability: android.net.wifi.p2p.WifiP2pDevice#interfaceAddress:
+    Missing nullability on field `interfaceAddress` in class `class android.net.wifi.p2p.WifiP2pDevice`
+
+
+MutableBareField: android.net.wifi.p2p.WifiP2pDevice#interfaceAddress:
+    Bare field interfaceAddress must be marked final, or moved behind accessors if mutable
+
 
 VisiblySynchronized: PsiThisExpression:WifiManager.this:
     Internal locks must not be exposed (synchronizing on this or class is still externally observable): method android.net.wifi.WifiManager.WifiLock.finalize()
