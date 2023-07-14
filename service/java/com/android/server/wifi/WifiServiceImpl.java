@@ -2634,6 +2634,7 @@ public class WifiServiceImpl extends BaseWifiService {
         mLastCallerInfoManager.put(WifiManager.API_START_LOCAL_ONLY_HOTSPOT, Process.myTid(),
                 uid, Binder.getCallingPid(), packageName, true);
 
+        final WorkSource requestorWs = new WorkSource(uid, packageName);
         // the app should be in the foreground
         long ident = Binder.clearCallingIdentity();
         try {
@@ -2643,17 +2644,16 @@ public class WifiServiceImpl extends BaseWifiService {
                     && !mFrameworkFacade.isAppForeground(mContext, uid)) {
                 return LocalOnlyHotspotCallback.ERROR_INCOMPATIBLE_MODE;
             }
+            // check if we are currently tethering
+            if (!mActiveModeWarden.canRequestMoreSoftApManagers(requestorWs)
+                    && mTetheredSoftApTracker.getState() == WIFI_AP_STATE_ENABLED) {
+                // Tethering is enabled, cannot start LocalOnlyHotspot
+                mLog.info("Cannot start localOnlyHotspot when WiFi Tethering is active.")
+                        .flush();
+                return LocalOnlyHotspotCallback.ERROR_INCOMPATIBLE_MODE;
+            }
         } finally {
             Binder.restoreCallingIdentity(ident);
-        }
-        // check if we are currently tethering
-        final WorkSource requestorWs = new WorkSource(uid, packageName);
-        if (!mActiveModeWarden.canRequestMoreSoftApManagers(requestorWs)
-                && mTetheredSoftApTracker.getState() == WIFI_AP_STATE_ENABLED) {
-            // Tethering is enabled, cannot start LocalOnlyHotspot
-            mLog.info("Cannot start localOnlyHotspot when WiFi Tethering is active.")
-                    .flush();
-            return LocalOnlyHotspotCallback.ERROR_INCOMPATIBLE_MODE;
         }
 
         // now create the new LOHS request info object
@@ -6205,9 +6205,7 @@ public class WifiServiceImpl extends BaseWifiService {
             throw new IllegalArgumentException("Listener must not be null");
         }
         enforceAccessPermission();
-        // Post operation to handler thread
-        mWifiThreadRunner.post(() ->
-                mRegisteredWifiLoggingStatusListeners.register(listener));
+        mRegisteredWifiLoggingStatusListeners.register(listener);
     }
 
     /**
@@ -6226,9 +6224,7 @@ public class WifiServiceImpl extends BaseWifiService {
             throw new IllegalArgumentException("Listener must not be null");
         }
         enforceAccessPermission();
-        // Post operation to handler thread
-        mWifiThreadRunner.post(() ->
-                mRegisteredWifiLoggingStatusListeners.unregister(listener));
+        mRegisteredWifiLoggingStatusListeners.unregister(listener);
     }
 
     /**
