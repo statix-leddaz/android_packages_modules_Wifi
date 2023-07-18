@@ -16,6 +16,23 @@
       "message": "Hi,Xin Li\nthe patch fix wrong passwd issue, Detail info in 290979330.",
       "revId": "56e742210a930d50e658edf00a64edea13794dd1",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "5c54ef24_e735394b",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 7
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1948942
+      },
+      "writtenOn": "2023-07-18T10:01:59Z",
+      "side": 1,
+      "message": "manual test passed",
+      "revId": "56e742210a930d50e658edf00a64edea13794dd1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
