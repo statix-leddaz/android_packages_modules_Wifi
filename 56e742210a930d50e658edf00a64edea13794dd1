@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "861a11da_408f69c7",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 7
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1948942
+      },
+      "writtenOn": "2023-07-18T10:00:52Z",
+      "side": 1,
+      "message": "Hi,Xin Li\nthe patch fix wrong passwd issue, Detail info in 290979330.",
+      "revId": "56e742210a930d50e658edf00a64edea13794dd1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
