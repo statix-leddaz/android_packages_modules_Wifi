@@ -23,6 +23,7 @@ import static android.net.wifi.WifiConfiguration.NetworkSelectionStatus.DISABLED
 import static android.net.wifi.WifiConfiguration.NetworkSelectionStatus.DISABLED_UNWANTED_LOW_RSSI;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_FILS_SHA256;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_FILS_SHA384;
+import static android.net.wifi.WifiManager.WIFI_FEATURE_LINK_LAYER_STATS;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_TDLS;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE;
 
@@ -1566,11 +1567,13 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
         mLastLinkLayerStatsUpdate = mClock.getWallClockMillis();
         WifiLinkLayerStats stats = null;
-        if (isPrimary()) {
-            stats = mWifiNative.getWifiLinkLayerStats(mInterfaceName);
-        } else {
-            if (mVerboseLoggingEnabled) {
-                Log.w(getTag(), "Can't getWifiLinkLayerStats on secondary iface");
+        if (isLinkLayerStatsSupported()) {
+            if (isPrimary()) {
+                stats = mWifiNative.getWifiLinkLayerStats(mInterfaceName);
+            } else {
+                if (mVerboseLoggingEnabled) {
+                    Log.w(getTag(), "Can't getWifiLinkLayerStats on secondary iface");
+                }
             }
         }
         if (stats != null) {
@@ -1587,6 +1590,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiMetrics.incrementWifiLinkLayerUsageStats(mInterfaceName, stats);
         updateCurrentConnectionInfo();
         return stats;
+    }
+
+    private boolean isLinkLayerStatsSupported() {
+        return (getSupportedFeatures() & WIFI_FEATURE_LINK_LAYER_STATS) != 0;
     }
 
     /**
@@ -3627,7 +3634,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      * the current connection attempt has concluded.
      */
     private void reportConnectionAttemptEnd(int level2FailureCode, int connectivityFailureCode,
-            int level2FailureReason) {
+            int level2FailureReason, int statusCode) {
         // if connected, this should be non-null.
         WifiConfiguration configuration = getConnectedWifiConfigurationInternal();
         if (configuration == null) {
@@ -3707,7 +3714,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             frequency = candidate.frequency;
         }
         mWifiMetrics.endConnectionEvent(mInterfaceName, level2FailureCode,
-                connectivityFailureCode, level2FailureReason, frequency);
+                connectivityFailureCode, level2FailureReason, frequency, statusCode);
         mWifiConnectivityManager.handleConnectionAttemptEnded(
                 mClientModeManager, level2FailureCode, level2FailureReason, bssid,
                 configuration);
@@ -4357,7 +4364,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             reportConnectionAttemptEnd(
                     WifiMetrics.ConnectionEvent.FAILURE_CONNECT_NETWORK_FAILED,
                     WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                    WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
+                    WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
         }
     }
 
@@ -5667,7 +5674,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         }
                         reportConnectionAttemptEnd(
                                 WifiMetrics.ConnectionEvent.FAILURE_NETWORK_DISCONNECTION,
-                                WifiMetricsProto.ConnectionEvent.HLF_NONE, level2FailureReason);
+                                WifiMetricsProto.ConnectionEvent.HLF_NONE, level2FailureReason,
+                                eventInfo.reasonCode);
                     }
                     handleNetworkDisconnect(newConnectionInProgress, eventInfo.reasonCode);
                     if (!newConnectionInProgress) {
@@ -5847,7 +5855,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         reportConnectionAttemptEnd(
                                 WifiMetrics.ConnectionEvent.FAILURE_NETWORK_NOT_FOUND,
                                 WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
+                                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
                         handleNetworkDisconnect(false,
                                 WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__UNSPECIFIED);
                         transitionTo(mDisconnectedState); // End of connection attempt.
@@ -5896,7 +5904,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                     ? WifiMetrics.ConnectionEvent.FAILURE_ASSOCIATION_TIMED_OUT
                                     : WifiMetrics.ConnectionEvent.FAILURE_ASSOCIATION_REJECTION,
                             WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                            level2FailureReason);
+                            level2FailureReason, timedOut ? 0 : statusCode);
 
                     if (level2FailureReason != WifiMetricsProto.ConnectionEvent
                             .ASSOCIATION_REJECTION_AP_UNABLE_TO_HANDLE_NEW_STA
@@ -5997,7 +6005,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     reportConnectionAttemptEnd(
                             WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE,
                             WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                            level2FailureReason);
+                            level2FailureReason, errorCode);
                     if (reasonCode != WifiManager.ERROR_AUTH_FAILURE_WRONG_PSWD && reasonCode
                             != WifiManager.ERROR_AUTH_FAILURE_EAP_FAILURE) {
                         mWifiLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
@@ -6093,7 +6101,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         reportConnectionAttemptEnd(
                                 WifiMetrics.ConnectionEvent.FAILURE_NO_RESPONSE,
                                 WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
+                                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
                         handleNetworkDisconnect(false,
                                 WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__CONNECTING_WATCHDOG_TIMER);
                         transitionTo(mDisconnectedState);
@@ -6155,6 +6163,14 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         @Override
         public void enterImpl() {
+            final WifiConfiguration config = getConnectedWifiConfigurationInternal();
+            if (config == null) {
+                logw("Connected to a network that's already been removed " + mLastNetworkId
+                        + ", disconnecting...");
+                sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_UNKNOWN_NETWORK);
+                return;
+            }
+
             mRssiPollToken++;
             if (mEnableRssiPolling) {
                 if (isPrimary()) {
@@ -6163,11 +6179,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 sendMessage(CMD_RSSI_POLL, mRssiPollToken, 0);
             }
             sendNetworkChangeBroadcast(DetailedState.CONNECTING);
-
             // If this network was explicitly selected by the user, evaluate whether to inform
             // ConnectivityService of that fact so the system can treat it appropriately.
-            final WifiConfiguration config = getConnectedWifiConfigurationInternal();
-
             final NetworkAgentConfig naConfig = getNetworkAgentConfigInternal(config);
             final NetworkCapabilities nc = getCapabilities(
                     getConnectedWifiConfigurationInternal(), getConnectedBssidInternal());
@@ -6269,7 +6282,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         reportConnectionAttemptEnd(
                                 WifiMetrics.ConnectionEvent.FAILURE_NETWORK_DISCONNECTION,
                                 WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
+                                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
                         mWifiNative.disconnect(mInterfaceName);
                     } else {
                         handleSuccessfulIpConfiguration();
@@ -6285,7 +6298,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     reportConnectionAttemptEnd(
                             WifiMetrics.ConnectionEvent.FAILURE_DHCP,
                             WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                            WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
+                            WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
                     mWifiLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
                             getConnectingSsidInternal(),
                             (mLastBssid == null) ? mTargetBssid : mLastBssid,
@@ -6892,7 +6905,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 WifiMetrics.ConnectionEvent.FAILURE_ROAM_TIMEOUT,
                                 WifiMetricsProto.ConnectionEvent.HLF_NONE,
                                 WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN,
-                                mWifiInfo.getFrequency());
+                                mWifiInfo.getFrequency(), 0);
                         mRoamFailCount++;
                         handleNetworkDisconnect(false,
                                 WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__ROAM_WATCHDOG_TIMER);
@@ -6923,7 +6936,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         reportConnectionAttemptEnd(
                                 WifiMetrics.ConnectionEvent.FAILURE_NONE,
                                 WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
+                                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
 
                         // We must clear the config BSSID, as the wifi chipset may decide to roam
                         // from this point on and having the BSSID specified by QNS would cause
@@ -6996,7 +7009,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             reportConnectionAttemptEnd(
                     WifiMetrics.ConnectionEvent.FAILURE_NONE,
                     WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                    WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
+                    WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
             mWifiConnectivityManager.handleConnectionStateChanged(
                     mClientModeManager,
                     WifiConnectivityManager.WIFI_STATE_CONNECTED);
@@ -7170,7 +7183,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     reportConnectionAttemptEnd(
                             WifiMetrics.ConnectionEvent.FAILURE_NETWORK_DISCONNECTION,
                             WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                            WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
+                            WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN,
+                            eventInfo.reasonCode);
                     if (unexpectedDisconnectedReason(eventInfo.reasonCode)) {
                         mWifiDiagnostics.triggerBugReportDataCapture(
                                 WifiDiagnostics.REPORT_REASON_UNEXPECTED_DISCONNECT);
@@ -7237,7 +7251,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         reportConnectionAttemptEnd(
                                 WifiMetrics.ConnectionEvent.FAILURE_CONNECT_NETWORK_FAILED,
                                 WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
+                                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
                         mMessageHandlingStatus = MESSAGE_HANDLING_STATUS_FAIL;
                         break;
                     }

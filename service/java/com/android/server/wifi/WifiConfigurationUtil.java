@@ -518,9 +518,13 @@ public class WifiConfigurationUtil {
             }
         } else {
             // HEX PSK string
-            if (isWapi && password.length() > 100) {
+            if (isWapi) {
                 // Protect system against malicious actors injecting arbitrarily large passwords.
-                return false;
+                if (password.length() > 100) {
+                    Log.e(TAG, "validatePassword failed: WAPI hex string too long: "
+                            + password.length());
+                    return false;
+                }
             } else if (password.length() != PSK_SAE_HEX_LEN) {
                 Log.e(TAG, "validatePassword failed: hex string size mismatch: "
                         + password.length());
