@@ -326,6 +326,7 @@
           <item type="string"  name="config_wifiP2pGoEapolIpAddressRangeEnd" />
           <item type="bool" name="config_wifiUpdateCountryCodeFromScanResultGeneric" />
           <item type="bool" name="config_wifiSofapHalMapWpa3TransitionModeToWpa3OnlyIn6GHzBand" />
+          <item type="bool" name ="config_aware_vdbg_enable_on_verbose_logging" />
 
           <!-- Params from config.xml that can be overlayed -->
 
@@ -472,6 +473,7 @@
           <item type="style" name="wifi_section" />
           <item type="style" name="wifi_dialog" />
           <item type="style" name="wifi_p2p_invitation_received_dialog" />
+          <item type="style" name="wifi_p2p_dialog_timeout" />
           <item type="style" name="wifi_p2p_dialog_row_label" />
           <item type="style" name="wifi_p2p_dialog_row_content" />
           <item type="style" name="wifi_p2p_dialog_enter_pin_message" />

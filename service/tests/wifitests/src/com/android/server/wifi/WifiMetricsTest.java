@@ -22,6 +22,9 @@ import static android.net.wifi.WifiManager.DEVICE_MOBILITY_STATE_LOW_MVMT;
 import static android.net.wifi.WifiManager.DEVICE_MOBILITY_STATE_STATIONARY;
 import static android.net.wifi.WifiManager.DEVICE_MOBILITY_STATE_UNKNOWN;
 
+import static com.android.server.wifi.WifiMetrics.convertBandwidthEnumToUsabilityStatsType;
+import static com.android.server.wifi.WifiMetrics.convertPreambleTypeEnumToUsabilityStatsType;
+import static com.android.server.wifi.WifiMetrics.convertSpatialStreamEnumToUsabilityStatsType;
 import static com.android.server.wifi.WifiMetricsTestUtil.assertDeviceMobilityStatePnoScanStatsEqual;
 import static com.android.server.wifi.WifiMetricsTestUtil.assertExperimentProbeCountsEqual;
 import static com.android.server.wifi.WifiMetricsTestUtil.assertHistogramBucketsEqual;
@@ -66,6 +69,7 @@ import android.content.Intent;
 import android.net.MacAddress;
 import android.net.wifi.EAPConstants;
 import android.net.wifi.IOnWifiUsabilityStatsListener;
+import android.net.wifi.MloLink;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.SoftApCapability;
@@ -77,6 +81,7 @@ import android.net.wifi.WifiConfiguration.NetworkSelectionStatus;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.ProvisioningCallback;
@@ -91,6 +96,7 @@ import android.os.test.TestLooper;
 import android.telephony.TelephonyManager;
 import android.util.Base64;
 import android.util.Pair;
+import android.util.SparseArray;
 import android.util.SparseIntArray;
 
 import androidx.test.filters.MediumTest;
@@ -177,6 +183,10 @@ public class WifiMetricsTest extends WifiBaseTest {
     private static final int TEST_UID = 52;
     private static final String TEST_TAG = "TestTag";
     private static final int TEST_CONNECTION_FAILURE_STATUS_CODE = -1;
+    private static final String MLO_LINK_STA_MAC_ADDRESS = "12:34:56:78:9a:bc";
+    private static final String MLO_LINK_AP_MAC_ADDRESS = "bc:9a:78:56:34:12";
+    private static final int TEST_CHANNEL = 36;
+
     private MockitoSession mSession;
     @Mock Context mContext;
     MockResources mResources;
@@ -3880,13 +3890,13 @@ public class WifiMetricsTest extends WifiBaseTest {
     private WifiLinkLayerStats nextRandomStats(WifiLinkLayerStats current) {
         WifiLinkLayerStats out = new WifiLinkLayerStats();
         final int numLinks = 2;
+        out.links = new WifiLinkLayerStats.LinkSpecificStats[numLinks];
         for (int i = 0; i < numLinks; i++) {
-            out.links = new WifiLinkLayerStats.LinkSpecificStats[numLinks];
             out.links[i] = new WifiLinkLayerStats.LinkSpecificStats();
-            out.links[i].link_id = nextRandInt() % 15;
+            out.links[i].link_id = i;
             out.links[i].txmpdu_vi = nextRandInt();
             out.links[i].txmpdu_bk = nextRandInt();
-            out.links[i].radio_id = nextRandInt() % 2;
+            out.links[i].radio_id = nextRandInt() % 5;
             out.links[i].rssi_mgmt = nextRandInt() % 127;
             out.links[i].beacon_rx = nextRandInt();
             out.links[i].frequencyMhz = nextRandInt();
@@ -3924,6 +3934,12 @@ public class WifiMetricsTest extends WifiBaseTest {
             out.links[i].contentionNumSamplesVo = nextRandInt();
             out.links[i].timeSliceDutyCycleInPercent = (short) (nextRandInt() % 101);
             out.links[i].peerInfo = createNewPeerInfo(current.peerInfo);
+            // Channel Stats
+            WifiLinkLayerStats.ChannelStats cs = new WifiLinkLayerStats.ChannelStats();
+            cs.frequency = out.links[i].frequencyMhz;
+            cs.radioOnTimeMs = nextRandInt();
+            cs.ccaBusyTimeMs = nextRandInt();
+            out.channelStatsMap.put(out.links[i].frequencyMhz, cs);
         }
 
         out.timeStampInMs = current.timeStampInMs + nextRandInt();
@@ -4659,7 +4675,26 @@ public class WifiMetricsTest extends WifiBaseTest {
         when(info.getRssi()).thenReturn(nextRandInt());
         when(info.getLinkSpeed()).thenReturn(nextRandInt());
 
-        WifiLinkLayerStats linkLayerStats = nextRandomStats(new WifiLinkLayerStats());
+
+        WifiLinkLayerStats linkLayerStats = nextRandomStats(createNewWifiLinkLayerStats());
+
+        // Add MLO links
+        List<MloLink> links = new ArrayList<>();
+        MloLink link;
+        for (WifiLinkLayerStats.LinkSpecificStats stat : linkLayerStats.links) {
+            link = new MloLink();
+            link.setStaMacAddress(MacAddress.fromString(MLO_LINK_STA_MAC_ADDRESS));
+            link.setApMacAddress(MacAddress.fromString(MLO_LINK_AP_MAC_ADDRESS));
+            link.setRssi(stat.rssi_mgmt);
+            link.setLinkId(stat.link_id);
+            link.setBand(WifiScanner.WIFI_BAND_5_GHZ);
+            link.setChannel(TEST_CHANNEL);
+            link.setRxLinkSpeedMbps(nextRandInt());
+            link.setTxLinkSpeedMbps(nextRandInt());
+            link.setState(nextRandInt() % MloLink.MLO_LINK_STATE_ACTIVE);
+            links.add(link);
+        }
+        when(info.getAffiliatedMloLinks()).thenReturn(links);
 
         // verify non-primary does not send wifi usability stats
         ConcreteClientModeManager concreteClientModeManager = mock(ConcreteClientModeManager.class);
@@ -4690,6 +4725,114 @@ public class WifiMetricsTest extends WifiBaseTest {
         assertEquals(usabilityStats.getValue().getTimeStampMillis(), linkLayerStats.timeStampInMs);
         assertEquals(usabilityStats.getValue().getTotalRoamScanTimeMillis(),
                 linkLayerStats.on_time_roam_scan);
+
+        SparseArray<MloLink> mloLinks = new SparseArray<>();
+        for (MloLink mloLink: info.getAffiliatedMloLinks()) {
+            mloLinks.put(mloLink.getLinkId(), mloLink);
+        }
+
+        // Verify MLO stats
+        for (WifiLinkLayerStats.LinkSpecificStats linkStat : linkLayerStats.links) {
+            assertEquals(usabilityStats.getValue().getLinkState(linkStat.link_id), linkStat.state);
+            assertEquals(usabilityStats.getValue().getRadioId(linkStat.link_id), linkStat.radio_id);
+            assertEquals(usabilityStats.getValue().getRssi(linkStat.link_id), linkStat.rssi_mgmt);
+            assertEquals(usabilityStats.getValue().getTotalTxSuccess(linkStat.link_id),
+                    linkStat.txmpdu_be + linkStat.txmpdu_bk + linkStat.txmpdu_vi
+                            + linkStat.txmpdu_vo);
+            assertEquals(usabilityStats.getValue().getTxLinkSpeedMbps(linkStat.link_id),
+                    mloLinks.get(linkStat.link_id).getTxLinkSpeedMbps());
+            assertEquals(usabilityStats.getValue().getRxLinkSpeedMbps(linkStat.link_id),
+                    mloLinks.get(linkStat.link_id).getRxLinkSpeedMbps());
+
+            assertEquals(usabilityStats.getValue().getTotalTxRetries(linkStat.link_id),
+                    linkStat.retries_be + linkStat.retries_bk + linkStat.retries_vi
+                            + linkStat.retries_vo);
+            assertEquals(usabilityStats.getValue().getTotalCcaBusyFreqTimeMillis(linkStat.link_id),
+                    linkLayerStats.channelStatsMap.get(linkStat.frequencyMhz).ccaBusyTimeMs);
+            assertEquals(usabilityStats.getValue().getTotalRadioOnFreqTimeMillis(linkStat.link_id),
+                    linkLayerStats.channelStatsMap.get(linkStat.frequencyMhz).radioOnTimeMs);
+            assertEquals(usabilityStats.getValue().getTotalBeaconRx(linkStat.link_id),
+                    linkStat.beacon_rx);
+            assertEquals(usabilityStats.getValue().getTimeSliceDutyCycleInPercent(linkStat.link_id),
+                    linkStat.timeSliceDutyCycleInPercent);
+
+            // Verify contention time stats for each AC's
+            android.net.wifi.WifiUsabilityStatsEntry.ContentionTimeStats contentionTimeStatsBe =
+                    usabilityStats.getValue().getContentionTimeStats(linkStat.link_id,
+                            android.net.wifi.WifiUsabilityStatsEntry.WME_ACCESS_CATEGORY_BE);
+            assertEquals(contentionTimeStatsBe.getContentionTimeMinMicros(),
+                    linkStat.contentionTimeMinBeInUsec);
+            assertEquals(contentionTimeStatsBe.getContentionTimeAvgMicros(),
+                    linkStat.contentionTimeAvgBeInUsec);
+            assertEquals(contentionTimeStatsBe.getContentionTimeMaxMicros(),
+                    linkStat.contentionTimeMaxBeInUsec);
+            assertEquals(contentionTimeStatsBe.getContentionNumSamples(),
+                    linkStat.contentionNumSamplesBe);
+
+            android.net.wifi.WifiUsabilityStatsEntry.ContentionTimeStats contentionTimeStatsBk =
+                    usabilityStats.getValue().getContentionTimeStats(linkStat.link_id,
+                            android.net.wifi.WifiUsabilityStatsEntry.WME_ACCESS_CATEGORY_BK);
+            assertEquals(contentionTimeStatsBk.getContentionTimeMinMicros(),
+                    linkStat.contentionTimeMinBkInUsec);
+            assertEquals(contentionTimeStatsBk.getContentionTimeAvgMicros(),
+                    linkStat.contentionTimeAvgBkInUsec);
+            assertEquals(contentionTimeStatsBk.getContentionTimeMaxMicros(),
+                    linkStat.contentionTimeMaxBkInUsec);
+            assertEquals(contentionTimeStatsBk.getContentionNumSamples(),
+                    linkStat.contentionNumSamplesBk);
+
+            android.net.wifi.WifiUsabilityStatsEntry.ContentionTimeStats contentionTimeStatsVo =
+                    usabilityStats.getValue().getContentionTimeStats(linkStat.link_id,
+                            android.net.wifi.WifiUsabilityStatsEntry.WME_ACCESS_CATEGORY_VO);
+            assertEquals(contentionTimeStatsVo.getContentionTimeMinMicros(),
+                    linkStat.contentionTimeMinVoInUsec);
+            assertEquals(contentionTimeStatsVo.getContentionTimeAvgMicros(),
+                    linkStat.contentionTimeAvgVoInUsec);
+            assertEquals(contentionTimeStatsVo.getContentionTimeMaxMicros(),
+                    linkStat.contentionTimeMaxVoInUsec);
+            assertEquals(contentionTimeStatsVo.getContentionNumSamples(),
+                    linkStat.contentionNumSamplesVo);
+
+            android.net.wifi.WifiUsabilityStatsEntry.ContentionTimeStats contentionTimeStatsVi =
+                    usabilityStats.getValue().getContentionTimeStats(linkStat.link_id,
+                            android.net.wifi.WifiUsabilityStatsEntry.WME_ACCESS_CATEGORY_VI);
+            assertEquals(contentionTimeStatsVi.getContentionTimeMinMicros(),
+                    linkStat.contentionTimeMinViInUsec);
+            assertEquals(contentionTimeStatsVi.getContentionTimeAvgMicros(),
+                    linkStat.contentionTimeAvgViInUsec);
+            assertEquals(contentionTimeStatsVi.getContentionTimeMaxMicros(),
+                    linkStat.contentionTimeMaxViInUsec);
+            assertEquals(contentionTimeStatsVi.getContentionNumSamples(),
+                    linkStat.contentionNumSamplesVi);
+
+            // Verify Rate stats.
+            List<android.net.wifi.WifiUsabilityStatsEntry.RateStats> usabilityRateStats =
+                    usabilityStats.getValue().getRateStats(linkStat.link_id);
+            int i = 0;
+            for (RateStat rateStat : linkStat.peerInfo[0].rateStats) {
+                assertEquals(convertPreambleTypeEnumToUsabilityStatsType(rateStat.preamble),
+                        usabilityRateStats.get(i).getPreamble());
+                assertEquals(rateStat.bitRateInKbps,
+                        usabilityRateStats.get(i).getBitRateInKbps());
+                assertEquals(convertSpatialStreamEnumToUsabilityStatsType(rateStat.nss),
+                        usabilityRateStats.get(i).getNumberOfSpatialStreams());
+                assertEquals(convertBandwidthEnumToUsabilityStatsType(rateStat.bw),
+                        usabilityRateStats.get(i).getBandwidthInMhz());
+                assertEquals(rateStat.rateMcsIdx,
+                        usabilityRateStats.get(i).getRateMcsIdx());
+                assertEquals(rateStat.bitRateInKbps,
+                        usabilityRateStats.get(i).getBitRateInKbps());
+                assertEquals(rateStat.txMpdu,
+                        usabilityRateStats.get(i).getTxMpdu());
+                assertEquals(rateStat.rxMpdu,
+                        usabilityRateStats.get(i).getRxMpdu());
+                assertEquals(rateStat.mpduLost,
+                        usabilityRateStats.get(i).getMpduLost());
+                assertEquals(rateStat.retries,
+                        usabilityRateStats.get(i).getRetries());
+                i++;
+            }
+        }
     }
 
     /**
@@ -6324,7 +6467,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 WifiMetricsProto.ConnectionEvent.AUTH_FAILURE_NONE, TEST_CANDIDATE_FREQ,
                 TEST_CONNECTION_FAILURE_STATUS_CODE);
 
-        mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, 0, 0);
+        mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, 0, 0, 0);
 
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED), anyBoolean(),
@@ -6343,7 +6486,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 WifiMetricsProto.ConnectionEvent.AUTH_FAILURE_NONE, TEST_CANDIDATE_FREQ,
                 TEST_CONNECTION_FAILURE_STATUS_CODE);
 
-        mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, 0, 0);
+        mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, 0, 0, 0);
 
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED), anyBoolean(),
@@ -6368,7 +6511,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 WifiMetricsProto.ConnectionEvent.AUTH_FAILURE_NONE, TEST_CANDIDATE_FREQ,
                 TEST_CONNECTION_FAILURE_STATUS_CODE);
 
-        mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, 0, 0);
+        mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, 0, 0, 0);
 
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED), anyBoolean(),
@@ -6406,25 +6549,33 @@ public class WifiMetricsTest extends WifiBaseTest {
                 "RED", WifiMetricsProto.ConnectionEvent.ROAM_ENTERPRISE, false,
                 WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__ROLE__ROLE_CLIENT_PRIMARY);
 
+        long connectionEndTimeMs = 1000;
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(connectionEndTimeMs);
         mWifiMetrics.endConnectionEvent(TEST_IFACE_NAME,
                 WifiMetrics.ConnectionEvent.FAILURE_NONE,
                 WifiMetricsProto.ConnectionEvent.HLF_NONE,
                 WifiMetricsProto.ConnectionEvent.AUTH_FAILURE_NONE, TEST_CANDIDATE_FREQ,
                 TEST_CONNECTION_FAILURE_STATUS_CODE);
 
+        long wifiDisconnectTimeMs = 2000;
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(wifiDisconnectTimeMs);
         int linkSpeed = 100;
         int reason = 42;
         mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, reason, TEST_CANDIDATE_LEVEL,
-                linkSpeed);
+                linkSpeed, 0);
 
         ExtendedMockito.verify(() -> WifiStatsLog.write(
-                WifiStatsLog.WIFI_DISCONNECT_REPORTED,
-                0,
-                reason,
-                WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__BAND__BAND_2G,
-                WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__AUTH_TYPE__AUTH_TYPE_WPA2_PSK,
-                TEST_CANDIDATE_LEVEL,
-                linkSpeed));
+                eq(WifiStatsLog.WIFI_DISCONNECT_REPORTED),
+                eq((int) (wifiDisconnectTimeMs - connectionEndTimeMs) / 1000),
+                eq(reason),
+                eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__BAND__BAND_2G),
+                eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__AUTH_TYPE__AUTH_TYPE_WPA2_PSK),
+                eq(TEST_CANDIDATE_LEVEL),
+                eq(linkSpeed),
+                eq((int) wifiDisconnectTimeMs / 1000),
+                eq((int) (wifiDisconnectTimeMs - connectionEndTimeMs) / 1000),
+                eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__ROLE__ROLE_CLIENT_PRIMARY),
+                anyInt(), anyInt(), anyInt()));
     }
 
     @Test
@@ -6433,6 +6584,8 @@ public class WifiMetricsTest extends WifiBaseTest {
                 "RED", WifiMetricsProto.ConnectionEvent.ROAM_ENTERPRISE, false,
                 WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__ROLE__ROLE_CLIENT_PRIMARY);
 
+        long connectionEndTimeMs = 1000;
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(connectionEndTimeMs);
         mWifiMetrics.endConnectionEvent(TEST_IFACE_NAME,
                 WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE,
                 WifiMetricsProto.ConnectionEvent.HLF_DHCP,
@@ -6440,23 +6593,27 @@ public class WifiMetricsTest extends WifiBaseTest {
                 TEST_CONNECTION_FAILURE_STATUS_CODE);
 
 
+        long wifiDisconnectTimeMs = 2000;
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(wifiDisconnectTimeMs);
         int linkSpeed = 100;
         int reason = 42;
         mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, reason, TEST_CANDIDATE_LEVEL,
-                linkSpeed);
+                linkSpeed, 0);
 
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 eq(WifiStatsLog.WIFI_DISCONNECT_REPORTED),
+                anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(),
                 anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt()),
                 times(0));
     }
 
     @Test
     public void testWifiDisconnectAtomNotEmittedWithNoSession() {
-        mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, TEST_CANDIDATE_LEVEL, 0);
+        mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, TEST_CANDIDATE_LEVEL, 0, 0);
 
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 eq(WifiStatsLog.WIFI_DISCONNECT_REPORTED),
+                anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(),
                 anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt()),
                 times(0));
     }
@@ -6483,7 +6640,7 @@ public class WifiMetricsTest extends WifiBaseTest {
         int linkSpeed = 100;
         int reason = 42;
         mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, reason, TEST_CANDIDATE_LEVEL,
-                linkSpeed);
+                linkSpeed, 0);
 
         // FALSE must be emitted
         ExtendedMockito.verify(() -> WifiStatsLog.write(
@@ -6514,7 +6671,7 @@ public class WifiMetricsTest extends WifiBaseTest {
         int linkSpeed = 100;
         int reason = 42;
         mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, reason, TEST_CANDIDATE_LEVEL,
-                linkSpeed);
+                linkSpeed, 0);
 
         // But we still expect FALSE to be emitted
         ExtendedMockito.verify(() -> WifiStatsLog.write(
@@ -6545,7 +6702,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 anyBoolean(), eq(10), anyBoolean(), anyBoolean(), anyInt(),
                 eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt()));
 
-        mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, 0, 0);
+        mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, 0, 0, 0);
 
         when(mClock.getElapsedSinceBootMillis()).thenReturn((long) 30 * 1000);
 
@@ -6566,7 +6723,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 anyBoolean(), eq(20), anyBoolean(), anyBoolean(), anyInt(),
                 eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt()));
 
-        mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, 0, 0);
+        mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, 0, 0, 0);
     }
 
     @Test
