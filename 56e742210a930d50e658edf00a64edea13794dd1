@@ -33,6 +33,23 @@
       "message": "manual test passed",
       "revId": "56e742210a930d50e658edf00a64edea13794dd1",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "d7714366_b40fbdbd",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 7
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1948942
+      },
+      "writtenOn": "2023-08-02T07:53:24Z",
+      "side": 1,
+      "message": "Hi,Ravi  please review the patch,thanks. @sunilravi@google.com",
+      "revId": "56e742210a930d50e658edf00a64edea13794dd1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
