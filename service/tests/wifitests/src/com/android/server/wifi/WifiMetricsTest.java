@@ -39,6 +39,7 @@ import static com.android.server.wifi.WifiMetricsTestUtil.buildLinkProbeFailureR
 import static com.android.server.wifi.WifiMetricsTestUtil.buildLinkProbeFailureStaEvent;
 import static com.android.server.wifi.WifiMetricsTestUtil.buildLinkProbeSuccessStaEvent;
 import static com.android.server.wifi.proto.WifiStatsLog.WIFI_CONFIG_SAVED;
+import static com.android.server.wifi.proto.WifiStatsLog.WIFI_IS_UNUSABLE_REPORTED;
 import static com.android.server.wifi.proto.nano.WifiMetricsProto.StaEvent.TYPE_LINK_PROBE;
 
 import static org.junit.Assert.assertEquals;
@@ -91,6 +92,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.PowerManager;
+import android.os.Process;
 import android.os.RemoteException;
 import android.os.test.TestLooper;
 import android.telephony.TelephonyManager;
@@ -2493,7 +2495,8 @@ public class WifiMetricsTest extends WifiBaseTest {
                 eq(0),
                 eq(true),
                 eq(false),
-                eq(1), eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt()));
+                eq(1), eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt(),
+                anyInt()));
     }
 
     /**
@@ -3724,6 +3727,38 @@ public class WifiMetricsTest extends WifiBaseTest {
         generateAllUnusableEvents(mWifiMetrics);
         dumpProtoAndDeserialize();
         verifyDeserializedUnusableEvents(mDecodedProto);
+    }
+
+    /**
+     * Generate WifiIsUnUsableReported and verify that they are logged correctly when no external
+     * scorer is ON.
+     */
+    @Test
+    public void testWifiIsUnUsableReportedWithNoExternalScorer() throws Exception {
+        mResources.setBoolean(R.bool.config_wifiIsUnusableEventMetricsEnabled, true);
+        generateAllUnusableEvents(mWifiMetrics);
+        for (int i = 0; i < mTestUnusableEvents.length; i++) {
+            int index = i;
+            ExtendedMockito.verify(() -> WifiStatsLog.write(WIFI_IS_UNUSABLE_REPORTED,
+                     mTestUnusableEvents[index][0], Process.WIFI_UID, false));
+        }
+    }
+
+    /**
+     * Generate WifiIsUnUsableReported and verify that they are logged correctly when external
+     * scorer is ON.
+     */
+    @Test
+    public void testWifiIsUnUsableReportedWithExternalScorer() throws Exception {
+        mResources.setBoolean(R.bool.config_wifiIsUnusableEventMetricsEnabled, true);
+        mWifiMetrics.setIsExternalWifiScorerOn(true, TEST_UID);
+        mWifiMetrics.setScorerPredictedWifiUsability(true);
+        generateAllUnusableEvents(mWifiMetrics);
+        for (int i = 0; i < mTestUnusableEvents.length; i++) {
+            int index = i;
+            ExtendedMockito.verify(() -> WifiStatsLog.write(WIFI_IS_UNUSABLE_REPORTED,
+                    mTestUnusableEvents[index][0], TEST_UID, true));
+        }
     }
 
     /**
@@ -6006,7 +6041,7 @@ public class WifiMetricsTest extends WifiBaseTest {
      */
     @Test
     public void testIsExternalWifiScorerOn() throws Exception {
-        mWifiMetrics.setIsExternalWifiScorerOn(true);
+        mWifiMetrics.setIsExternalWifiScorerOn(true, TEST_UID);
         dumpProtoAndDeserialize();
         assertEquals(true, mDecodedProto.isExternalWifiScorerOn);
     }
@@ -6373,7 +6408,7 @@ public class WifiMetricsTest extends WifiBaseTest {
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED), anyBoolean(), anyInt(), anyInt(),
                 anyInt(), anyInt(), anyInt(), anyInt(), anyBoolean(), anyInt(), anyBoolean(),
-                anyBoolean(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt()),
+                anyBoolean(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt()),
                 times(0));
     }
 
@@ -6388,7 +6423,7 @@ public class WifiMetricsTest extends WifiBaseTest {
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED), anyBoolean(), anyInt(), anyInt(),
                 anyInt(), anyInt(), anyInt(), anyInt(), anyBoolean(), anyInt(), anyBoolean(),
-                anyBoolean(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt()),
+                anyBoolean(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt()),
                 times(0));
     }
 
@@ -6415,7 +6450,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__TRIGGER__AUTOCONNECT_BOOT),
                 eq(true),
                 eq(0), eq(true), eq(false), eq(1), eq(TEST_CONNECTION_FAILURE_STATUS_CODE),
-                anyInt(), anyInt(), anyInt()),
+                anyInt(), anyInt(), anyInt(), anyInt()),
                 times(1));
     }
 
@@ -6451,7 +6486,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__TRIGGER__AUTOCONNECT_BOOT),
                 eq(true),
                 eq(0),  eq(true), eq(true), eq(1), eq(TEST_CONNECTION_FAILURE_STATUS_CODE),
-                anyInt(), anyInt(), anyInt()),
+                anyInt(), anyInt(), anyInt(), anyInt()),
                 times(1));
     }
 
@@ -6474,7 +6509,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 anyInt(), anyInt(), anyInt(), anyInt(), anyInt(),
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__TRIGGER__AUTOCONNECT_BOOT),
                 anyBoolean(), anyInt(), anyBoolean(), anyBoolean(), anyInt(),
-                eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt()));
+                eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt(), anyInt()));
 
         mWifiMetrics.startConnectionEvent(TEST_IFACE_NAME, createComplexWifiConfig(),
                 "RED", WifiMetricsProto.ConnectionEvent.ROAM_ENTERPRISE, false,
@@ -6493,7 +6528,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 anyInt(), anyInt(), anyInt(), anyInt(), anyInt(),
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__TRIGGER__RECONNECT_SAME_NETWORK),
                 anyBoolean(), anyInt(), anyBoolean(), anyBoolean(), anyInt(),
-                eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt()));
+                eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt(), anyInt()));
 
         WifiConfiguration configOtherNetwork = createComplexWifiConfig();
         configOtherNetwork.networkId = 21;
@@ -6518,7 +6553,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 anyInt(), anyInt(), anyInt(), anyInt(), anyInt(),
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__TRIGGER__AUTOCONNECT_CONFIGURED_NETWORK),
                 anyBoolean(), anyInt(), anyBoolean(), anyBoolean(), anyInt(),
-                eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt()));
+                eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt(), anyInt()));
 
         WifiConfiguration config = createComplexWifiConfig();
         config.networkId = 42;
@@ -6540,7 +6575,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 anyInt(), anyInt(), anyInt(), anyInt(), anyInt(),
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__TRIGGER__MANUAL),
                 anyBoolean(), anyInt(), anyBoolean(), anyBoolean(), anyInt(),
-                eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt()));
+                eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt(), anyInt()));
     }
 
     @Test
@@ -6575,7 +6610,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 eq((int) wifiDisconnectTimeMs / 1000),
                 eq((int) (wifiDisconnectTimeMs - connectionEndTimeMs) / 1000),
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__ROLE__ROLE_CLIENT_PRIMARY),
-                anyInt(), anyInt(), anyInt()));
+                anyInt(), anyInt(), anyInt(), anyInt()));
     }
 
     @Test
@@ -6603,7 +6638,7 @@ public class WifiMetricsTest extends WifiBaseTest {
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 eq(WifiStatsLog.WIFI_DISCONNECT_REPORTED),
                 anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(),
-                anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt()),
+                anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt()),
                 times(0));
     }
 
@@ -6614,7 +6649,7 @@ public class WifiMetricsTest extends WifiBaseTest {
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 eq(WifiStatsLog.WIFI_DISCONNECT_REPORTED),
                 anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(),
-                anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt()),
+                anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt()),
                 times(0));
     }
 
@@ -6700,7 +6735,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 anyInt(), anyInt(), anyInt(), anyInt(), anyInt(),
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__TRIGGER__AUTOCONNECT_BOOT),
                 anyBoolean(), eq(10), anyBoolean(), anyBoolean(), anyInt(),
-                eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt()));
+                eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt(), anyInt()));
 
         mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, 0, 0, 0);
 
@@ -6721,7 +6756,7 @@ public class WifiMetricsTest extends WifiBaseTest {
                 anyInt(), anyInt(), anyInt(), anyInt(), anyInt(),
                 eq(WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__TRIGGER__RECONNECT_SAME_NETWORK),
                 anyBoolean(), eq(20), anyBoolean(), anyBoolean(), anyInt(),
-                eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt()));
+                eq(TEST_CONNECTION_FAILURE_STATUS_CODE), anyInt(), anyInt(), anyInt(), anyInt()));
 
         mWifiMetrics.reportNetworkDisconnect(TEST_IFACE_NAME, 0, 0, 0, 0);
     }
@@ -6990,15 +7025,19 @@ public class WifiMetricsTest extends WifiBaseTest {
         mWifiMetrics.incrementConnectionDuration(3000, true, true, -50, 10002, 10001);
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 WifiStatsLog.WIFI_HEALTH_STAT_REPORTED, 3000, true, true,
-                WifiStatsLog.WIFI_HEALTH_STAT_REPORTED__BAND__BAND_5G_HIGH, -50, 10002, 10001));
+                WifiStatsLog.WIFI_HEALTH_STAT_REPORTED__BAND__BAND_5G_HIGH, -50, 10002, 10001,
+                Process.WIFI_UID, false));
 
         when(wifiInfo.getFrequency()).thenReturn(2412);
+        mWifiMetrics.setIsExternalWifiScorerOn(true, TEST_UID);
+        mWifiMetrics.setScorerPredictedWifiUsability(true);
         mWifiMetrics.incrementWifiScoreCount("",  30);
         mWifiMetrics.handlePollResult(TEST_IFACE_NAME, wifiInfo);
         mWifiMetrics.incrementConnectionDuration(2000, false, true, -55, 20002, 20001);
         ExtendedMockito.verify(() -> WifiStatsLog.write(
                 WifiStatsLog.WIFI_HEALTH_STAT_REPORTED, 2000, true, true,
-                WifiStatsLog.WIFI_HEALTH_STAT_REPORTED__BAND__BAND_2G, -55, 20002, 20001));
+                WifiStatsLog.WIFI_HEALTH_STAT_REPORTED__BAND__BAND_2G, -55, 20002, 20001, TEST_UID,
+                true));
     }
 
     /**

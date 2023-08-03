@@ -5445,9 +5445,10 @@ public class WifiServiceImpl extends BaseWifiService {
     private void updateVerboseLoggingEnabled() {
         final int verboseAlwaysOnLevel = mContext.getResources().getInteger(
                 R.integer.config_wifiVerboseLoggingAlwaysOnLevel);
-        mVerboseLoggingEnabled = mFrameworkFacade.isVerboseLoggingAlwaysOn(verboseAlwaysOnLevel,
-                mBuildProperties)
-                || WifiManager.VERBOSE_LOGGING_LEVEL_DISABLED != mVerboseLoggingLevel;
+        mVerboseLoggingEnabled = WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED == mVerboseLoggingLevel
+                || WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY == mVerboseLoggingLevel
+                || mFrameworkFacade.isVerboseLoggingAlwaysOn(verboseAlwaysOnLevel,
+                mBuildProperties);
     }
 
     private void enableVerboseLoggingInternal(int verboseLoggingLevel) {
@@ -5459,13 +5460,10 @@ public class WifiServiceImpl extends BaseWifiService {
 
         // Update wifi globals before sending the verbose logging change.
         mWifiThreadRunner.removeCallbacks(mAutoDisableShowKeyVerboseLoggingModeRunnable);
+        mWifiGlobals.setVerboseLoggingLevel(verboseLoggingLevel);
         if (WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY == mVerboseLoggingLevel) {
-            mWifiGlobals.setShowKeyVerboseLoggingModeEnabled(true);
             mWifiThreadRunner.postDelayed(mAutoDisableShowKeyVerboseLoggingModeRunnable,
                     AUTO_DISABLE_SHOW_KEY_COUNTDOWN_MILLIS);
-        } else {
-            // Ensure the show key mode is disabled.
-            mWifiGlobals.setShowKeyVerboseLoggingModeEnabled(false);
         }
         updateVerboseLoggingEnabled();
         final boolean halVerboseEnabled =
@@ -6834,12 +6832,14 @@ public class WifiServiceImpl extends BaseWifiService {
         }
         mContext.enforceCallingOrSelfPermission(
                 android.Manifest.permission.WIFI_UPDATE_USABILITY_STATS_SCORE, "WifiService");
+        int callingUid = Binder.getCallingUid();
         if (mVerboseLoggingEnabled) {
-            mLog.info("setWifiConnectedNetworkScorer uid=%").c(Binder.getCallingUid()).flush();
+            mLog.info("setWifiConnectedNetworkScorer uid=%").c(callingUid).flush();
         }
         // Post operation to handler thread
         return mWifiThreadRunner.call(
-                () -> mActiveModeWarden.setWifiConnectedNetworkScorer(binder, scorer), false);
+                () -> mActiveModeWarden.setWifiConnectedNetworkScorer(binder, scorer, callingUid),
+                false);
     }
 
     /**
