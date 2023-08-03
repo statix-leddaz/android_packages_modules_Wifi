@@ -20,6 +20,7 @@ import static android.net.wifi.WifiConfiguration.MeteredOverride;
 
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
 import static com.android.server.wifi.proto.WifiStatsLog.WIFI_CONFIG_SAVED;
+import static com.android.server.wifi.proto.WifiStatsLog.WIFI_IS_UNUSABLE_REPORTED;
 import static com.android.server.wifi.proto.WifiStatsLog.WIFI_THREAD_TASK_EXECUTED;
 
 import static java.lang.StrictMath.toIntExact;
@@ -59,6 +60,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.PowerManager;
+import android.os.Process;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import android.os.SystemProperties;
@@ -297,6 +299,8 @@ public class WifiMetrics {
     private IntCounter mRecentFailureAssociationStatus = new IntCounter();
     private boolean mFirstConnectionAfterBoot = true;
     private long mLastTotalBeaconRx = 0;
+    private int mScorerUid = Process.WIFI_UID;
+    private boolean mIsScorerPredictedWifiUsable = false;
 
     /**
      * Metrics are stored within an instance of the WifiLog proto during runtime,
@@ -626,12 +630,26 @@ public class WifiMetrics {
         private long mSessionEndTimeMillis;
         private int mBand;
         private int mAuthType;
+        private ConnectionEvent mConnectionEvent;
+        private long mLastRoamCompleteMillis;
 
-        SessionData(String ssid, long sessionStartTimeMillis, int band, int authType) {
+        SessionData(ConnectionEvent connectionEvent, String ssid, long sessionStartTimeMillis,
+                int band, int authType) {
+            mConnectionEvent = connectionEvent;
             mSsid = ssid;
             mSessionStartTimeMillis = sessionStartTimeMillis;
             mBand = band;
             mAuthType = authType;
+            mLastRoamCompleteMillis = sessionStartTimeMillis;
+        }
+    }
+
+    /**
+     * Sets the timestamp after roaming is complete.
+     */
+    public void onRoamComplete() {
+        if (mCurrentSession != null) {
+            mCurrentSession.mLastRoamCompleteMillis = mClock.getElapsedSinceBootMillis();
         }
     }
 
@@ -1085,6 +1103,10 @@ public class WifiMetrics {
         private boolean mIsCarrierWifi;
         private boolean mIsOobPseudonymEnabled;
         private int mRole;
+        private int mCarrierId;
+        private int mEapType;
+        private int mPhase2Method;
+        private int mPasspointRoamingType;
 
         private ConnectionEvent() {
             mConnectionEvent = new WifiMetricsProto.ConnectionEvent();
@@ -1850,13 +1872,13 @@ public class WifiMetrics {
                     endConnectionEvent(ifaceName,
                             ConnectionEvent.FAILURE_REDUNDANT_CONNECTION_ATTEMPT,
                             WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                            WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
+                            WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0, 0);
                 } else {
                     // End Connection Event due to new connection attempt to different network
                     endConnectionEvent(ifaceName,
                             ConnectionEvent.FAILURE_NEW_CONNECTION_ATTEMPT,
                             WifiMetricsProto.ConnectionEvent.HLF_NONE,
-                            WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
+                            WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0, 0);
                 }
             }
             // If past maximum connection events, start removing the oldest
@@ -1903,6 +1925,13 @@ public class WifiMetrics {
                         mNetworkIdToNominatorId.get(config.networkId,
                                 WifiMetricsProto.ConnectionEvent.NOMINATOR_UNKNOWN);
                 currentConnectionEvent.mConnectionEvent.isCarrierMerged = config.carrierMerged;
+                currentConnectionEvent.mCarrierId = config.carrierId;
+                if (config.enterpriseConfig != null) {
+                    currentConnectionEvent.mEapType = config.enterpriseConfig.getEapMethod();
+                    currentConnectionEvent.mPhase2Method =
+                            config.enterpriseConfig.getPhase2Method();
+                    currentConnectionEvent.mPasspointRoamingType = Utils.getRoamingType(config);
+                }
 
                 ScanResult candidate = config.getNetworkSelectionStatus().getCandidate();
                 if (candidate != null) {
@@ -2039,6 +2068,44 @@ public class WifiMetrics {
         }
     }
 
+    private int toMetricEapType(int eapType) {
+        switch (eapType) {
+            case WifiEnterpriseConfig.Eap.TLS:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_TYPE__TYPE_EAP_TLS;
+            case WifiEnterpriseConfig.Eap.TTLS:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_TYPE__TYPE_EAP_TTLS;
+            case WifiEnterpriseConfig.Eap.SIM:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_TYPE__TYPE_EAP_SIM;
+            case WifiEnterpriseConfig.Eap.AKA:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_TYPE__TYPE_EAP_AKA;
+            case WifiEnterpriseConfig.Eap.AKA_PRIME:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_TYPE__TYPE_EAP_AKA_PRIME;
+            case WifiEnterpriseConfig.Eap.WAPI_CERT:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_TYPE__TYPE_EAP_WAPI_CERT;
+            case WifiEnterpriseConfig.Eap.UNAUTH_TLS:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_TYPE__TYPE_EAP_UNAUTH_TLS;
+            case WifiEnterpriseConfig.Eap.PEAP:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_TYPE__TYPE_EAP_PEAP;
+            case WifiEnterpriseConfig.Eap.PWD:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_TYPE__TYPE_EAP_PWD;
+            default:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_TYPE__TYPE_EAP_OTHERS;
+        }
+    }
+
+    private int toMetricPhase2Method(int phase2Method) {
+        switch (phase2Method) {
+            case WifiEnterpriseConfig.Phase2.PAP:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_INNER_METHOD__METHOD_PAP;
+            case WifiEnterpriseConfig.Phase2.MSCHAP:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_INNER_METHOD__METHOD_MSCHAP;
+            case WifiEnterpriseConfig.Phase2.MSCHAPV2:
+                return WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_INNER_METHOD__METHOD_MSCHAP_V2;
+            default:
+                return  WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__EAP_INNER_METHOD__METHOD_OTHERS;
+        }
+    }
+
     /**
      * End a Connection event record. Call when wifi connection attempt succeeds or fails.
      * If a Connection event has not been started and is active when .end is called, then this
@@ -2054,7 +2121,8 @@ public class WifiMetrics {
             int level2FailureCode,
             int connectivityFailureCode,
             int level2FailureReason,
-            int frequency) {
+            int frequency,
+            int statusCode) {
         synchronized (mLock) {
             ConnectionEvent currentConnectionEvent = mCurrentConnectionEventPerIface.get(ifaceName);
             if (currentConnectionEvent != null) {
@@ -2067,7 +2135,8 @@ public class WifiMetrics {
                                 - currentConnectionEvent.mConnectionEvent.startTimeSinceBootMillis);
 
                 if (connectionSucceeded) {
-                    mCurrentSession = new SessionData(currentConnectionEvent.mConfigSsid,
+                    mCurrentSession = new SessionData(currentConnectionEvent,
+                            currentConnectionEvent.mConfigSsid,
                             mClock.getElapsedSinceBootMillis(),
                             band, currentConnectionEvent.mAuthType);
 
@@ -2101,7 +2170,12 @@ public class WifiMetrics {
                         timeSinceConnectedSeconds,
                         currentConnectionEvent.mIsCarrierWifi,
                         currentConnectionEvent.mIsOobPseudonymEnabled,
-                        currentConnectionEvent.mRole);
+                        currentConnectionEvent.mRole,
+                        statusCode,
+                        toMetricEapType(currentConnectionEvent.mEapType),
+                        toMetricPhase2Method(currentConnectionEvent.mPhase2Method),
+                        currentConnectionEvent.mPasspointRoamingType,
+                        currentConnectionEvent.mCarrierId);
 
                 // ConnectionEvent already added to ConnectionEvents List. Safe to remove here.
                 mCurrentConnectionEventPerIface.remove(ifaceName);
@@ -2121,7 +2195,7 @@ public class WifiMetrics {
      * @param linkSpeed Last seen link speed.
      */
     public void reportNetworkDisconnect(String ifaceName, int disconnectReason, int rssi,
-            int linkSpeed) {
+            int linkSpeed, long lastRssiUpdateMillis) {
         synchronized (mLock) {
             if (!isPrimary(ifaceName)) {
                 return;
@@ -2135,6 +2209,10 @@ public class WifiMetrics {
                 mCurrentSession.mSessionEndTimeMillis = mClock.getElapsedSinceBootMillis();
                 int durationSeconds = (int) (mCurrentSession.mSessionEndTimeMillis
                         - mCurrentSession.mSessionStartTimeMillis) / 1000;
+                int connectedSinceLastRoamSeconds = (int) (mCurrentSession.mSessionEndTimeMillis
+                        - mCurrentSession.mLastRoamCompleteMillis) / 1000;
+                int timeSinceLastRssiUpdateSeconds = (int) (mClock.getElapsedSinceBootMillis()
+                        - lastRssiUpdateMillis) / 1000;
 
                 WifiStatsLog.write(WifiStatsLog.WIFI_DISCONNECT_REPORTED,
                         durationSeconds,
@@ -2142,7 +2220,14 @@ public class WifiMetrics {
                         mCurrentSession.mBand,
                         mCurrentSession.mAuthType,
                         rssi,
-                        linkSpeed);
+                        linkSpeed,
+                        timeSinceLastRssiUpdateSeconds,
+                        connectedSinceLastRoamSeconds,
+                        mCurrentSession.mConnectionEvent.mRole,
+                        toMetricEapType(mCurrentSession.mConnectionEvent.mEapType),
+                        toMetricPhase2Method(mCurrentSession.mConnectionEvent.mPhase2Method),
+                        mCurrentSession.mConnectionEvent.mPasspointRoamingType,
+                        mCurrentSession.mConnectionEvent.mCarrierId);
 
                 mPreviousSession = mCurrentSession;
                 mCurrentSession = null;
@@ -6331,6 +6416,26 @@ public class WifiMetrics {
         if (mWifiIsUnusableList.size() > MAX_UNUSABLE_EVENTS) {
             mWifiIsUnusableList.removeFirst();
         }
+
+        WifiStatsLog.write(WIFI_IS_UNUSABLE_REPORTED, convertWifiUnUsableTypeToProto(triggerType),
+                mScorerUid, mIsScorerPredictedWifiUsable);
+    }
+
+    private int convertWifiUnUsableTypeToProto(int triggerType) {
+        switch (triggerType) {
+            case WifiIsUnusableEvent.TYPE_DATA_STALL_BAD_TX:
+                return WifiStatsLog.WIFI_IS_UNUSABLE_REPORTED__TYPE__TYPE_DATA_STALL_BAD_TX;
+            case WifiIsUnusableEvent.TYPE_DATA_STALL_TX_WITHOUT_RX:
+                return WifiStatsLog.WIFI_IS_UNUSABLE_REPORTED__TYPE__TYPE_DATA_STALL_TX_WITHOUT_RX;
+            case WifiIsUnusableEvent.TYPE_DATA_STALL_BOTH:
+                return WifiStatsLog.WIFI_IS_UNUSABLE_REPORTED__TYPE__TYPE_DATA_STALL_BOTH;
+            case WifiIsUnusableEvent.TYPE_FIRMWARE_ALERT:
+                return WifiStatsLog.WIFI_IS_UNUSABLE_REPORTED__TYPE__TYPE_FIRMWARE_ALERT;
+            case WifiIsUnusableEvent.TYPE_IP_REACHABILITY_LOST:
+                return WifiStatsLog.WIFI_IS_UNUSABLE_REPORTED__TYPE__TYPE_IP_REACHABILITY_LOST;
+            default:
+                return WifiStatsLog.WIFI_IS_UNUSABLE_REPORTED__TYPE__TYPE_UNKNOWN;
+        }
     }
 
     /**
@@ -6598,7 +6703,7 @@ public class WifiMetrics {
     }
 
     private android.net.wifi.WifiUsabilityStatsEntry.ContentionTimeStats[]
-            convertContentionTimeStats(WifiLinkLayerStats stats) {
+            convertContentionTimeStats(WifiLinkLayerStats.LinkSpecificStats stats) {
         android.net.wifi.WifiUsabilityStatsEntry.ContentionTimeStats[] contentionTimeStatsArray =
                 new android.net.wifi.WifiUsabilityStatsEntry.ContentionTimeStats[
                         android.net.wifi.WifiUsabilityStatsEntry.NUM_WME_ACCESS_CATEGORIES];
@@ -6652,7 +6757,7 @@ public class WifiMetrics {
     }
 
     private android.net.wifi.WifiUsabilityStatsEntry.RateStats[] convertRateStats(
-            WifiLinkLayerStats stats) {
+            WifiLinkLayerStats.LinkSpecificStats stats) {
         android.net.wifi.WifiUsabilityStatsEntry.RateStats[] rateStats = null;
         if (stats.peerInfo != null && stats.peerInfo.length > 0
                 && stats.peerInfo[0].rateStats != null) {
@@ -6693,7 +6798,7 @@ public class WifiMetrics {
             // Mlolink or WifiInfo (non-MLO case).
             android.net.wifi.WifiUsabilityStatsEntry.LinkStats outStat =
                     new android.net.wifi.WifiUsabilityStatsEntry.LinkStats(inStat.link_id,
-                            inStat.radio_id, inStat.state,
+                            inStat.state, inStat.radio_id,
                             (mloLinks.size() > 0) ? mloLinks.get(inStat.link_id,
                                     new MloLink()).getRssi() : info.getRssi(),
                             (mloLinks.size() > 0) ? mloLinks.get(inStat.link_id,
@@ -6702,7 +6807,7 @@ public class WifiMetrics {
                                     new MloLink()).getRxLinkSpeedMbps() : info.getRxLinkSpeedMbps(),
                             inStat.txmpdu_be + inStat.txmpdu_bk + inStat.txmpdu_vi
                                     + inStat.txmpdu_vo,
-                            inStat.retries_be + inStat.retries_be + inStat.retries_vi
+                            inStat.retries_be + inStat.retries_bk + inStat.retries_vi
                                     + inStat.retries_vo,
                             inStat.lostmpdu_be + inStat.lostmpdu_bk + inStat.lostmpdu_vo
                                     + inStat.lostmpdu_vi,
@@ -6711,8 +6816,8 @@ public class WifiMetrics {
                             inStat.beacon_rx, inStat.timeSliceDutyCycleInPercent,
                             (channelStatsMap != null) ? channelStatsMap.ccaBusyTimeMs : 0 ,
                             (channelStatsMap != null) ? channelStatsMap.radioOnTimeMs : 0,
-                            convertContentionTimeStats(stats),
-                            convertRateStats(stats));
+                            convertContentionTimeStats(inStat),
+                            convertRateStats(inStat));
             linkStats.put(inStat.link_id, outStat);
         }
 
@@ -6824,7 +6929,8 @@ public class WifiMetrics {
      * Converts bandwidth enum in proto to WifiUsabilityStatsEntry type.
      * @param value
      */
-    private static int convertBandwidthEnumToUsabilityStatsType(int value) {
+    @VisibleForTesting
+    public static int convertBandwidthEnumToUsabilityStatsType(int value) {
         switch (value) {
             case RateStats.WIFI_BANDWIDTH_20_MHZ:
                 return android.net.wifi.WifiUsabilityStatsEntry.WIFI_BANDWIDTH_20_MHZ;
@@ -6848,7 +6954,8 @@ public class WifiMetrics {
      * Converts spatial streams enum in proto to WifiUsabilityStatsEntry type.
      * @param value
      */
-    private static int convertSpatialStreamEnumToUsabilityStatsType(int value) {
+    @VisibleForTesting
+    public static int convertSpatialStreamEnumToUsabilityStatsType(int value) {
         switch (value) {
             case RateStats.WIFI_SPATIAL_STREAMS_ONE:
                 return android.net.wifi.WifiUsabilityStatsEntry.WIFI_SPATIAL_STREAMS_ONE;
@@ -6866,7 +6973,8 @@ public class WifiMetrics {
      * Converts preamble type enum in proto to WifiUsabilityStatsEntry type.
      * @param value
      */
-    private static int convertPreambleTypeEnumToUsabilityStatsType(int value) {
+    @VisibleForTesting
+    public static int convertPreambleTypeEnumToUsabilityStatsType(int value) {
         switch (value) {
             case RateStats.WIFI_PREAMBLE_OFDM:
                 return android.net.wifi.WifiUsabilityStatsEntry.WIFI_PREAMBLE_OFDM;
@@ -7926,16 +8034,17 @@ public class WifiMetrics {
             int band = KnownBandsChannelHelper.getBand(mLastPollFreq);
             WifiStatsLog.write(WifiStatsLog.WIFI_HEALTH_STAT_REPORTED, timeDeltaLastTwoPollsMs,
                     isThroughputSufficient || !mWifiWins,  isCellularDataAvailable, band, rssi,
-                    txKbps, rxKbps);
+                    txKbps, rxKbps, mScorerUid, mIsScorerPredictedWifiUsable);
         }
     }
 
     /**
      * Sets the status to indicate whether external WiFi connected network scorer is present or not.
      */
-    public void setIsExternalWifiScorerOn(boolean value) {
+    public void setIsExternalWifiScorerOn(boolean value, int callerUid) {
         synchronized (mLock) {
             mWifiLogProto.isExternalWifiScorerOn = value;
+            mScorerUid = callerUid;
         }
     }
 
@@ -8649,5 +8758,12 @@ public class WifiMetrics {
      */
     public void wifiThreadTaskExecuted(String taskName, int delay, int runningTime) {
         WifiStatsLog.write(WIFI_THREAD_TASK_EXECUTED, runningTime, delay, taskName);
+    }
+
+    /**
+     * Set Wi-Fi is usable (by network scorer) or not.
+     */
+    public void setScorerPredictedWifiUsability(boolean isUsable) {
+        mIsScorerPredictedWifiUsable = isUsable;
     }
 }
