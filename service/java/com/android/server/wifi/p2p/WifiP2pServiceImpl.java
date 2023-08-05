@@ -3846,6 +3846,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             if (mVerboseLoggingEnabled) {
                                 logd("Found a match " + mSavedPeerConfig);
                             }
+                            if (TextUtils.isEmpty(mSavedPeerConfig.wps.pin)) {
+                                // Some implementations get the PIN OOB and deliver it from
+                                // Supplicant. This is to avoid connecting with the dialog box
+                                mSavedPeerConfig.wps.pin = provDisc.pin;
+                            }
                             // we already have the pin
                             if (!TextUtils.isEmpty(mSavedPeerConfig.wps.pin)) {
                                 p2pConnectWithPinDisplay(mSavedPeerConfig,
@@ -3927,6 +3932,10 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         }
                         mGroup = (WifiP2pGroup) message.obj;
                         if (mVerboseLoggingEnabled) logd(getName() + " group started");
+                        if (mWifiNative.p2pExtListen(false, 0, 0)) {
+                            sendP2pListenChangedBroadcast(false);
+                        }
+                        mWifiNative.p2pStopFind();
                         if (mGroup.isGroupOwner()
                                 && EMPTY_DEVICE_ADDRESS.equals(mGroup.getOwner().deviceAddress)) {
                             // wpa_supplicant doesn't set own device address to go_dev_addr.
@@ -4070,6 +4079,17 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                                         .setFallbackToNegotiationOnInviteStatusInfoUnavailable();
                                 p2pConnectWithPinDisplay(mSavedPeerConfig,
                                         P2P_CONNECT_TRIGGER_OTHER);
+                            } else {
+                                mWifiNative.p2pStopFind();
+                                if (mWifiNative.p2pExtListen(true,
+                                        mContext.getResources().getInteger(
+                                                R.integer.config_wifiP2pExtListenPeriodMs),
+                                        mContext.getResources().getInteger(
+                                                R.integer.config_wifiP2pExtListenIntervalMs))) {
+                                    logd(" started listen to receive the invitation Request"
+                                            + " frame from Peer device.");
+                                    sendP2pListenChangedBroadcast(true);
+                                }
                             }
                         } else if (status == P2pStatus.NO_COMMON_CHANNEL) {
                             smTransition(this, mFrequencyConflictState);
@@ -4079,6 +4099,13 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             handleGroupCreationFailure();
                             smTransition(this, mInactiveState);
                         }
+                        break;
+                    case WifiP2pMonitor.P2P_PROV_DISC_FAILURE_EVENT:
+                        loge("Peer rejected the connection request - status: " + message.arg1);
+                        mWifiP2pMetrics.endConnectionEvent(
+                                P2pConnectionEvent.CLF_GROUP_REMOVED);
+                        handleGroupCreationFailure();
+                        smTransition(this, mInactiveState);
                         break;
                     case WifiP2pMonitor.AP_STA_CONNECTED_EVENT:
                     case WifiP2pMonitor.AP_STA_DISCONNECTED_EVENT:
