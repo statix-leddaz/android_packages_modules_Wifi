@@ -944,6 +944,9 @@ public class HalDeviceManagerTest extends WifiBaseTest {
         networkInfo.setDetailedState(NetworkInfo.DetailedState.DISCONNECTED, null, null);
         connectionIntent.putExtra(WifiP2pManager.EXTRA_NETWORK_INFO, networkInfo);
         brCaptor.getValue().onReceive(mContext, connectionIntent);
+        assertFalse("Should not treat disconnected P2P as privileged iface",
+                mDut.creatingIfaceWillDeletePrivilegedIface(
+                        HDM_CREATE_IFACE_NAN, TEST_WORKSOURCE_2));
         nanDetails = mDut.reportImpactToCreateIface(
                 HDM_CREATE_IFACE_NAN, true, TEST_WORKSOURCE_2);
         assertNotNull("Should create this NAN", nanDetails);
@@ -1663,7 +1666,6 @@ public class HalDeviceManagerTest extends WifiBaseTest {
     public void testCanDeviceSupportCreateTypeComboChipV1() throws Exception {
         TestChipV1 chipMock = new TestChipV1();
         chipMock.initialize();
-        chipMock.allowGetCapsBeforeIfaceCreated = false;
         mInOrder = inOrder(mWifiMock, chipMock.chip, mManagerStatusListenerMock);
 
         // Try to query iface support before starting the HAL. Should return false without any
@@ -1798,6 +1800,100 @@ public class HalDeviceManagerTest extends WifiBaseTest {
         ));
 
         verifyNoMoreInteractions(mManagerStatusListenerMock);
+    }
+
+    /**
+     * Validates that {@link HalDeviceManager#canDeviceSupportCreateTypeCombo(SparseArray)} with
+     * outdated stored static chip info will be updated once we load the chip info when the driver
+     * is up.
+     */
+    @Test
+    public void testCanDeviceSupportCreateTypeComboChipV1WithOutdatedStoredStaticChipInfo()
+            throws Exception {
+        TestChipV1 chipMock = new TestChipV1();
+        chipMock.initialize();
+        mInOrder = inOrder(mWifiMock, chipMock.chip, mManagerStatusListenerMock);
+
+        // Try to query iface support before starting the HAL. Should return false with the outdated
+        // stored static chip info that's missing AP capabilities.
+        String outdatedStaticChipInfo =
+                        "["
+                        + "    {"
+                        + "        \"chipId\": 10,"
+                        + "        \"chipCapabilities\": -1,"
+                        + "        \"availableModes\": ["
+                        + "            {"
+                        + "                \"id\": 0,"
+                        + "                \"availableCombinations\": ["
+                        + "                    {"
+                        + "                        \"limits\": ["
+                        + "                            {"
+                        + "                                \"maxIfaces\": 1,"
+                        + "                                \"types\": [0]"
+                        + "                            },"
+                        + "                            {"
+                        + "                                \"maxIfaces\": 1,"
+                        + "                                \"types\": [3, 4]"
+                        + "                            }"
+                        + "                        ]"
+                        + "                    }"
+                        + "                ]"
+                        + "            }"
+                        + "        ]"
+                        + "    }"
+                        + "]";
+        when(mWifiMock.isStarted()).thenReturn(false);
+        when(mWifiSettingsConfigStore.get(WifiSettingsConfigStore.WIFI_STATIC_CHIP_INFO))
+                .thenReturn(outdatedStaticChipInfo);
+
+        // Can create a NAN but not an AP from the stored static chip info
+        assertTrue(
+                mDut.canDeviceSupportCreateTypeCombo(
+                        new SparseArray<Integer>() {
+                            {
+                                put(WifiChip.IFACE_CONCURRENCY_TYPE_NAN, 1);
+                            }
+                        }));
+        assertFalse(
+                mDut.canDeviceSupportCreateTypeCombo(
+                        new SparseArray<Integer>() {
+                            {
+                                put(WifiChip.IFACE_CONCURRENCY_TYPE_AP, 1);
+                            }
+                        }));
+
+        verify(mWifiMock, never()).getChipIds();
+        when(mWifiMock.isStarted()).thenReturn(true);
+        executeAndValidateStartupSequence();
+        clearInvocations(mWifiMock);
+
+        // Create a STA to get the static chip info from driver and save it to store.
+        validateInterfaceSequence(
+                chipMock,
+                false, // chipModeValid
+                -1000, // chipModeId (only used if chipModeValid is true)
+                HDM_CREATE_IFACE_STA, // ifaceTypeToCreate
+                "wlan0", // ifaceName
+                TestChipV1.STA_CHIP_MODE_ID, // finalChipMode
+                null, // tearDownList
+                mock(InterfaceDestroyedListener.class), // destroyedListener
+                TEST_WORKSOURCE_0 // requestorWs
+        );
+
+        // Verify that the latest static chip info is saved to store.
+        verify(mWifiSettingsConfigStore)
+                .put(
+                        eq(WifiSettingsConfigStore.WIFI_STATIC_CHIP_INFO),
+                        eq(new JSONArray(TestChipV1.STATIC_CHIP_INFO_JSON_STRING).toString()));
+
+        // Now we can create an AP.
+        assertTrue(
+                mDut.canDeviceSupportCreateTypeCombo(
+                        new SparseArray<Integer>() {
+                            {
+                                put(WifiChip.IFACE_CONCURRENCY_TYPE_AP, 1);
+                            }
+                        }));
     }
 
     @Test
@@ -3235,9 +3331,8 @@ public class HalDeviceManagerTest extends WifiBaseTest {
             );
             collector.checkThat("STA created", staIface, IsNull.notNullValue());
         } else {
-            List<Pair<Integer, WorkSource>> staDetails = mDut.reportImpactToCreateIface(
-                    HDM_CREATE_IFACE_STA, true, requiredChipCapabilities, TEST_WORKSOURCE_1);
-            assertNull("Should not create this STA", staDetails);
+            assertFalse("Should not be able to create this STA", mDut.isItPossibleToCreateIface(
+                    HDM_CREATE_IFACE_STA, requiredChipCapabilities, TEST_WORKSOURCE_1));
             staIface = mDut.createStaIface(
                     requiredChipCapabilities, null, null, TEST_WORKSOURCE_1,
                     mConcreteClientModeManager);
@@ -3263,9 +3358,8 @@ public class HalDeviceManagerTest extends WifiBaseTest {
             );
             collector.checkThat("AP created", apIface, IsNull.notNullValue());
         } else {
-            List<Pair<Integer, WorkSource>> apDetails = mDut.reportImpactToCreateIface(
-                    HDM_CREATE_IFACE_AP, true, requiredChipCapabilities, TEST_WORKSOURCE_0);
-            assertNull("Should not create this AP", apDetails);
+            assertFalse("Should not be able to create this AP", mDut.isItPossibleToCreateIface(
+                    HDM_CREATE_IFACE_AP, requiredChipCapabilities, TEST_WORKSOURCE_0));
             apIface = mDut.createApIface(
                     requiredChipCapabilities, null, null, TEST_WORKSOURCE_0, false, mSoftApManager);
             collector.checkThat("AP should not be created", apIface, IsNull.nullValue());
@@ -4133,7 +4227,7 @@ public class HalDeviceManagerTest extends WifiBaseTest {
 
         // check if can create interface
         List<Pair<Integer, WorkSource>> details = mDut.reportImpactToCreateIface(
-                createIfaceType, true, requiredChipCapabilities, requestorWs);
+                createIfaceType, true, requestorWs);
         if (tearDownList == null || tearDownList.length == 0) {
             assertTrue("Details list must be empty - can create" + details, details.isEmpty());
         } else { // TODO: assumes that at most a single entry - which is the current usage
@@ -4712,7 +4806,7 @@ public class HalDeviceManagerTest extends WifiBaseTest {
         static final String STATIC_CHIP_INFO_JSON_STRING = "["
                 + "    {"
                 + "        \"chipId\": 10,"
-                + "        \"chipCapabilities\": -1,"
+                + "        \"chipCapabilities\": 0,"
                 + "        \"availableModes\": ["
                 + "            {"
                 + "                \"id\": 0,"
