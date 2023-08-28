@@ -670,6 +670,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
         //  not per CMM
         final Intent intent = new Intent(WifiManager.WIFI_STATE_CHANGED_ACTION);
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
+        intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
         intent.putExtra(WifiManager.EXTRA_WIFI_STATE, newState);
         intent.putExtra(WifiManager.EXTRA_PREVIOUS_WIFI_STATE, currentState);
         String summary = "broadcast=WIFI_STATE_CHANGED_ACTION"
