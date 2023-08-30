@@ -3409,8 +3409,10 @@ public class HalDeviceManager {
         pw.println("Dump of HalDeviceManager:");
         pw.println("  mServiceManager: " + mServiceManager);
         pw.println("  mWifi: " + mWifi);
-        pw.println("  mManagerStatusListeners: " + mManagerStatusListeners);
-        pw.println("  mInterfaceInfoCache: " + mInterfaceInfoCache);
+        synchronized (mLock) {
+            pw.println("  mManagerStatusListeners: " + mManagerStatusListeners);
+            pw.println("  mInterfaceInfoCache: " + mInterfaceInfoCache);
+        }
         pw.println("  mDebugChipsInfo: " + Arrays.toString(getAllChipInfo()));
     }
 }
