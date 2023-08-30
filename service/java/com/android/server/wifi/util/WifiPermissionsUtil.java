@@ -88,6 +88,8 @@ public class WifiPermissionsUtil {
     private WifiLog mLog;
     private boolean mVerboseLoggingEnabled;
     private final SparseBooleanArray mOemPrivilegedAdminUidCache = new SparseBooleanArray();
+    private Context mUserContext;
+    private int mUserUid;
 
     public WifiPermissionsUtil(WifiPermissionsWrapper wifiPermissionsWrapper,
             Context context, UserManager userManager, WifiInjector wifiInjector) {
@@ -921,9 +923,9 @@ public class WifiPermissionsUtil {
     }
 
     private DevicePolicyManager retrieveDevicePolicyManagerFromUserContext(int uid) {
-        Context userContext = createPackageContextAsUser(uid);
-        if (userContext == null) return null;
-        return retrieveDevicePolicyManagerFromContext(userContext);
+        mUserContext = createPackageContextAsUser(uid);
+        if (mUserContext == null) return null;
+        return retrieveDevicePolicyManagerFromContext(mUserContext);
     }
 
     @Nullable
@@ -1047,12 +1049,17 @@ public class WifiPermissionsUtil {
     public boolean isProfileOwner(int uid, @Nullable String packageName) {
         // Cannot determine if the app is DO/PO if packageName is null. So, will return false to be
         // safe.
+	DevicePolicyManager devicePolicyManager;
         if (packageName == null) {
             Log.e(TAG, "isProfileOwner: packageName is null, returning false");
             return false;
         }
-        DevicePolicyManager devicePolicyManager =
-                retrieveDevicePolicyManagerFromUserContext(uid);
+	if (mUserUid == uid) {
+	    devicePolicyManager = retrieveDevicePolicyManagerFromContext(mUserContext);
+	} else {
+	    devicePolicyManager = retrieveDevicePolicyManagerFromUserContext(uid);
+	    mUserUid = uid;
+	}
         if (devicePolicyManager == null) return false;
         return devicePolicyManager.isProfileOwnerApp(packageName);
     }
