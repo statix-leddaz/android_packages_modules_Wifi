@@ -402,6 +402,11 @@ public class ConcreteClientModeManager implements ClientModeManager {
             } else if (mTargetRoleChangeInfo.role == ROLE_CLIENT_SCAN_ONLY) {
                 if (!mWifiNative.switchClientInterfaceToScanMode(
                         mClientInterfaceName, mTargetRoleChangeInfo.requestorWs)) {
+                    updateConnectModeState(mRole, WifiManager.WIFI_STATE_UNKNOWN,
+                            WifiManager.WIFI_STATE_DISABLING);
+                    updateConnectModeState(mRole, WifiManager.WIFI_STATE_DISABLED,
+                            WifiManager.WIFI_STATE_UNKNOWN);
+
                     mModeListener.onStartFailure(ConcreteClientModeManager.this);
                 } else {
                     mStateMachine.sendMessage(
