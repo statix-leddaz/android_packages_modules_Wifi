@@ -68,6 +68,7 @@ import androidx.annotation.RequiresApi;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.hotspot2.PasspointManager;
+import com.android.server.wifi.proto.WifiStatsLog;
 import com.android.server.wifi.scanner.WifiScannerInternal;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.wifi.resources.R;
@@ -257,6 +258,7 @@ public class WifiConnectivityManager {
     private int[] mCurrentSingleScanType;
     private boolean mPnoScanEnabledByFramework = true;
     private boolean mEnablePnoScanAfterWifiToggle = true;
+    private Set<String> mPnoScanPasspointSsids;
 
     private int mCurrentSingleScanScheduleIndex;
     // Cached WifiCandidates used in high mobility state to avoid connecting to APs that are
@@ -778,16 +780,6 @@ public class WifiConnectivityManager {
         WifiConfiguration candidate = mNetworkSelector.selectNetwork(candidates);
         if (candidate != null) {
             localLog(listenerName + ":  WNS candidate-" + candidate.SSID);
-            if (hasMultiInternetConnection()) {
-                // Disconnect secondary cmm first before connecting the primary.
-                final ConcreteClientModeManager secondaryCcm = mActiveModeWarden
-                        .getClientModeManagerInRole(ROLE_CLIENT_SECONDARY_LONG_LIVED);
-                if (secondaryCcm != null && isClientModeManagerConnectedOrConnectingToCandidate(
-                        secondaryCcm, candidate)) {
-                    localLog("Disconnect secondary first.");
-                    secondaryCcm.disconnect();
-                }
-            }
             connectToNetworkForPrimaryCmmUsingMbbIfAvailable(candidate);
             handleScanResultsWithCandidate(handleScanResultsListener);
         } else {
@@ -1352,6 +1344,7 @@ public class WifiConnectivityManager {
         mPnoScanListener = new PnoScanListener();
         mInternalPnoScanListener = new WifiScannerInternal.ScanListener(mPnoScanListener,
                 mEventHandler);
+        mPnoScanPasspointSsids = new ArraySet<>();
     }
 
     /**
@@ -1744,6 +1737,16 @@ public class WifiConnectivityManager {
                     + " does not match the config specified BSSID " + targetNetwork.BSSID
                     + ". Drop it!");
             return;
+        }
+        if (hasMultiInternetConnection() && clientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+            // Disconnect secondary cmm first before connecting the primary.
+            final ConcreteClientModeManager secondaryCcm = mActiveModeWarden
+                    .getClientModeManagerInRole(ROLE_CLIENT_SECONDARY_LONG_LIVED);
+            if (secondaryCcm != null && isClientModeManagerConnectedOrConnectingToCandidate(
+                    secondaryCcm, targetNetwork)) {
+                localLog("Disconnect secondary first.");
+                secondaryCcm.disconnect();
+            }
         }
 
         WifiConfiguration currentNetwork = coalesce(
@@ -2448,7 +2451,7 @@ public class WifiConnectivityManager {
         pnoSettings.isConnected = false;
         mScanner.startPnoScan(scanSettings, pnoSettings, mInternalPnoScanListener);
         mPnoScanStarted = true;
-        mWifiMetrics.logPnoScanStart();
+        WifiStatsLog.write(WifiStatsLog.PNO_SCAN_STARTED, !mPnoScanPasspointSsids.isEmpty());
     }
 
     private @NonNull List<WifiConfiguration> getAllScanOptimizationNetworks() {
@@ -2511,7 +2514,6 @@ public class WifiConnectivityManager {
         }
     }
 
-
     /**
      * Retrieve the PnoNetworks from Saved and suggestion non-passpoint network.
      */
@@ -2532,6 +2534,7 @@ public class WifiConnectivityManager {
 
         List<PnoSettings.PnoNetwork> pnoList = new ArrayList<>();
         Set<String> pnoSet = new HashSet<>();
+        mPnoScanPasspointSsids.clear();
 
         // Add any externally requested SSIDs to PNO scan list
         for (String ssid : externalRequestedPnoSsids) {
@@ -2561,6 +2564,9 @@ public class WifiConnectivityManager {
                 pnoNetwork.ssid = originalSsid.toString();
                 pnoList.add(pnoNetwork);
                 pnoSet.add(originalSsid.toString());
+                if (config.isPasspoint()) {
+                    mPnoScanPasspointSsids.add(originalSsid.toString());
+                }
                 if (!pnoFrequencyCullingEnabled) {
                     continue;
                 }

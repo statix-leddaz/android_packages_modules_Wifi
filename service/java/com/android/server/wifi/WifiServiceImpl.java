@@ -28,6 +28,7 @@ import static android.net.wifi.WifiManager.LocalOnlyHotspotCallback.ERROR_NO_CHA
 import static android.net.wifi.WifiManager.NOT_OVERRIDE_EXISTING_NETWORKS_ON_RESTORE;
 import static android.net.wifi.WifiManager.PnoScanResultsCallback.REGISTER_PNO_CALLBACK_PNO_NOT_SUPPORTED;
 import static android.net.wifi.WifiManager.SAP_START_FAILURE_NO_CHANNEL;
+import static android.net.wifi.WifiManager.VERBOSE_LOGGING_LEVEL_WIFI_AWARE_ENABLED_ONLY;
 import static android.net.wifi.WifiManager.WIFI_AP_STATE_DISABLED;
 import static android.net.wifi.WifiManager.WIFI_AP_STATE_DISABLING;
 import static android.net.wifi.WifiManager.WIFI_AP_STATE_ENABLED;
@@ -56,6 +57,7 @@ import static com.android.server.wifi.ScanRequestProxy.createBroadcastOptionsFor
 import static com.android.server.wifi.SelfRecovery.REASON_API_CALL;
 import static com.android.server.wifi.WifiSettingsConfigStore.SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI;
 import static com.android.server.wifi.WifiSettingsConfigStore.SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI_SET_BY_API;
+import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_AWARE_VERBOSE_LOGGING_ENABLED;
 import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_VERBOSE_LOGGING_ENABLED;
 
 import android.Manifest;
@@ -581,6 +583,7 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiInjector.getWifiNotificationManager().createNotificationChannels();
             mWifiMetrics.start();
             mWifiConnectivityManager.initialization();
+            mWifiNetworkFactory.start();
             mContext.registerReceiver(
                     new BroadcastReceiver() {
                         @Override
@@ -3055,35 +3058,35 @@ public class WifiServiceImpl extends BaseWifiService {
 
     @Override
     public void getWifiActivityEnergyInfoAsync(IOnWifiActivityEnergyInfoListener listener) {
+        enforceAccessPermission();
         if (mVerboseLoggingEnabled) {
             mLog.info("getWifiActivityEnergyInfoAsync uid=%")
                     .c(Binder.getCallingUid())
                     .flush();
         }
-        // getWifiActivityEnergyInfo() performs permission checking
-        WifiActivityEnergyInfo info = getWifiActivityEnergyInfo();
-        try {
-            listener.onWifiActivityEnergyInfo(info);
-        } catch (RemoteException e) {
-            Log.e(TAG, "onWifiActivityEnergyInfo: RemoteException -- ", e);
+        if ((getSupportedFeatures() & WifiManager.WIFI_FEATURE_LINK_LAYER_STATS) == 0) {
+            try {
+                listener.onWifiActivityEnergyInfo(null);
+            } catch (RemoteException e) {
+                Log.e(TAG, "onWifiActivityEnergyInfo: RemoteException -- ", e);
+            }
+            return;
         }
+        mWifiThreadRunner.post(() -> {
+            try {
+                listener.onWifiActivityEnergyInfo(getWifiActivityEnergyInfo());
+            } catch (RemoteException e) {
+                Log.e(TAG, "onWifiActivityEnergyInfo: RemoteException -- ", e);
+            }
+        });
     }
 
     private WifiActivityEnergyInfo getWifiActivityEnergyInfo() {
-        enforceAccessPermission();
-        if (mVerboseLoggingEnabled) {
-            mLog.info("getWifiActivityEnergyInfo uid=%").c(Binder.getCallingUid()).flush();
-        }
-        if ((getSupportedFeatures() & WifiManager.WIFI_FEATURE_LINK_LAYER_STATS) == 0) {
-            return null;
-        }
-        WifiLinkLayerStats stats = mWifiThreadRunner.call(
-                () -> mActiveModeWarden.getPrimaryClientModeManager().getWifiLinkLayerStats(),
-                null);
+        WifiLinkLayerStats stats = mActiveModeWarden
+                .getPrimaryClientModeManager().getWifiLinkLayerStats();
         if (stats == null) {
             return null;
         }
-
         final long rxIdleTimeMillis = stats.on_time - stats.tx_time - stats.rx_time;
         if (VDBG || rxIdleTimeMillis < 0 || stats.on_time < 0 || stats.tx_time < 0
                 || stats.rx_time < 0 || stats.on_time_scan < 0) {
@@ -3094,7 +3097,6 @@ public class WifiServiceImpl extends BaseWifiService {
                     + " rxIdleTimeMillis=" + rxIdleTimeMillis
                     + " scan_time_millis=" + stats.on_time_scan);
         }
-
         // Convert the LinkLayerStats into WifiActivityEnergyInfo
         return new WifiActivityEnergyInfo(
                 mClock.getElapsedSinceBootMillis(),
@@ -5203,13 +5205,11 @@ public class WifiServiceImpl extends BaseWifiService {
                 err.getFileDescriptor(), args);
     }
 
+
     private void updateWifiMetrics() {
-        mWifiThreadRunner.run(() -> {
-            mWifiMetrics.updateSavedNetworks(
-                    mWifiConfigManager.getSavedNetworks(WIFI_UID));
-            mActiveModeWarden.updateMetrics();
-            mPasspointManager.updateMetrics();
-        });
+        mWifiMetrics.updateSavedNetworks(mWifiConfigManager.getSavedNetworks(WIFI_UID));
+        mActiveModeWarden.updateMetrics();
+        mPasspointManager.updateMetrics();
         boolean isNonPersistentMacRandEnabled = mFrameworkFacade.getIntegerSetting(mContext,
                 WifiConfigManager.NON_PERSISTENT_MAC_RANDOMIZATION_FEATURE_FORCE_ENABLE_FLAG, 0)
                 == 1 ? true : false;
@@ -5420,8 +5420,11 @@ public class WifiServiceImpl extends BaseWifiService {
         mLog.info("enableVerboseLogging uid=% verbose=%")
                 .c(Binder.getCallingUid())
                 .c(verbose).flush();
-        boolean enabled = verbose > 0;
+        boolean enabled = verbose == WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED
+                || verbose == WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY;
         mWifiInjector.getSettingsConfigStore().put(WIFI_VERBOSE_LOGGING_ENABLED, enabled);
+        mWifiInjector.getSettingsConfigStore().put(WIFI_AWARE_VERBOSE_LOGGING_ENABLED, enabled
+                || verbose == VERBOSE_LOGGING_LEVEL_WIFI_AWARE_ENABLED_ONLY);
         onVerboseLoggingStatusChanged(enabled);
         enableVerboseLoggingInternal(verbose);
     }
@@ -5443,13 +5446,14 @@ public class WifiServiceImpl extends BaseWifiService {
     private void updateVerboseLoggingEnabled() {
         final int verboseAlwaysOnLevel = mContext.getResources().getInteger(
                 R.integer.config_wifiVerboseLoggingAlwaysOnLevel);
-        mVerboseLoggingEnabled = mFrameworkFacade.isVerboseLoggingAlwaysOn(verboseAlwaysOnLevel,
-                mBuildProperties)
-                || WifiManager.VERBOSE_LOGGING_LEVEL_DISABLED != mVerboseLoggingLevel;
+        mVerboseLoggingEnabled = WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED == mVerboseLoggingLevel
+                || WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY == mVerboseLoggingLevel
+                || mFrameworkFacade.isVerboseLoggingAlwaysOn(verboseAlwaysOnLevel,
+                mBuildProperties);
     }
 
     private void enableVerboseLoggingInternal(int verboseLoggingLevel) {
-        if (verboseLoggingLevel > WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED
+        if (verboseLoggingLevel == WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY
                 && mBuildProperties.isUserBuild()) {
             throw new SecurityException(TAG + ": Not allowed for the user build.");
         }
@@ -5457,17 +5461,16 @@ public class WifiServiceImpl extends BaseWifiService {
 
         // Update wifi globals before sending the verbose logging change.
         mWifiThreadRunner.removeCallbacks(mAutoDisableShowKeyVerboseLoggingModeRunnable);
+        mWifiGlobals.setVerboseLoggingLevel(verboseLoggingLevel);
         if (WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY == mVerboseLoggingLevel) {
-            mWifiGlobals.setShowKeyVerboseLoggingModeEnabled(true);
             mWifiThreadRunner.postDelayed(mAutoDisableShowKeyVerboseLoggingModeRunnable,
                     AUTO_DISABLE_SHOW_KEY_COUNTDOWN_MILLIS);
-        } else {
-            // Ensure the show key mode is disabled.
-            mWifiGlobals.setShowKeyVerboseLoggingModeEnabled(false);
         }
         updateVerboseLoggingEnabled();
         final boolean halVerboseEnabled =
-                WifiManager.VERBOSE_LOGGING_LEVEL_DISABLED != mVerboseLoggingLevel;
+                WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED == mVerboseLoggingLevel
+                        || WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY
+                        == mVerboseLoggingLevel;
         mActiveModeWarden.enableVerboseLogging(mVerboseLoggingEnabled);
         mWifiLockManager.enableVerboseLogging(mVerboseLoggingEnabled);
         mWifiMulticastLockManager.enableVerboseLogging(mVerboseLoggingEnabled);
@@ -5546,19 +5549,21 @@ public class WifiServiceImpl extends BaseWifiService {
         for (PasspointConfiguration config : configs) {
             removePasspointConfigurationInternal(null, config.getUniqueId());
         }
-        mWifiThreadRunner.post(() -> {
-            // Reset SoftApConfiguration to default configuration
-            mWifiApConfigStore.setApConfiguration(null);
-            mPasspointManager.clearAnqpRequestsAndFlushCache();
-            mWifiConfigManager.clearUserTemporarilyDisabledList();
-            mWifiConfigManager.removeAllEphemeralOrPasspointConfiguredNetworks();
-            mWifiInjector.getWifiNetworkFactory().clear();
-            mWifiNetworkSuggestionsManager.clear();
-            mWifiInjector.getWifiScoreCard().clear();
-            mWifiHealthMonitor.clear();
-            mWifiCarrierInfoManager.clear();
-            notifyFactoryReset();
-        });
+        mWifiThreadRunner.post(
+                () -> {
+                    // Reset SoftApConfiguration to default configuration
+                    mWifiApConfigStore.setApConfiguration(null);
+                    mPasspointManager.clearAnqpRequestsAndFlushCache();
+                    mWifiConfigManager.clearUserTemporarilyDisabledList();
+                    mWifiConfigManager.removeAllEphemeralOrPasspointConfiguredNetworks();
+                    mWifiInjector.getWifiNetworkFactory().clear();
+                    mWifiNetworkSuggestionsManager.clear();
+                    mWifiInjector.getWifiScoreCard().clear();
+                    mWifiHealthMonitor.clear();
+                    mWifiCarrierInfoManager.clear();
+                    notifyFactoryReset();
+                    mContext.resetResourceCache();
+                });
     }
 
     /**
@@ -6830,12 +6835,14 @@ public class WifiServiceImpl extends BaseWifiService {
         }
         mContext.enforceCallingOrSelfPermission(
                 android.Manifest.permission.WIFI_UPDATE_USABILITY_STATS_SCORE, "WifiService");
+        int callingUid = Binder.getCallingUid();
         if (mVerboseLoggingEnabled) {
-            mLog.info("setWifiConnectedNetworkScorer uid=%").c(Binder.getCallingUid()).flush();
+            mLog.info("setWifiConnectedNetworkScorer uid=%").c(callingUid).flush();
         }
         // Post operation to handler thread
         return mWifiThreadRunner.call(
-                () -> mActiveModeWarden.setWifiConnectedNetworkScorer(binder, scorer), false);
+                () -> mActiveModeWarden.setWifiConnectedNetworkScorer(binder, scorer, callingUid),
+                false);
     }
 
     /**
