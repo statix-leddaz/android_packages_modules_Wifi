@@ -1,1 +1,4 @@
 // Signature format: 2.0
+// - add-additional-overrides=yes
+// - migrating=Migration in progress see b/299366704
+// - overloaded-method-order=source
