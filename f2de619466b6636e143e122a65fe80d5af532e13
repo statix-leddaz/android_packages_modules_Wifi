@@ -22,6 +22,30 @@
       },
       "revId": "f2de619466b6636e143e122a65fe80d5af532e13",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "c4a738b7_5fe7db01",
+        "filename": "service/java/com/android/server/wifi/ConcreteClientModeManager.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 406,
+      "author": {
+        "id": 1901747
+      },
+      "writtenOn": "2023-09-18T02:39:14Z",
+      "side": 1,
+      "message": "Hi,\nYes, It should be WIFI_STATE_DISABLING.\nThanks for your review.",
+      "parentUuid": "e23d3eba_a57ae98e",
+      "range": {
+        "startLine": 406,
+        "startChar": 40,
+        "endLine": 406,
+        "endChar": 59
+      },
+      "revId": "f2de619466b6636e143e122a65fe80d5af532e13",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
