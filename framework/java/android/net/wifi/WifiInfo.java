@@ -25,6 +25,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.RequiresPermission;
 import android.annotation.SystemApi;
+import android.annotation.TestApi;
 import android.app.admin.DevicePolicyManager;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.net.ConnectivityManager;
@@ -714,6 +715,17 @@ public class WifiInfo implements TransportInfo, Parcelable {
         @NonNull
         public Builder setNetworkId(int networkId) {
             mWifiInfo.setNetworkId(networkId);
+            return this;
+        }
+
+        /**
+         * Set the subscription ID.
+         * @see WifiInfo#getSubscriptionId()
+         */
+        @TestApi
+        @NonNull
+        public Builder setSubscriptionId(int subId) {
+            mWifiInfo.setSubscriptionId(subId);
             return this;
         }
 
