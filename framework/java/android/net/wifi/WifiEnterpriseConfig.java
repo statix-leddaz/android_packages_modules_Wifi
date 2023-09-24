@@ -332,46 +332,39 @@ public class WifiEnterpriseConfig implements Parcelable {
     public @interface TlsVersion {}
 
     /**
-     * TOFU state is not specified or unknown.
-     * @hide
-     */
-    public static final int TOFU_STATE_UNSPECIFIED = 0;
-
-    /**
      * TOFU is not enabled for this configuration.
      * @hide
      */
-    public static final int TOFU_STATE_NOT_ENABLED = 1;
+    public static final int TOFU_STATE_NOT_ENABLED = 0;
 
     /**
      * TOFU is enabled pre-connection.
      * @hide
      */
-    public static final int TOFU_STATE_ENABLED_PRE_CONNECTION = 2;
+    public static final int TOFU_STATE_ENABLED_PRE_CONNECTION = 1;
 
     /**
      * Root CA was configured post-TOFU connection.
      * @hide
      */
 
-    public static final int TOFU_STATE_CONFIGURE_ROOT_CA = 3;
+    public static final int TOFU_STATE_CONFIGURE_ROOT_CA = 2;
 
     /**
      * Certificate pinning was used post-TOFU connection.
      * @hide
      */
-    public static final int TOFU_STATE_CERT_PINNING = 4;
+    public static final int TOFU_STATE_CERT_PINNING = 3;
 
     /** @hide */
     @IntDef(prefix = {"TOFU_STATE_"}, value = {
-            TOFU_STATE_UNSPECIFIED,
             TOFU_STATE_NOT_ENABLED,
             TOFU_STATE_ENABLED_PRE_CONNECTION,
             TOFU_STATE_CONFIGURE_ROOT_CA,
             TOFU_STATE_CERT_PINNING
     })
     @Retention(RetentionPolicy.SOURCE)
-    public @interface TofuState {}
+    public @interface TofuConnectionState {}
 
     /**
      * TOFU dialog has not been displayed to the user, or state is unknown.
@@ -415,6 +408,7 @@ public class WifiEnterpriseConfig implements Parcelable {
     // Default is 1.0, i.e. accept any TLS version.
     private int mMinimumTlsVersion = TLS_V1_0;
     private @TofuDialogState int mTofuDialogState = TOFU_DIALOG_STATE_UNSPECIFIED;
+    private @TofuConnectionState int mTofuConnectionState = TOFU_STATE_NOT_ENABLED;
 
     // Not included in parceling, hashing, or equality because it is an internal, temporary value
     // which is valid only during an actual connection to a Passpoint network with an RCOI-based
@@ -537,6 +531,7 @@ public class WifiEnterpriseConfig implements Parcelable {
         mMinimumTlsVersion = source.mMinimumTlsVersion;
         mIsStrictConservativePeerMode = source.mIsStrictConservativePeerMode;
         mTofuDialogState = source.mTofuDialogState;
+        mTofuConnectionState = source.mTofuConnectionState;
     }
 
     /**
@@ -583,6 +578,7 @@ public class WifiEnterpriseConfig implements Parcelable {
         dest.writeBoolean(mUserApproveNoCaCert);
         dest.writeInt(mMinimumTlsVersion);
         dest.writeInt(mTofuDialogState);
+        dest.writeInt(mTofuConnectionState);
     }
 
     public static final @android.annotation.NonNull Creator<WifiEnterpriseConfig> CREATOR =
@@ -635,6 +631,7 @@ public class WifiEnterpriseConfig implements Parcelable {
                     enterpriseConfig.mUserApproveNoCaCert = in.readBoolean();
                     enterpriseConfig.mMinimumTlsVersion = in.readInt();
                     enterpriseConfig.mTofuDialogState = in.readInt();
+                    enterpriseConfig.mTofuConnectionState = in.readInt();
                     return enterpriseConfig;
                 }
 
@@ -1716,6 +1713,7 @@ public class WifiEnterpriseConfig implements Parcelable {
         sb.append(" enable_conservative_peer_mode: ")
                 .append(mIsStrictConservativePeerMode).append("\n");
         sb.append(" tofu_dialog_state: ").append(mTofuDialogState).append("\n");
+        sb.append(" tofu_connection_state: ").append(mTofuConnectionState).append("\n");
         return sb.toString();
     }
 
@@ -2009,6 +2007,12 @@ public class WifiEnterpriseConfig implements Parcelable {
      */
     public void enableTrustOnFirstUse(boolean enable) {
         mIsTrustOnFirstUseEnabled = enable;
+        if (mTofuConnectionState != TOFU_STATE_CONFIGURE_ROOT_CA &&
+                mTofuConnectionState != TOFU_STATE_CERT_PINNING) {
+            // Override the current pre-connection state.
+            mTofuConnectionState = enable ?
+                    TOFU_STATE_ENABLED_PRE_CONNECTION : TOFU_STATE_NOT_ENABLED;
+        }
     }
 
     /**
@@ -2018,6 +2022,26 @@ public class WifiEnterpriseConfig implements Parcelable {
      */
     public boolean isTrustOnFirstUseEnabled() {
         return mIsTrustOnFirstUseEnabled;
+    }
+
+    /**
+     * Set the TOFU connection state.
+     * @hide
+     */
+    public void setTofuConnectionState(@TofuConnectionState int state) {
+        if (state < TOFU_STATE_NOT_ENABLED || state > TOFU_STATE_CERT_PINNING) {
+            Log.e(TAG, "Invalid TOFU connection state received. state=" + state);
+            return;
+        }
+        mTofuConnectionState = state;
+    }
+
+    /**
+     * Get the TOFU connection state.
+     * @hide
+     */
+    public @TofuConnectionState int getTofuConnectionState() {
+        return mTofuConnectionState;
     }
 
     /**
