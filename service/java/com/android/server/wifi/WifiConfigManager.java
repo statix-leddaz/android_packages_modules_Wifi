@@ -2098,13 +2098,21 @@ public class WifiConfigManager {
     private boolean updateNetworkSelectionStatus(@NonNull WifiConfiguration config, int reason) {
         int prevNetworkSelectionStatus = config.getNetworkSelectionStatus()
                 .getNetworkSelectionStatus();
+        int prevAuthFailureCounter = config.getNetworkSelectionStatus().getDisableReasonCounter(
+                WifiConfiguration.NetworkSelectionStatus.DISABLED_AUTHENTICATION_FAILURE);
         if (!mWifiBlocklistMonitor.updateNetworkSelectionStatus(config, reason)) {
             return false;
         }
         int newNetworkSelectionStatus = config.getNetworkSelectionStatus()
                 .getNetworkSelectionStatus();
+        int newAuthFailureCounter = config.getNetworkSelectionStatus().getDisableReasonCounter(
+                WifiConfiguration.NetworkSelectionStatus.DISABLED_AUTHENTICATION_FAILURE);
         if (prevNetworkSelectionStatus != newNetworkSelectionStatus) {
             sendNetworkSelectionStatusChangedUpdate(config, newNetworkSelectionStatus, reason);
+            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
+        } else if (prevAuthFailureCounter != newAuthFailureCounter) {
+            // Send out configured network changed broadcast in this special case since the UI
+            // may need to update the wrong password text.
             sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
         }
         saveToStore(false);
@@ -4344,6 +4352,41 @@ public class WifiConfigManager {
         if (!internalConfig.isEnterprise()) return;
         if (!internalConfig.enterpriseConfig.isEapMethodServerCertUsed()) return;
         internalConfig.enterpriseConfig.enableTrustOnFirstUse(enable);
+    }
+
+    /**
+     * Indicate whether the user approved the TOFU dialog for this network.
+     *
+     * @param networkId networkId corresponding to the network to be updated.
+     * @param approved true if the user approved the dialog, false otherwise.
+     */
+    public void setTofuDialogApproved(int networkId, boolean approved) {
+        WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
+        if (internalConfig == null) return;
+        if (!internalConfig.isEnterprise()) return;
+        if (!internalConfig.enterpriseConfig.isEapMethodServerCertUsed()) return;
+        internalConfig.enterpriseConfig.setTofuDialogApproved(approved);
+    }
+
+    /**
+     * Indicate the post-connection TOFU state for this network.
+     *
+     * @param networkId networkId corresponding to the network to be updated.
+     * @param state one of the post-connection {@link WifiEnterpriseConfig.TofuConnectionState}
+     *              values
+     */
+    public void setTofuPostConnectionState(int networkId,
+            @WifiEnterpriseConfig.TofuConnectionState int state) {
+        if (state != WifiEnterpriseConfig.TOFU_STATE_CONFIGURE_ROOT_CA
+                && state != WifiEnterpriseConfig.TOFU_STATE_CERT_PINNING) {
+            Log.e(TAG, "Invalid post-connection TOFU state " + state);
+            return;
+        }
+        WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
+        if (internalConfig == null) return;
+        if (!internalConfig.isEnterprise()) return;
+        if (!internalConfig.enterpriseConfig.isEapMethodServerCertUsed()) return;
+        internalConfig.enterpriseConfig.setTofuConnectionState(state);
     }
 
     /**
