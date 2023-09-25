@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "d231a71a_3413e945",
+        "filename": "framework/java/android/net/wifi/WifiInfo.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 725,
+      "author": {
+        "id": 1467989
+      },
+      "writtenOn": "2023-09-25T22:39:13Z",
+      "side": 1,
+      "message": "Seems we are not allowed to add test API from mainline module https://g3doc.corp.google.com/company/teams/android-api-council/guidelines/rules-of-engagement.md?cl\u003dhead.\n\nMaybe change it to public. With flaggedAPI",
+      "range": {
+        "startLine": 725,
+        "startChar": 8,
+        "endLine": 725,
+        "endChar": 16
+      },
+      "revId": "e632237ba3025b8191c51ebdc371bbc79d7cd51a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
