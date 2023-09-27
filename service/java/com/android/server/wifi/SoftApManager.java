@@ -1737,37 +1737,6 @@ public class SoftApManager implements ActiveModeManager {
                         removeIfaceInstanceFromBridgedApIface(
                                 getHighestFrequencyInstance(unavailableInstances));
                         break;
-                    case CMD_HANDLE_WIFI_CONNECTED:
-                        if (!isBridgeRequired() || mCurrentSoftApInfoMap.size() != 2) {
-                            Log.d(getTag(), "Ignore wifi connected in single AP state");
-                            break;
-                        }
-                        WifiInfo wifiInfo = (WifiInfo) message.obj;
-                        int wifiFreq = wifiInfo.getFrequency();
-                        String targetShutDownInstance = "";
-                        if (wifiFreq > 0 && !mSafeChannelFrequencyList.contains(wifiFreq)) {
-                            Log.i(getTag(), "Wifi connected to freq:" + wifiFreq
-                                    + " which is unavailable for SAP");
-                            for (SoftApInfo sapInfo : mCurrentSoftApInfoMap.values()) {
-                                if (ApConfigUtil.convertFrequencyToBand(sapInfo.getFrequency())
-                                          == ApConfigUtil.convertFrequencyToBand(wifiFreq)) {
-                                    targetShutDownInstance = sapInfo.getApInstanceIdentifier();
-                                    Log.d(getTag(), "Remove the " + targetShutDownInstance
-                                            + " instance which is running on the same band as "
-                                            + "the wifi connection on an unsafe channel");
-                                    break;
-                                }
-                            }
-                            // Wifi may connect to different band as the SAP. For instances:
-                            // Wifi connect to 6Ghz but bridged AP is running on 2.4Ghz + 5Ghz.
-                            // In this case, targetShutDownInstance will be empty, shutdown the
-                            // highest frequency instance.
-                            removeIfaceInstanceFromBridgedApIface(
-                                    TextUtils.isEmpty(targetShutDownInstance)
-                                    ? getHighestFrequencyInstance(mCurrentSoftApInfoMap.keySet())
-                                    : targetShutDownInstance);
-                        }
-                        break;
                     case CMD_CHARGING_STATE_CHANGED:
                         boolean newIsCharging = (message.arg1 != 0);
                         if (mIsCharging != newIsCharging) {
