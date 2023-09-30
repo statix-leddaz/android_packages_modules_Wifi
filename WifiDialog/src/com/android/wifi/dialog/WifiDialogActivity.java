@@ -160,7 +160,7 @@ public class WifiDialogActivity extends Activity  {
             }
             // Cancel all dialogs for ACTION_CLOSE_SYSTEM_DIALOGS (e.g. Home button pressed).
             for (int i = 0; i < mActiveDialogsPerId.size(); i++) {
-                mActiveDialogsPerId.get(i).cancel();
+                mActiveDialogsPerId.valueAt(i).cancel();
             }
         }
     };
@@ -254,7 +254,7 @@ public class WifiDialogActivity extends Activity  {
                 // Before U, we don't have INTERNAL_SYSTEM_WINDOW permission to always show at the
                 // top, so close all dialogs when we're not visible anymore.
                 for (int i = 0; i < mActiveDialogsPerId.size(); i++) {
-                    mActiveDialogsPerId.get(i).cancel();
+                    mActiveDialogsPerId.valueAt(i).cancel();
                 }
             }
             return;
@@ -283,7 +283,7 @@ public class WifiDialogActivity extends Activity  {
         // We don't expect to be destroyed while dialogs are still up, but make sure to cancel them
         // just in case.
         for (int i = 0; i < mActiveDialogsPerId.size(); i++) {
-            mActiveDialogsPerId.get(i).cancel();
+            mActiveDialogsPerId.valueAt(i).cancel();
         }
     }
 
@@ -664,7 +664,8 @@ public class WifiDialogActivity extends Activity  {
                     pinEditText.requestFocus();
                     pinEditText.setSelection(pinEditText.getText().length());
                 }
-                dialog.getButton(Dialog.BUTTON_POSITIVE).setEnabled(false);
+                dialog.getButton(Dialog.BUTTON_POSITIVE).setEnabled(
+                        pinEditText.length() == 4 || pinEditText.length() == 8);
             });
             pinEditText.addTextChangedListener(new TextWatcher() {
                 @Override
@@ -685,11 +686,8 @@ public class WifiDialogActivity extends Activity  {
                         // configuration change.
                         intent.putExtra(EXTRA_DIALOG_P2P_PIN_INPUT, s);
                     }
-                    if (s.length() == 4 || s.length() == 8) {
-                        dialog.getButton(Dialog.BUTTON_POSITIVE).setEnabled(true);
-                    } else {
-                        dialog.getButton(Dialog.BUTTON_POSITIVE).setEnabled(false);
-                    }
+                    dialog.getButton(Dialog.BUTTON_POSITIVE).setEnabled(
+                            s.length() == 4 || s.length() == 8);
                 }
             });
         } else {

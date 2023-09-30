@@ -20,24 +20,26 @@ import android.app.StatsManager;
 import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiNetworkSuggestion;
+import android.net.wifi.WifiSsid;
 import android.os.Handler;
+import android.os.Process;
 import android.util.Log;
 import android.util.StatsEvent;
 
 import com.android.server.wifi.proto.WifiStatsLog;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * This is used to log pulled atoms to StatsD via Callback.
  */
 public class WifiPulledAtomLogger {
-    // Internal version number for tracking.
-    // Digits 0-1 is target build SDK level
-    // Digits 2-3 is the month of the mainline train
-    public static final int WIFI_VERSION_NUMBER = 340899999;
     public static final String WIFI_BUILD_FROM_SOURCE_PACKAGE_NAME = "com.android.wifi";
+    private static final String WIFI_PACKAGE_NAME_SUFFIX = ".android.wifi";
     private int mWifiBuildType = 0;
 
     private static final String TAG = "WifiPulledAtomLogger";
@@ -46,6 +48,9 @@ public class WifiPulledAtomLogger {
     private final Context mContext;
     private final WifiInjector mWifiInjector;
     private StatsManager.StatsPullAtomCallback mStatsPullAtomCallback;
+
+    private int mApexVersionNumber = -1;
+
     public WifiPulledAtomLogger(StatsManager statsManager, Handler handler, Context context,
             WifiInjector wifiInjector) {
         mStatsManager = statsManager;
@@ -87,6 +92,8 @@ public class WifiPulledAtomLogger {
                     return handleWifiSettingsPull(atomTag, data);
                 case WifiStatsLog.WIFI_COMPLEX_SETTING_INFO:
                     return handleWifiComplexSettingsPull(atomTag, data);
+                case WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO:
+                    return handleWifiConfiguredNetworkInfoPull(atomTag, data);
                 default:
                     return StatsManager.PULL_SKIP;
             }
@@ -96,27 +103,17 @@ public class WifiPulledAtomLogger {
     private int handleWifiVersionPull(int atomTag, List<StatsEvent> data) {
         if (mWifiBuildType != 0) {
             // build type already cached. No need to get it again.
-            data.add(WifiStatsLog.buildStatsEvent(atomTag, WIFI_VERSION_NUMBER, mWifiBuildType));
+            data.add(WifiStatsLog.buildStatsEvent(atomTag, mApexVersionNumber, mWifiBuildType));
             return StatsManager.PULL_SUCCESS;
         }
-        // Query build type and cache if not already cached.
         PackageManager pm = mContext.getPackageManager();
         if (pm == null) {
             Log.e(TAG, "Failed to get package manager");
             return StatsManager.PULL_SKIP;
         }
-        List<PackageInfo> packageInfos = pm.getInstalledPackages(PackageManager.MATCH_APEX);
-        boolean found = false;
-        for (PackageInfo packageInfo : packageInfos) {
-            if (WIFI_BUILD_FROM_SOURCE_PACKAGE_NAME.equals(packageInfo.packageName)) {
-                found = true;
-                break;
-            }
-        }
-        mWifiBuildType = found
-                ? WifiStatsLog.WIFI_MODULE_INFO__BUILD_TYPE__TYPE_BUILT_FROM_SOURCE
-                : WifiStatsLog.WIFI_MODULE_INFO__BUILD_TYPE__TYPE_PREBUILT;
-        data.add(WifiStatsLog.buildStatsEvent(atomTag, WIFI_VERSION_NUMBER, mWifiBuildType));
+        updateBuildTypeAndVersionCode(pm);
+
+        data.add(WifiStatsLog.buildStatsEvent(atomTag, mApexVersionNumber, mWifiBuildType));
         return StatsManager.PULL_SUCCESS;
     }
 
@@ -180,6 +177,75 @@ public class WifiPulledAtomLogger {
             return StatsManager.PULL_SKIP;
         }
         data.add(WifiStatsLog.buildStatsEvent(atomTag, multiInternetMode));
+        return StatsManager.PULL_SUCCESS;
+    }
+
+    private void updateBuildTypeAndVersionCode(PackageManager pm) {
+        // Query build type and cache if not already cached.
+        List<PackageInfo> packageInfos = pm.getInstalledPackages(PackageManager.MATCH_APEX);
+        boolean found = false;
+        String wifiPackageName = null;
+        for (PackageInfo packageInfo : packageInfos) {
+            if (packageInfo.packageName.endsWith(WIFI_PACKAGE_NAME_SUFFIX)) {
+                mApexVersionNumber = (int) packageInfo.getLongVersionCode();
+                wifiPackageName = packageInfo.packageName;
+                if (packageInfo.packageName.equals(WIFI_BUILD_FROM_SOURCE_PACKAGE_NAME)) {
+                    found = true;
+                }
+                break;
+            }
+        }
+        mWifiBuildType = found
+                ? WifiStatsLog.WIFI_MODULE_INFO__BUILD_TYPE__TYPE_BUILT_FROM_SOURCE
+                : WifiStatsLog.WIFI_MODULE_INFO__BUILD_TYPE__TYPE_PREBUILT;
+        Log.i(TAG, "Wifi Module package name is " + wifiPackageName
+                + ", version is " + mApexVersionNumber);
+    }
+
+    private static boolean configHasUtf8Ssid(WifiConfiguration config) {
+        return WifiSsid.fromString(config.SSID).getUtf8Text() != null;
+    }
+
+    private StatsEvent wifiConfigToStatsEvent(
+            int atomTag, WifiConfiguration config, boolean isSuggestion) {
+        return WifiStatsLog.buildStatsEvent(
+                atomTag,
+                config.getNetworkKey().hashCode(),
+                config.isEnterprise(),
+                config.hiddenSSID,
+                false, // isPasspoint
+                isSuggestion,
+                configHasUtf8Ssid(config),
+                mWifiInjector.getSsidTranslator().isSsidTranslationEnabled(),
+                false, // TODO: handle TOFU configuration
+                !config.getNetworkSelectionStatus().hasNeverDetectedCaptivePortal(),
+                config.allowAutojoin,
+                WifiMetrics.convertSecurityModeToProto(config, false),
+                WifiMetrics.convertMacRandomizationToProto(config.getMacRandomizationSetting()),
+                WifiMetrics.convertMeteredOverrideToProto(config.meteredOverride),
+                WifiMetrics.convertEapMethodToProto(config),
+                WifiMetrics.convertEapInnerMethodToProto(config),
+                false, false);  // OpenRoaming is specific to Passpoint
+    }
+
+    private int handleWifiConfiguredNetworkInfoPull(int atomTag, List<StatsEvent> data) {
+        List<WifiConfiguration> savedConfigs =
+                mWifiInjector.getWifiConfigManager().getSavedNetworks(Process.WIFI_UID);
+        for (WifiConfiguration config : savedConfigs) {
+            if (!config.isPasspoint()) {
+                data.add(wifiConfigToStatsEvent(atomTag, config, false));
+            }
+        }
+
+        Set<WifiNetworkSuggestion> approvedSuggestions =
+                mWifiInjector.getWifiNetworkSuggestionsManager().getAllApprovedNetworkSuggestions();
+        for (WifiNetworkSuggestion suggestion : approvedSuggestions) {
+            WifiConfiguration config = suggestion.getWifiConfiguration();
+            if (!config.isPasspoint()) {
+                data.add(wifiConfigToStatsEvent(atomTag, config, true));
+            }
+        }
+
         return StatsManager.PULL_SUCCESS;
     }
 }

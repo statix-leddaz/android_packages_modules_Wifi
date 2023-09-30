@@ -583,6 +583,7 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiInjector.getWifiNotificationManager().createNotificationChannels();
             mWifiMetrics.start();
             mWifiConnectivityManager.initialization();
+            mWifiNetworkFactory.start();
             mContext.registerReceiver(
                     new BroadcastReceiver() {
                         @Override
@@ -709,6 +710,7 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiPulledAtomLogger.setPullAtomCallback(WifiStatsLog.WIFI_MODULE_INFO);
         mWifiPulledAtomLogger.setPullAtomCallback(WifiStatsLog.WIFI_SETTING_INFO);
         mWifiPulledAtomLogger.setPullAtomCallback(WifiStatsLog.WIFI_COMPLEX_SETTING_INFO);
+        mWifiPulledAtomLogger.setPullAtomCallback(WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO);
     }
 
     private void updateLocationMode() {
@@ -968,12 +970,13 @@ public class WifiServiceImpl extends BaseWifiService {
             boolean idle = mPowerManager.isDeviceIdleMode();
             if (mInIdleMode != idle) {
                 mInIdleMode = idle;
-                if (!idle) {
+                if (!idle) { // exiting doze mode
                     if (mScanPending) {
                         mScanPending = false;
                         doScan = true;
                     }
                 }
+                mActiveModeWarden.onIdleModeChanged(idle);
             }
         }
         if (doScan) {
@@ -2415,6 +2418,11 @@ public class WifiServiceImpl extends BaseWifiService {
          */
         @GuardedBy("mLocalOnlyHotspotRequests")
         private void sendHotspotStartedMessageToAllLOHSRequestInfoEntriesLocked() {
+            if (mActiveConfig == null) {
+                Log.e(TAG, "lohs.sendHotspotStartedMessageToAllLOHSRequestInfoEntriesLocked "
+                        + "mActiveConfig is null");
+                return;
+            }
             for (LocalOnlyHotspotRequestInfo requestor : mLocalOnlyHotspotRequests.values()) {
                 try {
                     requestor.sendHotspotStartedMessage(mActiveConfig.getSoftApConfiguration());
@@ -5445,9 +5453,10 @@ public class WifiServiceImpl extends BaseWifiService {
     private void updateVerboseLoggingEnabled() {
         final int verboseAlwaysOnLevel = mContext.getResources().getInteger(
                 R.integer.config_wifiVerboseLoggingAlwaysOnLevel);
-        mVerboseLoggingEnabled = mFrameworkFacade.isVerboseLoggingAlwaysOn(verboseAlwaysOnLevel,
-                mBuildProperties)
-                || WifiManager.VERBOSE_LOGGING_LEVEL_DISABLED != mVerboseLoggingLevel;
+        mVerboseLoggingEnabled = WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED == mVerboseLoggingLevel
+                || WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY == mVerboseLoggingLevel
+                || mFrameworkFacade.isVerboseLoggingAlwaysOn(verboseAlwaysOnLevel,
+                mBuildProperties);
     }
 
     private void enableVerboseLoggingInternal(int verboseLoggingLevel) {
@@ -5459,13 +5468,10 @@ public class WifiServiceImpl extends BaseWifiService {
 
         // Update wifi globals before sending the verbose logging change.
         mWifiThreadRunner.removeCallbacks(mAutoDisableShowKeyVerboseLoggingModeRunnable);
+        mWifiGlobals.setVerboseLoggingLevel(verboseLoggingLevel);
         if (WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY == mVerboseLoggingLevel) {
-            mWifiGlobals.setShowKeyVerboseLoggingModeEnabled(true);
             mWifiThreadRunner.postDelayed(mAutoDisableShowKeyVerboseLoggingModeRunnable,
                     AUTO_DISABLE_SHOW_KEY_COUNTDOWN_MILLIS);
-        } else {
-            // Ensure the show key mode is disabled.
-            mWifiGlobals.setShowKeyVerboseLoggingModeEnabled(false);
         }
         updateVerboseLoggingEnabled();
         final boolean halVerboseEnabled =
@@ -5550,19 +5556,21 @@ public class WifiServiceImpl extends BaseWifiService {
         for (PasspointConfiguration config : configs) {
             removePasspointConfigurationInternal(null, config.getUniqueId());
         }
-        mWifiThreadRunner.post(() -> {
-            // Reset SoftApConfiguration to default configuration
-            mWifiApConfigStore.setApConfiguration(null);
-            mPasspointManager.clearAnqpRequestsAndFlushCache();
-            mWifiConfigManager.clearUserTemporarilyDisabledList();
-            mWifiConfigManager.removeAllEphemeralOrPasspointConfiguredNetworks();
-            mWifiInjector.getWifiNetworkFactory().clear();
-            mWifiNetworkSuggestionsManager.clear();
-            mWifiInjector.getWifiScoreCard().clear();
-            mWifiHealthMonitor.clear();
-            mWifiCarrierInfoManager.clear();
-            notifyFactoryReset();
-        });
+        mWifiThreadRunner.post(
+                () -> {
+                    // Reset SoftApConfiguration to default configuration
+                    mWifiApConfigStore.setApConfiguration(null);
+                    mPasspointManager.clearAnqpRequestsAndFlushCache();
+                    mWifiConfigManager.clearUserTemporarilyDisabledList();
+                    mWifiConfigManager.removeAllEphemeralOrPasspointConfiguredNetworks();
+                    mWifiInjector.getWifiNetworkFactory().clear();
+                    mWifiNetworkSuggestionsManager.clear();
+                    mWifiInjector.getWifiScoreCard().clear();
+                    mWifiHealthMonitor.clear();
+                    mWifiCarrierInfoManager.clear();
+                    notifyFactoryReset();
+                    mContext.resetResourceCache();
+                });
     }
 
     /**
@@ -6834,12 +6842,14 @@ public class WifiServiceImpl extends BaseWifiService {
         }
         mContext.enforceCallingOrSelfPermission(
                 android.Manifest.permission.WIFI_UPDATE_USABILITY_STATS_SCORE, "WifiService");
+        int callingUid = Binder.getCallingUid();
         if (mVerboseLoggingEnabled) {
-            mLog.info("setWifiConnectedNetworkScorer uid=%").c(Binder.getCallingUid()).flush();
+            mLog.info("setWifiConnectedNetworkScorer uid=%").c(callingUid).flush();
         }
         // Post operation to handler thread
         return mWifiThreadRunner.call(
-                () -> mActiveModeWarden.setWifiConnectedNetworkScorer(binder, scorer), false);
+                () -> mActiveModeWarden.setWifiConnectedNetworkScorer(binder, scorer, callingUid),
+                false);
     }
 
     /**

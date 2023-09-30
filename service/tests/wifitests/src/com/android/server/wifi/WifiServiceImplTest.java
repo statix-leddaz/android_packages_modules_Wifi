@@ -55,6 +55,7 @@ import static android.net.wifi.WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_60_GHZ;
 import static android.net.wifi.WifiScanner.WIFI_BAND_24_GHZ;
 import static android.net.wifi.WifiScanner.WIFI_BAND_5_GHZ;
 import static android.os.Process.WIFI_UID;
+import static android.os.Process.myUid;
 
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_LOCAL_ONLY;
@@ -1874,7 +1875,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiConfigManager).loadFromStore();
         verify(mActiveModeWarden).enableVerboseLogging(true);
         // show key mode is always disabled at the beginning.
-        verify(mWifiGlobals).setShowKeyVerboseLoggingModeEnabled(eq(false));
+        verify(mWifiGlobals).setVerboseLoggingLevel(eq(WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED));
         verify(mActiveModeWarden).start();
         assertTrue(mWifiThreadRunner.mVerboseLoggingEnabled);
     }
@@ -1896,6 +1897,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiConnectivityManager).initialization();
         verify(mWifiConfigManager).loadFromStore();
         verify(mActiveModeWarden).start();
+        verify(mWifiNetworkFactory).start();
     }
 
     @Test
@@ -1923,6 +1925,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiPulledAtomLogger).setPullAtomCallback(WifiStatsLog.WIFI_MODULE_INFO);
         verify(mWifiPulledAtomLogger).setPullAtomCallback(WifiStatsLog.WIFI_SETTING_INFO);
         verify(mWifiPulledAtomLogger).setPullAtomCallback(WifiStatsLog.WIFI_COMPLEX_SETTING_INFO);
+        verify(mWifiPulledAtomLogger).setPullAtomCallback(
+                WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO);
     }
 
     /**
@@ -5099,12 +5103,13 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mWifiServiceImpl.enableVerboseLogging(WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY);
         verify(mWifiSettingsConfigStore).put(WIFI_VERBOSE_LOGGING_ENABLED, true);
         verify(mActiveModeWarden).enableVerboseLogging(anyBoolean());
-        verify(mWifiGlobals).setShowKeyVerboseLoggingModeEnabled(eq(true));
+        verify(mWifiGlobals).setVerboseLoggingLevel(
+                eq(WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY));
 
         // After auto disable show key mode after the countdown
         mLooper.moveTimeForward(WifiServiceImpl.AUTO_DISABLE_SHOW_KEY_COUNTDOWN_MILLIS + 1);
         mLooper.dispatchAll();
-        verify(mWifiGlobals).setShowKeyVerboseLoggingModeEnabled(eq(false));
+        verify(mWifiGlobals).setVerboseLoggingLevel(eq(WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED));
     }
 
     /**
@@ -5758,12 +5763,16 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         // No scans must be made yet as the device is idle.
         verify(mScanRequestProxy, never()).startScan(Process.myUid(), SCAN_PACKAGE_NAME);
+        // Verify ActiveModeWarden is notified of the idle mode change
+        verify(mActiveModeWarden).onIdleModeChanged(true);
 
         // Tell the wifi service that idle mode ended.
         when(mPowerManager.isDeviceIdleMode()).thenReturn(false);
         mLooper.startAutoDispatch();
         TestUtil.sendIdleModeChanged(mBroadcastReceiverCaptor.getValue(), mContext);
         mLooper.stopAutoDispatchAndIgnoreExceptions();
+        // Verify ActiveModeWarden is notified of the idle mode change
+        verify(mActiveModeWarden).onIdleModeChanged(false);
 
         // Must scan now.
         verify(mScanRequestProxy).startScan(Process.myUid(), TEST_PACKAGE_NAME);
@@ -6430,6 +6439,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiScoreCard).clear();
         verify(mWifiHealthMonitor).clear();
         verify(mPasspointManager).getProviderConfigs(anyInt(), anyBoolean());
+        verify(mContext).resetResourceCache();
     }
 
     /**
@@ -8724,7 +8734,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mWifiServiceImpl.setWifiConnectedNetworkScorer(mAppBinder, mWifiConnectedNetworkScorer);
         mLooper.stopAutoDispatch();
         verify(mActiveModeWarden).setWifiConnectedNetworkScorer(
-                mAppBinder, mWifiConnectedNetworkScorer);
+                mAppBinder, mWifiConnectedNetworkScorer, myUid());
     }
 
     /**
