@@ -970,12 +970,13 @@ public class WifiServiceImpl extends BaseWifiService {
             boolean idle = mPowerManager.isDeviceIdleMode();
             if (mInIdleMode != idle) {
                 mInIdleMode = idle;
-                if (!idle) {
+                if (!idle) { // exiting doze mode
                     if (mScanPending) {
                         mScanPending = false;
                         doScan = true;
                     }
                 }
+                mActiveModeWarden.onIdleModeChanged(idle);
             }
         }
         if (doScan) {
@@ -2417,6 +2418,11 @@ public class WifiServiceImpl extends BaseWifiService {
          */
         @GuardedBy("mLocalOnlyHotspotRequests")
         private void sendHotspotStartedMessageToAllLOHSRequestInfoEntriesLocked() {
+            if (mActiveConfig == null) {
+                Log.e(TAG, "lohs.sendHotspotStartedMessageToAllLOHSRequestInfoEntriesLocked "
+                        + "mActiveConfig is null");
+                return;
+            }
             for (LocalOnlyHotspotRequestInfo requestor : mLocalOnlyHotspotRequests.values()) {
                 try {
                     requestor.sendHotspotStartedMessage(mActiveConfig.getSoftApConfiguration());
