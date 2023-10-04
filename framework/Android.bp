@@ -140,6 +140,7 @@ java_sdk_library {
     stub_only_libs: ["framework-connectivity.stubs.module_lib"],
 
     jarjar_rules: ":wifi-jarjar-rules",
+    //include_srcs: true,
 
     installable: true,
     optimize: {

@@ -3491,10 +3491,6 @@ public class WifiManager {
      * Query whether or not the device supports concurrency of Station (STA) + multiple access
      * points (AP) (where the APs bridged together).
      *
-     * See {@link SoftApConfiguration.Builder#setBands(int[])}
-     * or {@link SoftApConfiguration.Builder#setChannels(android.util.SparseIntArray)} to configure
-     * bridged AP when the bridged AP supported.
-     *
      * @return true if this device supports concurrency of STA + multiple APs which are bridged
      *         together, false otherwise.
      */
@@ -3505,10 +3501,6 @@ public class WifiManager {
     /**
      * Query whether or not the device supports multiple Access point (AP) which are bridged
      * together.
-     *
-     * See {@link SoftApConfiguration.Builder#setBands(int[])}
-     * or {@link SoftApConfiguration.Builder#setChannels(android.util.SparseIntArray)} to configure
-     * bridged AP when the bridged AP supported.
      *
      * @return true if this device supports concurrency of multiple AP which bridged together,
      *         false otherwise.
