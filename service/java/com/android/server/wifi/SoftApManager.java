@@ -1067,7 +1067,8 @@ public class SoftApManager implements ActiveModeManager {
                             // Checking STA status only when device supports STA + AP concurrency
                             // since STA would be dropped when device doesn't support it.
                             if (cmms.size() != 0 && mWifiNative.isStaApConcurrencySupported()) {
-                                if (ApConfigUtil.isStaWithBridgedModeSupported(mContext)) {
+                                if (ApConfigUtil.isStaWithBridgedModeSupported(mContext,
+                                        mWifiNative)) {
                                     for (ClientModeManager cmm
                                             : mActiveModeWarden.getClientModeManagers()) {
                                         WifiInfo wifiConnectedInfo = cmm.getConnectionInfo();
@@ -2010,5 +2011,85 @@ public class SoftApManager implements ActiveModeManager {
                 return HANDLED;
             }
         }
+    }
+
+    // Logging code
+
+    private int getCurrentStaFreqMhz() {
+        int staFreqMhz = WifiInfo.UNKNOWN_FREQUENCY;
+        for (ClientModeManager cmm : mActiveModeWarden.getClientModeManagers()) {
+            WifiInfo wifiConnectedInfo = cmm.getConnectionInfo();
+            if (wifiConnectedInfo != null) {
+                staFreqMhz = wifiConnectedInfo.getFrequency();
+                break;
+            }
+        }
+        return staFreqMhz;
+    }
+
+    /**
+     * Writes the SoftApStarted event to metrics. Only the first call will write the metrics, any
+     * subsequent calls will be ignored.
+     */
+    public void writeSoftApStartedEvent(@StartResult int startResult) {
+        if (mIsSoftApStartedEventWritten) {
+            return;
+        }
+        mIsSoftApStartedEventWritten = true;
+        int band1 = WifiScanner.WIFI_BAND_UNSPECIFIED;
+        int band2 = WifiScanner.WIFI_BAND_UNSPECIFIED;
+        @SoftApConfiguration.SecurityType int securityType = SoftApConfiguration.SECURITY_TYPE_OPEN;
+        if (mCurrentSoftApConfiguration != null) {
+            int[] bands = mCurrentSoftApConfiguration.getBands();
+            if (bands.length >= 1) {
+                band1 = bands[0];
+            }
+            if (bands.length >= 2) {
+                band2 = bands[1];
+            }
+            securityType = mCurrentSoftApConfiguration.getSecurityType();
+        }
+        mWifiMetrics.writeSoftApStartedEvent(startResult,
+                getRole(),
+                band1,
+                band2,
+                ApConfigUtil.isBridgedModeSupported(mContext, mWifiNative),
+                mWifiNative.isStaApConcurrencySupported(),
+                ApConfigUtil.isStaWithBridgedModeSupported(mContext, mWifiNative),
+                getCurrentStaFreqMhz(),
+                securityType);
+    }
+
+    private void writeSoftApStoppedEvent(@StopEvent int stopEvent) {
+        @WifiScanner.WifiBand int band = WifiScanner.WIFI_BAND_UNSPECIFIED;
+        @WifiAnnotations.WifiStandard int standard = ScanResult.WIFI_STANDARD_UNKNOWN;
+        for (SoftApInfo info : mCurrentSoftApInfoMap.values()) {
+            band |= ScanResult.toBand(info.getFrequency());
+            if (SdkLevel.isAtLeastS()) {
+                standard = info.getWifiStandard();
+            }
+        }
+        @SoftApConfiguration.SecurityType int securityType = SoftApConfiguration.SECURITY_TYPE_OPEN;
+        if (mCurrentSoftApConfiguration != null) {
+            securityType = mCurrentSoftApConfiguration.getSecurityType();
+        }
+        // TODO(b/245824786): Fill out the rest of the fields
+        mWifiMetrics.writeSoftApStoppedEvent(
+                stopEvent,
+                getRole(),
+                band,
+                isBridgedMode(),
+                mWifiNative.isStaApConcurrencySupported(),
+                ApConfigUtil.isStaWithBridgedModeSupported(mContext, mWifiNative),
+                getCurrentStaFreqMhz(),
+                mDefaultShutdownTimeoutMillis > 0,
+                -1,
+                securityType,
+                standard,
+                -1,
+                mDefaultShutdownIdleInstanceInBridgedModeTimeoutMillis > 0,
+                -1,
+                -1,
+                null);
     }
 }
