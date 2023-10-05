@@ -2206,7 +2206,9 @@ public class WifiConnectivityManager {
                 Log.d(TAG, "Restarting PNO Scan with external requested SSIDs");
                 stopPnoScan();
                 startDisconnectedPnoScan();
-            } else if (mWifiState == WIFI_STATE_DISCONNECTED) {
+            //} else if (mWifiState == WIFI_STATE_DISCONNECTED) {
+        /* Forcing it to call startDisconnectedPnoScan -TBD */
+            } else if (true) {
                 Log.d(TAG, "Starting PNO Scan with external requested SSIDs");
                 startDisconnectedPnoScan();
             }
