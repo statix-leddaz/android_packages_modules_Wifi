@@ -1,6 +1,23 @@
 {
   "comments": [
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "4a87e684_84f666dc",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-10-05T20:27:25Z",
+      "side": 1,
+      "message": "Note: no concern about the hard-coding of PNO capabilities for now. AI to me: figure out how to force that flag for testing.",
+      "revId": "954f93c1bc2cc1cf63ad36359a972b6d2fd48376",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "9945897f_795e14a4",
