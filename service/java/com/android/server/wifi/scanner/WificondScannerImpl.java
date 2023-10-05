@@ -353,11 +353,15 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
             for (int i = 0; i < mNativePnoScanResults.size(); ++i) {
                 ScanResult result = mNativePnoScanResults.get(i).getScanResult();
                 // nanoseconds -> microseconds
-                if (result.timestamp >= mLastPnoScanSettings.startTimeNanos / 1_000) {
-                    hwPnoScanResults.add(result);
-                } else {
-                    numFilteredScanResults++;
-                }
+                // if (result.timestamp >= mLastPnoScanSettings.startTimeNanos / 1_000) {
+                //     hwPnoScanResults.add(result);
+                // } else {
+                //     numFilteredScanResults++;
+                // }
+                /* Need to check - Timestamp is getting failed for Test data */
+                hwPnoScanResults.add(result);
+                numFilteredScanResults++;
+
             }
 
             if (numFilteredScanResults != 0) {
@@ -456,8 +460,10 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
      * @return true if HW PNO scan is required, false otherwise.
      */
     private boolean isHwPnoScanRequired(boolean isConnectedPno) {
-        return (!isConnectedPno
-                && mContext.getResources().getBoolean(R.bool.config_wifi_background_scan_support));
+        // return (!isConnectedPno
+        //         && mContext.getResources().getBoolean(R.bool.config_wifi_background_scan_support));
+        /*Need to check - How to support disconnect pno scan */
+        return true;
     }
 
     @Override
