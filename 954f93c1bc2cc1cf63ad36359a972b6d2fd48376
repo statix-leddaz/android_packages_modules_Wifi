@@ -1,0 +1,96 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "9945897f_795e14a4",
+        "filename": "service/java/com/android/server/wifi/WifiConnectivityManager.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 2210,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-10-05T20:26:49Z",
+      "side": 1,
+      "message": "Why is this necessary? You should run the test with WiFi disconnected - at which point this state will be correct (DISCONNECTED).",
+      "range": {
+        "startLine": 2209,
+        "startChar": 10,
+        "endLine": 2210,
+        "endChar": 62
+      },
+      "revId": "954f93c1bc2cc1cf63ad36359a972b6d2fd48376",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "2c71088e_81271787",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 1868,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-10-05T20:26:49Z",
+      "side": 1,
+      "message": "duplicate test (you\u0027re already doing this in the line above)",
+      "range": {
+        "startLine": 1868,
+        "startChar": 15,
+        "endLine": 1868,
+        "endChar": 69
+      },
+      "revId": "954f93c1bc2cc1cf63ad36359a972b6d2fd48376",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "98c7f6b1_c3c269ba",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 1871,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-10-05T20:26:49Z",
+      "side": 1,
+      "message": "Should this be called from a callback indicating that scan results are ready? In fact, isn\u0027t it called already in such a scenario?",
+      "range": {
+        "startLine": 1871,
+        "startChar": 11,
+        "endLine": 1871,
+        "endChar": 64
+      },
+      "revId": "954f93c1bc2cc1cf63ad36359a972b6d2fd48376",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "98d613cf_3794f67a",
+        "filename": "service/java/com/android/server/wifi/scanner/WificondScannerImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 364,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-10-05T20:26:49Z",
+      "side": 1,
+      "message": "It\u0027s strange to do both - the existing code is one or the other.\n\nIf the timestamp fails: have you set it in the mocked results?",
+      "range": {
+        "startLine": 362,
+        "startChar": 16,
+        "endLine": 364,
+        "endChar": 0
+      },
+      "revId": "954f93c1bc2cc1cf63ad36359a972b6d2fd48376",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
