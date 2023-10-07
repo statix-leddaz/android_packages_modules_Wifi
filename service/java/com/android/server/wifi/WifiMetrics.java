@@ -2263,6 +2263,50 @@ public class WifiMetrics {
         }
     }
 
+    protected static int convertTofuConnectionStateToProto(WifiConfiguration config) {
+        if (!config.isEnterprise()) {
+            return WifiStatsLog
+                    .WIFI_CONFIGURED_NETWORK_INFO__TOFU_CONFIGURATION__TOFU_CONFIGURATION_UNSPECIFIED;
+        }
+
+        switch (config.enterpriseConfig.getTofuConnectionState()) {
+            case WifiEnterpriseConfig.TOFU_STATE_NOT_ENABLED:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_CONFIGURATION__TOFU_CONFIGURATION_NOT_ENABLED;
+            case WifiEnterpriseConfig.TOFU_STATE_ENABLED_PRE_CONNECTION:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_CONFIGURATION__TOFU_CONFIGURATION_ENABLED_PRE_CONNECTION;
+            case WifiEnterpriseConfig.TOFU_STATE_CONFIGURE_ROOT_CA:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_CONFIGURATION__TOFU_CONFIGURATION_CONFIGURE_ROOT_CA;
+            case WifiEnterpriseConfig.TOFU_STATE_CERT_PINNING:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_CONFIGURATION__TOFU_CONFIGURATION_CERT_PINNING;
+            default:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_CONFIGURATION__TOFU_CONFIGURATION_UNSPECIFIED;
+        }
+    }
+
+    protected static int convertTofuDialogStateToProto(WifiConfiguration config) {
+        if (!config.isEnterprise()) {
+            return WifiStatsLog
+                    .WIFI_CONFIGURED_NETWORK_INFO__TOFU_DIALOG_STATE__TOFU_DIALOG_STATE_UNSPECIFIED;
+        }
+
+        switch (config.enterpriseConfig.getTofuDialogState()) {
+            case WifiEnterpriseConfig.TOFU_DIALOG_STATE_REJECTED:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_DIALOG_STATE__TOFU_DIALOG_STATE_REJECTED;
+            case WifiEnterpriseConfig.TOFU_DIALOG_STATE_ACCEPTED:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_DIALOG_STATE__TOFU_DIALOG_STATE_ACCEPTED;
+            default:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_DIALOG_STATE__TOFU_DIALOG_STATE_UNSPECIFIED;
+        }
+    }
+
     protected static int convertMacRandomizationToProto(
             @WifiConfiguration.MacRandomizationSetting int macRandomizationSetting) {
         switch (macRandomizationSetting) {
@@ -2491,6 +2535,16 @@ public class WifiMetrics {
             default:
                 return WifiStatsLog.WIFI_AP_CAPABILITIES_REPORTED__OCSP_TYPE__TYPE_OCSP_UNKNOWN;
         }
+    }
+
+    protected static boolean isFreeOpenRoaming(WifiConfiguration config) {
+        return Utils.getRoamingType(config)
+                == WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__PASSPOINT_ROAMING_TYPE__ROAMING_RCOI_OPENROAMING_FREE;
+    }
+
+    protected static boolean isSettledOpenRoaming(WifiConfiguration config) {
+        return Utils.getRoamingType(config)
+                == WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__PASSPOINT_ROAMING_TYPE__ROAMING_RCOI_OPENROAMING_SETTLED;
     }
 
     private void reportRouterCapabilities(RouterFingerPrint r) {
