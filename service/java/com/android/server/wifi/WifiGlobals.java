@@ -19,6 +19,7 @@ package com.android.server.wifi;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiManager;
 import android.util.ArraySet;
 
 import com.android.modules.utils.build.SdkLevel;
@@ -61,6 +62,7 @@ public class WifiGlobals {
     private final int mPollRssiLongIntervalMillis;
     private final int mClientRssiMonitorThresholdDbm;
     private final int mClientRssiMonitorHysteresisDb;
+    private boolean mDisableFirmwareRoamingInIdleMode = false;
     private final boolean mAdjustPollRssiIntervalEnabled;
     private final boolean mWifiInterfaceAddedSelfRecoveryEnabled;
     private final int mNetworkNotFoundEventThreshold;
@@ -68,7 +70,7 @@ public class WifiGlobals {
     private final boolean mIsWpaPersonalDeprecated;
 
     // This is set by WifiManager#setVerboseLoggingEnabled(int).
-    private boolean mIsShowKeyVerboseLoggingModeEnabled = false;
+    private int mVerboseLoggingLevel = WifiManager.VERBOSE_LOGGING_LEVEL_DISABLED;
     private boolean mIsUsingExternalScorer = false;
     private boolean mDisableUnwantedNetworkOnLowRssi = false;
     private Set<String> mMacRandomizationUnsupportedSsidPrefixes = new ArraySet<>();
@@ -114,6 +116,8 @@ public class WifiGlobals {
                 R.integer.config_wifiClientRssiMonitorHysteresisDb);
         mAdjustPollRssiIntervalEnabled = mContext.getResources().getBoolean(
                 R.bool.config_wifiAdjustPollRssiIntervalEnabled);
+        mDisableFirmwareRoamingInIdleMode = mContext.getResources()
+                .getBoolean(R.bool.config_wifiDisableFirmwareRoamingInIdleMode);
         mWifiInterfaceAddedSelfRecoveryEnabled = mContext.getResources().getBoolean(
                 R.bool.config_wifiInterfaceAddedSelfRecoveryEnabled);
         mDisableUnwantedNetworkOnLowRssi = mContext.getResources().getBoolean(
@@ -210,6 +214,14 @@ public class WifiGlobals {
     }
 
     /**
+     * Helper method to check whether this device should disable firmware roaming in idle mode.
+     * @return if the device should disable firmware roaming in idle mode.
+     */
+    public boolean isDisableFirmwareRoamingInIdleMode() {
+        return mDisableFirmwareRoamingInIdleMode;
+    }
+
+    /**
      * Helper method to check if the device may not connect to the configuration
      * due to deprecated security type
      */
@@ -272,14 +284,21 @@ public class WifiGlobals {
         return mIsWpa3SaeH2eSupported;
     }
 
-    /** Set if show key verbose logging mode is enabled. */
-    public void setShowKeyVerboseLoggingModeEnabled(boolean enable) {
-        mIsShowKeyVerboseLoggingModeEnabled = enable;
+    /**
+     * Record the verbose logging level
+     */
+    public void setVerboseLoggingLevel(int level) {
+        mVerboseLoggingLevel = level;
+    }
+
+    /** Return the currently set verbose logging level. */
+    public int getVerboseLoggingLevel() {
+        return mVerboseLoggingLevel;
     }
 
     /** Check if show key verbose logging mode is enabled. */
     public boolean getShowKeyVerboseLoggingModeEnabled() {
-        return mIsShowKeyVerboseLoggingModeEnabled;
+        return mVerboseLoggingLevel == WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY;
     }
 
     /** Set whether the external scorer is being used **/
@@ -423,5 +442,6 @@ public class WifiGlobals {
         pw.println("mNetworkNotFoundEventThreshold=" + mNetworkNotFoundEventThreshold);
         pw.println("mIsWepDeprecated=" + mIsWepDeprecated);
         pw.println("mIsWpaPersonalDeprecated=" + mIsWpaPersonalDeprecated);
+        pw.println("mDisableFirmwareRoamingInIdleMode=" + mDisableFirmwareRoamingInIdleMode);
     }
 }

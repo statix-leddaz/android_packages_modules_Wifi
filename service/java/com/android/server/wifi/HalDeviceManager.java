@@ -812,7 +812,7 @@ public class HalDeviceManager {
             Log.d(TAG, "isItPossibleToCreateIface: createIfaceType=" + createIfaceType
                     + ", requiredChipCapabilities=" + requiredChipCapabilities);
         }
-        return reportImpactToCreateIface(createIfaceType, true, requiredChipCapabilities,
+        return getIfacesToDestroyForRequest(createIfaceType, true, requiredChipCapabilities,
                 requestorWs) != null;
     }
 
@@ -831,9 +831,8 @@ public class HalDeviceManager {
     }
 
     /**
-     * Returns the details of what it would take to create the provided Iface requested by the
-     * specified requestor. The details are the list of other interfaces which would have to be
-     * destroyed.
+     * Returns the list of interfaces that would be deleted to create the provided Iface requested
+     * by the specified requestor.
      *
      * Return types imply:
      * - null: interface cannot be created
@@ -848,14 +847,13 @@ public class HalDeviceManager {
      *                                 See the HAL for documentation.
      * @param requestorWs Requestor worksource. This will be used to determine priority of this
      *                    interface using rules based on the requestor app's context.
-     * @return the list of interfaces that would have to be destroyed and their worksource. The
-     * interface type is described using @HdmIfaceTypeForCreation.
+     * @return the list of interfaces that would have to be destroyed.
      */
-    public List<Pair<Integer, WorkSource>> reportImpactToCreateIface(
+    private List<WifiIfaceInfo> getIfacesToDestroyForRequest(
             @HdmIfaceTypeForCreation int createIfaceType, boolean queryForNewInterface,
             long requiredChipCapabilities, WorkSource requestorWs) {
         if (VDBG) {
-            Log.d(TAG, "reportImpactToCreateIface: ifaceType=" + createIfaceType
+            Log.d(TAG, "getIfacesToDestroyForRequest: ifaceType=" + createIfaceType
                     + ", requiredChipCapabilities=" + requiredChipCapabilities
                     + ", requestorWs=" + requestorWs);
         }
@@ -863,18 +861,18 @@ public class HalDeviceManager {
         IfaceCreationData creationData;
         synchronized (mLock) {
             if (!mWifiHal.isInitializationComplete()) {
-                Log.e(TAG, "reportImpactToCreateIface: Wifi Hal is not available");
+                Log.e(TAG, "getIfacesToDestroyForRequest: Wifi Hal is not available");
                 return null;
             }
-            WifiChipInfo[] chipInfos = getAllChipInfo();
+            WifiChipInfo[] chipInfos = getAllChipInfo(false);
             if (chipInfos == null) {
-                Log.e(TAG, "createIface: no chip info found");
+                Log.e(TAG, "getIfacesToDestroyForRequest: no chip info found");
                 stopWifi(); // major error: shutting down
                 return null;
             }
 
             if (!validateInterfaceCacheAndRetrieveRequestorWs(chipInfos)) {
-                Log.e(TAG, "createIface: local cache is invalid!");
+                Log.e(TAG, "getIfacesToDestroyForRequest: local cache is invalid!");
                 stopWifi(); // major error: shutting down
                 return null;
             }
@@ -895,53 +893,63 @@ public class HalDeviceManager {
             return null; // impossible to create requested interface
         }
 
-        List<Pair<Integer, WorkSource>> details = new ArrayList<>();
+        List<WifiIfaceInfo> ifaces = new ArrayList<>();
         boolean isModeConfigNeeded = !creationData.chipInfo.currentModeIdValid
                 || creationData.chipInfo.currentModeId != creationData.chipModeId;
         if (!isModeConfigNeeded && (creationData.interfacesToBeRemovedFirst == null
                 || creationData.interfacesToBeRemovedFirst.isEmpty())) {
             // can create interface w/o deleting any other interfaces
-            return details;
+            return ifaces;
         }
 
         if (isModeConfigNeeded) {
             if (VDBG) {
-                Log.d(TAG, "isItPossibleToCreateIfaceDetails: mode change from - "
+                Log.d(TAG, "getIfacesToDestroyForRequest: mode change from - "
                         + creationData.chipInfo.currentModeId + ", to - "
                         + creationData.chipModeId);
             }
             for (WifiIfaceInfo[] ifaceInfos: creationData.chipInfo.ifaces) {
-                for (WifiIfaceInfo ifaceInfo : ifaceInfos) {
-                    details.add(Pair.create(ifaceInfo.createType,
-                            ifaceInfo.requestorWsHelper.getWorkSource()));
-                }
+                ifaces.addAll(Arrays.asList(ifaceInfos));
             }
         } else {
-            for (WifiIfaceInfo ifaceInfo : creationData.interfacesToBeRemovedFirst) {
-                details.add(Pair.create(ifaceInfo.createType,
-                        ifaceInfo.requestorWsHelper.getWorkSource()));
-            }
+            ifaces.addAll(creationData.interfacesToBeRemovedFirst);
         }
 
-        return details;
+        return ifaces;
     }
 
     /**
-     * See {@link #reportImpactToCreateIface(int, boolean, long, WorkSource)}.
+     * Returns the details of what it would take to create the provided Iface requested by the
+     * specified requestor. The details are the list of other interfaces which would have to be
+     * destroyed.
      *
-     * @param ifaceType Type of iface requested.
+     * Return types imply:
+     * - null: interface cannot be created
+     * - empty list: interface can be crated w/o destroying any other interfaces
+     * - otherwise: a list of interfaces to be destroyed
+     *
+     * @param createIfaceType Type of iface requested.
      * @param queryForNewInterface True: request another interface of the specified type, False: if
      *                             there's already an interface of the specified type then no need
      *                             for further operation.
      * @param requestorWs Requestor worksource. This will be used to determine priority of this
      *                    interface using rules based on the requestor app's context.
-     * @return the list of interfaces that would have to be destroyed and their worksource.
+     * @return the list of interfaces that would have to be destroyed and their worksource. The
+     * interface type is described using @HdmIfaceTypeForCreation.
      */
     public List<Pair<Integer, WorkSource>> reportImpactToCreateIface(
-            @HdmIfaceTypeForCreation int ifaceType, boolean queryForNewInterface,
+            @HdmIfaceTypeForCreation int createIfaceType, boolean queryForNewInterface,
             WorkSource requestorWs) {
-        return reportImpactToCreateIface(ifaceType, queryForNewInterface, CHIP_CAPABILITY_ANY,
-                requestorWs);
+        List<WifiIfaceInfo> ifaces = getIfacesToDestroyForRequest(createIfaceType,
+                queryForNewInterface, CHIP_CAPABILITY_ANY, requestorWs);
+        if (ifaces == null) {
+            return null;
+        }
+        List<Pair<Integer, WorkSource>> impact = new ArrayList<>();
+        for (WifiIfaceInfo iface : ifaces) {
+            impact.add(new Pair<>(iface.createType, iface.requestorWsHelper.getWorkSource()));
+        }
+        return impact;
     }
 
     /**
@@ -950,14 +958,14 @@ public class HalDeviceManager {
      */
     public boolean creatingIfaceWillDeletePrivilegedIface(
             @HdmIfaceTypeForCreation int ifaceType, WorkSource requestorWs) {
-        List<Pair<Integer, WorkSource>> impact =
-                reportImpactToCreateIface(ifaceType, true, requestorWs);
-        if (impact == null) {
+        List<WifiIfaceInfo> ifaces = getIfacesToDestroyForRequest(ifaceType, true,
+                CHIP_CAPABILITY_ANY, requestorWs);
+        if (ifaces == null) {
             return false;
         }
-        for (Pair<Integer, WorkSource> pair : impact) {
-            if (mWifiInjector.makeWsHelper(pair.second).getRequestorWsPriority()
-                    == WorkSourceHelper.PRIORITY_PRIVILEGED) {
+        for (WifiIfaceInfo iface : ifaces) {
+            if (iface.requestorWsHelper.getRequestorWsPriority()
+                    == WorkSourceHelper.PRIORITY_PRIVILEGED && !isDisconnectedP2p(iface)) {
                 return true;
             }
         }
@@ -1123,12 +1131,12 @@ public class HalDeviceManager {
      * Get current information about all the chips in the system: modes, current mode (if any), and
      * any existing interfaces.
      *
-     * Intended to be called for any external iface support related queries. This information is
-     * cached to reduce performance overhead (unlike {@link #getAllChipInfo()}).
+     * <p>Intended to be called for any external iface support related queries. This information is
+     * cached to reduce performance overhead (unlike {@link #getAllChipInfo(boolean)}).
      */
     private WifiChipInfo[] getAllChipInfoCached() {
         if (mCachedWifiChipInfos == null) {
-            mCachedWifiChipInfos = getAllChipInfo();
+            mCachedWifiChipInfos = getAllChipInfo(false);
         }
         return mCachedWifiChipInfos;
     }
@@ -1137,10 +1145,10 @@ public class HalDeviceManager {
      * Get current information about all the chips in the system: modes, current mode (if any), and
      * any existing interfaces.
      *
-     * Intended to be called whenever we need to configure the chips - information is NOT cached (to
-     * reduce the likelihood that we get out-of-sync).
+     * <p>Intended to be called whenever we need to configure the chips - information is NOT cached
+     * (to reduce the likelihood that we get out-of-sync).
      */
-    private WifiChipInfo[] getAllChipInfo() {
+    private WifiChipInfo[] getAllChipInfo(boolean forceReadChipInfoFromDriver) {
         if (VDBG) Log.d(TAG, "getAllChipInfo");
 
         synchronized (mLock) {
@@ -1172,15 +1180,6 @@ public class HalDeviceManager {
                 WifiChip chip = mWifiHal.getChip(chipId);
                 if (chip == null) {
                     return null;
-                }
-
-                StaticChipInfo staticChipInfo = staticChipInfoPerId.get(chipId);
-                List<WifiChip.ChipMode> chipModes = null;
-                if (staticChipInfo == null) {
-                    chipModes = chip.getAvailableModes();
-                    if (chipModes == null) {
-                        return null;
-                    }
                 }
 
                 WifiChip.Response<Integer> currentMode = chip.getMode();
@@ -1296,10 +1295,15 @@ public class HalDeviceManager {
 
                 chipInfo.chip = chip;
                 chipInfo.chipId = chipId;
-                if (staticChipInfo != null) {
-                    chipInfo.availableModes = staticChipInfo.getAvailableModes();
-                } else {
+                StaticChipInfo staticChipInfo = staticChipInfoPerId.get(chipId);
+                if (forceReadChipInfoFromDriver || staticChipInfo == null) {
+                    List<WifiChip.ChipMode> chipModes = chip.getAvailableModes();
+                    if (chipModes == null) {
+                        return null;
+                    }
                     chipInfo.availableModes = new ArrayList<>(chipModes);
+                } else {
+                    chipInfo.availableModes = staticChipInfo.getAvailableModes();
                 }
                 chipInfo.currentModeIdValid =
                         currentMode.getStatusCode() == WifiHal.WIFI_STATUS_SUCCESS;
@@ -1450,7 +1454,7 @@ public class HalDeviceManager {
                         Log.d(TAG, "start IWifi succeeded after trying "
                                  + triedCount + " times");
                     }
-                    WifiChipInfo[] wifiChipInfos = getAllChipInfo();
+                    WifiChipInfo[] wifiChipInfos = getAllChipInfo(false);
                     if (wifiChipInfos == null) {
                         Log.e(TAG, "Started wifi but could not get current chip info.");
                     }
@@ -1606,7 +1610,7 @@ public class HalDeviceManager {
         }
 
         synchronized (mLock) {
-            WifiChipInfo[] chipInfos = getAllChipInfo();
+            WifiChipInfo[] chipInfos = getAllChipInfo(false);
             if (chipInfos == null) {
                 Log.e(TAG, "createIface: no chip info found");
                 stopWifi(); // major error: shutting down
@@ -1677,6 +1681,30 @@ public class HalDeviceManager {
                     }
                 }
             }
+            if (bestIfaceCreationProposal == null) {
+                List<String> createIfaceInfoString = new ArrayList<String>();
+                for (WifiChipInfo chipInfo : chipInfos) {
+                    for (int existingCreateType : CREATE_TYPES_BY_PRIORITY) {
+                        WifiIfaceInfo[] createTypeIfaces = chipInfo.ifaces[existingCreateType];
+                        for (WifiIfaceInfo intfInfo : createTypeIfaces) {
+                            if (intfInfo != null) {
+                                createIfaceInfoString.add(
+                                        "name="
+                                                + intfInfo.name
+                                                + " type="
+                                                + getIfaceTypeToString(intfInfo.createType));
+                            }
+                        }
+                    }
+                }
+                Log.i(
+                        TAG,
+                        "bestIfaceCreationProposal is null,"
+                                + " requestIface="
+                                + getIfaceTypeToString(createIfaceType)
+                                + ", existingIface="
+                                + createIfaceInfoString);
+            }
             return bestIfaceCreationProposal;
         }
     }
@@ -1743,23 +1771,6 @@ public class HalDeviceManager {
                             Pair.create(cacheEntry.name, cacheEntry.type), cacheEntry);
                     return iface;
                 }
-            } else {
-                List<String> createIfaceInfoString = new ArrayList<String>();
-                for (WifiChipInfo chipInfo : chipInfos) {
-                    for (int existingCreateType : CREATE_TYPES_BY_PRIORITY) {
-                        WifiIfaceInfo[] createTypeIfaces = chipInfo.ifaces[existingCreateType];
-                        for (WifiIfaceInfo intfInfo : createTypeIfaces) {
-                            if (intfInfo != null) {
-                                createIfaceInfoString.add(
-                                        "name=" + intfInfo.name + " type=" + getIfaceTypeToString(
-                                                intfInfo.createType));
-                            }
-                        }
-                    }
-                }
-                Log.i(TAG, "bestIfaceCreationProposal is null," + " requestIface="
-                        + getIfaceTypeToString(createIfaceType) + ", existingIface="
-                        + createIfaceInfoString);
             }
         }
 
@@ -2034,21 +2045,9 @@ public class HalDeviceManager {
 
         // Allow FG apps to delete any disconnected P2P iface if they are older than
         // config_disconnectedP2pIfaceLowPriorityTimeoutMs.
-        int unusedP2pTimeoutMs = mContext.getResources().getInteger(
-                R.integer.config_disconnectedP2pIfaceLowPriorityTimeoutMs);
         if (newRequestorWsPriority > WorkSourceHelper.PRIORITY_BG
-                && existingCreateType == HDM_CREATE_IFACE_P2P
-                && !mIsP2pConnected
-                && unusedP2pTimeoutMs >= 0) {
-            InterfaceCacheEntry ifaceCacheEntry = mInterfaceInfoCache.get(
-                    Pair.create(existingIfaceInfo.name, getType(existingIfaceInfo.iface)));
-            if (ifaceCacheEntry != null && mClock.getElapsedSinceBootMillis()
-                    >= ifaceCacheEntry.creationTime + unusedP2pTimeoutMs) {
-                if (mDbg) {
-                    Log.i(TAG, "Allowed to delete disconnected P2P iface: " + ifaceCacheEntry);
-                }
-                return true;
-            }
+                && isDisconnectedP2p(existingIfaceInfo)) {
+            return true;
         }
 
         // Defer deletion decision to the InterfaceConflictManager dialog.
@@ -2102,17 +2101,19 @@ public class HalDeviceManager {
             @WorkSourceHelper.RequestorWsPriority int newRequestorWsPriority,
             @HdmIfaceTypeForCreation int existingCreateType,
             @WorkSourceHelper.RequestorWsPriority int existingRequestorWsPriority) {
-        return !canDeviceSupportCreateTypeCombo(
-                new SparseArray<Integer>() {{
-                    put(HDM_CREATE_IFACE_STA, 1);
-                    put(HDM_CREATE_IFACE_AP, 1);
-                }})
-                && (requestedCreateType == HDM_CREATE_IFACE_AP
-                || requestedCreateType == HDM_CREATE_IFACE_AP_BRIDGE)
+        return (requestedCreateType == HDM_CREATE_IFACE_AP
+                        || requestedCreateType == HDM_CREATE_IFACE_AP_BRIDGE)
                 && newRequestorWsPriority != WorkSourceHelper.PRIORITY_INTERNAL
                 && newRequestorWsPriority != WorkSourceHelper.PRIORITY_PRIVILEGED
                 && existingCreateType == HDM_CREATE_IFACE_STA
-                && existingRequestorWsPriority == WorkSourceHelper.PRIORITY_PRIVILEGED;
+                && existingRequestorWsPriority == WorkSourceHelper.PRIORITY_PRIVILEGED
+                && !canDeviceSupportCreateTypeCombo(
+                        new SparseArray<Integer>() {
+                            {
+                                put(HDM_CREATE_IFACE_STA, 1);
+                                put(HDM_CREATE_IFACE_AP, 1);
+                            }
+                        });
     }
 
     /**
@@ -2149,6 +2150,25 @@ public class HalDeviceManager {
 
         // rule 4, the requestedCreateType is either AP/AP_BRIDGED or STA
         return true;
+    }
+
+    private boolean isDisconnectedP2p(WifiIfaceInfo p2pInfo) {
+        int unusedP2pTimeoutMs = mContext.getResources().getInteger(
+                R.integer.config_disconnectedP2pIfaceLowPriorityTimeoutMs);
+        if (p2pInfo.createType == HDM_CREATE_IFACE_P2P
+                && !mIsP2pConnected
+                && unusedP2pTimeoutMs >= 0) {
+            InterfaceCacheEntry ifaceCacheEntry = mInterfaceInfoCache.get(
+                    Pair.create(p2pInfo.name, getType(p2pInfo.iface)));
+            if (ifaceCacheEntry != null && mClock.getElapsedSinceBootMillis()
+                    >= ifaceCacheEntry.creationTime + unusedP2pTimeoutMs) {
+                if (mDbg) {
+                    Log.i(TAG, "Allowed to delete disconnected P2P iface: " + ifaceCacheEntry);
+                }
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -2364,7 +2384,7 @@ public class HalDeviceManager {
                     return null;
                 }
                 if (!mIsConcurrencyComboLoadedFromDriver) {
-                    WifiChipInfo[] wifiChipInfos = getAllChipInfo();
+                    WifiChipInfo[] wifiChipInfos = getAllChipInfo(true);
                     if (wifiChipInfos != null) {
                         mCachedStaticChipInfos =
                                 convertWifiChipInfoToStaticChipInfos(wifiChipInfos);
@@ -2752,7 +2772,7 @@ public class HalDeviceManager {
                 return null;
             }
 
-            WifiChipInfo[] chipInfos = getAllChipInfo();
+            WifiChipInfo[] chipInfos = getAllChipInfo(false);
             if (chipInfos == null) {
                 Log.d(TAG, "createRttControllerIfPossible: no chip info found - most likely chip "
                         + "not up yet");
@@ -2870,6 +2890,6 @@ public class HalDeviceManager {
         pw.println("Dump of HalDeviceManager:");
         pw.println("  mManagerStatusListeners: " + mManagerStatusListeners);
         pw.println("  mInterfaceInfoCache: " + mInterfaceInfoCache);
-        pw.println("  mDebugChipsInfo: " + Arrays.toString(getAllChipInfo()));
+        pw.println("  mDebugChipsInfo: " + Arrays.toString(getAllChipInfo(false)));
     }
 }
