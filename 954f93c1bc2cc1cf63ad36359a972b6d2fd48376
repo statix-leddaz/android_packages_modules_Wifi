@@ -108,6 +108,30 @@
       },
       "revId": "954f93c1bc2cc1cf63ad36359a972b6d2fd48376",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "395877ac_3eba56ad",
+        "filename": "service/java/com/android/server/wifi/scanner/WificondScannerImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 364,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-10-11T15:33:14Z",
+      "side": 1,
+      "message": "In our earlier testing, we were passing hard coded value for time stamp.\n\nWe have now modified this to take current time while being inside mock - startPnoScan() and is working fine with this commented code enabled.",
+      "parentUuid": "98d613cf_3794f67a",
+      "range": {
+        "startLine": 362,
+        "startChar": 16,
+        "endLine": 364,
+        "endChar": 0
+      },
+      "revId": "954f93c1bc2cc1cf63ad36359a972b6d2fd48376",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
