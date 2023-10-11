@@ -43,6 +43,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "5e0eb1f2_28638143",
+        "filename": "service/java/com/android/server/wifi/WifiConnectivityManager.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 2210,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-10-11T15:37:40Z",
+      "side": 1,
+      "message": "This was commented to enable quick testing of the complete flow. Earlier when we tried to disable the wifi, it were getting into some other issues.\n\nNow this is resolved and we are able to successfully disconnect wifi by making a call to \nsWifiManager.disconnect();\nwaitForDisconnection();\n\nand then triggering setExternalPnoScanRequest()",
+      "parentUuid": "9945897f_795e14a4",
+      "range": {
+        "startLine": 2209,
+        "startChar": 10,
+        "endLine": 2210,
+        "endChar": 62
+      },
+      "revId": "954f93c1bc2cc1cf63ad36359a972b6d2fd48376",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "2c71088e_81271787",
         "filename": "service/java/com/android/server/wifi/WifiNative.java",
         "patchSetId": 1
