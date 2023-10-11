@@ -90,6 +90,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "3e117efb_428ca485",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 1868,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-10-11T15:51:37Z",
+      "side": 1,
+      "message": "One is for getWifiNl80211Manager() and other one is for getMockWifiNl80211Manager().",
+      "parentUuid": "2c71088e_81271787",
+      "range": {
+        "startLine": 1868,
+        "startChar": 15,
+        "endLine": 1868,
+        "endChar": 69
+      },
+      "revId": "954f93c1bc2cc1cf63ad36359a972b6d2fd48376",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "98c7f6b1_c3c269ba",
         "filename": "service/java/com/android/server/wifi/WifiNative.java",
         "patchSetId": 1
@@ -101,6 +125,30 @@
       "writtenOn": "2023-10-05T20:26:49Z",
       "side": 1,
       "message": "Should this be called from a callback indicating that scan results are ready? In fact, isn\u0027t it called already in such a scenario?",
+      "range": {
+        "startLine": 1871,
+        "startChar": 11,
+        "endLine": 1871,
+        "endChar": 64
+      },
+      "revId": "954f93c1bc2cc1cf63ad36359a972b6d2fd48376",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "519f1852_56fbfec8",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 1871,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-10-11T15:51:37Z",
+      "side": 1,
+      "message": "We just tried a different approach without getting into the Callback . Please let us know your input on this.\nHowever we are working on the Callback route so that callback will intern trigger  mWifiMonitor.broadcastPnoScanResultEvent(ifaceName).",
+      "parentUuid": "98c7f6b1_c3c269ba",
       "range": {
         "startLine": 1871,
         "startChar": 11,
