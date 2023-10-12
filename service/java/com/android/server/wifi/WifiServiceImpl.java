@@ -1256,6 +1256,13 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     private void showWifiEnableRequestDialog(int uid, int pid, @NonNull String packageName) {
+        // Ignore duplicate dialogs from the same uid if there is a pending dialog to avoid
+        // potential DoS to surfaceflinger which may cause system server crash indirectly.
+        if (mWifiEnableRequestDialogHandles.contains(uid)) {
+            mLog.info("Ignore duplicate setWifiEnabled dialog for uid=%").c(uid).flush();
+            return;
+        }
+
         String appName;
         try {
             PackageManager pm = mContext.getPackageManager();
