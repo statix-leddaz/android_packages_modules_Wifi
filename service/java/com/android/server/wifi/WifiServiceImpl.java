@@ -7159,7 +7159,9 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     private boolean isPnoSupported() {
-        return (getSupportedFeatures() & WifiManager.WIFI_FEATURE_PNO) != 0;
+       // return (getSupportedFeatures() & WifiManager.WIFI_FEATURE_PNO) != 0;
+    /* TBD - Returning true to support Pno Scan for CF */
+        return true;
     }
 
     /**
