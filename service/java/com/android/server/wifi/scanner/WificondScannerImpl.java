@@ -458,8 +458,10 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
      * @return true if HW PNO scan is required, false otherwise.
      */
     private boolean isHwPnoScanRequired(boolean isConnectedPno) {
-        return (!isConnectedPno
-                && mContext.getResources().getBoolean(R.bool.config_wifi_background_scan_support));
+        // return (!isConnectedPno
+        //         && mContext.getResources().getBoolean(R.bool.config_wifi_background_scan_support));
+        /* TBD - Returing true to support Hw pno scan */
+        return true;
     }
 
     @Override
