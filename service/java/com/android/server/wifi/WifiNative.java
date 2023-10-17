@@ -1756,6 +1756,14 @@ public class WifiNative {
                 return copyList;
             }
         }
+        if (mMockWifiModem != null && mMockWifiModem.getWifiNl80211Manager() != null
+                 && mMockWifiModem.getMockWifiNl80211Manager() != null
+                && mMockWifiModem.getMockWifiNl80211Manager()
+              .isMethodConfigured("getScanResults")) {
+            Log.i(TAG, "getScanResults was called from mock wificond");
+            return convertNativeScanResults(ifaceName, mMockWifiModem.getWifiNl80211Manager()
+                   .getScanResults(ifaceName,WifiNl80211Manager.SCAN_TYPE_SINGLE_SCAN));
+        }
         return convertNativeScanResults(ifaceName, mWifiCondManager.getScanResults(
                 ifaceName, WifiNl80211Manager.SCAN_TYPE_SINGLE_SCAN));
     }
@@ -1807,6 +1815,14 @@ public class WifiNative {
      * Returns an empty ArrayList on failure.
      */
     public ArrayList<ScanDetail> getPnoScanResults(@NonNull String ifaceName) {
+        if (mMockWifiModem != null && mMockWifiModem.getWifiNl80211Manager() != null
+                && mMockWifiModem.getMockWifiNl80211Manager() != null
+                && mMockWifiModem.getMockWifiNl80211Manager()
+                  .isMethodConfigured("getPnoScanResults")) {
+            Log.i(TAG, "getPnoScanResults was called from mock wificond");
+            return convertNativeScanResults(ifaceName, mMockWifiModem.getWifiNl80211Manager()
+                   .getScanResults(ifaceName,WifiNl80211Manager.SCAN_TYPE_PNO_SCAN));
+        }
         return convertNativeScanResults(ifaceName, mWifiCondManager.getScanResults(ifaceName,
                 WifiNl80211Manager.SCAN_TYPE_PNO_SCAN));
     }
@@ -1916,6 +1932,27 @@ public class WifiNative {
      * @return true on success.
      */
     public boolean startPnoScan(@NonNull String ifaceName, PnoSettings pnoSettings) {
+        if (mMockWifiModem != null && mMockWifiModem.getWifiNl80211Manager() != null
+                && mMockWifiModem.getMockWifiNl80211Manager() != null
+                && mMockWifiModem.getMockWifiNl80211Manager()
+                  .isMethodConfigured("startPnoScan")) {
+            Log.i(TAG, "startPnoScan was called from mock wificond");
+            return mMockWifiModem.getWifiNl80211Manager()
+                   .startPnoScan(ifaceName, pnoSettings.toNativePnoSettings(),
+            Runnable::run,
+            new WifiNl80211Manager.PnoScanRequestCallback() {
+                @Override
+                public void onPnoRequestSucceeded() {
+                    mWifiMetrics.incrementPnoScanStartAttemptCount();
+                }
+
+                @Override
+                public void onPnoRequestFailed() {
+                    mWifiMetrics.incrementPnoScanStartAttemptCount();
+                    mWifiMetrics.incrementPnoScanFailedCount();
+                }
+            });
+        }
         return mWifiCondManager.startPnoScan(ifaceName, pnoSettings.toNativePnoSettings(),
                 Runnable::run,
                 new WifiNl80211Manager.PnoScanRequestCallback() {
