@@ -99,6 +99,10 @@ public class MockWifiServiceUtil {
         return status;
     }
 
+    public void unbindMockModemService(){
+        mContext.unbindService(mMockNl80211ServiceConnection);
+    }
+
     /** waitForBinder */
     public IBinder getServiceBinder(int service) {
         switch (service) {
@@ -191,5 +195,10 @@ public class MockWifiServiceUtil {
     public WifiNl80211Manager getWifiNl80211Manager() {
         return mMockWifiNl80211Manager == null
                 ? null : mMockWifiNl80211Manager.getWifiNl80211Manager();
+    }
+
+    public boolean getIsMethodConfigured(String methodName){
+        return getWifiNl80211Manager() != null
+                && getMockWifiNl80211Manager().isMethodConfigured(methodName);
     }
 }
