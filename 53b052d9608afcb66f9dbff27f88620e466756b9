@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "0e4e61a0_d9430ef2",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 4
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-10-18T17:08:24Z",
+      "side": 1,
+      "message": "Hi Etan,\n\nWe are not able to cherry pick the CL-2774912 as it is abandoned.\nmaintaining the same CL-2792472. Please let us know your inputs.\n\nRegards,\nRashmi",
+      "revId": "53b052d9608afcb66f9dbff27f88620e466756b9",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
