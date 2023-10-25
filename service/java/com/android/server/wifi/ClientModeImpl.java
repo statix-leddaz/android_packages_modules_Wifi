@@ -2659,21 +2659,36 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     + " RxLinkSpeed=" + newRxLinkSpeed);
         }
 
-        /* Set link specific signal poll results */
         for (MloLink link : mWifiInfo.getAffiliatedMloLinks()) {
             int linkId = link.getLinkId();
-            link.setRssi(pollResults.getRssi(linkId));
-            link.setTxLinkSpeedMbps(pollResults.getTxLinkSpeed(linkId));
-            link.setRxLinkSpeedMbps(pollResults.getRxLinkSpeed(linkId));
-            link.setChannel(ScanResult.convertFrequencyMhzToChannelIfSupported(
-                    pollResults.getFrequency(linkId)));
-            link.setBand(ScanResult.toBand(pollResults.getFrequency(linkId)));
-            if (mVerboseLoggingEnabled) {
-                logd("linkId=" + linkId + " rssi=" + link.getRssi()
-                        + " channel=" + link.getChannel()
-                        + " band=" + link.getBand()
-                        + " TxLinkspeed=" + link.getTxLinkSpeedMbps()
-                        + " RxLinkSpeed=" + link.getRxLinkSpeedMbps());
+            if (link.getState() == MloLink.MLO_LINK_STATE_IDLE
+                    || link.getState() == MloLink.MLO_LINK_STATE_ACTIVE) {
+                /* Set link specific signal poll results for associated links */
+                link.setRssi(pollResults.getRssi(linkId));
+                link.setTxLinkSpeedMbps(pollResults.getTxLinkSpeed(linkId));
+                link.setRxLinkSpeedMbps(pollResults.getRxLinkSpeed(linkId));
+                link.setChannel(ScanResult.convertFrequencyMhzToChannelIfSupported(
+                        pollResults.getFrequency(linkId)));
+                link.setBand(ScanResult.toBand(pollResults.getFrequency(linkId)));
+                if (mVerboseLoggingEnabled) {
+                    logd("linkId=" + linkId + " rssi=" + link.getRssi()
+                            + " channel=" + link.getChannel()
+                            + " band=" + link.getBand()
+                            + " TxLinkspeed=" + link.getTxLinkSpeedMbps()
+                            + " RxLinkSpeed=" + link.getRxLinkSpeedMbps());
+                }
+            } else {
+                /* Set link specific signal poll results for other affiliated links */
+                if (link.getApMacAddress() != null) {
+                    String bssid = link.getApMacAddress().toString();
+                    ScanResult matchingScanResult = mScanRequestProxy.getScanResult(bssid);
+                    if (matchingScanResult != null) {
+                        link.setRssi(matchingScanResult.level);
+                        if (mVerboseLoggingEnabled) {
+                            logd("Affiliated linkId=" + linkId + " rssi=" + link.getRssi());
+                        }
+                    }
+                }
             }
         }
 
