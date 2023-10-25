@@ -2659,8 +2659,22 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     + " RxLinkSpeed=" + newRxLinkSpeed);
         }
 
-        /* Set link specific signal poll results */
+        /* Set link specific signal poll results for affiliated links */
         for (MloLink link : mWifiInfo.getAffiliatedMloLinks()) {
+            if (link.getApMacAddress() != null) {
+                String bssid = link.getApMacAddress().toString();
+                ScanResult matchingScanResult = mScanRequestProxy.getScanResult(bssid);
+                if (matchingScanResult != null) {
+                    link.setRssi(matchingScanResult.level);
+                    if (mVerboseLoggingEnabled) {
+                        logd("Affiliated linkId=" + link.getLinkId() + " rssi=" + link.getRssi());
+                    }
+                }
+            }
+        }
+
+        /* Set link specific signal poll results for associated links */
+        for (MloLink link : mWifiInfo.getAssociatedMloLinks()) {
             int linkId = link.getLinkId();
             link.setRssi(pollResults.getRssi(linkId));
             link.setTxLinkSpeedMbps(pollResults.getTxLinkSpeed(linkId));
