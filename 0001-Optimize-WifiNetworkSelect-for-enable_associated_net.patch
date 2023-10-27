@@ -1,0 +1,76 @@
+From a95277c410a080cd445613ec7b985ee8b3f493dd Mon Sep 17 00:00:00 2001
+From: "chao.meng" <chao.meng@unisoc.com>
+Date: Tue, 23 Aug 2022 15:52:15 +0800
+Subject: [PATCH] Optimize WifiNetworkSelect for
+ enable_associated_network_selection and wifiEnableLinkedNetworkRoaming
+
+---
+ .../server/wifi/SupplicantStaIfaceHalAidlImpl.java        | 8 ++++----
+ .../java/com/android/server/wifi/WifiConfigManager.java   | 4 +++-
+ .../java/com/android/server/wifi/WifiNetworkSelector.java | 4 +++-
+ 3 files changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/service/java/com/android/server/wifi/SupplicantStaIfaceHalAidlImpl.java b/service/java/com/android/server/wifi/SupplicantStaIfaceHalAidlImpl.java
+index 0c358da664..b5ee35ab76 100644
+--- a/service/java/com/android/server/wifi/SupplicantStaIfaceHalAidlImpl.java
++++ b/service/java/com/android/server/wifi/SupplicantStaIfaceHalAidlImpl.java
+@@ -3110,13 +3110,13 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
+                 return false;
+             }
+             if (fromFramework ? currentConfig.networkId == newNetworkId
+-                    : currentHandle.getNetworkId() == newNetworkId) {
++                    : currentHandle.getNetworkId() < 0) {
+                 return false;
+             }
+             for (Pair<SupplicantStaNetworkHalAidlImpl, WifiConfiguration> pair
+                     : linkedNetworkHandles) {
+                 if (fromFramework ? pair.second.networkId == newNetworkId
+-                        : pair.first.getNetworkId() == newNetworkId) {
++                        : pair.first.getNetworkId() >= 0) {
+                     Log.i(TAG, "Roamed to linked network, make linked network as current network");
+                     mCurrentNetworkRemoteHandles.put(ifaceName, pair.first);
+                     mCurrentNetworkLocalConfigs.put(ifaceName, pair.second);
+@@ -3158,8 +3158,8 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
+                 return false;
+             }
+ 
+-            if (!removeAllNetworksExcept(ifaceName, remoteNetworkId)) {
+-                Log.e(TAG, "couldn't remove non-current supplicant networks");
++            if (currentHandle.getNetworkId() < 0) {
++                Log.e(TAG, "Current supplicant network id is invalid");
+                 return false;
+             }
+ 
+diff --git a/service/java/com/android/server/wifi/WifiConfigManager.java b/service/java/com/android/server/wifi/WifiConfigManager.java
+index f5729dc0b8..7c08cb6eca 100644
+--- a/service/java/com/android/server/wifi/WifiConfigManager.java
++++ b/service/java/com/android/server/wifi/WifiConfigManager.java
+@@ -2411,7 +2411,9 @@ public class WifiConfigManager {
+             return false;
+         }
+         config.validatedInternetAccess = validated;
+-        config.numNoInternetAccessReports = 0;
++        if (validated) {
++            config.numNoInternetAccessReports = 0;
++        }
+         saveToStore(false);
+         return true;
+     }
+diff --git a/service/java/com/android/server/wifi/WifiNetworkSelector.java b/service/java/com/android/server/wifi/WifiNetworkSelector.java
+index 0c423e15b2..bbc268af4c 100644
+--- a/service/java/com/android/server/wifi/WifiNetworkSelector.java
++++ b/service/java/com/android/server/wifi/WifiNetworkSelector.java
+@@ -461,7 +461,9 @@ public class WifiNetworkSelector {
+             // Check if the scan results contain the currently connected BSSID's
+             if (currentBssids.contains(scanResult.BSSID)) {
+                 scanResultPresentForCurrentBssids.add(scanResult.BSSID);
+-                validScanDetails.add(scanDetail);
++                if (!bssidBlocklist.contains(scanResult.BSSID)) {
++                    validScanDetails.add(scanDetail);
++                }
+                 continue;
+             }
+ 
+-- 
+2.17.1
+

@@ -2025,6 +2025,19 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     }
                     configBuilder.setChannel(channels.valueAt(0), channels.keyAt(0));
                 }
+            } else if (option.equals("-bw")) {
+                String bandwidth = getNextArgRequired();
+                if (bandwidth.equals("20")) {
+                    configBuilder.setMaxChannelBandwidth(SoftApInfo.CHANNEL_WIDTH_20MHZ);
+                } else if (bandwidth.equals("40")) {
+                    configBuilder.setMaxChannelBandwidth(SoftApInfo.CHANNEL_WIDTH_40MHZ);
+                } else if (bandwidth.equals("80")) {
+                    configBuilder.setMaxChannelBandwidth(SoftApInfo.CHANNEL_WIDTH_80MHZ);
+                } else if (bandwidth.equals("160")) {
+                    configBuilder.setMaxChannelBandwidth(SoftApInfo.CHANNEL_WIDTH_160MHZ);
+                } else {
+                    throw new IllegalArgumentException("Invalid bandwidth option " + bandwidth);
+                }
             } else {
                 pw.println("Ignoring unknown option " + option);
             }
