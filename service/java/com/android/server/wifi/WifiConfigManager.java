@@ -1133,7 +1133,10 @@ public class WifiConfigManager {
         }
         internalConfig.BSSID = externalConfig.BSSID == null ? null
                 : externalConfig.BSSID.toLowerCase();
-        internalConfig.hiddenSSID = externalConfig.hiddenSSID;
+
+        if (externalConfig.hiddenSSID) {
+            internalConfig.hiddenSSID = externalConfig.hiddenSSID;
+        }
 
         if (externalConfig.preSharedKey != null
                 && !externalConfig.preSharedKey.equals(PASSWORD_MASK)) {
