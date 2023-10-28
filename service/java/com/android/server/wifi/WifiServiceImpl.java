@@ -41,6 +41,7 @@ import static android.net.wifi.WifiManager.WIFI_INTERFACE_TYPE_DIRECT;
 import static android.net.wifi.WifiManager.WIFI_INTERFACE_TYPE_STA;
 import static android.net.wifi.WifiManager.WIFI_STATE_ENABLED;
 import static android.os.Process.WIFI_UID;
+
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_LOCAL_ONLY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_LONG_LIVED;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_TRANSIENT;
@@ -1370,6 +1371,11 @@ public class WifiServiceImpl extends BaseWifiService {
                     }
                 };
         Resources res = mContext.getResources();
+        if (mWifiEnableRequestDialogHandles.get(uid) != null) {
+            mLog.info("setWifiEnabled dialog already launched for package=% uid=%").c(packageName)
+                    .c(uid).flush();
+            return;
+        }
         WifiDialogManager.DialogHandle dialogHandle = mWifiDialogManager.createSimpleDialog(
                 res.getString(R.string.wifi_enable_request_dialog_title, appName),
                 res.getString(R.string.wifi_enable_request_dialog_message),
@@ -4357,6 +4363,9 @@ public class WifiServiceImpl extends BaseWifiService {
                     uid, null);
             List<ScanResult> scanResults = mWifiThreadRunner.call(
                     mScanRequestProxy::getScanResults, Collections.emptyList());
+            if (scanResults.size() > 200) {
+                Log.i(TAG, "too many scan results, may break binder transaction");
+            }
             return scanResults;
         } catch (SecurityException e) {
             Log.w(TAG, "Permission violation - getScanResults not allowed for uid="
