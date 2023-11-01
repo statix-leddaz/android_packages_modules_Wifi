@@ -8220,7 +8220,7 @@ public class WifiManager {
     public void enableVerboseLogging(@VerboseLoggingLevel int verbose) {
         try {
             mService.enableVerboseLogging(verbose);
-            mVerboseLoggingEnabled = verbose == VERBOSE_LOGGING_LEVEL_ENABLED;
+            mVerboseLoggingEnabled = verbose >= VERBOSE_LOGGING_LEVEL_ENABLED;
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }

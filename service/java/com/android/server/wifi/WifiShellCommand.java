@@ -1011,7 +1011,17 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     return 0;
                 case "set-verbose-logging": {
                     boolean enabled = getNextArgRequiredTrueOrFalse("enabled", "disabled");
-                    mWifiService.enableVerboseLogging(enabled ? 1 : 0);
+                    String levelOption = getNextOption();
+                    int level = enabled ? 1 : 0;
+                    if (enabled && levelOption.equals("-l")) {
+                        String levelStr = getNextArgRequired();
+                        try {
+                            level = Integer.parseInt(levelStr);
+                        } catch (NumberFormatException e) {
+                            pw.println("Invalid verbose-logging level : " + levelStr);
+                        }
+                    }
+                    mWifiService.enableVerboseLogging(level);
                     return 0;
                 }
                 case "is-verbose-logging": {
