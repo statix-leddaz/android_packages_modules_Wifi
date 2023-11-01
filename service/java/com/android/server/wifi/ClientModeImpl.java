@@ -3070,7 +3070,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (matchingScanResult != null && matchingScanResult.getApMldMacAddress() != null) {
             mWifiInfo.setApMldMacAddress(matchingScanResult.getApMldMacAddress());
             mWifiInfo.setApMloLinkId(matchingScanResult.getApMloLinkId());
-            mWifiInfo.setAffiliatedMloLinks(matchingScanResult.getAffiliatedMloLinks());
+            // Deep copy the affiliated links to avoid any overwrite in future from WifiInfo.
+            List<MloLink> deepCopyAffiliatedMloLinks = new ArrayList<>();
+            for (MloLink link : matchingScanResult.getAffiliatedMloLinks()) {
+                deepCopyAffiliatedMloLinks.add(new MloLink(link, NetworkCapabilities.REDACT_NONE));
+            }
+            mWifiInfo.setAffiliatedMloLinks(deepCopyAffiliatedMloLinks);
         } else {
             mWifiInfo.setApMldMacAddress(null);
             mWifiInfo.setApMloLinkId(MloLink.INVALID_MLO_LINK_ID);
@@ -5932,6 +5937,17 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
                         handleNetworkDisconnect(false,
                                 WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__UNSPECIFIED);
+                        // TODO(b/302728081): remove the code once the issue is resolved.
+                        if (mDeviceConfigFacade.isAbnormalDisconnectionBugreportEnabled()
+                                && mTargetWifiConfiguration.enterpriseConfig != null
+                                && mTargetWifiConfiguration.enterpriseConfig
+                                        .isAuthenticationSimBased()
+                                && mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(
+                                        mTargetWifiConfiguration.carrierId)) {
+                            String bugTitle = "Wi-Fi BugReport: suspicious NETWORK_NOT_FOUND";
+                            String bugDetail = "Detect abnormal NETWORK_NOT_FOUND error";
+                            mWifiDiagnostics.takeBugReport(bugTitle, bugDetail);
+                        }
                         transitionTo(mDisconnectedState); // End of connection attempt.
                     }
                     break;
