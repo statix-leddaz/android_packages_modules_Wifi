@@ -17,6 +17,7 @@ package com.android.server.wifi;
 
 import android.annotation.NonNull;
 import android.content.Context;
+import android.hardware.wifi.common.OuiKeyedData;
 import android.hardware.wifi.hostapd.ApInfo;
 import android.hardware.wifi.hostapd.BandMask;
 import android.hardware.wifi.hostapd.ChannelBandwidth;
@@ -42,6 +43,7 @@ import android.net.wifi.WifiManager;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.IBinder.DeathRecipient;
+import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.ServiceSpecificException;
@@ -871,6 +873,18 @@ public class HostapdHalAidlImp implements IHostapdHal {
                 || ifaceParams.channelParams == null) {
             return null;
         }
+
+        PersistableBundle bundle = new PersistableBundle();
+        bundle.putString("stringKey", "someStringValue");
+        bundle.putInt("intKey", 1337);
+
+        OuiKeyedData ouiKeyedData = new OuiKeyedData();
+        ouiKeyedData.oui = 12345;
+        ouiKeyedData.vendorData = bundle;
+
+        ifaceParams.vendorData = new OuiKeyedData[]{ouiKeyedData};
+        Log.i(TAG, "Included OuiKeyedData list, sending to HAL");
+
         return ifaceParams;
     }
 
