@@ -16,6 +16,23 @@
       "message": "I think this is ready for you to CP to git_main.",
       "revId": "eff5947d0f276587dfed055888ec7fb311c09bd3",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "19a5ee8b_1c81396c",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 8
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1962375
+      },
+      "writtenOn": "2023-11-02T21:04:06Z",
+      "side": 1,
+      "message": "Do you mind adding the `Merged-In` tag with the identical hash?",
+      "revId": "eff5947d0f276587dfed055888ec7fb311c09bd3",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
