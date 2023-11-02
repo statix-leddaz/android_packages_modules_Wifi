@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "59f478c1_5e158546",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-02T01:55:27Z",
+      "side": 1,
+      "message": "I remove myself in attention set since this CL is out of date and the issue had been addressed by another CL which discussed in the bug.\nPlease abandon this CL.\nThanks",
+      "revId": "7d5aca9f8d00773de5a10b8caf59f231809b1848",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
