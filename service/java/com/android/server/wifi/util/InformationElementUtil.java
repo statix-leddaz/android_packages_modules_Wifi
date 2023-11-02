@@ -33,6 +33,8 @@ import com.android.server.wifi.MboOceConstants;
 import com.android.server.wifi.hotspot2.NetworkDetail;
 import com.android.server.wifi.hotspot2.anqp.Constants;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -57,6 +59,70 @@ public class InformationElementUtil {
         AP_TYPE_6GHZ_STANDARD_POWER,
     }
 
+    /**
+     * Defragment Element class
+     *
+     * IEEE Std 802.11™‐2020, Section: 10.28.11 Element fragmentation describes a fragmented sub
+     * element as,
+     *    | SubEID | Len | Data | FragId | Len | Data | FragId | Len| Data ...
+     * Octets: 1     1     255     1        1     255     1       1     m
+     * Values: eid   255         fid       255           fid      m
+     *
+     */
+    private static class DefragmentElement {
+        /** Defagmented element bytes */
+        public byte[] bytes;
+        /** Bytes read to defragment the fragmented element */
+        public int bytesRead = 0;
+
+        public static final int FRAG_MAX_LEN = 255;
+        public static final int FRAGMENT_ELEMENT_EID = 242;
+
+        DefragmentElement(byte[] bytes, int start, int eid, int fid) {
+            if (bytes == null) return;
+            ByteArrayOutputStream defrag = new ByteArrayOutputStream();
+            ByteBuffer element = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+            element.position(start);
+            try {
+                if ((element.get() & Constants.BYTE_MASK) != eid) return;
+                // Add EID, 255 as the parser expects the element header.
+                defrag.write(eid);
+                defrag.write(255);
+                int fragLen, fragId;
+                do {
+                    fragLen = element.get() & Constants.BYTE_MASK;
+                    byte[] b = new byte[fragLen];
+                    element.get(b);
+                    defrag.write(b);
+                    // Mark the position to undo the extra read.
+                    element.mark();
+                    if (element.remaining() <= 0) break;
+                    fragId = element.get() & Constants.BYTE_MASK;
+                } while (fragLen == FRAG_MAX_LEN && fragId == fid);
+                // Reset the extra get.
+                element.reset();
+            } catch (IOException e) {
+                if (DBG) {
+                    Log.w(TAG, "Failed to defragment sub element: " + e.getMessage());
+                }
+                return;
+            } catch (IndexOutOfBoundsException e) {
+                if (DBG) {
+                    Log.e(TAG, "Failed to defragment sub element: " + e.getMessage());
+                }
+                return;
+            } catch (BufferUnderflowException e) {
+                if (DBG) {
+                    Log.w(TAG, "Failed to defragment sub element: " + e.getMessage());
+                }
+                return;
+            }
+
+            this.bytes = defrag.toByteArray();
+            bytesRead = element.position() - start;
+        }
+    }
+
     /** Converts InformationElement to hex string */
     public static String toHexString(InformationElement e) {
         StringBuilder sb = new StringBuilder();
@@ -77,6 +143,12 @@ public class InformationElementUtil {
         return parseInformationElements(HexEncoding.decode(data));
     }
 
+    private static boolean isFragmentable(int eid, int eidExt) {
+        // Refer IEE802.11BE D2.3, Section 9.4.2 Elements
+        return ((eid == InformationElement.EID_EXTENSION_PRESENT)
+                && (eidExt == InformationElement.EID_EXT_MULTI_LINK));
+    }
+
     public static InformationElement[] parseInformationElements(byte[] bytes) {
         if (bytes == null) {
             return new InformationElement[0];
@@ -86,9 +158,12 @@ public class InformationElementUtil {
         ArrayList<InformationElement> infoElements = new ArrayList<>();
         boolean found_ssid = false;
         while (data.remaining() > 1) {
+            // Mark the start of the data
+            data.mark();
             int eid = data.get() & Constants.BYTE_MASK;
             int eidExt = 0;
             int elementLength = data.get() & Constants.BYTE_MASK;
+            DefragmentElement defrag = null;
 
             if (elementLength > data.remaining() || (eid == InformationElement.EID_SSID
                     && found_ssid)) {
@@ -105,14 +180,36 @@ public class InformationElementUtil {
                     break;
                 }
                 eidExt = data.get() & Constants.BYTE_MASK;
+                if (isFragmentable(eid, eidExt)
+                        && elementLength == DefragmentElement.FRAG_MAX_LEN) {
+                    // Fragmented IE. Reset the position to head to defragment.
+                    data.reset();
+                    defrag =
+                            new DefragmentElement(
+                                    bytes,
+                                    data.position(),
+                                    eid,
+                                    DefragmentElement.FRAGMENT_ELEMENT_EID);
+                }
                 elementLength--;
             }
 
             InformationElement ie = new InformationElement();
             ie.id = eid;
             ie.idExt = eidExt;
-            ie.bytes = new byte[elementLength];
-            data.get(ie.bytes);
+            if (defrag != null) {
+                if (defrag.bytesRead == 0) {
+                    // Malformed IE skipping
+                    break;
+                }
+                // Skip first three bytes: eid, len, eidExt as it is already processed.
+                ie.bytes = Arrays.copyOfRange(defrag.bytes, 3, defrag.bytes.length);
+                int newPosition = data.position() + defrag.bytesRead;
+                data.position(newPosition);
+            } else {
+                ie.bytes = new byte[elementLength];
+                data.get(ie.bytes);
+            }
             infoElements.add(ie);
         }
         return infoElements.toArray(new InformationElement[infoElements.size()]);
@@ -1086,6 +1183,47 @@ public class InformationElementUtil {
             return commonInfoLength;
         }
 
+        /** Parse per STA sub element (not fragmented) of Multi link element. */
+        private Boolean parsePerStaSubElement(byte[] bytes, int start, int len) {
+            MloLink link = new MloLink();
+            link.setLinkId(
+                    bytes[start + PER_STA_SUB_ELEMENT_LINK_ID_OFFSET]
+                            & PER_STA_SUB_ELEMENT_LINK_ID_MASK);
+
+            int staInfoLength =
+                    bytes[start + PER_STA_SUB_ELEMENT_STA_INFO_OFFSET] & Constants.BYTE_MASK;
+            if (len < PER_STA_SUB_ELEMENT_STA_INFO_OFFSET + staInfoLength) {
+                if (DBG) {
+                    Log.w(TAG, "Invalid sta info length: " + staInfoLength);
+                }
+                // Skipping parsing of the IE
+                return false;
+            }
+
+            // Check if MAC Address is present
+            if ((bytes[start + PER_STA_SUB_ELEMENT_MAC_ADDRESS_PRESENT_OFFSET]
+                            & PER_STA_SUB_ELEMENT_MAC_ADDRESS_PRESENT_MASK)
+                    != 0) {
+                if (staInfoLength < 1 /*length*/ + 6 /*mac address*/) {
+                    if (DBG) {
+                        Log.w(TAG, "Invalid sta info length: " + staInfoLength);
+                    }
+                    // Skipping parsing of the IE
+                    return false;
+                }
+
+                int macAddressOffset =
+                        start
+                                + PER_STA_SUB_ELEMENT_STA_INFO_OFFSET
+                                + PER_STA_SUB_ELEMENT_STA_INFO_MAC_ADDRESS_OFFSET;
+                link.setApMacAddress(
+                        MacAddress.fromBytes(
+                                Arrays.copyOfRange(bytes, macAddressOffset, macAddressOffset + 6)));
+            }
+            mAffiliatedLinks.add(link);
+            return true;
+        }
+
         /**
          * Parse Link Info field in Multi-Link Operation IE
          *
@@ -1120,41 +1258,30 @@ public class InformationElementUtil {
                     continue;
                 }
 
-                MloLink link = new MloLink();
-                link.setLinkId(ie.bytes[startOffset + PER_STA_SUB_ELEMENT_LINK_ID_OFFSET]
-                        & PER_STA_SUB_ELEMENT_LINK_ID_MASK);
-
-                int staInfoLength = ie.bytes[startOffset + PER_STA_SUB_ELEMENT_STA_INFO_OFFSET]
-                        & Constants.BYTE_MASK;
-                if (subElementLen < PER_STA_SUB_ELEMENT_STA_INFO_OFFSET + staInfoLength) {
-                    if (DBG) {
-                        Log.w(TAG, "Invalid sta info length: " + staInfoLength);
-                    }
-                    // Skipping parsing of the IE
-                    return false;
-                }
-
-                // Check if MAC Address is present
-                if ((ie.bytes[startOffset + PER_STA_SUB_ELEMENT_MAC_ADDRESS_PRESENT_OFFSET]
-                        & PER_STA_SUB_ELEMENT_MAC_ADDRESS_PRESENT_MASK) != 0) {
-                    if (staInfoLength < 1 /*length*/ + 6 /*mac address*/) {
-                        if (DBG) {
-                            Log.w(TAG, "Invalid sta info length: " + staInfoLength);
-                        }
-                        // Skipping parsing of the IE
+                int bytesRead;
+                // Check for fragmentation before parsing per sta profile sub element
+                if (subElementLen == DefragmentElement.FRAG_MAX_LEN) {
+                    DefragmentElement defragment =
+                            new DefragmentElement(
+                                    ie.bytes,
+                                    startOffset,
+                                    PER_STA_SUB_ELEMENT_ID,
+                                    InformationElement.EID_FRAGMENT_SUB_ELEMENT_MULTI_LINK);
+                    bytesRead = defragment.bytesRead;
+                    if (defragment.bytesRead == 0 || defragment.bytes == null) {
                         return false;
                     }
-
-                    int macAddressOffset = startOffset + PER_STA_SUB_ELEMENT_STA_INFO_OFFSET
-                            + PER_STA_SUB_ELEMENT_STA_INFO_MAC_ADDRESS_OFFSET;
-                    link.setApMacAddress(MacAddress.fromBytes(Arrays.copyOfRange(ie.bytes,
-                            macAddressOffset, macAddressOffset + 6)));
+                    if (!parsePerStaSubElement(defragment.bytes, 0, defragment.bytes.length)) {
+                        return false;
+                    }
+                } else {
+                    bytesRead = subElementLen;
+                    if (!parsePerStaSubElement(ie.bytes, startOffset, subElementLen)) {
+                        return false;
+                    }
                 }
-
-                mAffiliatedLinks.add(link);
-
                 // Done with this sub-element
-                startOffset += subElementLen;
+                startOffset += bytesRead;
             }
 
             return true;
