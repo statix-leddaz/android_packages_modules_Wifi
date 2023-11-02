@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "45907adc_e7de521a",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-11-02T16:49:01Z",
+      "side": 1,
+      "message": "Merged. You can abandon this CL.",
+      "revId": "b48b16b06ed5fca5921f76eb33f2e59a9c385f05",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
