@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "1aa64371_3d8f0e28",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 9
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1962375
+      },
+      "writtenOn": "2023-11-03T22:18:06Z",
+      "side": 1,
+      "message": "This change does not add new APIs, but exposes an already existing API",
+      "revId": "df9c33f666ad45d310c9ad1989d988e89c56fa98",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
