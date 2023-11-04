@@ -278,7 +278,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     public static final int GROUP_CREATING_TIMED_OUT        =   BASE + 1;
 
     // User accepted a peer request
-    private static final int PEER_CONNECTION_USER_ACCEPT    =   BASE + 2;
+    @VisibleForTesting static final int PEER_CONNECTION_USER_ACCEPT = BASE + 2;
     // User rejected a peer request
     @VisibleForTesting
     static final int PEER_CONNECTION_USER_REJECT            =   BASE + 3;
@@ -993,6 +993,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
         DeathHandlerData dhd;
         synchronized (mLock) {
+            Log.d(TAG, "close binder:" + binder + " from mDeathDataByBinder:" + mDeathDataByBinder);
             dhd = mDeathDataByBinder.get(binder);
             if (dhd == null) {
                 Log.w(TAG, "close(): no death recipient for binder");
@@ -4189,6 +4190,9 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         replyToMessage(message,
                                 WifiP2pManager.SET_CONNECTION_REQUEST_RESULT_SUCCEEDED);
                         break;
+                    case DISABLE_P2P:
+                        mWifiP2pMetrics.endConnectionEvent(P2pConnectionEvent.CLF_GROUP_REMOVED);
+                        //remaining p2p disabling works will be handled in its parent states
                     default:
                         return NOT_HANDLED;
                 }
@@ -5712,12 +5716,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 join = false;
             } else if (join) {
                 int netId = mGroups.getNetworkId(dev.deviceAddress, ssid);
-                if (isInvited && netId < 0) {
-                    netId = mGroups.getNetworkId(dev.deviceAddress);
-                }
                 if (netId >= 0) {
                     // Skip WPS and start 4way handshake immediately.
                     return mWifiNative.p2pGroupAdd(netId);
+                } else {
+                    loge("The Network: " + ssid + " is not found in the persistent group list");
                 }
             }
 

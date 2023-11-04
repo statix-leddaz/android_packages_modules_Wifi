@@ -649,6 +649,19 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     }
 
     /**
+     * Send WifiP2pMonitor.P2P_INVITATION_RECEIVED_EVENT.
+     *
+     * @param group Peer group information
+     */
+    private void sendInvitationReceivedMsg(WifiP2pGroup group) throws Exception {
+        Message msg = Message.obtain();
+        msg.what = WifiP2pMonitor.P2P_INVITATION_RECEIVED_EVENT;
+        msg.obj = group;
+        mP2pStateMachineMessenger.send(Message.obtain(msg));
+        mLooper.dispatchAll();
+    }
+
+    /**
      * Mock send WifiP2pManager.SET_CHANNEL
      *
      * @param replyMessenger for checking replied message.
@@ -1545,6 +1558,12 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         sendNegotiationRequestEvent(config);
     }
 
+    /** Mock enter the user authorizing invite request state. */
+    private void mockEnterUserAuthorizingInviteRequestState() throws Exception {
+        mockPeersList();
+        // Enter UserAuthorizingNegotiationRequestState
+        sendInvitationReceivedMsg(mTestWifiP2pGroup);
+    }
 
     /**
      * Mock WifiP2pServiceImpl.mPeers.
@@ -3188,6 +3207,39 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                 eq(mClient1.getCallingUid()));
         assertEquals(mTestWifiP2pFastConnectionConfig.toString(),
                 configCaptor.getValue().toString());
+    }
+
+    @Test
+    public void testStartFastConnectionEventWhenSendConnectWithConfigAndP2pClose()
+            throws Exception {
+        setTargetSdkGreaterThanT();
+        forceP2pEnabled(mClient1);
+        when(mWifiNative.p2pGroupAdd(any(), eq(true))).thenReturn(true);
+
+        sendConnectMsg(mClientMessenger, mTestWifiP2pFastConnectionConfig);
+        if (SdkLevel.isAtLeastT()) {
+            verify(mWifiPermissionsUtil, atLeastOnce()).checkNearbyDevicesPermission(
+                    any(), eq(true), any());
+            verify(mWifiPermissionsUtil, never()).checkCanAccessWifiDirect(
+                    any(), any(), anyInt(), anyBoolean());
+        } else {
+            verify(mWifiPermissionsUtil).checkCanAccessWifiDirect(eq(TEST_PACKAGE_NAME),
+                    eq("testFeature"), anyInt(), eq(false));
+        }
+
+        ArgumentCaptor<WifiP2pConfig> configCaptor =
+                ArgumentCaptor.forClass(WifiP2pConfig.class);
+        verify(mWifiP2pMetrics).startConnectionEvent(
+                eq(P2pConnectionEvent.CONNECTION_FAST),
+                configCaptor.capture(),
+                eq(WifiMetricsProto.GroupEvent.GROUP_CLIENT),
+                eq(mClient1.getCallingUid()));
+        assertEquals(mTestWifiP2pFastConnectionConfig.toString(),
+                configCaptor.getValue().toString());
+
+        mWifiP2pServiceImpl.close(mClient1);
+        mLooper.dispatchAll();
+        verify(mWifiP2pMetrics).endConnectionEvent(eq(P2pConnectionEvent.CLF_GROUP_REMOVED));
     }
 
     /**
@@ -7452,6 +7504,29 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
 
         verify(mWifiNative).p2pConnect(eq(mTestWifiP2pPeerConfig), anyBoolean());
         verify(mWifiP2pMetrics).setFallbackToNegotiationOnInviteStatusInfoUnavailable();
+    }
+
+    @Test
+    public void testFallbackToP2pConnectWithWpsProvisioningOnInviteRequestFromAnUnknownNetwork()
+            throws Exception {
+        forceP2pEnabled(mClient1);
+        mockEnterUserAuthorizingInviteRequestState();
+        // Return an unknown network name
+        when(mWifiNative.p2pGetSsid(eq(mTestWifiP2pDevice.deviceAddress)))
+                .thenReturn(mTestWifiP2pGroup.getNetworkName() + "unknown");
+        sendSimpleMsg(null, WifiP2pServiceImpl.PEER_CONNECTION_USER_ACCEPT);
+        verify(mWifiNative, never()).p2pGroupAdd(anyInt());
+        verify(mWifiNative).p2pConnect(any(), anyBoolean());
+    }
+
+    @Test
+    public void testP2pSetupPersistentGroupOnInviteRequestFromAKnownNetwork() throws Exception {
+        forceP2pEnabled(mClient1);
+        mockEnterUserAuthorizingInviteRequestState();
+        when(mWifiNative.p2pGetSsid(eq(mTestWifiP2pDevice.deviceAddress)))
+                .thenReturn(mTestWifiP2pGroup.getNetworkName());
+        sendSimpleMsg(null, WifiP2pServiceImpl.PEER_CONNECTION_USER_ACCEPT);
+        verify(mWifiNative).p2pGroupAdd(anyInt());
     }
 
     @Test
