@@ -56,6 +56,7 @@ import static android.net.wifi.WifiScanner.WIFI_BAND_24_GHZ;
 import static android.net.wifi.WifiScanner.WIFI_BAND_5_GHZ;
 import static android.os.Process.WIFI_UID;
 import static android.os.Process.myUid;
+
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_LOCAL_ONLY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
@@ -66,8 +67,11 @@ import static com.android.server.wifi.SelfRecovery.REASON_API_CALL;
 import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_NONE;
 import static com.android.server.wifi.WifiSettingsConfigStore.SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI;
 import static com.android.server.wifi.WifiSettingsConfigStore.SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI_SET_BY_API;
+import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_STA_FACTORY_MAC_ADDRESS;
 import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_VERBOSE_LOGGING_ENABLED;
+
 import static com.google.common.truth.Truth.assertThat;
+
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -278,6 +282,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     private static final String TEST_PACKAGE_NAME_OTHER = "TestPackageOther";
     private static final String TEST_FEATURE_ID = "TestFeature";
     private static final String SYSUI_PACKAGE_NAME = "com.android.systemui";
+    private static final String CERT_INSTALLER_PACKAGE_NAME = "com.android.certinstaller";
     private static final int TEST_PID = 6789;
     private static final int TEST_PID2 = 9876;
     private static final int TEST_UID = 1200000;
@@ -7318,6 +7323,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testGetFactoryMacAddresses() throws Exception {
+        when(mWifiGlobals.isSaveFactoryMacToConfigStoreEnabled()).thenReturn(true);
+        when(mWifiSettingsConfigStore.get(WIFI_STA_FACTORY_MAC_ADDRESS)).thenReturn(null);
         when(mClientModeManager.getFactoryMacAddress()).thenReturn(TEST_FACTORY_MAC);
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
         mLooper.startAutoDispatch();
@@ -7326,6 +7333,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         assertEquals(1, factoryMacs.length);
         assertEquals(TEST_FACTORY_MAC, factoryMacs[0]);
         verify(mClientModeManager).getFactoryMacAddress();
+        verify(mWifiSettingsConfigStore).get(WIFI_STA_FACTORY_MAC_ADDRESS);
     }
 
     /**
@@ -7373,6 +7381,20 @@ public class WifiServiceImplTest extends WifiBaseTest {
             assertTrue("Exception message should contain 'factory MAC'",
                     e.toString().contains("factory MAC"));
         }
+    }
+
+    @Test
+    public void testGetFactoryMacAddressesSuccessFromSettingStore() throws Exception {
+        when(mWifiGlobals.isSaveFactoryMacToConfigStoreEnabled()).thenReturn(true);
+        when(mWifiSettingsConfigStore.get(WIFI_STA_FACTORY_MAC_ADDRESS))
+                .thenReturn(TEST_FACTORY_MAC);
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+        when(mClientModeManager.getFactoryMacAddress()).thenReturn(TEST_FACTORY_MAC);
+        final String[] factoryMacs = mWifiServiceImpl.getFactoryMacAddresses();
+        assertEquals(1, factoryMacs.length);
+        assertEquals(TEST_FACTORY_MAC, factoryMacs[0]);
+        mLooper.dispatchAll();
+        verify(mClientModeManager, never()).getFactoryMacAddress();
     }
 
     /**
@@ -7701,7 +7723,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mPasspointManager, never())
                 .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean(),
                         eq(false));
-
     }
 
     /**
@@ -7807,6 +7828,42 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
                 anyBoolean(), eq(false));
+    }
+
+    /**
+     * Verify that addOrUpdatePasspointConfiguration disconnects from current captive portal network
+     * when provisioned via WifiInstaller.
+     */
+    @Test
+    public void addOrUpdatePasspointConfigDisconnectsCaptivePortal() throws Exception {
+        doReturn(AppOpsManager.MODE_ALLOWED).when(mAppOpsManager)
+                .noteOp(AppOpsManager.OPSTR_CHANGE_WIFI_STATE,
+                        Process.myUid(), CERT_INSTALLER_PACKAGE_NAME);
+        when(mWifiPermissionsUtil.isTargetSdkLessThan(anyString(),
+                eq(Build.VERSION_CODES.R), anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.isSystem(anyString(), anyInt())).thenReturn(true);
+        PasspointConfiguration config = new PasspointConfiguration();
+        HomeSp homeSp = new HomeSp();
+        homeSp.setFqdn("test.com");
+        config.setHomeSp(homeSp);
+        WifiConfiguration captivePortalConfig =
+                WifiConfigurationTestUtil.createCaptivePortalNetwork();
+        WifiInfo wifiInfo = new WifiInfo();
+        wifiInfo.setNetworkId(captivePortalConfig.networkId);
+        when(mActiveModeWarden.getConnectionInfo()).thenReturn(wifiInfo);
+        when(mWifiConfigManager.getConfiguredNetworkWithPassword(captivePortalConfig.networkId))
+                .thenReturn(captivePortalConfig);
+
+        when(mPasspointManager.addOrUpdateProvider(
+                config, Binder.getCallingUid(), CERT_INSTALLER_PACKAGE_NAME, false, true, false))
+                .thenReturn(true);
+        mLooper.startAutoDispatch();
+        assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config,
+                CERT_INSTALLER_PACKAGE_NAME));
+        mLooper.stopAutoDispatchAndIgnoreExceptions();
+        verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
+                anyBoolean(), eq(false));
+        verify(mClientModeManager).disconnect();
     }
 
     /**
