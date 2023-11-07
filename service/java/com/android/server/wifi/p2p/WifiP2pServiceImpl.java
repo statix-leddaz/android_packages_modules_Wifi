@@ -3979,6 +3979,12 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             mPeers.updateStatus(groupOwner.deviceAddress,
                                     WifiP2pDevice.CONNECTED);
                             sendPeersChangedBroadcast();
+                        } else if (!EMPTY_DEVICE_ADDRESS.equals(groupOwner.deviceAddress)) {
+                            logd("Add group owner into mPeers: " + groupOwner);
+                            mPeers.updateSupplicantDetails(groupOwner);
+                            mPeers.updateStatus(groupOwner.deviceAddress,
+                                    WifiP2pDevice.CONNECTED);
+                            sendPeersChangedBroadcast();
                         } else {
                             // A supplicant bug can lead to reporting an invalid
                             // group owner address (all zeroes) at times. Avoid a
