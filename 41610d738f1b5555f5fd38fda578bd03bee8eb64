@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "98f28bfe_3fce79b6",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1467989
+      },
+      "writtenOn": "2023-11-07T17:45:19Z",
+      "side": 1,
+      "message": "This will not fix the test, as the prebuilt is from udc-mainline-prod. And our CTS doesn\u0027t have the backward compatible, this test should only run with the android V code base - V module or V system.",
+      "revId": "41610d738f1b5555f5fd38fda578bd03bee8eb64",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
