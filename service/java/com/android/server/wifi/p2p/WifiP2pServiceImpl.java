@@ -278,7 +278,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     public static final int GROUP_CREATING_TIMED_OUT        =   BASE + 1;
 
     // User accepted a peer request
-    private static final int PEER_CONNECTION_USER_ACCEPT    =   BASE + 2;
+    @VisibleForTesting static final int PEER_CONNECTION_USER_ACCEPT = BASE + 2;
     // User rejected a peer request
     @VisibleForTesting
     static final int PEER_CONNECTION_USER_REJECT            =   BASE + 3;
@@ -2550,12 +2550,14 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             Log.i(TAG, "No valid package name, ignore ENABLE_P2P");
                             break;
                         }
+                        mWifiInjector.getWifiP2pConnection().setP2pInWaitingState(true);
                         int proceedWithOperation =
                                 mInterfaceConflictManager.manageInterfaceConflictForStateMachine(
                                         TAG, message, mP2pStateMachine, mWaitingState,
                                         mP2pDisabledState, HalDeviceManager.HDM_CREATE_IFACE_P2P,
                                         createRequestorWs(message.sendingUid, packageName),
                                         false /* bypassDialog */);
+                        mWifiInjector.getWifiP2pConnection().setP2pInWaitingState(false);
                         if (proceedWithOperation == InterfaceConflictManager.ICM_ABORT_COMMAND) {
                             Log.e(TAG, "User refused to set up P2P");
                             updateThisDevice(WifiP2pDevice.UNAVAILABLE);
@@ -2624,12 +2626,14 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             Log.i(TAG, "No valid package name, do not set up the P2P interface");
                             return NOT_HANDLED;
                         }
+                        mWifiInjector.getWifiP2pConnection().setP2pInWaitingState(true);
                         int proceedWithOperation =
                                 mInterfaceConflictManager.manageInterfaceConflictForStateMachine(
                                         TAG, message, mP2pStateMachine, mWaitingState,
                                         mP2pDisabledState, HalDeviceManager.HDM_CREATE_IFACE_P2P,
                                         createRequestorWs(message.sendingUid, packageName),
                                         false /* bypassDialog */);
+                        mWifiInjector.getWifiP2pConnection().setP2pInWaitingState(false);
                         if (proceedWithOperation == InterfaceConflictManager.ICM_ABORT_COMMAND) {
                             Log.e(TAG, "User refused to set up P2P");
                             updateThisDevice(WifiP2pDevice.UNAVAILABLE);
@@ -5716,12 +5720,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 join = false;
             } else if (join) {
                 int netId = mGroups.getNetworkId(dev.deviceAddress, ssid);
-                if (isInvited && netId < 0) {
-                    netId = mGroups.getNetworkId(dev.deviceAddress);
-                }
                 if (netId >= 0) {
                     // Skip WPS and start 4way handshake immediately.
                     return mWifiNative.p2pGroupAdd(netId);
+                } else {
+                    loge("The Network: " + ssid + " is not found in the persistent group list");
                 }
             }
 
