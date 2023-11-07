@@ -1,6 +1,23 @@
 {
   "comments": [
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "e98cff7c_5e108426",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 5
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-11-07T11:57:32Z",
+      "side": 1,
+      "message": "Hi Les,\n\nWe will be taking care of your review comments in the next CL.\n\nThanks,\nRashmi",
+      "revId": "4891425f525340e7057cdbe2879e8dfdb01758f3",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "1906503d_49a78843",
@@ -14,6 +31,30 @@
       "writtenOn": "2023-11-02T12:28:54Z",
       "side": 1,
       "message": "duplicated check",
+      "range": {
+        "startLine": 1760,
+        "startChar": 20,
+        "endLine": 1760,
+        "endChar": 70
+      },
+      "revId": "4891425f525340e7057cdbe2879e8dfdb01758f3",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "036ea6b5_1de9bc2a",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 5
+      },
+      "lineNbr": 1760,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-11-07T11:57:32Z",
+      "side": 1,
+      "message": "Yes we will remove one - mMockWifiModem.getMockWifiNl80211Manager() !\u003d null",
+      "parentUuid": "1906503d_49a78843",
       "range": {
         "startLine": 1760,
         "startChar": 20,
@@ -49,6 +90,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "73f112e9_4e54beb1",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 5
+      },
+      "lineNbr": 1821,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-11-07T11:57:32Z",
+      "side": 1,
+      "message": "As discussed, will add util method in MockWifiServiceUtil class and use the same util method here.",
+      "parentUuid": "e5cd3c6c_7c78279e",
+      "range": {
+        "startLine": 1818,
+        "startChar": 12,
+        "endLine": 1821,
+        "endChar": 58
+      },
+      "revId": "4891425f525340e7057cdbe2879e8dfdb01758f3",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "33c3339d_dc9d1c25",
         "filename": "service/java/com/android/server/wifi/WifiServiceImpl.java",
         "patchSetId": 5
@@ -72,6 +137,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "1e876b63_2f0954f2",
+        "filename": "service/java/com/android/server/wifi/WifiServiceImpl.java",
+        "patchSetId": 5
+      },
+      "lineNbr": 7164,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-11-07T11:57:32Z",
+      "side": 1,
+      "message": "Yes will revert the change.",
+      "parentUuid": "33c3339d_dc9d1c25",
+      "range": {
+        "startLine": 7162,
+        "startChar": 0,
+        "endLine": 7164,
+        "endChar": 20
+      },
+      "revId": "4891425f525340e7057cdbe2879e8dfdb01758f3",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "26c86ac4_7967a409",
         "filename": "service/java/com/android/server/wifi/scanner/WificondScannerImpl.java",
         "patchSetId": 5
@@ -83,6 +172,30 @@
       "writtenOn": "2023-11-02T12:28:54Z",
       "side": 1,
       "message": "Please revert the change, the code should work only when PNO support. Since the cuttlefish didn\u0027t support PNO, we should ignore the test.\n\ni.e. make the change in your code base locally only since you still need this to run test in the cuttlefish.",
+      "range": {
+        "startLine": 461,
+        "startChar": 0,
+        "endLine": 464,
+        "endChar": 20
+      },
+      "revId": "4891425f525340e7057cdbe2879e8dfdb01758f3",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "a4355bc5_38561d8b",
+        "filename": "service/java/com/android/server/wifi/scanner/WificondScannerImpl.java",
+        "patchSetId": 5
+      },
+      "lineNbr": 464,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-11-07T11:57:32Z",
+      "side": 1,
+      "message": "Yes will revert the change.",
+      "parentUuid": "26c86ac4_7967a409",
       "range": {
         "startLine": 461,
         "startChar": 0,
