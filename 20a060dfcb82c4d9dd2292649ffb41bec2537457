@@ -67,6 +67,24 @@
       "message": "Compared to our mainline, I see the following change missing in your codebase.\n\n```\n\nUpdate signal poll only for associated links\n\nAffiliated MLO links are collected from scan results. So it shows all\nthe links supported by the AP. Signal poll is only for the associated\nlinks. So update the results only for associated links, otherwise link\nproperties will get reset to default for un-associated links.\n\ne.g. if AP supports three links (2.4 Ghz, 5 Ghz and 6 GHz) and station\nsupports only two links (5 Ghz and 6 Ghz), signal poll will defaults 2.4\nGhz link as,\n\nAP MLO Affiliated links:\n\tlink2 - UNKNOWN BAND, channel: -1 state:\n\t\tMLO_LINK_STATE_UNASSOCIATED\n        link1 - 5GHz, channel: 36, state: MLO_LINK_STATE_ACTIVE\n        link0 - 6GHz, channel: 5,  state: MLO_LINK_STATE_ACTIVE\n\nBy updating signal poll results only for associated links,\n\nAP MLO Affiliated links:\n\tlink2 - 2.4GHz, channel: 6 state: MLO_LINK_STATE_UNASSOCIATED\n        link1 - 5GHz, channel: 36, state: MLO_LINK_STATE_ACTIVE\n        link0 - 6GHz, channel: 5,  state: MLO_LINK_STATE_ACTIVE\n\nBug: 288197695\nTest: atest FrameworksWifiTests\nChange-Id: I8d9ec65be2ea8fbdc0e9ec92a5754e7dcf86eee1\n```",
       "revId": "20a060dfcb82c4d9dd2292649ffb41bec2537457",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b2ac10bf_3283aba8",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 2677,
+      "author": {
+        "id": 1795615
+      },
+      "writtenOn": "2023-11-08T10:33:02Z",
+      "side": 1,
+      "message": "This patch is upstreamed based on aosp master branch, in our internal branch we have this patch I8d9ec65be2ea8fbdc0e9ec92a5754e7dcf86eee1.",
+      "parentUuid": "a1ab86c4_7a1a11c5",
+      "revId": "20a060dfcb82c4d9dd2292649ffb41bec2537457",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
