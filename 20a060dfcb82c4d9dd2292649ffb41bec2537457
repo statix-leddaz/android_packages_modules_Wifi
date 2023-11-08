@@ -85,6 +85,24 @@
       "parentUuid": "a1ab86c4_7a1a11c5",
       "revId": "20a060dfcb82c4d9dd2292649ffb41bec2537457",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "58298cc1_612cc008",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 2677,
+      "author": {
+        "id": 1955380
+      },
+      "writtenOn": "2023-11-08T19:28:02Z",
+      "side": 1,
+      "message": "Acknowledged",
+      "parentUuid": "b2ac10bf_3283aba8",
+      "revId": "20a060dfcb82c4d9dd2292649ffb41bec2537457",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
