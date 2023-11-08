@@ -139,6 +139,7 @@ import com.android.server.wifi.WifiDiagnostics;
 import com.android.server.wifi.WifiDialogManager;
 import com.android.server.wifi.WifiGlobals;
 import com.android.server.wifi.WifiInjector;
+import com.android.server.wifi.WifiP2pConnection;
 import com.android.server.wifi.WifiSettingsConfigStore;
 import com.android.server.wifi.coex.CoexManager;
 import com.android.server.wifi.proto.nano.WifiMetricsProto;
@@ -274,6 +275,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Mock DeviceConfigFacade mDeviceConfigFacade;
     @Mock TetheringManager mTetheringManager;
     @Mock WifiDiagnostics mWifiDiagnostics;
+    @Mock WifiP2pConnection mWifiP2pConnection;
 
     private void generatorTestData() {
         mTestWifiP2pGroup = new WifiP2pGroup();
@@ -644,6 +646,19 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         Message msg = Message.obtain();
         msg.what = WifiP2pMonitor.P2P_INVITATION_RESULT_EVENT;
         msg.obj = status;
+        mP2pStateMachineMessenger.send(Message.obtain(msg));
+        mLooper.dispatchAll();
+    }
+
+    /**
+     * Send WifiP2pMonitor.P2P_INVITATION_RECEIVED_EVENT.
+     *
+     * @param group Peer group information
+     */
+    private void sendInvitationReceivedMsg(WifiP2pGroup group) throws Exception {
+        Message msg = Message.obtain();
+        msg.what = WifiP2pMonitor.P2P_INVITATION_RECEIVED_EVENT;
+        msg.obj = group;
         mP2pStateMachineMessenger.send(Message.obtain(msg));
         mLooper.dispatchAll();
     }
@@ -1345,6 +1360,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         when(mWifiInjector.makeBroadcastOptions()).thenReturn(mBroadcastOptions);
         when(mWifiInjector.getWifiDialogManager()).thenReturn(mWifiDialogManager);
         when(mWifiInjector.getLastCallerInfoManager()).thenReturn(mLastCallerInfoManager);
+        when(mWifiInjector.getWifiP2pConnection()).thenReturn(mWifiP2pConnection);
+
         when(mWifiDialogManager.createP2pInvitationReceivedDialog(any(), anyBoolean(), any(),
                 anyInt(), any(), any())).thenReturn(mDialogHandle);
         when(mWifiDialogManager.createP2pInvitationSentDialog(any(), any(), anyInt()))
@@ -1545,6 +1562,12 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         sendNegotiationRequestEvent(config);
     }
 
+    /** Mock enter the user authorizing invite request state. */
+    private void mockEnterUserAuthorizingInviteRequestState() throws Exception {
+        mockPeersList();
+        // Enter UserAuthorizingNegotiationRequestState
+        sendInvitationReceivedMsg(mTestWifiP2pGroup);
+    }
 
     /**
      * Mock WifiP2pServiceImpl.mPeers.
@@ -7485,6 +7508,29 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
 
         verify(mWifiNative).p2pConnect(eq(mTestWifiP2pPeerConfig), anyBoolean());
         verify(mWifiP2pMetrics).setFallbackToNegotiationOnInviteStatusInfoUnavailable();
+    }
+
+    @Test
+    public void testFallbackToP2pConnectWithWpsProvisioningOnInviteRequestFromAnUnknownNetwork()
+            throws Exception {
+        forceP2pEnabled(mClient1);
+        mockEnterUserAuthorizingInviteRequestState();
+        // Return an unknown network name
+        when(mWifiNative.p2pGetSsid(eq(mTestWifiP2pDevice.deviceAddress)))
+                .thenReturn(mTestWifiP2pGroup.getNetworkName() + "unknown");
+        sendSimpleMsg(null, WifiP2pServiceImpl.PEER_CONNECTION_USER_ACCEPT);
+        verify(mWifiNative, never()).p2pGroupAdd(anyInt());
+        verify(mWifiNative).p2pConnect(any(), anyBoolean());
+    }
+
+    @Test
+    public void testP2pSetupPersistentGroupOnInviteRequestFromAKnownNetwork() throws Exception {
+        forceP2pEnabled(mClient1);
+        mockEnterUserAuthorizingInviteRequestState();
+        when(mWifiNative.p2pGetSsid(eq(mTestWifiP2pDevice.deviceAddress)))
+                .thenReturn(mTestWifiP2pGroup.getNetworkName());
+        sendSimpleMsg(null, WifiP2pServiceImpl.PEER_CONNECTION_USER_ACCEPT);
+        verify(mWifiNative).p2pGroupAdd(anyInt());
     }
 
     @Test
