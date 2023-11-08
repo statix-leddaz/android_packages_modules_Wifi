@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "50250047_2cd6518c",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-11-08T12:53:22Z",
+      "side": 1,
+      "message": "Hi Les,\n\nReview comments are taken care in this CL. Please review and provide your inputs.\nCreated this CL only for PNO scan test case.\n\nRegards,\nRashmi",
+      "revId": "e187de6393047de6da63438cd82629810e3c3c7b",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
