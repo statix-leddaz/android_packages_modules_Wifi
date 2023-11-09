@@ -16,6 +16,24 @@
       "message": "This will not fix the test, as the prebuilt is from udc-mainline-prod. And our CTS doesn\u0027t have the backward compatible, this test should only run with the android V code base - V module or V system.",
       "revId": "41610d738f1b5555f5fd38fda578bd03bee8eb64",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "2834482f_f8ee55b7",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-09T08:39:19Z",
+      "side": 1,
+      "message": "Thanks Nate to point out this. My intention is upstream patch to AOSP since we are working on adding new CTS test cases by mock wifi in AOSP.",
+      "parentUuid": "98f28bfe_3fce79b6",
+      "revId": "41610d738f1b5555f5fd38fda578bd03bee8eb64",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ],
   "submitRequirementResults": [
