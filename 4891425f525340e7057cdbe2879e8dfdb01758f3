@@ -65,6 +65,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "83d3d624_c50fb715",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 5
+      },
+      "lineNbr": 1760,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-09T08:48:15Z",
+      "side": 1,
+      "message": "nit: Close the comment if you addressed it in last CL.\nThanks.",
+      "parentUuid": "036ea6b5_1de9bc2a",
+      "range": {
+        "startLine": 1760,
+        "startChar": 20,
+        "endLine": 1760,
+        "endChar": 70
+      },
+      "revId": "4891425f525340e7057cdbe2879e8dfdb01758f3",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "e5cd3c6c_7c78279e",
@@ -102,6 +126,30 @@
       "side": 1,
       "message": "As discussed, will add util method in MockWifiServiceUtil class and use the same util method here.",
       "parentUuid": "e5cd3c6c_7c78279e",
+      "range": {
+        "startLine": 1818,
+        "startChar": 12,
+        "endLine": 1821,
+        "endChar": 58
+      },
+      "revId": "4891425f525340e7057cdbe2879e8dfdb01758f3",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "c0b41117_f13e4fd4",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 5
+      },
+      "lineNbr": 1821,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-09T08:48:15Z",
+      "side": 1,
+      "message": "Acknowledged",
+      "parentUuid": "73f112e9_4e54beb1",
       "range": {
         "startLine": 1818,
         "startChar": 12,
