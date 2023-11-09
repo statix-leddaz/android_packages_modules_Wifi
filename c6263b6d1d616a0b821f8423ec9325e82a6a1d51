@@ -24,6 +24,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "25713172_5a9b1207",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 1810,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-09T09:04:09Z",
+      "side": 1,
+      "message": "Resolved the comment after checking code in WifiNl80211Manager.",
+      "parentUuid": "eca93f44_9d893561",
+      "range": {
+        "startLine": 1810,
+        "startChar": 76,
+        "endLine": 1810,
+        "endChar": 93
+      },
+      "revId": "c6263b6d1d616a0b821f8423ec9325e82a6a1d51",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "9b55ef8d_d01561fb",
