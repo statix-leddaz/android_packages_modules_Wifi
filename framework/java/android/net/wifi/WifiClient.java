@@ -105,7 +105,7 @@ public final class WifiClient implements Parcelable {
     }
 
     @Override
-    public boolean equals(@NonNull Object o) {
+    public boolean equals(@Nullable Object o) {
         if (this == o) return true;
         if (!(o instanceof WifiClient)) return false;
         WifiClient client = (WifiClient) o;
