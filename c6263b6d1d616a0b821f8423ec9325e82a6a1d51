@@ -3,6 +3,29 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "eca93f44_9d893561",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 1810,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-09T08:51:01Z",
+      "side": 1,
+      "message": "Question, what is \"getPnoScanResults\"? Why do we use different method here? i.e. Why is not \"getScanResults\"?",
+      "range": {
+        "startLine": 1810,
+        "startChar": 76,
+        "endLine": 1810,
+        "endChar": 93
+      },
+      "revId": "c6263b6d1d616a0b821f8423ec9325e82a6a1d51",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "9b55ef8d_d01561fb",
         "filename": "service/java/com/android/server/wifi/WifiNative.java",
         "patchSetId": 10
