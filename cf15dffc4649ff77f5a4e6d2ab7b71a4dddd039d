@@ -1,0 +1,188 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "197aeaf6_3eb70af8",
+        "filename": "tests/hostsidetests/multidevices/test/Android.bp",
+        "patchSetId": 2
+      },
+      "lineNbr": 56,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-11-14T23:06:10Z",
+      "side": 1,
+      "message": "Out of curiosity: why is this configured so differently from the other `python_test_host`?",
+      "range": {
+        "startLine": 56,
+        "startChar": 0,
+        "endLine": 56,
+        "endChar": 16
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "7f101579_cd276281",
+        "filename": "tests/hostsidetests/multidevices/test/Android.bp",
+        "patchSetId": 2
+      },
+      "lineNbr": 65,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-11-14T23:06:10Z",
+      "side": 1,
+      "message": "Can we add new tests to CTS at this stage?",
+      "range": {
+        "startLine": 65,
+        "startChar": 9,
+        "endLine": 65,
+        "endChar": 12
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "94bffe85_446d297c",
+        "filename": "tests/hostsidetests/multidevices/test/direct/constants.py",
+        "patchSetId": 2
+      },
+      "lineNbr": 84,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-11-14T23:06:10Z",
+      "side": 1,
+      "message": "This isn\u0027t an arbitrary int - it\u0027s effectively an enum. What\u0027s the cleanest way to represent that and possibly provide the enum values?",
+      "range": {
+        "startLine": 84,
+        "startChar": 37,
+        "endLine": 84,
+        "endChar": 40
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "157135de_14c61fbb",
+        "filename": "tests/hostsidetests/multidevices/test/direct/constants.py",
+        "patchSetId": 2
+      },
+      "lineNbr": 85,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-11-14T23:06:10Z",
+      "side": 1,
+      "message": "same",
+      "range": {
+        "startLine": 85,
+        "startChar": 24,
+        "endLine": 85,
+        "endChar": 27
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "9e180901_99c82056",
+        "filename": "tests/hostsidetests/multidevices/test/direct/snippet/WifiP2pManagerSnippet.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 54,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-11-14T23:06:10Z",
+      "side": 1,
+      "message": "Question for clarification: what\u0027s the benefit of having this custom exception?",
+      "range": {
+        "startLine": 50,
+        "startChar": 4,
+        "endLine": 54,
+        "endChar": 5
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "2d0ef0d1_4c9d5a4c",
+        "filename": "tests/hostsidetests/multidevices/test/direct/snippet/WifiP2pManagerSnippet.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 157,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-11-14T23:06:10Z",
+      "side": 1,
+      "message": "Why is there an extra event posted?",
+      "range": {
+        "startLine": 157,
+        "startChar": 37,
+        "endLine": 157,
+        "endChar": 51
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b30b7926_65c41f9f",
+        "filename": "tests/hostsidetests/multidevices/test/direct/wifi_direct_test.py",
+        "patchSetId": 2
+      },
+      "lineNbr": 47,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-11-14T23:06:10Z",
+      "side": 1,
+      "message": "Should these be in `constants.py`?",
+      "range": {
+        "startLine": 45,
+        "startChar": 0,
+        "endLine": 47,
+        "endChar": 42
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "641d1383_2e47c3b7",
+        "filename": "tests/hostsidetests/multidevices/test/direct/wifi_direct_test.py",
+        "patchSetId": 2
+      },
+      "lineNbr": 146,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-11-14T23:06:10Z",
+      "side": 1,
+      "message": "Question for clarification: do we get a P2P_CONNECTED on creating a group (not a connect)?",
+      "range": {
+        "startLine": 146,
+        "startChar": 19,
+        "endLine": 146,
+        "endChar": 47
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
