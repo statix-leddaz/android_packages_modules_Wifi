@@ -215,6 +215,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "b32579e9_d9b4d020",
+        "filename": "tests/hostsidetests/multidevices/test/Android.bp",
+        "patchSetId": 2
+      },
+      "lineNbr": 65,
+      "author": {
+        "id": 1664360
+      },
+      "writtenOn": "2023-11-15T17:23:19Z",
+      "side": 1,
+      "message": "Removed cts tag, thanks for the clarification",
+      "parentUuid": "2707b37c_573cfc01",
+      "range": {
+        "startLine": 65,
+        "startChar": 9,
+        "endLine": 65,
+        "endChar": 12
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "94bffe85_446d297c",
