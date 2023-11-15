@@ -169,6 +169,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "79f27c2e_52a1dab9",
+        "filename": "tests/hostsidetests/multidevices/test/Android.bp",
+        "patchSetId": 2
+      },
+      "lineNbr": 65,
+      "author": {
+        "id": 1799018
+      },
+      "writtenOn": "2023-11-15T07:14:02Z",
+      "side": 1,
+      "message": "Test will be packed into CTS if you add the \u0027cts\u0027 tag. Currently all CTS tests are triggered by Tradefed, it will cause error if the test can not run with Tradefed.",
+      "parentUuid": "46618064_ec7122a9",
+      "range": {
+        "startLine": 65,
+        "startChar": 9,
+        "endLine": 65,
+        "endChar": 12
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "94bffe85_446d297c",
         "filename": "tests/hostsidetests/multidevices/test/direct/constants.py",
         "patchSetId": 2
