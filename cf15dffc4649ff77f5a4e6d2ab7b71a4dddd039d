@@ -26,6 +26,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "25b4c8f5_ca68fe30",
+        "filename": "tests/hostsidetests/multidevices/test/Android.bp",
+        "patchSetId": 2
+      },
+      "lineNbr": 56,
+      "author": {
+        "id": 1664360
+      },
+      "writtenOn": "2023-11-15T00:21:13Z",
+      "side": 1,
+      "message": "Thanks for pointing out. Because I need to use wifi_direct_constants as one of libs which is different with `CtsWifiMultiDevicePythonDefaults`. I can set `defualts` and override `libs` if needed.",
+      "parentUuid": "197aeaf6_3eb70af8",
+      "range": {
+        "startLine": 56,
+        "startChar": 0,
+        "endLine": 56,
+        "endChar": 16
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "7f101579_cd276281",
         "filename": "tests/hostsidetests/multidevices/test/Android.bp",
         "patchSetId": 2
@@ -37,6 +61,30 @@
       "writtenOn": "2023-11-14T23:06:10Z",
       "side": 1,
       "message": "Can we add new tests to CTS at this stage?",
+      "range": {
+        "startLine": 65,
+        "startChar": 9,
+        "endLine": 65,
+        "endChar": 12
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "afeb826b_11aa2858",
+        "filename": "tests/hostsidetests/multidevices/test/Android.bp",
+        "patchSetId": 2
+      },
+      "lineNbr": 65,
+      "author": {
+        "id": 1664360
+      },
+      "writtenOn": "2023-11-15T00:21:13Z",
+      "side": 1,
+      "message": "It will be built to CTS with adding this flag. Is this one of goals we are going to achieve? Or we should disable it at this stage? Thank you.",
+      "parentUuid": "7f101579_cd276281",
       "range": {
         "startLine": 65,
         "startChar": 9,
@@ -106,6 +154,30 @@
       "writtenOn": "2023-11-14T23:06:10Z",
       "side": 1,
       "message": "Question for clarification: what\u0027s the benefit of having this custom exception?",
+      "range": {
+        "startLine": 50,
+        "startChar": 4,
+        "endLine": 54,
+        "endChar": 5
+      },
+      "revId": "cf15dffc4649ff77f5a4e6d2ab7b71a4dddd039d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "659b7649_a2bba056",
+        "filename": "tests/hostsidetests/multidevices/test/direct/snippet/WifiP2pManagerSnippet.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 54,
+      "author": {
+        "id": 1664360
+      },
+      "writtenOn": "2023-11-15T00:21:13Z",
+      "side": 1,
+      "message": "Just for a clear name on the exception name in mobly logs, like the following.\n\n```\n11-14 16:04:10.022 ERROR Exception occurred in test_wifi_direct_connect.\nTraceback (most recent call last):\n  File \"mobly/base_test.py\", line 783, in exec_one_test\n  File \"direct/wifi_direct_test.py\", line 101, in test_wifi_direct_connect\n  File \"mobly/snippet/client_base.py\", line 205, in rpc_call\n  File \"mobly/snippet/client_base.py\", line 294, in _rpc\n  File \"mobly/snippet/client_base.py\", line 400, in _handle_rpc_response\nmobly.snippet.errors.ApiError: \u003cAndroidDevice|Group Owner\u003e \n-------------- Java Stacktrace ---------------\ncom.google.snippet.wifi.direct.WifiP2pManagerSnippet$WifiP2pManagerException: Channel has not created, call p2pInitialize() first\n\tat com.google.snippet.wifi.direct.WifiP2pManagerSnippet.p2pCreateGroup(WifiP2pManagerSnippet.java:96)\n\tat java.lang.reflect.Method.invoke(Native Method)\n\tat com.google.android.mobly.snippet.manager.SnippetManager.invoke(SnippetManager.java:287)\n\tat com.google.android.mobly.snippet.manager.SnippetManager.invoke(SnippetManager.java:142)\n\tat com.google.android.mobly.snippet.rpc.MethodDescriptor.invoke(MethodDescriptor.java:101)\n\tat com.google.android.mobly.snippet.util.RpcUtil.invokeRpc(RpcUtil.java:128)\n\tat com.google.android.mobly.snippet.util.RpcUtil.invokeRpc(RpcUtil.java:103)\n\tat com.google.android.mobly.snippet.rpc.JsonRpcServer.handleRPCConnection(JsonRpcServer.java:83)\n\tat com.google.android.mobly.snippet.rpc.SimpleServer$ConnectionThread.run(SimpleServer.java:109)\n----------------------------------------------\n```\n\nShould we use default exception instead?",
+      "parentUuid": "9e180901_99c82056",
       "range": {
         "startLine": 50,
         "startChar": 4,
