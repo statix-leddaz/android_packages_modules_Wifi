@@ -1,0 +1,44 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "1d0ee53c_9bf3ab67",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 12
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-17T11:32:04Z",
+      "side": 1,
+      "message": "Please resolve the discuss thread if there is no action.\n\nThanks",
+      "revId": "5935c18b0d8a00d812f2050965fd5eec8b7a58c7",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b61ac19f_11dd4790",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 12
+      },
+      "lineNbr": 1812,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-17T11:32:04Z",
+      "side": 1,
+      "message": "why is MIN_SERVICE_IDX? Why can\u0027t use MOCK_NL80211_SERVICE?",
+      "range": {
+        "startLine": 1812,
+        "startChar": 40,
+        "endLine": 1812,
+        "endChar": 55
+      },
+      "revId": "5935c18b0d8a00d812f2050965fd5eec8b7a58c7",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
