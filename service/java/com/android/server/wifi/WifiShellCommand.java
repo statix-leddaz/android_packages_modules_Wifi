@@ -175,6 +175,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             "set-mock-wifimodem-service",
             "get-mock-wifimodem-service",
             "set-mock-wifimodem-methods",
+            "force-pno-support",
     };
 
     private static final Map<String, Pair<NetworkRequest, ConnectivityManager.NetworkCallback>>
@@ -1837,6 +1838,16 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         return -1;
                     }
                     return 0;
+                case "force-pno-support": {
+                    boolean enabled = getNextArgRequiredTrueOrFalse("enabled", "disabled");
+                    if (mWifiService.forcePNOSupport(enabled)) {
+                        pw.print("true");
+                    } else {
+                        pw.print("fail to force Pno Support");
+                        return -1;
+                    }
+                    return 0;
+                }
                 default:
                     return handleDefaultCommands(cmd);
             }

@@ -118,6 +118,7 @@ public class WifiNative {
     private NetdWrapper mNetdWrapper;
     private boolean mVerboseLoggingEnabled = false;
     private boolean mIsEnhancedOpenSupported = false;
+    private boolean mIsPnoSupported = false;
     private final List<CoexUnsafeChannel> mCachedCoexUnsafeChannels = new ArrayList<>();
     private int mCachedCoexRestrictions;
     private CountryCodeChangeListenerInternal mCountryCodeChangeListener;
@@ -4983,5 +4984,23 @@ public class WifiNative {
      */
     public Set<List<Integer>> getSupportedBandCombinations(@NonNull String ifaceName) {
         return mWifiVendorHal.getSupportedBandCombinations(ifaceName);
+    }
+
+    /**
+     * Force PNO Support.
+     *
+     * @param enabled true or false for Pno support
+     */
+    public void forcePnoSupport(boolean enabled) {
+        mIsPnoSupported = enabled;
+    }
+
+    /**
+     * Get PNO Support.
+     *
+     * @return true on success, false otherwise.
+     */
+    public boolean getForcePnoSupport() {
+        return mIsPnoSupported;
     }
 }

@@ -7159,6 +7159,9 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     private boolean isPnoSupported() {
+        if (mWifiNative.getPnoSupport()) {
+            return true;
+        }
         return (getSupportedFeatures() & WifiManager.WIFI_FEATURE_PNO) != 0;
     }
 
@@ -7860,5 +7863,18 @@ public class WifiServiceImpl extends BaseWifiService {
                     + " Missing NETWORK_SETTINGS permission");
         }
         return mWifiNative.setMockWifiMethods(methods);
+    }
+
+    /**
+     * Force Pno Support for testing
+     */
+    public boolean forcePNOSupport(Boolean enabled) {
+        int uid = Binder.getCallingUid();
+        if (!mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)) {
+            throw new SecurityException(TAG + " Uid " + uid
+                    + " Missing NETWORK_SETTINGS permission");
+        }
+        mWifiNative.forcePNOSupport(enabled);
+        return mWifiNative.getForcePnoSupport();
     }
 }
