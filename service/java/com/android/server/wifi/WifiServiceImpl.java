@@ -7159,6 +7159,9 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     private boolean isPnoSupported() {
+        if (mWifiNative.getPnoSupport()) {
+            return true;
+        }
         return (getSupportedFeatures() & WifiManager.WIFI_FEATURE_PNO) != 0;
     }
 
