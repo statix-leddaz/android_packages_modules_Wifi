@@ -162,12 +162,16 @@ public class WifiAwareAgentNetworkSpecifier extends NetworkSpecifier implements 
         }
 
         Parcel parcel = Parcel.obtain();
-        ns.writeToParcel(parcel, 0);
-        byte[] bytes = parcel.marshall();
+        try {
+            ns.writeToParcel(parcel, 0);
+            byte[] bytes = parcel.marshall();
 
-        mDigester.reset();
-        mDigester.update(bytes);
-        return new ByteArrayWrapper(mDigester.digest());
+            mDigester.reset();
+            mDigester.update(bytes);
+            return new ByteArrayWrapper(mDigester.digest());
+        } finally {
+            parcel.recycle();
+        }
     }
 
     private static class ByteArrayWrapper implements Parcelable {
