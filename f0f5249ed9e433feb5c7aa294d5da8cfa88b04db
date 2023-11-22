@@ -18,6 +18,24 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "0bb7442d_743a9e95",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-22T06:19:56Z",
+      "side": 1,
+      "message": "The code doesn\u0027t match the design doc. Please check the feedback from the design doc.",
+      "parentUuid": "80973d43_d58f4b92",
+      "revId": "f0f5249ed9e433feb5c7aa294d5da8cfa88b04db",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "9c6e1bca_ce714cfe",
