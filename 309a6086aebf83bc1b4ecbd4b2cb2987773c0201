@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "3c52ca6b_da7241c4",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-11-22T09:44:31Z",
+      "side": 1,
+      "message": "Hi Les, \nPlease find the CL for Supplicant implementation. Please review and provide your feedback.\nThanks",
+      "revId": "309a6086aebf83bc1b4ecbd4b2cb2987773c0201",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
