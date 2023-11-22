@@ -16,6 +16,29 @@
       "message": "Hi Les,\n\nPlease review the WIP CL on Pno Support in CF and share your inputs.\n\nThanks,\nPiyali.",
       "revId": "f0f5249ed9e433feb5c7aa294d5da8cfa88b04db",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "9c6e1bca_ce714cfe",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 1843,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-22T06:18:14Z",
+      "side": 1,
+      "message": "We should route to WifiService to do permission check",
+      "range": {
+        "startLine": 1843,
+        "startChar": 20,
+        "endLine": 1843,
+        "endChar": 57
+      },
+      "revId": "f0f5249ed9e433feb5c7aa294d5da8cfa88b04db",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
