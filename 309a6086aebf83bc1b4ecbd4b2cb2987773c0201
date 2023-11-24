@@ -16,6 +16,184 @@
       "message": "Hi Les, \nPlease find the CL for Supplicant implementation. Please review and provide your feedback.\nThanks",
       "revId": "309a6086aebf83bc1b4ecbd4b2cb2987773c0201",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "d05d4c30_b740fa1a",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-24T08:45:10Z",
+      "side": 1,
+      "message": "Please fix the coding style issue. Thanks",
+      "revId": "309a6086aebf83bc1b4ecbd4b2cb2987773c0201",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b8da7034_5b4b03c9",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 122,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-24T08:45:10Z",
+      "side": 1,
+      "message": "Please fix this WARNING reported by Check Contents: Please remove the trailing whitespace.\n\nAnalyzer Description: Validates that changes do not have prohibited expressions in them.\nOwner: ayeaye-team@google.com\n\nPlease remove the trailing whitespace.",
+      "range": {
+        "startLine": 122,
+        "startChar": 45,
+        "endLine": 122,
+        "endChar": 49
+      },
+      "revId": "309a6086aebf83bc1b4ecbd4b2cb2987773c0201",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b61e3c9d_106bd0d9",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 150,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-24T08:45:10Z",
+      "side": 1,
+      "message": "Please fix the coding style issue. Thanks",
+      "range": {
+        "startLine": 150,
+        "startChar": 11,
+        "endLine": 150,
+        "endChar": 19
+      },
+      "revId": "309a6086aebf83bc1b4ecbd4b2cb2987773c0201",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "9b454fd5_00e95c56",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 169,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-24T08:45:10Z",
+      "side": 1,
+      "message": "Please fix this WARNING reported by Check Contents: Please remove the trailing whitespace.\n\nAnalyzer Description: Validates that changes do not have prohibited expressions in them.\nOwner: ayeaye-team@google.com\n\nPlease remove the trailing whitespace.",
+      "range": {
+        "startLine": 169,
+        "startChar": 56,
+        "endLine": 169,
+        "endChar": 61
+      },
+      "revId": "309a6086aebf83bc1b4ecbd4b2cb2987773c0201",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "9939270b_e222855f",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 169,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-24T08:45:10Z",
+      "side": 1,
+      "message": "Please fix this WARNING reported by Check Contents: Please remove the trailing whitespace.\n\nAnalyzer Description: Validates that changes do not have prohibited expressions in them.\nOwner: ayeaye-team@google.com\n\nPlease remove the trailing whitespace.",
+      "range": {
+        "startLine": 169,
+        "startChar": 56,
+        "endLine": 169,
+        "endChar": 61
+      },
+      "revId": "309a6086aebf83bc1b4ecbd4b2cb2987773c0201",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b633a171_c00740a6",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 183,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-24T08:45:10Z",
+      "side": 1,
+      "message": "Please fix this WARNING reported by Check Contents: Please remove the trailing whitespace.\n\nAnalyzer Description: Validates that changes do not have prohibited expressions in them.\nOwner: ayeaye-team@google.com\n\nPlease remove the trailing whitespace.",
+      "range": {
+        "startLine": 183,
+        "startChar": 36,
+        "endLine": 183,
+        "endChar": 40
+      },
+      "revId": "309a6086aebf83bc1b4ecbd4b2cb2987773c0201",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "70c54ca2_d04a41b3",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 233,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-24T08:45:10Z",
+      "side": 1,
+      "message": "Why here is using Wifi80211Manager?",
+      "range": {
+        "startLine": 232,
+        "startChar": 22,
+        "endLine": 233,
+        "endChar": 86
+      },
+      "revId": "309a6086aebf83bc1b4ecbd4b2cb2987773c0201",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "4060a1cc_213bc2fb",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 233,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-24T08:45:10Z",
+      "side": 1,
+      "message": "Please fix this WARNING reported by Check Contents: Please remove the trailing whitespace.\n\nAnalyzer Description: Validates that changes do not have prohibited expressions in them.\nOwner: ayeaye-team@google.com\n\nPlease remove the trailing whitespace.",
+      "range": {
+        "startLine": 233,
+        "startChar": 86,
+        "endLine": 233,
+        "endChar": 98
+      },
+      "revId": "309a6086aebf83bc1b4ecbd4b2cb2987773c0201",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
