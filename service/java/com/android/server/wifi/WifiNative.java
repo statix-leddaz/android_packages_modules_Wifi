@@ -126,7 +126,6 @@ public class WifiNative {
     private long mCachedFeatureSet;
     private boolean mQosPolicyFeatureEnabled = false;
     private final Map<String, String> mWifiCondIfacesForBridgedAp = new ArrayMap<>();
-    private MockWifiServiceUtil mMockWifiModem = null;
     private InterfaceObserverInternal mInterfaceObserver;
     private InterfaceEventCallback mInterfaceListener;
     private @WifiManager.MloMode int mCachedMloMode = WifiManager.MLO_MODE_DEFAULT;
@@ -1807,11 +1806,12 @@ public class WifiNative {
      * Returns an empty ArrayList on failure.
      */
     public ArrayList<ScanDetail> getPnoScanResults(@NonNull String ifaceName) {
-        if (mMockWifiModem != null
-                && mMockWifiModem.getIsMethodConfigured(
+        if (mWifiInjector.getMockWifiServiceUtil() != null
+                && mWifiInjector.getMockWifiServiceUtil().getIsMethodConfigured(
                     MockWifiServiceUtil.MOCK_NL80211_SERVICE, "getPnoScanResults")) {
             Log.i(TAG, "getPnoScanResults was called from mock wificond");
-            return convertNativeScanResults(ifaceName, mMockWifiModem.getWifiNl80211Manager()
+            return convertNativeScanResults(ifaceName,
+                    mWifiInjector.getMockWifiServiceUtil().getWifiNl80211Manager()
                    .getScanResults(ifaceName, WifiNl80211Manager.SCAN_TYPE_PNO_SCAN));
         }
         return convertNativeScanResults(ifaceName, mWifiCondManager.getScanResults(ifaceName,
@@ -1923,11 +1923,11 @@ public class WifiNative {
      * @return true on success.
      */
     public boolean startPnoScan(@NonNull String ifaceName, PnoSettings pnoSettings) {
-        if (mMockWifiModem != null
-                && mMockWifiModem.getIsMethodConfigured(
+        if (mWifiInjector.getMockWifiServiceUtil() != null
+                && mWifiInjector.getMockWifiServiceUtil().getIsMethodConfigured(
                 MockWifiServiceUtil.MOCK_NL80211_SERVICE, "startPnoScan")) {
             Log.i(TAG, "startPnoScan was called from mock wificond");
-            return mMockWifiModem.getWifiNl80211Manager()
+            return mWifiInjector.getMockWifiServiceUtil().getWifiNl80211Manager()
                     .startPnoScan(ifaceName, pnoSettings.toNativePnoSettings(),
                     Runnable::run,
                         new WifiNl80211Manager.PnoScanRequestCallback() {
@@ -3733,12 +3733,12 @@ public class WifiNative {
      */
     @Nullable
     public WifiSignalPollResults signalPoll(@NonNull String ifaceName) {
-        if (mMockWifiModem != null
-                && mMockWifiModem.getIsMethodConfigured(
+        if (mWifiInjector.getMockWifiServiceUtil() != null
+                && mWifiInjector.getMockWifiServiceUtil().getIsMethodConfigured(
                     MockWifiServiceUtil.MOCK_NL80211_SERVICE, "signalPoll")) {
             Log.i(TAG, "signalPoll was called from mock wificond");
-            WifiNl80211Manager.SignalPollResult result =
-                    mMockWifiModem.getWifiNl80211Manager().signalPoll(ifaceName);
+            WifiNl80211Manager.SignalPollResult result = mWifiInjector.getMockWifiServiceUtil()
+                    .getWifiNl80211Manager().signalPoll(ifaceName);
             if (result != null) {
                 // Convert WifiNl80211Manager#SignalPollResult to WifiSignalPollResults.
                 // Assume single link and linkId = 0.
@@ -4848,28 +4848,29 @@ public class WifiNative {
     public void setMockWifiService(String serviceName) {
         Log.d(TAG, "set MockWifiModemService to " + serviceName);
         if (TextUtils.isEmpty(serviceName)) {
-            mMockWifiModem.unbindMockModemService();
-            mMockWifiModem = null;
+            mWifiInjector.getMockWifiServiceUtil().unbindMockModemService();
+            mWifiInjector.setMockWifiServiceUtil(null);
             return;
         }
-        mMockWifiModem = new MockWifiServiceUtil(mContext, serviceName, mWifiMonitor);
-        if (mMockWifiModem == null) {
+        mWifiInjector.setMockWifiServiceUtil(new MockWifiServiceUtil(
+                mContext, serviceName, mWifiMonitor));
+        if (mWifiInjector.getMockWifiServiceUtil() == null) {
             Log.e(TAG, "MockWifiServiceUtil creation failed.");
             return;
         }
 
         // mock wifi modem service is set, try to bind all supported mock HAL services
-        mMockWifiModem.bindAllMockModemService();
+        mWifiInjector.getMockWifiServiceUtil().bindAllMockModemService();
         for (int service = MockWifiServiceUtil.MIN_SERVICE_IDX;
                 service < MockWifiServiceUtil.NUM_SERVICES; service++) {
             int retryCount = 0;
             IBinder binder;
             do {
-                binder = mMockWifiModem.getServiceBinder(service);
+                binder = mWifiInjector.getMockWifiServiceUtil().getServiceBinder(service);
                 retryCount++;
                 if (binder == null) {
                     Log.d(TAG, "Retry(" + retryCount + ") for "
-                            + mMockWifiModem.getModuleName(service));
+                            + mWifiInjector.getMockWifiServiceUtil().getModuleName(service));
                     try {
                         Thread.sleep(MockWifiServiceUtil.BINDER_RETRY_MILLIS);
                     } catch (InterruptedException e) {
@@ -4878,7 +4879,8 @@ public class WifiNative {
             } while ((binder == null) && (retryCount < MockWifiServiceUtil.BINDER_MAX_RETRY));
 
             if (binder == null) {
-                Log.e(TAG, "Mock " + mMockWifiModem.getModuleName(service) + " bind fail");
+                Log.e(TAG, "Mock " + mWifiInjector.getMockWifiServiceUtil()
+                        .getModuleName(service) + " bind fail");
             }
         }
     }
@@ -4887,7 +4889,8 @@ public class WifiNative {
      *  Returns mock wifi service name.
      */
     public String getMockWifiServiceName() {
-        String serviceName = mMockWifiModem != null ? mMockWifiModem.getServiceName() : null;
+        String serviceName = mWifiInjector.getMockWifiServiceUtil() != null ? mWifiInjector
+                .getMockWifiServiceUtil().getServiceName() : null;
         Log.d(TAG, "getMockWifiServiceName - service name is " + serviceName);
         return serviceName;
     }
@@ -4898,10 +4901,10 @@ public class WifiNative {
      * @param methods the methods string with formats HAL name - method name, ...
      */
     public boolean setMockWifiMethods(String methods) {
-        if (mMockWifiModem == null || methods == null) {
+        if (mWifiInjector.getMockWifiServiceUtil() == null || methods == null) {
             return false;
         }
-        return mMockWifiModem.setMockedMethods(methods);
+        return mWifiInjector.getMockWifiServiceUtil().setMockedMethods(methods);
     }
 
     /**
