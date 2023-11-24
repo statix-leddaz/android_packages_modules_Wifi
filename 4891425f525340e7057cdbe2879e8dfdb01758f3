@@ -89,6 +89,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "4748516d_fcb541d6",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 5
+      },
+      "lineNbr": 1760,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-11-24T08:54:50Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "036ea6b5_1de9bc2a",
+      "range": {
+        "startLine": 1760,
+        "startChar": 20,
+        "endLine": 1760,
+        "endChar": 70
+      },
+      "revId": "4891425f525340e7057cdbe2879e8dfdb01758f3",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "e5cd3c6c_7c78279e",
@@ -160,6 +184,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "44128a04_91ca5884",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 5
+      },
+      "lineNbr": 1821,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-11-24T08:54:50Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "73f112e9_4e54beb1",
+      "range": {
+        "startLine": 1818,
+        "startChar": 12,
+        "endLine": 1821,
+        "endChar": 58
+      },
+      "revId": "4891425f525340e7057cdbe2879e8dfdb01758f3",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "33c3339d_dc9d1c25",
@@ -207,6 +255,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "fde4b939_d138c600",
+        "filename": "service/java/com/android/server/wifi/WifiServiceImpl.java",
+        "patchSetId": 5
+      },
+      "lineNbr": 7164,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-11-24T08:54:50Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "1e876b63_2f0954f2",
+      "range": {
+        "startLine": 7162,
+        "startChar": 0,
+        "endLine": 7164,
+        "endChar": 20
+      },
+      "revId": "4891425f525340e7057cdbe2879e8dfdb01758f3",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "26c86ac4_7967a409",
@@ -244,6 +316,30 @@
       "side": 1,
       "message": "Yes will revert the change.",
       "parentUuid": "26c86ac4_7967a409",
+      "range": {
+        "startLine": 461,
+        "startChar": 0,
+        "endLine": 464,
+        "endChar": 20
+      },
+      "revId": "4891425f525340e7057cdbe2879e8dfdb01758f3",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "1b6500db_fda29c7a",
+        "filename": "service/java/com/android/server/wifi/scanner/WificondScannerImpl.java",
+        "patchSetId": 5
+      },
+      "lineNbr": 464,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-11-24T08:54:50Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "a4355bc5_38561d8b",
       "range": {
         "startLine": 461,
         "startChar": 0,

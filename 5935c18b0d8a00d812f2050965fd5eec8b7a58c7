@@ -39,6 +39,30 @@
       },
       "revId": "5935c18b0d8a00d812f2050965fd5eec8b7a58c7",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "756246cf_a5daa70d",
+        "filename": "service/java/com/android/server/wifi/WifiNative.java",
+        "patchSetId": 12
+      },
+      "lineNbr": 1812,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-11-24T08:54:50Z",
+      "side": 1,
+      "message": "yes it should be MOCK_NL80211_SERVICE and have modified now.\n\nThanks.",
+      "parentUuid": "b61ac19f_11dd4790",
+      "range": {
+        "startLine": 1812,
+        "startChar": 40,
+        "endLine": 1812,
+        "endChar": 55
+      },
+      "revId": "5935c18b0d8a00d812f2050965fd5eec8b7a58c7",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }

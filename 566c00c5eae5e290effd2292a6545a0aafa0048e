@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "47852782_35d381cf",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 15
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-11-24T08:54:50Z",
+      "side": 1,
+      "message": "Hi Les, \n\nMerge conflicts are resolved and updated new patchset.\nPlease help review and provide your inputs.\n\nRegards,\nRashmi",
+      "revId": "566c00c5eae5e290effd2292a6545a0aafa0048e",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
