@@ -16,6 +16,69 @@
       "message": "Hi Les,\nResolved the comments.Please review and share feedback.\n\nThanks\nVeerendra",
       "revId": "29e56b7a05baeb99ee80ce98a93a48615149ff9e",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "f236bbb4_5b6480fa",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-24T14:15:33Z",
+      "side": 1,
+      "message": "Can this CL build pass?",
+      "revId": "29e56b7a05baeb99ee80ce98a93a48615149ff9e",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "00024da2_06b55408",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 35,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-24T14:15:33Z",
+      "side": 1,
+      "message": "Where do we define MOCK_SUPPLICANT_SERVICE \u003d 1 ?",
+      "range": {
+        "startLine": 35,
+        "startChar": 0,
+        "endLine": 35,
+        "endChar": 53
+      },
+      "revId": "29e56b7a05baeb99ee80ce98a93a48615149ff9e",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "27b5bdd9_de410699",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 238,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-24T14:15:33Z",
+      "side": 1,
+      "message": "nit: Add DOTO here, then we will know it will be handled in another CL.",
+      "range": {
+        "startLine": 238,
+        "startChar": 0,
+        "endLine": 238,
+        "endChar": 29
+      },
+      "revId": "29e56b7a05baeb99ee80ce98a93a48615149ff9e",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
