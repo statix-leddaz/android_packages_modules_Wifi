@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "7dae8915_17e8507e",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-11-24T09:39:38Z",
+      "side": 1,
+      "message": "Hi Les,\n\nPlease find this CL in which added MockServiceUtil reference is added in WifiInjector . Please review and provide feedback.\n\nThanks\nVeerendra",
+      "revId": "cfd6b808eb36b657d8850fa93b3eb96b60ba0ba7",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
