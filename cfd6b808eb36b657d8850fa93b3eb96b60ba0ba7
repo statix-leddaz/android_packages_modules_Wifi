@@ -16,6 +16,23 @@
       "message": "Hi Les,\n\nPlease find this CL in which added MockServiceUtil reference is added in WifiInjector . Please review and provide feedback.\n\nThanks\nVeerendra",
       "revId": "cfd6b808eb36b657d8850fa93b3eb96b60ba0ba7",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "cc41858f_b3392614",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-24T14:11:05Z",
+      "side": 1,
+      "message": "Did you run the test atest FrameworksWifiApiTests” and “atest FrameworksWifiTests”?\nIf you did, please update it in commit message.\nAnd could you add more detail why do we need to move it to WifiInjector?\n\nThanks",
+      "revId": "cfd6b808eb36b657d8850fa93b3eb96b60ba0ba7",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
