@@ -58,6 +58,54 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "3275ae9c_050447a0",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 35,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-11-27T06:02:41Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "00024da2_06b55408",
+      "range": {
+        "startLine": 35,
+        "startChar": 0,
+        "endLine": 35,
+        "endChar": 53
+      },
+      "revId": "29e56b7a05baeb99ee80ce98a93a48615149ff9e",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "e574d0a2_1cc38cda",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 35,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-11-27T06:02:41Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "00024da2_06b55408",
+      "range": {
+        "startLine": 35,
+        "startChar": 0,
+        "endLine": 35,
+        "endChar": 53
+      },
+      "revId": "29e56b7a05baeb99ee80ce98a93a48615149ff9e",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "27b5bdd9_de410699",
@@ -71,6 +119,54 @@
       "writtenOn": "2023-11-24T14:15:33Z",
       "side": 1,
       "message": "nit: Add DOTO here, then we will know it will be handled in another CL.",
+      "range": {
+        "startLine": 238,
+        "startChar": 0,
+        "endLine": 238,
+        "endChar": 29
+      },
+      "revId": "29e56b7a05baeb99ee80ce98a93a48615149ff9e",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "1216947c_11e8488f",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 238,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-11-27T06:02:41Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "27b5bdd9_de410699",
+      "range": {
+        "startLine": 238,
+        "startChar": 0,
+        "endLine": 238,
+        "endChar": 29
+      },
+      "revId": "29e56b7a05baeb99ee80ce98a93a48615149ff9e",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "8688f4e7_ac4a61d3",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 238,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-11-27T06:02:41Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "27b5bdd9_de410699",
       "range": {
         "startLine": 238,
         "startChar": 0,
