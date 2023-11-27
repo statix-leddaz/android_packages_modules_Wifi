@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "13fcea15_526e4c9a",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-11-27T07:17:54Z",
+      "side": 1,
+      "message": "Hi Les,\nUpdated the commit message with the details.Please review and suggest if any changes needs to be done.\n\nThanks",
+      "revId": "6fc07ea7b3af01aff9238a0288faceaac8f8d872",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}

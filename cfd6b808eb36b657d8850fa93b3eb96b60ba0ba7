@@ -33,6 +33,24 @@
       "message": "Did you run the test atest FrameworksWifiApiTests” and “atest FrameworksWifiTests”?\nIf you did, please update it in commit message.\nAnd could you add more detail why do we need to move it to WifiInjector?\n\nThanks",
       "revId": "cfd6b808eb36b657d8850fa93b3eb96b60ba0ba7",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "423ce54f_d61f42da",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-11-27T07:17:54Z",
+      "side": 1,
+      "message": "Hi Les,\nUpdated the commit message with details.Please review and provide feedback.\n\nThanks",
+      "parentUuid": "cc41858f_b3392614",
+      "revId": "cfd6b808eb36b657d8850fa93b3eb96b60ba0ba7",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
