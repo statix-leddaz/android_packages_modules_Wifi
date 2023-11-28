@@ -16,6 +16,29 @@
       "message": "Hi Les,\nUpdated the commit message with the details.Please review and suggest if any changes needs to be done.\n\nThanks",
       "revId": "6fc07ea7b3af01aff9238a0288faceaac8f8d872",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "9588e7b0_be4937b8",
+        "filename": "service/java/com/android/server/wifi/WifiInjector.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 676,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-28T04:54:13Z",
+      "side": 1,
+      "message": "mockWifiServiceUtil",
+      "range": {
+        "startLine": 676,
+        "startChar": 59,
+        "endLine": 676,
+        "endChar": 79
+      },
+      "revId": "6fc07ea7b3af01aff9238a0288faceaac8f8d872",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
