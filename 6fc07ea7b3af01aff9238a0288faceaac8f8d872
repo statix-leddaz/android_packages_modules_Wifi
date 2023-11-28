@@ -39,6 +39,30 @@
       },
       "revId": "6fc07ea7b3af01aff9238a0288faceaac8f8d872",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "dd9f6575_afda9bc2",
+        "filename": "service/java/com/android/server/wifi/WifiInjector.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 676,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-11-28T10:14:40Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "9588e7b0_be4937b8",
+      "range": {
+        "startLine": 676,
+        "startChar": 59,
+        "endLine": 676,
+        "endChar": 79
+      },
+      "revId": "6fc07ea7b3af01aff9238a0288faceaac8f8d872",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
