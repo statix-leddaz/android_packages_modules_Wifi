@@ -21,6 +21,7 @@ import static com.android.server.wifi.ScanTestUtil.setupMockChannels;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.validateMockitoUsage;
 
 import android.app.test.TestAlarmManager;
 import android.content.Context;
@@ -30,21 +31,27 @@ import android.os.test.TestLooper;
 
 import androidx.test.filters.SmallTest;
 
+import com.android.dx.mockito.inline.extended.ExtendedMockito;
 import com.android.server.wifi.Clock;
 import com.android.server.wifi.MockResources;
 import com.android.server.wifi.MockWifiMonitor;
 import com.android.server.wifi.ScanResults;
 import com.android.server.wifi.WifiBaseTest;
+import com.android.server.wifi.WifiGlobals;
+import com.android.server.wifi.WifiInjector;
 import com.android.server.wifi.WifiMonitor;
 import com.android.server.wifi.WifiNative;
 import com.android.server.wifi.scanner.ChannelHelper.ChannelCollection;
 import com.android.wifi.resources.R;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.MockitoSession;
+import org.mockito.quality.Strictness;
 
 import java.util.List;
 import java.util.Set;
@@ -64,6 +71,8 @@ public class WificondPnoScannerTest extends WifiBaseTest {
     MockResources mResources;
     @Mock Clock mClock;
     WificondScannerImpl mScanner;
+    @Mock private WifiGlobals mWifiGlobals;
+    private MockitoSession mSession;
 
     @Before
     public void setup() throws Exception {
@@ -81,10 +90,30 @@ public class WificondPnoScannerTest extends WifiBaseTest {
                 new int[]{5945, 5985},
                 new int[]{58320, 60480});
 
+        // Need to mock WifiInjector since some code used in WificondScannerImpl calls
+        // WifiInjector.getInstance().
+        mSession = ExtendedMockito.mockitoSession()
+                .strictness(Strictness.LENIENT)
+                .mockStatic(WifiInjector.class, withSettings().lenient())
+                .startMocking();
+        WifiInjector wifiInjector = mock(WifiInjector.class);
+        when(wifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
+        lenient().when(WifiInjector.getInstance()).thenReturn(wifiInjector);
         when(mContext.getSystemService(Context.ALARM_SERVICE))
                 .thenReturn(mAlarmManager.getAlarmManager());
         when(mContext.getResources()).thenReturn(mResources);
         when(mClock.getElapsedSinceBootMillis()).thenReturn(SystemClock.elapsedRealtime());
+    }
+
+    /**
+     * Called after each test
+     */
+    @After
+    public void cleanup() {
+        validateMockitoUsage();
+        if (mSession != null) {
+            mSession.finishMocking();
+        }
     }
 
     /**
@@ -160,6 +189,7 @@ public class WificondPnoScannerTest extends WifiBaseTest {
     }
 
     private void createScannerWithHwPnoScanSupport() {
+        when(mWifiGlobals.isBackgroundScanSupported()).thenReturn(true);
         mResources.setBoolean(R.bool.config_wifi_background_scan_support, true);
         mScanner = new WificondScannerImpl(mContext, IFACE_NAME, mWifiNative, mWifiMonitor,
                 new WificondChannelHelper(mWifiNative), mLooper.getLooper(), mClock);

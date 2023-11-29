@@ -59,6 +59,7 @@ public class WifiGlobalsTest extends WifiBaseTest {
         mResources.setBoolean(R.bool.config_wifiSaveFactoryMacToWifiConfigStore, true);
         mResources.setStringArray(R.array.config_wifiForceDisableMacRandomizationSsidPrefixList,
                 new String[] {TEST_SSID});
+        mResources.setBoolean(R.bool.config_wifi_background_scan_support, true);
         when(mContext.getResources()).thenReturn(mResources);
 
         mWifiGlobals = new WifiGlobals(mContext);
@@ -177,5 +178,13 @@ public class WifiGlobalsTest extends WifiBaseTest {
         config.allowedProtocols.clear(WifiConfiguration.Protocol.RSN);
 
         assertTrue(mWifiGlobals.isDeprecatedSecurityTypeNetwork(config));
+    }
+
+    /**
+     * Test that background scan is supported returns true
+     */
+    @Test
+    public void testBackgroundScanSupported() throws Exception {
+        assertEquals(true, mWifiGlobals.isBackgroundScanSupported());
     }
 }

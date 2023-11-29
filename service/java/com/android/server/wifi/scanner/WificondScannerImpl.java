@@ -29,11 +29,11 @@ import android.util.Log;
 
 import com.android.server.wifi.Clock;
 import com.android.server.wifi.ScanDetail;
+import com.android.server.wifi.WifiInjector;
 import com.android.server.wifi.WifiMonitor;
 import com.android.server.wifi.WifiNative;
 import com.android.server.wifi.scanner.ChannelHelper.ChannelCollection;
 import com.android.server.wifi.util.NativeUtil;
-import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -459,7 +459,7 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
      */
     private boolean isHwPnoScanRequired(boolean isConnectedPno) {
         return (!isConnectedPno
-                && mContext.getResources().getBoolean(R.bool.config_wifi_background_scan_support));
+                && WifiInjector.getInstance().getWifiGlobals().isBackgroundScanSupported());
     }
 
     @Override
