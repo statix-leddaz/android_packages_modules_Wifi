@@ -178,4 +178,18 @@ public class WifiGlobalsTest extends WifiBaseTest {
 
         assertTrue(mWifiGlobals.isDeprecatedSecurityTypeNetwork(config));
     }
+
+    /**
+     * Verify background scan is supported
+     */
+    @Test
+    public void testBackgroundScanSupported() throws Exception {
+        mResources.setBoolean(R.bool.config_wifi_background_scan_support, false);
+        mWifiGlobals = new WifiGlobals(mContext);
+        assertFalse(mWifiGlobals.isBackgroundScanSupported());
+
+        mResources.setBoolean(R.bool.config_wifi_background_scan_support, true);
+        mWifiGlobals = new WifiGlobals(mContext);
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+    }
 }
