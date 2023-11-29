@@ -24,6 +24,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "02fcb3e3_efb6e733",
+        "filename": "framework/java/android/net/wifi/ScanResult.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 546,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-11-29T09:39:49Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "1ebf5c3c_73b7864b",
+      "range": {
+        "startLine": 538,
+        "startChar": 0,
+        "endLine": 546,
+        "endChar": 57
+      },
+      "revId": "111d131939196c1a5c178df8bebabd6b21f72c8d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "8c4b4afb_9853fcc2",
@@ -37,6 +61,30 @@
       "writtenOn": "2023-11-29T08:21:01Z",
       "side": 1,
       "message": "Annotations can refer to the above is60GHz to more better.",
+      "range": {
+        "startLine": 946,
+        "startChar": 0,
+        "endLine": 946,
+        "endChar": 12
+      },
+      "revId": "111d131939196c1a5c178df8bebabd6b21f72c8d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "307e4feb_0ad9f128",
+        "filename": "framework/java/android/net/wifi/ScanResult.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 946,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-11-29T09:39:49Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "8c4b4afb_9853fcc2",
       "range": {
         "startLine": 946,
         "startChar": 0,
@@ -93,6 +141,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "294237ed_4380bd58",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 4919,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-11-29T09:39:49Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "bd9a97af_a6c9c2a9",
+      "range": {
+        "startLine": 4919,
+        "startChar": 44,
+        "endLine": 4919,
+        "endChar": 48
+      },
+      "revId": "111d131939196c1a5c178df8bebabd6b21f72c8d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "ee1666b5_fb1373d4",
@@ -106,6 +178,30 @@
       "writtenOn": "2023-11-29T08:21:01Z",
       "side": 1,
       "message": "this should be isSupportMultiInternetDual5G.",
+      "range": {
+        "startLine": 399,
+        "startChar": 19,
+        "endLine": 399,
+        "endChar": 50
+      },
+      "revId": "111d131939196c1a5c178df8bebabd6b21f72c8d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "54db0cd5_be44c97d",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 399,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-11-29T09:39:49Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "ee1666b5_fb1373d4",
       "range": {
         "startLine": 399,
         "startChar": 19,
