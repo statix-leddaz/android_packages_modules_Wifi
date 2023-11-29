@@ -1,0 +1,96 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "1ebf5c3c_73b7864b",
+        "filename": "framework/java/android/net/wifi/ScanResult.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 546,
+      "author": {
+        "id": 1878533
+      },
+      "writtenOn": "2023-11-29T08:21:01Z",
+      "side": 1,
+      "message": "This definition refer to WifiScanner may be better.\n\nWIFI_BAND_5_GHZ_HIG -\u003e HIGH?",
+      "range": {
+        "startLine": 538,
+        "startChar": 0,
+        "endLine": 546,
+        "endChar": 57
+      },
+      "revId": "111d131939196c1a5c178df8bebabd6b21f72c8d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "8c4b4afb_9853fcc2",
+        "filename": "framework/java/android/net/wifi/ScanResult.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 946,
+      "author": {
+        "id": 1878533
+      },
+      "writtenOn": "2023-11-29T08:21:01Z",
+      "side": 1,
+      "message": "Annotations can refer to the above is60GHz to more better.",
+      "range": {
+        "startLine": 946,
+        "startChar": 0,
+        "endLine": 946,
+        "endChar": 12
+      },
+      "revId": "111d131939196c1a5c178df8bebabd6b21f72c8d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "bd9a97af_a6c9c2a9",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 4919,
+      "author": {
+        "id": 1878533
+      },
+      "writtenOn": "2023-11-29T08:21:01Z",
+      "side": 1,
+      "message": "this 5320 should be declared somewhere",
+      "range": {
+        "startLine": 4919,
+        "startChar": 44,
+        "endLine": 4919,
+        "endChar": 48
+      },
+      "revId": "111d131939196c1a5c178df8bebabd6b21f72c8d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "ee1666b5_fb1373d4",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 399,
+      "author": {
+        "id": 1878533
+      },
+      "writtenOn": "2023-11-29T08:21:01Z",
+      "side": 1,
+      "message": "this should be isSupportMultiInternetDual5G.",
+      "range": {
+        "startLine": 399,
+        "startChar": 19,
+        "endLine": 399,
+        "endChar": 50
+      },
+      "revId": "111d131939196c1a5c178df8bebabd6b21f72c8d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
