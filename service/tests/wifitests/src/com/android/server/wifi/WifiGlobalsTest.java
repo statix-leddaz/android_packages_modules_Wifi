@@ -2,7 +2,7 @@
  * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
+ * you may ntestBackgroundScanSupportedot use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
  *      http://www.apache.org/licenses/LICENSE-2.0
@@ -17,7 +17,7 @@
 package com.android.server.wifi;
 
 import static com.google.common.truth.Truth.assertThat;
-
+testBackgroundScanSupported
 import static junit.framework.Assert.assertEquals;
 
 import static org.junit.Assert.assertFalse;
@@ -131,6 +131,20 @@ public class WifiGlobalsTest extends WifiBaseTest {
     @Test
     public void testSaveFactoryMacToConfigStoreEnabled() throws Exception {
         assertEquals(true, mWifiGlobals.isSaveFactoryMacToConfigStoreEnabled());
+    }
+
+    /**
+     * Verify background scan is supported
+     */
+    @Test
+    public void testBackgroundScanSupported() throws Exception {
+        mResources.setBoolean(R.bool.config_wifi_background_scan_support, false);
+        mWifiGlobals = new WifiGlobals(mContext);
+        assertFalse(mWifiGlobals.isBackgroundScanSupported());
+
+        mResources.setBoolean(R.bool.config_wifi_background_scan_support, true);
+        mWifiGlobals = new WifiGlobals(mContext);
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
     }
 
     @Test
