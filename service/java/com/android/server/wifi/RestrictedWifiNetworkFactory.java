@@ -37,14 +37,22 @@ public class RestrictedWifiNetworkFactory extends NetworkFactory {
     private static final int SCORE_FILTER = Integer.MAX_VALUE;
 
     private final WifiConnectivityManager mWifiConnectivityManager;
+    private final NetworkCapabilities mCapabilitiesFilter;
     private Set<Integer> mRequestUids = new ArraySet<>();
 
     public RestrictedWifiNetworkFactory(Looper l, Context c, NetworkCapabilities f,
                                        WifiConnectivityManager connectivityManager) {
         super(l, c, TAG, f);
         mWifiConnectivityManager = connectivityManager;
+        mCapabilitiesFilter = f;
 
         setScoreFilter(SCORE_FILTER);
+    }
+
+    // package-private
+    void updateSubIdsInCapabilitiesFilter(Set<Integer> subIds) {
+        NetworkCapabilities newFilter = new NetworkCapabilities.Builder(mCapabilitiesFilter).setSubscriptionIds(subIds).build();
+        super.setCapabilityFilter(newFilter);
     }
 
     @Override

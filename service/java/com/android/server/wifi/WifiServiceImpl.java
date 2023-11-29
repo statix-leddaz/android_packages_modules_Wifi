@@ -174,6 +174,7 @@ import android.telephony.PhoneStateListener;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+import android.util.ArraySet;
 import android.util.EventLog;
 import android.util.Log;
 import android.util.Pair;
@@ -830,6 +831,8 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiInjector.getOemWifiNetworkFactory().register();
             mWifiInjector.getMultiInternetWifiNetworkFactory().register();
             mWifiInjector.getWifiP2pConnection().handleBootCompleted();
+
+            updateSubIdsInNetworkFactoryFilters();
             // Start to listen country code change to avoid query supported channels causes boot
             // time increased.
             mCountryCode.registerListener(mCountryCodeTracker);
@@ -5909,8 +5912,25 @@ public class WifiServiceImpl extends BaseWifiService {
                 WifiManager.STATUS_NETWORK_SUGGESTIONS_ERROR_INTERNAL);
         if (success != WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS) {
             Log.e(TAG, "Failed to add network suggestions");
+        } else {
+            // Post operation to handler thread
+            mWifiThreadRunner.post(() ->
+                    updateSubIdsInNetworkFactoryFilters());
         }
         return success;
+    }
+
+    private void updateSubIdsInNetworkFactoryFilters() {
+        Set<Integer> subIds = new ArraySet<>();
+        for (WifiNetworkSuggestion s : mWifiNetworkSuggestionsManager.getAllNetworkSuggestions()) {
+            if (s.getSubscriptionId() != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                subIds.add(s.getSubscriptionId());
+            }
+        }
+
+        mWifiInjector.getWifiNetworkFactory().updateSubIdsInCapabilitiesFilter(subIds);
+        mWifiInjector.getUntrustedWifiNetworkFactory().updateSubIdsInCapabilitiesFilter(subIds);
+        mWifiInjector.getRestrictedWifiNetworkFactory().updateSubIdsInCapabilitiesFilter(subIds);
     }
 
     /**
@@ -5942,6 +5962,10 @@ public class WifiServiceImpl extends BaseWifiService {
                 action), WifiManager.STATUS_NETWORK_SUGGESTIONS_ERROR_INTERNAL);
         if (success != WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS) {
             Log.e(TAG, "Failed to remove network suggestions");
+        } else {
+            // Post operation to handler thread
+            mWifiThreadRunner.post(() ->
+                    updateSubIdsInNetworkFactoryFilters());
         }
         return success;
     }

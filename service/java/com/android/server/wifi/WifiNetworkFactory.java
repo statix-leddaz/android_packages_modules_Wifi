@@ -151,6 +151,8 @@ public class WifiNetworkFactory extends NetworkFactory {
     private final ClientModeImplMonitor mClientModeImplMonitor;
     private final FrameworkFacade mFacade;
     private final MultiInternetManager mMultiInternetManager;
+    private final NetworkCapabilities mCapabilitiesFilter;
+
     private RemoteCallbackList<INetworkRequestMatchCallback> mRegisteredCallbacks;
     // Store all user approved access points for apps.
     @VisibleForTesting
@@ -592,6 +594,7 @@ public class WifiNetworkFactory extends NetworkFactory {
         mUserApprovedAccessPointMap = new HashMap<>();
         mFacade = facade;
         mMultiInternetManager = multiInternetManager;
+        mCapabilitiesFilter = nc;
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_SCREEN_ON);
@@ -617,6 +620,12 @@ public class WifiNetworkFactory extends NetworkFactory {
         activeModeWarden.registerModeChangeCallback(new ModeChangeCallback());
 
         setScoreFilter(SCORE_FILTER);
+    }
+
+    // package-private
+    void updateSubIdsInCapabilitiesFilter(Set<Integer> subIds) {
+        NetworkCapabilities newFilter = new NetworkCapabilities.Builder(mCapabilitiesFilter).setSubscriptionIds(subIds).build();
+        super.setCapabilityFilter(newFilter);
     }
 
     private void saveToStore() {
