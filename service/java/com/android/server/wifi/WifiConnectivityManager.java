@@ -408,13 +408,16 @@ public class WifiConnectivityManager {
                 // A BSSID can only exist in one band, so when evaluating candidates, only those
                 // with a different band from the primary will be considered.
                 secondaryCmmCandidates = candidates.stream()
-                        .filter(c -> ScanResult.toBand(c.getFrequency()) != primaryBand)
+                        .filter(c -> {
+                            return filterMultiInternetFrequency(
+                                    primaryInfo.getFrequency(), c.getFrequency());
+                        })
                         .collect(Collectors.toList());
             }
         } else {
             // Only allow the candidates have the same SSID as the primary.
             secondaryCmmCandidates = candidates.stream().filter(c -> {
-                return ScanResult.toBand(c.getFrequency()) != primaryBand
+                return filterMultiInternetFrequency(primaryInfo.getFrequency(), c.getFrequency())
                         && !primaryCcm.isAffiliatedLinkBssid(c.getKey().bssid) && TextUtils.equals(
                         c.getKey().matchInfo.networkSsid, primaryInfo.getSSID())
                         && c.getKey().networkId == primaryInfo.getNetworkId()
@@ -3381,6 +3384,16 @@ public class WifiConnectivityManager {
     @VisibleForTesting
     long getLastPeriodicSingleScanTimeStamp() {
         return mLastPeriodicSingleScanTimeStamp;
+    }
+
+    /**
+     * Utility band filter method for multi-internet use-case.
+     */
+    @VisibleForTesting
+    public boolean filterMultiInternetFrequency(int primaryFreq, int secondaryFreq) {
+        return mWifiGlobals.isSupportMultiInternetDual5G()
+                ? ScanResult.isValidCombinedBandForDual5GHz(primaryFreq, secondaryFreq)
+                : ScanResult.toBand(primaryFreq) != ScanResult.toBand(secondaryFreq);
     }
 
     /**
