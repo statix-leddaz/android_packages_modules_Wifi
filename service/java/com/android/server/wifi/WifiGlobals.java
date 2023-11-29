@@ -62,6 +62,7 @@ public class WifiGlobals {
     private final int mPollRssiLongIntervalMillis;
     private final int mClientRssiMonitorThresholdDbm;
     private final int mClientRssiMonitorHysteresisDb;
+    private final boolean mIsSupportMultiInternetDual5G;
     private final boolean mAdjustPollRssiIntervalEnabled;
     private final boolean mWifiInterfaceAddedSelfRecoveryEnabled;
     private final int mNetworkNotFoundEventThreshold;
@@ -115,6 +116,8 @@ public class WifiGlobals {
                 R.integer.config_wifiClientRssiMonitorHysteresisDb);
         mAdjustPollRssiIntervalEnabled = mContext.getResources().getBoolean(
                 R.bool.config_wifiAdjustPollRssiIntervalEnabled);
+        mIsSupportMultiInternetDual5G = mContext.getResources().getBoolean(
+                R.bool.config_wifiAllowMultiInternetConnectDual5GFrequency);
         mWifiInterfaceAddedSelfRecoveryEnabled = mContext.getResources().getBoolean(
                 R.bool.config_wifiInterfaceAddedSelfRecoveryEnabled);
         mDisableUnwantedNetworkOnLowRssi = mContext.getResources().getBoolean(
@@ -208,6 +211,14 @@ public class WifiGlobals {
      */
     public boolean isWpaPersonalDeprecated() {
         return mIsWpaPersonalDeprecated;
+    }
+
+    /**
+     * Get the configuration for whether Multi-internet are allowed to
+     * connect simultaneously to both 5GHz high and 5GHz low.
+     */
+    public boolean isSupportMultiInternetDual5G() {
+        return mIsSupportMultiInternetDual5G;
     }
 
     /**
@@ -431,5 +442,6 @@ public class WifiGlobals {
         pw.println("mNetworkNotFoundEventThreshold=" + mNetworkNotFoundEventThreshold);
         pw.println("mIsWepDeprecated=" + mIsWepDeprecated);
         pw.println("mIsWpaPersonalDeprecated=" + mIsWpaPersonalDeprecated);
+        pw.println("mIsSupportMultiInternetDual5G=" + mIsSupportMultiInternetDual5G);
     }
 }
