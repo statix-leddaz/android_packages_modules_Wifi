@@ -64,6 +64,7 @@ public class WifiGlobals {
     private final boolean mAdjustPollRssiIntervalEnabled;
     private final boolean mWifiInterfaceAddedSelfRecoveryEnabled;
     private final int mNetworkNotFoundEventThreshold;
+    private final boolean mIsBackgroundScanSupported;
     private final boolean mIsWepDeprecated;
     private final boolean mIsWpaPersonalDeprecated;
 
@@ -120,6 +121,8 @@ public class WifiGlobals {
                 R.bool.config_wifiDisableUnwantedNetworkOnLowRssi);
         mNetworkNotFoundEventThreshold = mContext.getResources().getInteger(
                 R.integer.config_wifiNetworkNotFoundEventThreshold);
+        mIsBackgroundScanSupported = mContext.getResources()
+                .getBoolean(R.bool.config_wifi_background_scan_support);
         mIsWepDeprecated = mContext.getResources()
                 .getBoolean(R.bool.config_wifiWepDeprecated);
         mIsWpaPersonalDeprecated = mContext.getResources()
@@ -387,6 +390,13 @@ public class WifiGlobals {
     }
 
     /**
+     * Get whether background scan is supported.
+     */
+    public boolean isBackgroundScanSupported() {
+        return mIsBackgroundScanSupported;
+    };
+
+    /**
      * Get the threshold to use for blocking a network due to NETWORK_NOT_FOUND_EVENT failure.
      */
     public int getNetworkNotFoundEventThreshold() {
@@ -421,6 +431,7 @@ public class WifiGlobals {
                 + mWifiInterfaceAddedSelfRecoveryEnabled);
         pw.println("mDisableUnwantedNetworkOnLowRssi=" + mDisableUnwantedNetworkOnLowRssi);
         pw.println("mNetworkNotFoundEventThreshold=" + mNetworkNotFoundEventThreshold);
+        pw.println("mIsBackgroundScanSupported=" + mIsBackgroundScanSupported);
         pw.println("mIsWepDeprecated=" + mIsWepDeprecated);
         pw.println("mIsWpaPersonalDeprecated=" + mIsWpaPersonalDeprecated);
     }
