@@ -110,6 +110,8 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
             case UNSPECIFIED:
             case ScanResult.WIFI_BAND_24_GHZ:
             case ScanResult.WIFI_BAND_5_GHZ:
+            case ScanResult.WIFI_BAND_5_GHZ_LOW:
+            case ScanResult.WIFI_BAND_5_GHZ_HIG:
             case ScanResult.WIFI_BAND_6_GHZ:
             case ScanResult.WIFI_BAND_60_GHZ:
                 return true;

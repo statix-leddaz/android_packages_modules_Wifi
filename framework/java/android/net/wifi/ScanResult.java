@@ -538,6 +538,16 @@ public final class ScanResult implements Parcelable {
     /**
      * @hide
      */
+    public static final int WIFI_BAND_5_GHZ_LOW = 1 << 6;
+
+    /**
+     * @hide
+     */
+    public static final int WIFI_BAND_5_GHZ_HIG = 1 << 8;
+
+    /**
+     * @hide
+     */
     @Retention(RetentionPolicy.SOURCE)
     @IntDef(prefix = {"WIFI_BAND_"}, value = {
             UNSPECIFIED,
@@ -930,6 +940,18 @@ public final class ScanResult implements Parcelable {
      */
     public static boolean is60GHz(int freqMhz) {
         return freqMhz >= BAND_60_GHZ_START_FREQ_MHZ && freqMhz <= BAND_60_GHZ_END_FREQ_MHZ;
+    }
+
+    /**
+     * @hide
+     */
+    public static boolean isCombineBandForDual5GHz(int freqMhz1, int freqMhz2) {
+        // 5GL : b1 36-48 b2 52-64(5320)
+        // 5GH : b3 100(5500)-144 b4 149-165
+        if ((freqMhz1 <= 5320 && freqMhz2 >= 5500) || (freqMhz2 <= 5320 && freqMhz1 >= 5500)) {
+            return true;
+        }
+        return false;
     }
 
     /**
