@@ -66,6 +66,7 @@ public class WifiGlobals {
     private final int mNetworkNotFoundEventThreshold;
     private final boolean mIsWepDeprecated;
     private final boolean mIsWpaPersonalDeprecated;
+    private final boolean mIsSupportMultiInternetDual5G;
 
     // This is set by WifiManager#setVerboseLoggingEnabled(int).
     private boolean mIsShowKeyVerboseLoggingModeEnabled = false;
@@ -124,6 +125,8 @@ public class WifiGlobals {
                 .getBoolean(R.bool.config_wifiWepDeprecated);
         mIsWpaPersonalDeprecated = mContext.getResources()
                 .getBoolean(R.bool.config_wifiWpaPersonalDeprecated);
+        mIsSupportMultiInternetDual5G = mContext.getResources().getBoolean(
+                R.bool.config_wifiAllowMultiInternetConnectDual5GFrequency);
         Set<String> unsupportedSsidPrefixes = new ArraySet<>(mContext.getResources().getStringArray(
                 R.array.config_wifiForceDisableMacRandomizationSsidPrefixList));
         if (!unsupportedSsidPrefixes.isEmpty()) {
@@ -393,6 +396,14 @@ public class WifiGlobals {
         return mNetworkNotFoundEventThreshold;
     }
 
+    /**
+     * Get the the configuration for whether multiple networks are allowed to
+     * connect simultaneously to both 5GHz high and 5GHz low.
+     */
+    public boolean isSupportMultiInternetDual5G() {
+        return mIsSupportMultiInternetDual5G;
+    }
+
     /** Dump method for debugging */
     public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         pw.println("Dump of WifiGlobals");
@@ -423,5 +434,6 @@ public class WifiGlobals {
         pw.println("mNetworkNotFoundEventThreshold=" + mNetworkNotFoundEventThreshold);
         pw.println("mIsWepDeprecated=" + mIsWepDeprecated);
         pw.println("mIsWpaPersonalDeprecated=" + mIsWpaPersonalDeprecated);
+        pw.println("mIsSupportMultiInternetDual5G=" + mIsSupportMultiInternetDual5G);
     }
 }

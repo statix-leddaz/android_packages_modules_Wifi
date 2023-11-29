@@ -133,7 +133,14 @@ public final class WifiNetworkAgentSpecifier extends NetworkSpecifier implements
 
         if (!mMatchLocalOnlySpecifiers) {
             // Specifiers that match non-local-only networks only match against the band.
-            return ns.getBand() == mBand;
+            if (mBand == ScanResult.WIFI_BAND_5_GHZ_LOW
+                    || mBand == ScanResult.WIFI_BAND_5_GHZ_HIGH) {
+                return ns.getBand() == ScanResult.WIFI_BAND_5_GHZ_LOW
+                        || ns.getBand() == ScanResult.WIFI_BAND_5_GHZ_HIGH
+                            || ns.getBand() == ScanResult.WIFI_BAND_5_GHZ;
+            } else {
+                return ns.getBand() == mBand;
+            }
         }
         if (ns.getBand() != ScanResult.UNSPECIFIED && ns.getBand() != mBand) {
             return false;
