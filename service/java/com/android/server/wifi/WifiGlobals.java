@@ -66,6 +66,7 @@ public class WifiGlobals {
     private final int mNetworkNotFoundEventThreshold;
     private final boolean mIsWepDeprecated;
     private final boolean mIsWpaPersonalDeprecated;
+    private final boolean mIsBackgroundScanSupported;
 
     // This is set by WifiManager#setVerboseLoggingEnabled(int).
     private boolean mIsShowKeyVerboseLoggingModeEnabled = false;
@@ -124,6 +125,8 @@ public class WifiGlobals {
                 .getBoolean(R.bool.config_wifiWepDeprecated);
         mIsWpaPersonalDeprecated = mContext.getResources()
                 .getBoolean(R.bool.config_wifiWpaPersonalDeprecated);
+        mIsBackgroundScanSupported = mContext.getResources()
+                .getBoolean(R.bool.config_wifi_background_scan_support);
         Set<String> unsupportedSsidPrefixes = new ArraySet<>(mContext.getResources().getStringArray(
                 R.array.config_wifiForceDisableMacRandomizationSsidPrefixList));
         if (!unsupportedSsidPrefixes.isEmpty()) {
@@ -393,6 +396,13 @@ public class WifiGlobals {
         return mNetworkNotFoundEventThreshold;
     }
 
+    /**
+     * Get whether background scan is supported.
+     */
+    public boolean isBackgroundScanSupported() {
+        return mIsBackgroundScanSupported;
+    };
+
     /** Dump method for debugging */
     public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         pw.println("Dump of WifiGlobals");
@@ -423,5 +433,6 @@ public class WifiGlobals {
         pw.println("mNetworkNotFoundEventThreshold=" + mNetworkNotFoundEventThreshold);
         pw.println("mIsWepDeprecated=" + mIsWepDeprecated);
         pw.println("mIsWpaPersonalDeprecated=" + mIsWpaPersonalDeprecated);
+        pw.println("mIsBackgroundScanSupported=" + mIsBackgroundScanSupported);
     }
 }
