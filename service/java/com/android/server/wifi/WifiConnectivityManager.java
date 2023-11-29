@@ -408,7 +408,17 @@ public class WifiConnectivityManager {
                 // A BSSID can only exist in one band, so when evaluating candidates, only those
                 // with a different band from the primary will be considered.
                 secondaryCmmCandidates = candidates.stream()
-                        .filter(c -> ScanResult.toBand(c.getFrequency()) != primaryBand)
+                        .filter(c -> {
+                            int band = ScanResult.toBand(c.getFrequency());
+                            if (band != ScanResult.WIFI_BAND_24_GHZ
+                                    && primaryBand != ScanResult.WIFI_BAND_24_GHZ) {
+                                return (mWifiGlobals.isSupportMultiInternetDual5G()
+                                        && ScanResult.isCombineBandForDual5GHz(
+                                            primaryInfo.getFrequency(), c.getFrequency()));
+                            } else {
+                                return band != primaryBand;
+                            }
+                        })
                         .collect(Collectors.toList());
             }
         } else {
