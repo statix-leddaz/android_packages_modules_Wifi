@@ -538,6 +538,16 @@ public final class ScanResult implements Parcelable {
     /**
      * @hide
      */
+    public static final int WIFI_BAND_5_GHZ_LOW = WifiScanner.WIFI_BAND_5_GHZ_LOW;
+
+    /**
+     * @hide
+     */
+    public static final int WIFI_BAND_5_GHZ_HIG = WifiScanner.WIFI_BAND_5_GHZ_HIGH;
+
+    /**
+     * @hide
+     */
     @Retention(RetentionPolicy.SOURCE)
     @IntDef(prefix = {"WIFI_BAND_"}, value = {
             UNSPECIFIED,
@@ -870,6 +880,16 @@ public final class ScanResult implements Parcelable {
      * @hide
      */
     public static final int BAND_60_GHZ_END_FREQ_MHZ = 70200;
+    /**
+     * The highest low frequency in 5GHz
+     * @hide
+     */
+    public static final int BAND_5_GHZ_LOW_HIGHEST_FREQ_MHZ = 5320;
+    /**
+     * The lowest high frequency in 5GHz
+     * @hide
+     */
+    public static final int BAND_5_GHZ_HIGH_LOWEST_FREQ_MHZ = 5500;
 
     /**
      * Utility function to check if a frequency within 2.4 GHz band
@@ -930,6 +950,26 @@ public final class ScanResult implements Parcelable {
      */
     public static boolean is60GHz(int freqMhz) {
         return freqMhz >= BAND_60_GHZ_START_FREQ_MHZ && freqMhz <= BAND_60_GHZ_END_FREQ_MHZ;
+    }
+
+    /**
+     * Utility function to check One is WIFI_BAND_5_GHZ_LOW and the other is WIFI_BAND_5_GHZ_HIGH.
+     * @param freqMhz1 primary or secondary freqMhz
+     * @param freqMhz2 primary or secondary freqMhz
+     * @return true if high and low, false otherwise
+     *
+     * @hide
+     */
+    public static boolean isCombineBandForDual5GHz(int freqMhz1, int freqMhz2) {
+        // 5GL : b1 36-48 b2 52-64(5320)
+        // 5GH : b3 100(5500)-144 b4 149-165
+        if ((freqMhz1 <= BAND_5_GHZ_LOW_HIGHEST_FREQ_MHZ
+                && freqMhz2 >= BAND_5_GHZ_HIGH_LOWEST_FREQ_MHZ)
+                    || (freqMhz2 <= BAND_5_GHZ_LOW_HIGHEST_FREQ_MHZ
+                        && freqMhz1 >= BAND_5_GHZ_HIGH_LOWEST_FREQ_MHZ)) {
+            return true;
+        }
+        return false;
     }
 
     /**
