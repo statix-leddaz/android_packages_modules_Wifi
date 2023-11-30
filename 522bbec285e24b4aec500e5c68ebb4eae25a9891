@@ -24,6 +24,29 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": true,
+      "key": {
+        "uuid": "6548a790_21adde83",
+        "filename": "/COMMIT_MSG",
+        "patchSetId": 1
+      },
+      "lineNbr": 10,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-11-30T09:06:57Z",
+      "side": 1,
+      "message": "Is test passed with this CL? I would like to confirm if the change in WificondScannerImpl is necessary for this test case.\n\nhttps://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Wifi/service/java/com/android/server/wifi/scanner/WificondScannerImpl.java;l\u003d462?q\u003dconfig_wifi_background_scan_support",
+      "range": {
+        "startLine": 10,
+        "startChar": 0,
+        "endLine": 10,
+        "endChar": 87
+      },
+      "revId": "522bbec285e24b4aec500e5c68ebb4eae25a9891",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": false,
       "key": {
         "uuid": "19d11f96_5057a204",
