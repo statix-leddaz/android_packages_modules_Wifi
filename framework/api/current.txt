@@ -373,6 +373,7 @@ package android.net.wifi {
     method @NonNull public java.util.List<android.net.wifi.MloLink> getAffiliatedMloLinks();
     method @Nullable public android.net.MacAddress getApMldMacAddress();
     method @IntRange(from=android.net.wifi.MloLink.INVALID_MLO_LINK_ID, to=0xf) public int getApMloLinkId();
+    method public long getApplicableRedactions();
     method @NonNull public java.util.List<android.net.wifi.MloLink> getAssociatedMloLinks();
     method public String getBSSID();
     method public int getCurrentSecurityType();
@@ -426,6 +427,7 @@ package android.net.wifi {
     method @NonNull public android.net.wifi.WifiInfo.Builder setNetworkId(int);
     method @NonNull public android.net.wifi.WifiInfo.Builder setRssi(int);
     method @NonNull public android.net.wifi.WifiInfo.Builder setSsid(@NonNull byte[]);
+    method @FlaggedApi(android.net.wifi.WifiInfo.Flags.ADD_SUBSCRIPTION_ID) @NonNull public android.net.wifi.WifiInfo.Builder setSubscriptionId(int);
   }
 
   public class WifiManager {
