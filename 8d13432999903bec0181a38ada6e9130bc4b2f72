@@ -43,6 +43,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "56ef236b_28186179",
+        "filename": "framework/java/android/net/wifi/WifiScanner.java",
+        "patchSetId": 4
+      },
+      "lineNbr": 79,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-12-01T02:44:46Z",
+      "side": 1,
+      "message": "I understand your idea, or we could define WIFI_BAND_5_GHZ_LOW and WIFI_BAND_5_GHZ_HIGH only in ScanResult.java and note that they are only related to multi-network requests and not scanning.",
+      "parentUuid": "fd9681c0_cf965ddf",
+      "range": {
+        "startLine": 77,
+        "startChar": 0,
+        "endLine": 79,
+        "endChar": 59
+      },
+      "revId": "8d13432999903bec0181a38ada6e9130bc4b2f72",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "2daf1f9c_e4c394e2",
         "filename": "service/ServiceWifiResources/res/values/config.xml",
         "patchSetId": 4
@@ -77,6 +101,30 @@
       "writtenOn": "2023-12-01T00:11:14Z",
       "side": 1,
       "message": "Wouldn\u0027t you also need to change the matching logic in WifiNetworkAgentSpecifier?\n\nFor example, a WIFI_BAND_5_GHZ_LOW network should also match a request for WIFI_BAND_5_GHZ right?",
+      "range": {
+        "startLine": 4927,
+        "startChar": 20,
+        "endLine": 4927,
+        "endChar": 45
+      },
+      "revId": "8d13432999903bec0181a38ada6e9130bc4b2f72",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "40d92fc2_a5a15f02",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 4
+      },
+      "lineNbr": 4927,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-12-01T02:44:46Z",
+      "side": 1,
+      "message": "Thank you, this is a good idea, although it may cause fragmentation, it can still be successfully matched in WifiNetworkAgentSpecifier.",
+      "parentUuid": "f625a29c_0305d3e9",
       "range": {
         "startLine": 4927,
         "startChar": 20,
