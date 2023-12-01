@@ -49,6 +49,54 @@
     {
       "unresolved": false,
       "key": {
+        "uuid": "3c438302_bafc5c51",
+        "filename": "/COMMIT_MSG",
+        "patchSetId": 1
+      },
+      "lineNbr": 10,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-01T08:35:38Z",
+      "side": 1,
+      "message": "yes the test \"atest -c FrameworksWifiTests\" passed with this CL.",
+      "parentUuid": "6548a790_21adde83",
+      "range": {
+        "startLine": 10,
+        "startChar": 0,
+        "endLine": 10,
+        "endChar": 87
+      },
+      "revId": "522bbec285e24b4aec500e5c68ebb4eae25a9891",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "6d740fb4_d382104f",
+        "filename": "/COMMIT_MSG",
+        "patchSetId": 1
+      },
+      "lineNbr": 10,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-01T08:35:38Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "3e79903b_7299cafd",
+      "range": {
+        "startLine": 10,
+        "startChar": 0,
+        "endLine": 10,
+        "endChar": 87
+      },
+      "revId": "522bbec285e24b4aec500e5c68ebb4eae25a9891",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
         "uuid": "19d11f96_5057a204",
         "filename": "/PATCHSET_LEVEL",
         "patchSetId": 1
@@ -77,6 +125,30 @@
       "writtenOn": "2023-11-29T10:09:16Z",
       "side": 1,
       "message": "Why do you change here? The goal in this CL should move overlay configuration to mWifiGlobal.\n\nAnd don\u0027t we need to change the code which is reading the overlay value?\ni.e. https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Wifi/service/java/com/android/server/wifi/scanner/WificondScannerImpl.java;l\u003d462?q\u003dconfig_wifi_background_scan_support",
+      "range": {
+        "startLine": 7162,
+        "startChar": 0,
+        "endLine": 7164,
+        "endChar": 9
+      },
+      "revId": "522bbec285e24b4aec500e5c68ebb4eae25a9891",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "aa42c4f4_a1710a34",
+        "filename": "service/java/com/android/server/wifi/WifiServiceImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 7164,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-01T08:35:38Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "aca837a9_f4cea4f6",
       "range": {
         "startLine": 7162,
         "startChar": 0,
