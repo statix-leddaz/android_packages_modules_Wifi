@@ -16,6 +16,75 @@
       "message": "Hi Les,\nPlease review and provide your inputs.\nThanks,\nPiyali.",
       "revId": "c88dda40b15bf08a0a56bcc855d96e2c0e5d0577",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "77e28a87_35e5346f",
+        "filename": "service/java/com/android/server/wifi/scanner/WificondScannerImpl.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 462,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-01T10:25:39Z",
+      "side": 1,
+      "message": "I would like to change the design to get WifiGlobal from constructor\n\nsee:\nhttps://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Wifi/service/java/com/android/server/wifi/scanner/WifiScannerImpl.java;l\u003d68?q\u003d%22new%20WificondScannerImpl%22\n\ni.e. Get WifiGlobal in WifiScannerImpl and sent it to WificondScannerImpl in constructor.",
+      "range": {
+        "startLine": 462,
+        "startChar": 0,
+        "endLine": 462,
+        "endChar": 92
+      },
+      "revId": "c88dda40b15bf08a0a56bcc855d96e2c0e5d0577",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "4103c774_09c1e250",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/scanner/WificondPnoScannerTest.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 74,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-01T10:25:39Z",
+      "side": 1,
+      "message": "remove it, redundant.",
+      "range": {
+        "startLine": 74,
+        "startChar": 10,
+        "endLine": 74,
+        "endChar": 17
+      },
+      "revId": "c88dda40b15bf08a0a56bcc855d96e2c0e5d0577",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b921076a_1baedbdb",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/scanner/WificondPnoScannerTest.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 193,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-01T10:25:39Z",
+      "side": 1,
+      "message": "Do we still need this?",
+      "range": {
+        "startLine": 193,
+        "startChar": 0,
+        "endLine": 193,
+        "endChar": 80
+      },
+      "revId": "c88dda40b15bf08a0a56bcc855d96e2c0e5d0577",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
