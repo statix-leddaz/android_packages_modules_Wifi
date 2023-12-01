@@ -88,6 +88,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "229f2f99_ba12786a",
+        "filename": "service/ServiceWifiResources/res/values/config.xml",
+        "patchSetId": 4
+      },
+      "lineNbr": 962,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-12-01T03:27:36Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "2daf1f9c_e4c394e2",
+      "range": {
+        "startLine": 962,
+        "startChar": 37,
+        "endLine": 962,
+        "endChar": 88
+      },
+      "revId": "8d13432999903bec0181a38ada6e9130bc4b2f72",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "f625a29c_0305d3e9",
@@ -125,6 +149,30 @@
       "side": 1,
       "message": "Thank you, this is a good idea, although it may cause fragmentation, it can still be successfully matched in WifiNetworkAgentSpecifier.",
       "parentUuid": "f625a29c_0305d3e9",
+      "range": {
+        "startLine": 4927,
+        "startChar": 20,
+        "endLine": 4927,
+        "endChar": 45
+      },
+      "revId": "8d13432999903bec0181a38ada6e9130bc4b2f72",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "db139078_778570ca",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 4
+      },
+      "lineNbr": 4927,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-12-01T03:27:36Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "40d92fc2_a5a15f02",
       "range": {
         "startLine": 4927,
         "startChar": 20,
