@@ -43,6 +43,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "2e1c89d3_c89c8a7c",
+        "filename": "service/java/com/android/server/wifi/scanner/WificondScannerImpl.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 462,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-01T11:43:12Z",
+      "side": 1,
+      "message": "Rationale: Align the design as WifiNative and easy to implement unit test.",
+      "parentUuid": "77e28a87_35e5346f",
+      "range": {
+        "startLine": 462,
+        "startChar": 0,
+        "endLine": 462,
+        "endChar": 92
+      },
+      "revId": "c88dda40b15bf08a0a56bcc855d96e2c0e5d0577",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "4103c774_09c1e250",
         "filename": "service/tests/wifitests/src/com/android/server/wifi/scanner/WificondPnoScannerTest.java",
         "patchSetId": 2
