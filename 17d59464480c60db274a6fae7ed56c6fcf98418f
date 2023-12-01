@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "7da509ca_78ef1e27",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 6
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-01T08:42:52Z",
+      "side": 1,
+      "message": "Hi Les,\nResolved commit message comments. Please review.\n\nThanks\nVeerendra",
+      "revId": "17d59464480c60db274a6fae7ed56c6fcf98418f",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}

@@ -24,6 +24,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "35026809_076239f5",
+        "filename": "/COMMIT_MSG",
+        "patchSetId": 5
+      },
+      "lineNbr": 12,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-01T08:42:52Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "025ba991_f4d40b17",
+      "range": {
+        "startLine": 12,
+        "startChar": 0,
+        "endLine": 12,
+        "endChar": 415
+      },
+      "revId": "1247b32d43a9ba89e380325486f4480810440101",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "f7be0989_dd0d03aa",
@@ -37,6 +61,30 @@
       "writtenOn": "2023-11-30T12:37:30Z",
       "side": 1,
       "message": "Why do you run this test? If you didn\u0027t run this test, please remove it.\n\nAdd the line as below and remove it in the title.\nTest: atest FrameworksWifiApiTests and atest FrameworksWifiTests",
+      "range": {
+        "startLine": 15,
+        "startChar": 5,
+        "endLine": 15,
+        "endChar": 87
+      },
+      "revId": "1247b32d43a9ba89e380325486f4480810440101",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "486ce0f6_65231914",
+        "filename": "/COMMIT_MSG",
+        "patchSetId": 5
+      },
+      "lineNbr": 15,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-01T08:42:52Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "f7be0989_dd0d03aa",
       "range": {
         "startLine": 15,
         "startChar": 5,
