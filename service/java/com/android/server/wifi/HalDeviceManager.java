@@ -1681,6 +1681,30 @@ public class HalDeviceManager {
                     }
                 }
             }
+            if (bestIfaceCreationProposal == null) {
+                List<String> createIfaceInfoString = new ArrayList<String>();
+                for (WifiChipInfo chipInfo : chipInfos) {
+                    for (int existingCreateType : CREATE_TYPES_BY_PRIORITY) {
+                        WifiIfaceInfo[] createTypeIfaces = chipInfo.ifaces[existingCreateType];
+                        for (WifiIfaceInfo intfInfo : createTypeIfaces) {
+                            if (intfInfo != null) {
+                                createIfaceInfoString.add(
+                                        "name="
+                                                + intfInfo.name
+                                                + " type="
+                                                + getIfaceTypeToString(intfInfo.createType));
+                            }
+                        }
+                    }
+                }
+                Log.i(
+                        TAG,
+                        "bestIfaceCreationProposal is null,"
+                                + " requestIface="
+                                + getIfaceTypeToString(createIfaceType)
+                                + ", existingIface="
+                                + createIfaceInfoString);
+            }
             return bestIfaceCreationProposal;
         }
     }
@@ -1747,23 +1771,6 @@ public class HalDeviceManager {
                             Pair.create(cacheEntry.name, cacheEntry.type), cacheEntry);
                     return iface;
                 }
-            } else {
-                List<String> createIfaceInfoString = new ArrayList<String>();
-                for (WifiChipInfo chipInfo : chipInfos) {
-                    for (int existingCreateType : CREATE_TYPES_BY_PRIORITY) {
-                        WifiIfaceInfo[] createTypeIfaces = chipInfo.ifaces[existingCreateType];
-                        for (WifiIfaceInfo intfInfo : createTypeIfaces) {
-                            if (intfInfo != null) {
-                                createIfaceInfoString.add(
-                                        "name=" + intfInfo.name + " type=" + getIfaceTypeToString(
-                                                intfInfo.createType));
-                            }
-                        }
-                    }
-                }
-                Log.i(TAG, "bestIfaceCreationProposal is null," + " requestIface="
-                        + getIfaceTypeToString(createIfaceType) + ", existingIface="
-                        + createIfaceInfoString);
             }
         }
 
@@ -2062,13 +2069,14 @@ public class HalDeviceManager {
             if (requestedCreateType == existingCreateType) {
                 return false;
             }
-            // If both the requests are privileged, the new requestor wins. The exception is for
-            // backwards compatibility with P2P Settings, prefer SoftAP over P2P for when the user
-            // enables SoftAP with P2P Settings open.
+            // If both the requests are privileged, the new requestor wins unless it's P2P against
+            // AP (for when the user enables SoftAP with P2P Settings open) or STA (since P2P isn't
+            // supported without STA).
             if (newRequestorWsPriority == WorkSourceHelper.PRIORITY_PRIVILEGED) {
                 if (requestedCreateType == HDM_CREATE_IFACE_P2P
                         && (existingCreateType == HDM_CREATE_IFACE_AP
-                        || existingCreateType == HDM_CREATE_IFACE_AP_BRIDGE)) {
+                                || existingCreateType == HDM_CREATE_IFACE_AP_BRIDGE
+                                || existingCreateType == HDM_CREATE_IFACE_STA)) {
                     return false;
                 }
                 return true;
@@ -2094,17 +2102,19 @@ public class HalDeviceManager {
             @WorkSourceHelper.RequestorWsPriority int newRequestorWsPriority,
             @HdmIfaceTypeForCreation int existingCreateType,
             @WorkSourceHelper.RequestorWsPriority int existingRequestorWsPriority) {
-        return !canDeviceSupportCreateTypeCombo(
-                new SparseArray<Integer>() {{
-                    put(HDM_CREATE_IFACE_STA, 1);
-                    put(HDM_CREATE_IFACE_AP, 1);
-                }})
-                && (requestedCreateType == HDM_CREATE_IFACE_AP
-                || requestedCreateType == HDM_CREATE_IFACE_AP_BRIDGE)
+        return (requestedCreateType == HDM_CREATE_IFACE_AP
+                        || requestedCreateType == HDM_CREATE_IFACE_AP_BRIDGE)
                 && newRequestorWsPriority != WorkSourceHelper.PRIORITY_INTERNAL
                 && newRequestorWsPriority != WorkSourceHelper.PRIORITY_PRIVILEGED
                 && existingCreateType == HDM_CREATE_IFACE_STA
-                && existingRequestorWsPriority == WorkSourceHelper.PRIORITY_PRIVILEGED;
+                && existingRequestorWsPriority == WorkSourceHelper.PRIORITY_PRIVILEGED
+                && !canDeviceSupportCreateTypeCombo(
+                        new SparseArray<Integer>() {
+                            {
+                                put(HDM_CREATE_IFACE_STA, 1);
+                                put(HDM_CREATE_IFACE_AP, 1);
+                            }
+                        });
     }
 
     /**
@@ -2368,22 +2378,27 @@ public class HalDeviceManager {
                     }
                 }
 
-                boolean success = ifaceCreationData.chipInfo.chip.configureChip(
-                        ifaceCreationData.chipModeId);
-                if (!success) {
-                    Log.e(TAG, "executeChipReconfiguration: configureChip error");
-                    return null;
-                }
+                // Configure mode using the cached chip info, then reload chip info if needed
+                boolean configureChipSuccess =
+                        ifaceCreationData.chipInfo.chip.configureChip(ifaceCreationData.chipModeId);
                 if (!mIsConcurrencyComboLoadedFromDriver) {
                     WifiChipInfo[] wifiChipInfos = getAllChipInfo(true);
                     if (wifiChipInfos != null) {
                         mCachedStaticChipInfos =
                                 convertWifiChipInfoToStaticChipInfos(wifiChipInfos);
                         saveStaticChipInfoToStore(mCachedStaticChipInfos);
-                        mIsConcurrencyComboLoadedFromDriver = true;
+                        if (configureChipSuccess) {
+                            // Successful chip configuration suggests that the modes are valid
+                            Log.i(TAG, "Chip info loaded successfully from the HAL");
+                            mIsConcurrencyComboLoadedFromDriver = true;
+                        }
                     } else {
-                        Log.e(TAG, "Configured chip but could not get current chip info.");
+                        Log.e(TAG, "Could not get current chip info.");
                     }
+                }
+                if (!configureChipSuccess) {
+                    Log.e(TAG, "executeChipReconfiguration: configureChip error");
+                    return null;
                 }
             } else {
                 // remove all interfaces on the delete list

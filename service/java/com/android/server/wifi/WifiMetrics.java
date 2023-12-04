@@ -787,7 +787,8 @@ public class WifiMetrics {
                 return WifiMetricsProto.RouterFingerPrint.TYPE_EAP_UNKNOWN;
         }
     }
-    private int getAuthPhase2MethodProto(int phase2Method) {
+
+    private static int getAuthPhase2MethodProto(int phase2Method) {
         switch (phase2Method) {
             case WifiEnterpriseConfig.Phase2.PAP:
                 return WifiMetricsProto.RouterFingerPrint.TYPE_PHASE2_PAP;
@@ -1177,6 +1178,7 @@ public class WifiMetrics {
         private int mEapType;
         private int mPhase2Method;
         private int mPasspointRoamingType;
+        private int mTofuConnectionState;
 
         private ConnectionEvent() {
             mConnectionEvent = new WifiMetricsProto.ConnectionEvent();
@@ -1481,6 +1483,7 @@ public class WifiMetrics {
                         mRouterFingerPrint.mRouterFingerPrintProto.ocspType =
                                 getOcspTypeProto(ocspType);
                     }
+                    mTofuConnectionState = convertTofuConnectionStateToProto(config);
                 }
             }
         }
@@ -2018,6 +2021,8 @@ public class WifiMetrics {
                 currentConnectionEvent.mConnectionEvent.isOsuProvisioned = false;
                 SecurityParams params = config.getNetworkSelectionStatus()
                         .getCandidateSecurityParams();
+                currentConnectionEvent.mRouterFingerPrint.mSecurityMode =
+                        getSecurityMode(config, true);
                 if (config.isPasspoint()) {
                     currentConnectionEvent.mConnectionEvent.networkType =
                             WifiMetricsProto.ConnectionEvent.TYPE_PASSPOINT;
@@ -2047,41 +2052,6 @@ public class WifiMetrics {
                 } else if (WifiConfigurationUtil.isConfigForOpenNetwork(config)) {
                     currentConnectionEvent.mConnectionEvent.networkType =
                             WifiMetricsProto.ConnectionEvent.TYPE_OPEN;
-                }
-
-                if (null != params) {
-                    currentConnectionEvent.mRouterFingerPrint.mSecurityMode =
-                            params.getSecurityType();
-                } else if (WifiConfigurationUtil.isConfigForWpa3Enterprise192BitNetwork(config)) {
-                    currentConnectionEvent.mRouterFingerPrint.mSecurityMode =
-                            WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT;
-                } else if (WifiConfigurationUtil.isConfigForWpa3EnterpriseNetwork(config)) {
-                    currentConnectionEvent.mRouterFingerPrint.mSecurityMode =
-                            WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE;
-                } else if (WifiConfigurationUtil.isConfigForDppNetwork(config)) {
-                    currentConnectionEvent.mRouterFingerPrint.mSecurityMode =
-                        WifiConfiguration.SECURITY_TYPE_DPP;
-                } else if (WifiConfigurationUtil.isConfigForSaeNetwork(config)) {
-                    currentConnectionEvent.mRouterFingerPrint.mSecurityMode =
-                            WifiConfiguration.SECURITY_TYPE_SAE;
-                } else if (WifiConfigurationUtil.isConfigForWapiPskNetwork(config)) {
-                    currentConnectionEvent.mRouterFingerPrint.mSecurityMode =
-                            WifiConfiguration.SECURITY_TYPE_WAPI_PSK;
-                } else if (WifiConfigurationUtil.isConfigForWapiCertNetwork(config)) {
-                    currentConnectionEvent.mRouterFingerPrint.mSecurityMode =
-                            WifiConfiguration.SECURITY_TYPE_WAPI_CERT;
-                } else if (WifiConfigurationUtil.isConfigForPskNetwork(config)) {
-                    currentConnectionEvent.mRouterFingerPrint.mSecurityMode =
-                            WifiConfiguration.SECURITY_TYPE_PSK;
-                } else if (WifiConfigurationUtil.isConfigForOweNetwork(config)) {
-                    currentConnectionEvent.mRouterFingerPrint.mSecurityMode =
-                            WifiConfiguration.SECURITY_TYPE_OWE;
-                } else if (WifiConfigurationUtil.isConfigForWepNetwork(config)) {
-                    currentConnectionEvent.mRouterFingerPrint.mSecurityMode =
-                            WifiConfiguration.SECURITY_TYPE_WEP;
-                } else if (WifiConfigurationUtil.isConfigForOpenNetwork(config)) {
-                    currentConnectionEvent.mRouterFingerPrint.mSecurityMode =
-                            WifiConfiguration.SECURITY_TYPE_OPEN;
                 }
 
                 if (!config.fromWifiNetworkSuggestion) {
@@ -2280,7 +2250,8 @@ public class WifiMetrics {
                         toMetricEapType(currentConnectionEvent.mEapType),
                         toMetricPhase2Method(currentConnectionEvent.mPhase2Method),
                         currentConnectionEvent.mPasspointRoamingType,
-                        currentConnectionEvent.mCarrierId);
+                        currentConnectionEvent.mCarrierId,
+                        currentConnectionEvent.mTofuConnectionState);
 
                 if (connectionSucceeded) {
                     reportRouterCapabilities(currentConnectionEvent.mRouterFingerPrint);
@@ -2295,7 +2266,225 @@ public class WifiMetrics {
         }
     }
 
-    int convertSecurityModeToProto(@WifiConfiguration.SecurityType int securityMode) {
+    protected static int convertTofuConnectionStateToProto(WifiConfiguration config) {
+        if (!config.isEnterprise()) {
+            return WifiStatsLog
+                    .WIFI_CONFIGURED_NETWORK_INFO__TOFU_CONFIGURATION__TOFU_CONFIGURATION_UNSPECIFIED;
+        }
+
+        switch (config.enterpriseConfig.getTofuConnectionState()) {
+            case WifiEnterpriseConfig.TOFU_STATE_NOT_ENABLED:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_CONFIGURATION__TOFU_CONFIGURATION_NOT_ENABLED;
+            case WifiEnterpriseConfig.TOFU_STATE_ENABLED_PRE_CONNECTION:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_CONFIGURATION__TOFU_CONFIGURATION_ENABLED_PRE_CONNECTION;
+            case WifiEnterpriseConfig.TOFU_STATE_CONFIGURE_ROOT_CA:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_CONFIGURATION__TOFU_CONFIGURATION_CONFIGURE_ROOT_CA;
+            case WifiEnterpriseConfig.TOFU_STATE_CERT_PINNING:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_CONFIGURATION__TOFU_CONFIGURATION_CERT_PINNING;
+            default:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_CONFIGURATION__TOFU_CONFIGURATION_UNSPECIFIED;
+        }
+    }
+
+    protected static int convertTofuDialogStateToProto(WifiConfiguration config) {
+        if (!config.isEnterprise()) {
+            return WifiStatsLog
+                    .WIFI_CONFIGURED_NETWORK_INFO__TOFU_DIALOG_STATE__TOFU_DIALOG_STATE_UNSPECIFIED;
+        }
+
+        switch (config.enterpriseConfig.getTofuDialogState()) {
+            case WifiEnterpriseConfig.TOFU_DIALOG_STATE_REJECTED:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_DIALOG_STATE__TOFU_DIALOG_STATE_REJECTED;
+            case WifiEnterpriseConfig.TOFU_DIALOG_STATE_ACCEPTED:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_DIALOG_STATE__TOFU_DIALOG_STATE_ACCEPTED;
+            default:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__TOFU_DIALOG_STATE__TOFU_DIALOG_STATE_UNSPECIFIED;
+        }
+    }
+
+    protected static int convertMacRandomizationToProto(
+            @WifiConfiguration.MacRandomizationSetting int macRandomizationSetting) {
+        switch (macRandomizationSetting) {
+            case WifiConfiguration.RANDOMIZATION_NONE:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__MAC_RANDOMIZATION__MAC_RANDOMIZATION_NONE;
+            case WifiConfiguration.RANDOMIZATION_PERSISTENT:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__MAC_RANDOMIZATION__MAC_RANDOMIZATION_PERSISTENT;
+            case WifiConfiguration.RANDOMIZATION_NON_PERSISTENT:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__MAC_RANDOMIZATION__MAC_RANDOMIZATION_NON_PERSISTENT;
+            case WifiConfiguration.RANDOMIZATION_AUTO:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__MAC_RANDOMIZATION__MAC_RANDOMIZATION_AUTO;
+            default:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__MAC_RANDOMIZATION__MAC_RANDOMIZATION_UNSPECIFIED;
+        }
+    }
+
+    protected static int convertMeteredOverrideToProto(
+            @WifiConfiguration.MeteredOverride int meteredOverride) {
+        switch (meteredOverride) {
+            case WifiConfiguration.METERED_OVERRIDE_NONE:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__METERED_OVERRIDE__METERED_OVERRIDE_NONE;
+            case WifiConfiguration.METERED_OVERRIDE_METERED:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__METERED_OVERRIDE__METERED_OVERRIDE_METERED;
+            case WifiConfiguration.METERED_OVERRIDE_NOT_METERED:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__METERED_OVERRIDE__METERED_OVERRIDE_NOT_METERED;
+            default:
+                return WifiStatsLog
+                        .WIFI_CONFIGURED_NETWORK_INFO__METERED_OVERRIDE__METERED_OVERRIDE_UNSPECIFIED;
+        }
+    }
+
+    protected static int getSecurityMode(WifiConfiguration config, boolean useCandidateParams) {
+        SecurityParams params =
+                useCandidateParams
+                        ? config.getNetworkSelectionStatus().getCandidateSecurityParams()
+                        : config.getNetworkSelectionStatus().getLastUsedSecurityParams();
+        if (params != null) {
+            return params.getSecurityType();
+        } else if (WifiConfigurationUtil.isConfigForWpa3Enterprise192BitNetwork(config)) {
+            return WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT;
+        } else if (WifiConfigurationUtil.isConfigForWpa3EnterpriseNetwork(config)) {
+            return WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE;
+        } else if (WifiConfigurationUtil.isConfigForDppNetwork(config)) {
+            return WifiConfiguration.SECURITY_TYPE_DPP;
+        } else if (WifiConfigurationUtil.isConfigForSaeNetwork(config)) {
+            return WifiConfiguration.SECURITY_TYPE_SAE;
+        } else if (WifiConfigurationUtil.isConfigForWapiPskNetwork(config)) {
+            return WifiConfiguration.SECURITY_TYPE_WAPI_PSK;
+        } else if (WifiConfigurationUtil.isConfigForWapiCertNetwork(config)) {
+            return WifiConfiguration.SECURITY_TYPE_WAPI_CERT;
+        } else if (WifiConfigurationUtil.isConfigForPskNetwork(config)) {
+            return WifiConfiguration.SECURITY_TYPE_PSK;
+        } else if (WifiConfigurationUtil.isConfigForOweNetwork(config)) {
+            return WifiConfiguration.SECURITY_TYPE_OWE;
+        } else if (WifiConfigurationUtil.isConfigForWepNetwork(config)) {
+            return WifiConfiguration.SECURITY_TYPE_WEP;
+        } else if (WifiConfigurationUtil.isConfigForOpenNetwork(config)) {
+            return WifiConfiguration.SECURITY_TYPE_OPEN;
+        } else {
+            Log.e(TAG, "Unknown security mode for config " + config);
+            return -1;
+        }
+    }
+
+    /**
+     * Check if the provided security type is enabled in the security params list.
+     */
+    private static boolean securityTypeEnabled(List<SecurityParams> securityParamsList,
+            int securityType) {
+        for (SecurityParams params : securityParamsList) {
+            if (params.isSecurityType(securityType) && params.isEnabled()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check if any security parameters with the provided type were added by auto-upgrade.
+     */
+    private static boolean securityTypeAddedByAutoUpgrade(List<SecurityParams> securityParamsList,
+            int securityType) {
+        for (SecurityParams params : securityParamsList) {
+            if (params.isSecurityType(securityType) && params.isAddedByAutoUpgrade()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    protected static int convertSecurityModeToProto(WifiConfiguration config) {
+        if (config == null || config.getDefaultSecurityParams() == null) {
+            return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_UNKNOWN;
+        }
+        SecurityParams defaultParams = config.getDefaultSecurityParams();
+        List<SecurityParams> securityParamsList = config.getSecurityParamsList();
+        switch (defaultParams.getSecurityType()) {
+            case WifiConfiguration.SECURITY_TYPE_OPEN:
+            case WifiConfiguration.SECURITY_TYPE_OWE: {
+                boolean openEnabled = securityTypeEnabled(
+                        securityParamsList, WifiConfiguration.SECURITY_TYPE_OPEN);
+                boolean oweEnabled = securityTypeEnabled(
+                        securityParamsList, WifiConfiguration.SECURITY_TYPE_OWE);
+                if (openEnabled && !oweEnabled) {
+                    // OWE params may be disabled or may not exist.
+                    return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_NONE;
+                } else if (!openEnabled && oweEnabled) {
+                    // Open params may get disabled via TDI.
+                    return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_OWE;
+                }
+
+                if (securityTypeAddedByAutoUpgrade(
+                        securityParamsList, WifiConfiguration.SECURITY_TYPE_OWE)) {
+                    // User configured this network using Open, but OWE params were auto-added.
+                    return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_NONE;
+                }
+                // User manually configured this network with both Open and OWE params.
+                return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_OWE_TRANSITION;
+            }
+            case WifiConfiguration.SECURITY_TYPE_WEP:
+                return WifiStatsLog.WIFI_AP_CAPABILITIES_REPORTED__CONNECTED_SECURITY_MODE__SECURITY_MODE_WEP;
+            case WifiConfiguration.SECURITY_TYPE_PSK: {
+                boolean pskEnabled = securityTypeEnabled(
+                        securityParamsList, WifiConfiguration.SECURITY_TYPE_PSK);
+                boolean saeEnabled = securityTypeEnabled(
+                        securityParamsList, WifiConfiguration.SECURITY_TYPE_SAE);
+                if (pskEnabled && !saeEnabled) {
+                    // WPA3 params may be disabled or may not exist.
+                    return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_WPA2_PERSONAL;
+                } else if (!pskEnabled && saeEnabled) {
+                    // WPA2 params may get disabled via TDI.
+                    return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_WPA3_PERSONAL;
+                }
+
+                if (securityTypeAddedByAutoUpgrade(
+                        securityParamsList, WifiConfiguration.SECURITY_TYPE_SAE)) {
+                    // User configured this network using WPA2, but WPA3 params were auto-added.
+                    return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_WPA2_PERSONAL;
+                }
+                // User manually configured this network with both WPA2 and WPA3 params.
+                return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_WPA3_WPA2_PERSONAL_TRANSITION;
+            }
+            case WifiConfiguration.SECURITY_TYPE_SAE:
+                return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_WPA3_PERSONAL;
+            case WifiConfiguration.SECURITY_TYPE_WAPI_PSK:
+                return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_WAPI_PSK;
+            case WifiConfiguration.SECURITY_TYPE_WAPI_CERT:
+                return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_WAPI_CERT;
+            case WifiConfiguration.SECURITY_TYPE_DPP:
+                return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_DPP;
+            case WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT:
+                return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_WPA3_ENTERPRISE_192_BIT;
+            case WifiConfiguration.SECURITY_TYPE_EAP:
+            case WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE:
+            case WifiConfiguration.SECURITY_TYPE_PASSPOINT_R1_R2:
+            case WifiConfiguration.SECURITY_TYPE_PASSPOINT_R3: {
+                if (WifiConfigurationUtil.isConfigForWpa3EnterpriseNetwork(config)) {
+                    return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_WPA3_ENTERPRISE;
+                }
+                return WifiStatsLog.WIFI_AP_CAPABILITIES_REPORTED__CONNECTED_SECURITY_MODE__SECURITY_MODE_WPA_ENTERPRISE_LEGACY;
+            }
+            default:
+                return WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO__CONNECTED_SECURITY_MODE__SECURITY_MODE_INVALID;
+        }
+    }
+
+    static int convertSecurityModeToProto(@WifiConfiguration.SecurityType int securityMode) {
         switch (securityMode) {
             case WifiConfiguration.SECURITY_TYPE_OPEN:
                 return WifiStatsLog.WIFI_AP_CAPABILITIES_REPORTED__CONNECTED_SECURITY_MODE__SECURITY_MODE_NONE;
@@ -2371,7 +2560,14 @@ public class WifiMetrics {
 
     }
 
-    private int convertEapMethodToProto(int eapMethod) {
+    protected static int convertEapMethodToProto(WifiConfiguration config) {
+        if (config.enterpriseConfig == null) {
+            return WifiStatsLog.WIFI_AP_CAPABILITIES_REPORTED__EAP_TYPE__TYPE_UNKNOWN;
+        }
+        return convertEapMethodToProto(config.enterpriseConfig.getEapMethod());
+    }
+
+    private static int convertEapMethodToProto(int eapMethod) {
         switch (eapMethod) {
             case WifiMetricsProto.RouterFingerPrint.TYPE_EAP_WAPI_CERT:
                 return WifiStatsLog.WIFI_AP_CAPABILITIES_REPORTED__EAP_TYPE__TYPE_EAP_WAPI_CERT;
@@ -2396,7 +2592,15 @@ public class WifiMetrics {
         }
     }
 
-    private int convertEapInnerMethodToProto(int phase2Method) {
+    protected static int convertEapInnerMethodToProto(WifiConfiguration config) {
+        if (config.enterpriseConfig == null) {
+            return WifiStatsLog.WIFI_AP_CAPABILITIES_REPORTED__EAP_INNER_METHOD__METHOD_UNKNOWN;
+        }
+        int phase2Method = config.enterpriseConfig.getPhase2Method();
+        return convertEapInnerMethodToProto(getAuthPhase2MethodProto(phase2Method));
+    }
+
+    private static int convertEapInnerMethodToProto(int phase2Method) {
         switch (phase2Method) {
             case WifiMetricsProto.RouterFingerPrint.TYPE_PHASE2_PAP:
                 return WifiStatsLog.WIFI_AP_CAPABILITIES_REPORTED__EAP_INNER_METHOD__METHOD_PAP;
@@ -2430,6 +2634,16 @@ public class WifiMetrics {
             default:
                 return WifiStatsLog.WIFI_AP_CAPABILITIES_REPORTED__OCSP_TYPE__TYPE_OCSP_UNKNOWN;
         }
+    }
+
+    protected static boolean isFreeOpenRoaming(WifiConfiguration config) {
+        return Utils.getRoamingType(config)
+                == WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__PASSPOINT_ROAMING_TYPE__ROAMING_RCOI_OPENROAMING_FREE;
+    }
+
+    protected static boolean isSettledOpenRoaming(WifiConfiguration config) {
+        return Utils.getRoamingType(config)
+                == WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__PASSPOINT_ROAMING_TYPE__ROAMING_RCOI_OPENROAMING_SETTLED;
     }
 
     private void reportRouterCapabilities(RouterFingerPrint r) {
@@ -2668,7 +2882,7 @@ public class WifiMetrics {
                         WifiMetricsProto.RouterFingerPrint.AUTH_PERSONAL;
             } else if (ScanResultUtil.isScanResultForWpa3EnterpriseTransitionNetwork(scanResult)
                     || ScanResultUtil.isScanResultForWpa3EnterpriseOnlyNetwork(scanResult)
-                    || ScanResultUtil.isScanResultForEapNetwork(scanResult)
+                    || ScanResultUtil.isScanResultForWpa2EnterpriseOnlyNetwork(scanResult)
                     || ScanResultUtil.isScanResultForEapSuiteBNetwork(scanResult)) {
                 currentConnectionEvent.mRouterFingerPrint.mRouterFingerPrintProto.authentication =
                         WifiMetricsProto.RouterFingerPrint.AUTH_ENTERPRISE;
@@ -3354,7 +3568,7 @@ public class WifiMetrics {
                     wapiPersonalNetworks++;
                 } else if (ScanResultUtil.isScanResultForWapiCertNetwork(scanResult)) {
                     wapiEnterpriseNetworks++;
-                } else if (ScanResultUtil.isScanResultForEapNetwork(scanResult)) {
+                } else if (ScanResultUtil.isScanResultForWpa2EnterpriseOnlyNetwork(scanResult)) {
                     enterpriseNetworks++;
                 } else if (ScanResultUtil.isScanResultForSaeNetwork(scanResult)) {
                     wpa3PersonalNetworks++;
