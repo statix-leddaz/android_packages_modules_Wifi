@@ -562,7 +562,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     @VisibleForTesting
     static final int CMD_PRE_DHCP_ACTION                                = BASE + 255;
-    private static final int CMD_PRE_DHCP_ACTION_COMPLETE               = BASE + 256;
+    @VisibleForTesting
+    static final int CMD_PRE_DHCP_ACTION_COMPLETE                       = BASE + 256;
     private static final int CMD_POST_DHCP_ACTION                       = BASE + 257;
 
     private static final int CMD_CONNECT_NETWORK                        = BASE + 258;
@@ -3496,7 +3497,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         // Update link layer stats
         getWifiLinkLayerStats();
 
-        if (mWifiP2pConnection.isConnected()) {
+        if (mWifiP2pConnection.isConnected() && !mWifiP2pConnection.isP2pInWaitingState()) {
             // P2P discovery breaks DHCP, so shut it down in order to get through this.
             // Once P2P service receives this message and processes it accordingly, it is supposed
             // to send arg2 (i.e. CMD_PRE_DHCP_ACTION_COMPLETE) in a new Message.what back to
@@ -4009,6 +4010,19 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
     }
 
+    private boolean shouldIgnoreNudDisconnectForWapiInCn() {
+        // temporary work-around for <=U devices
+        if (SdkLevel.isAtLeastV()) return false;
+
+        if (!mWifiGlobals.disableNudDisconnectsForWapiInSpecificCc() || !"CN".equalsIgnoreCase(
+                mWifiInjector.getWifiCountryCode().getCountryCode())) {
+            return false;
+        }
+        WifiConfiguration config = getConnectedWifiConfigurationInternal();
+        return config != null && (config.allowedProtocols.get(WifiConfiguration.Protocol.WAPI)
+                || config.getAuthType() == WifiConfiguration.KeyMgmt.NONE);
+    }
+
     private void handleIpReachabilityFailure(@NonNull ReachabilityLossInfoParcelable lossInfo) {
         if (lossInfo == null) {
             Log.e(getTag(), "lossInfo should never be null");
@@ -4021,13 +4035,19 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 processIpReachabilityFailure(lossInfo.reason);
                 break;
             case ReachabilityLossReason.CONFIRM:
-            case ReachabilityLossReason.ORGANIC:
+            case ReachabilityLossReason.ORGANIC: {
+                if (shouldIgnoreNudDisconnectForWapiInCn()) {
+                    logd("CMD_IP_REACHABILITY_FAILURE but disconnect disabled for WAPI -- ignore");
+                    return;
+                }
+
                 if (mDeviceConfigFacade.isHandleRssiOrganicKernelFailuresEnabled()) {
                     processIpReachabilityFailure(lossInfo.reason);
                 } else {
                     processLegacyIpReachabilityLost(lossInfo.reason);
                 }
                 break;
+            }
             default:
                 logd("Invalid failure reason " + lossInfo.reason + "from onIpReachabilityFailure");
         }
@@ -4262,6 +4282,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiNative.enableStaAutoReconnect(mInterfaceName, false);
         // STA has higher priority over P2P
         mWifiNative.setConcurrencyPriority(true);
+        if (mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+            // Loads the firmware roaming info which gets used in WifiBlocklistMonitor
+            mWifiConnectivityHelper.getFirmwareRoamingInfo();
+        }
 
         // Retrieve and store the factory MAC address (on first bootup).
         retrieveFactoryMacAddressAndStoreIfNecessary();
@@ -7213,10 +7237,16 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                         mClientModeManager);
                                 mWifiConfigManager.incrementNetworkNoInternetAccessReports(
                                         config.networkId);
-                                // If this was not recently selected by the user, update network
-                                // selection status to temporarily disable the network.
-                                if (!isRecentlySelectedByTheUser(config)
+                                if (!config.getNetworkSelectionStatus()
+                                        .hasEverValidatedInternetAccess()
                                         && !config.noInternetAccessExpected) {
+                                    mWifiConfigManager.updateNetworkSelectionStatus(
+                                            config.networkId,
+                                            DISABLED_NO_INTERNET_PERMANENT);
+                                } else if (!isRecentlySelectedByTheUser(config)
+                                        && !config.noInternetAccessExpected) {
+                                    // If this was not recently selected by the user, update network
+                                    // selection status to temporarily disable the network.
                                     if (config.getNetworkSelectionStatus()
                                             .getNetworkSelectionDisableReason()
                                             != DISABLED_NO_INTERNET_PERMANENT) {

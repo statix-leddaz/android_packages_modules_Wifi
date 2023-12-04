@@ -256,6 +256,7 @@
           <item type="array" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificThreshold_carrier_overrides" />
           <item type="integer" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs" />
           <item type="array" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs_carrier_overrides" />
+          <item type="array" name="config_wifiEapFailureConfig" />
           <item type="bool" name="config_wifiAllowMultipleNetworksOnSameAwareNdi"/>
           <item type="integer" name="config_wifiAwareInstantCommunicationModeDurationMillis" />
           <item type="bool" name="config_wifiSupportChannelOnDataPath"/>
@@ -329,6 +330,7 @@
           <item type="bool" name="config_wifiUpdateCountryCodeFromScanResultGeneric" />
           <item type="bool" name="config_wifiSofapHalMapWpa3TransitionModeToWpa3OnlyIn6GHzBand" />
           <item type="bool" name ="config_aware_vdbg_enable_on_verbose_logging" />
+          <item type="bool" name ="config_wifiDisableNudDisconnectsForWapiInSpecificCc" />
 
           <!-- Params from config.xml that can be overlayed -->
 
