@@ -16,6 +16,23 @@
       "message": "Hi Les,\nResolved the review comments . Please review and provide feedback.\n\nThanks\nVeerendra",
       "revId": "23882d0320164cdee35878d4c2b10d17149399b6",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "813fd992_a8be3ee2",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-04T08:25:47Z",
+      "side": 1,
+      "message": "LGTM, but I would like to review it again after feature is done.",
+      "revId": "23882d0320164cdee35878d4c2b10d17149399b6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
