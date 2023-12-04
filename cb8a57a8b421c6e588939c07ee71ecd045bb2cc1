@@ -16,6 +16,98 @@
       "message": "Hi Les,\n\nPlease help review and provide your inputs.",
       "revId": "cb8a57a8b421c6e588939c07ee71ecd045bb2cc1",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "65f9f529_8a03ac03",
+        "filename": "service/java/com/android/server/wifi/scanner/WifiScannerImpl.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 67,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-04T08:24:33Z",
+      "side": 1,
+      "message": "Question for clarification:\nWhy do we need to change HalWifiScannerImpl?",
+      "range": {
+        "startLine": 67,
+        "startChar": 0,
+        "endLine": 67,
+        "endChar": 94
+      },
+      "revId": "cb8a57a8b421c6e588939c07ee71ecd045bb2cc1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "c04877ff_4f3b7bb6",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 62,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-04T08:24:33Z",
+      "side": 1,
+      "message": "Is it necessary in setUp?",
+      "range": {
+        "startLine": 62,
+        "startChar": 0,
+        "endLine": 62,
+        "endChar": 80
+      },
+      "revId": "cb8a57a8b421c6e588939c07ee71ecd045bb2cc1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "f6525d8d_578200dc",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 187,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-04T08:24:33Z",
+      "side": 1,
+      "message": "Please add test:\nwhen resource is false, result is false.\nRef: testSaeH2eSupportOverlay",
+      "range": {
+        "startLine": 187,
+        "startChar": 16,
+        "endLine": 187,
+        "endChar": 43
+      },
+      "revId": "cb8a57a8b421c6e588939c07ee71ecd045bb2cc1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "49fd78fd_19483e4d",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/scanner/BaseWifiScannerImplTest.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 74,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-04T08:24:33Z",
+      "side": 1,
+      "message": "Where do we use it?",
+      "range": {
+        "startLine": 74,
+        "startChar": 22,
+        "endLine": 74,
+        "endChar": 34
+      },
+      "revId": "cb8a57a8b421c6e588939c07ee71ecd045bb2cc1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
