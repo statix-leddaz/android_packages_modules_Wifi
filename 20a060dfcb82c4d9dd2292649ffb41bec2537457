@@ -37,6 +37,24 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "937677e4_3c7e2998",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 2662,
+      "author": {
+        "id": 1795615
+      },
+      "writtenOn": "2023-12-05T09:54:08Z",
+      "side": 1,
+      "message": "I\u0027ll merge the loops in one day or two once the verification is done.",
+      "parentUuid": "e7125792_f420a629",
+      "revId": "20a060dfcb82c4d9dd2292649ffb41bec2537457",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "573dda21_38232304",
         "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
         "patchSetId": 1
@@ -48,6 +66,24 @@
       "writtenOn": "2023-10-27T18:38:01Z",
       "side": 1,
       "message": "ScanRequestProxy#getScanResult(bssid) returns scan results cached from\nthe last full single scan request. If the MLO link AP is missed on last\nscan or last scan is not a full scan, ScanRequestProxy will not have\nthe scan results corresponding to the link AP.  \n\nSo is it better we query WifiConfigManager.getScanDetailCacheForNetwork() here?",
+      "revId": "20a060dfcb82c4d9dd2292649ffb41bec2537457",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "f5e8db26_289fbbdb",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 2666,
+      "author": {
+        "id": 1795615
+      },
+      "writtenOn": "2023-12-05T09:54:08Z",
+      "side": 1,
+      "message": "If the last scan does not contain the interested BSSID, the existing RSSI will not be updated and the effect should be the same as query scan detail cache from config manager.",
+      "parentUuid": "573dda21_38232304",
       "revId": "20a060dfcb82c4d9dd2292649ffb41bec2537457",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
