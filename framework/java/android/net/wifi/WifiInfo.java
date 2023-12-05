@@ -739,6 +739,7 @@ public class WifiInfo implements TransportInfo, Parcelable {
         /**
          * Set the subscription ID.
          * @see WifiInfo#getSubscriptionId()
+         * @hide
          */
         @FlaggedApi(Flags.ADD_SUBSCRIPTION_ID)
         @NonNull
