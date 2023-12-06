@@ -85,6 +85,30 @@
       },
       "revId": "9234dde61ad9ced087d99ab32de55b216d3b7c1a",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "dec81281_60665303",
+        "filename": "service/java/com/android/server/wifi/WifiConnectivityManager.java",
+        "patchSetId": 7
+      },
+      "lineNbr": 421,
+      "author": {
+        "id": 1240997
+      },
+      "writtenOn": "2023-12-06T20:34:47Z",
+      "side": 1,
+      "message": "Discussed offline. Google team will add unit test internally instead.",
+      "parentUuid": "c042aa7b_59df2432",
+      "range": {
+        "startLine": 412,
+        "startChar": 28,
+        "endLine": 421,
+        "endChar": 26
+      },
+      "revId": "9234dde61ad9ced087d99ab32de55b216d3b7c1a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
