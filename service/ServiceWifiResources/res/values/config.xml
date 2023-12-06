@@ -263,6 +263,10 @@
     <!-- Integer for maximum number of channels to use in initial partial scan. If equals to 0, means add all available channels for networks -->
     <integer translatable="false" name="config_wifiInitialPartialScanChannelMaxCount">10</integer>
 
+    <!-- Configure the max number of new channels to add into the initial partial scan list per network.
+         If equals to 0, it means there's no limit on the max number of channels to include per network.-->
+    <integer translatable="false" name="config_wifiInitialPartialScanMaxNewChannelsPerNetwork">0</integer>
+
     <!-- Integer for maximum age for scan results used to identify channels for partial initial
          scan in minutes -->
     <integer translatable="false" name="config_wifiInitialPartialScanChannelCacheAgeMins">14400</integer>
@@ -871,6 +875,21 @@
     <string-array translatable="false" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs_carrier_overrides">
         <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g>14400000</item>
     </string-array>
+
+    <!-- Configure the Carrier specific override for EAP failure disable behavior starting from Android 14.
+         Should be a comma separated list of the following information:
+           - Carrier ID
+           - EAP failure code
+           - display notification or not (0=false, 1=true)
+           - EAP profile failure threshold
+           - EAP profile disable duration in minutes -->
+    <string-array translatable="false" name="config_wifiEapFailureConfig">
+        <item>1839, 0,     0, 1, 240 </item>
+        <item>1839, 16384, 0, 1, 5 </item>
+        <item>1839, 1026,  0, 1, 240 </item>
+        <item>1839, 1031,  1, 1, 1440 </item>
+        <item>1839, 16385, 0, 3, 120 </item>
+    </string-array>
     <!-- Flush ANQP cache on Wi-Fi toggle off event -->
     <bool translatable="false" name="config_wifiFlushAnqpCacheOnWifiToggleOffEvent">true</bool>
 
@@ -1216,4 +1235,10 @@
     <!-- Boolean indication whether enable VDBG for more detailed log when Wi-Fi aware verbose
     logging is enabled -->
     <bool translatable="false" name ="config_aware_vdbg_enable_on_verbose_logging">false</bool>
+    <!-- Boolean indicating whether to disable disconnects on NUD failures. Such a configuration
+         is limited to WAPI and to a specific country code.
+     true: do not disconnect IF the connection type is WAPI and in the specific country code
+           regulatory domain.
+     false: disconnect on NUD failures (normal/default action). -->
+    <bool translatable="false" name ="config_wifiDisableNudDisconnectsForWapiInSpecificCc">false</bool>
 </resources>
