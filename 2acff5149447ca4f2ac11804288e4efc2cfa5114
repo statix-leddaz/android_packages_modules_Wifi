@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "71ed6675_7f2a7859",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2038554
+      },
+      "writtenOn": "2023-12-06T11:58:39Z",
+      "side": 1,
+      "message": "Hi Les,\n\nPlease help review and provide your inputs.\n\nRegards,\nRashmi",
+      "revId": "2acff5149447ca4f2ac11804288e4efc2cfa5114",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
