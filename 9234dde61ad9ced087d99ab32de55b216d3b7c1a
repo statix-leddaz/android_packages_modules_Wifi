@@ -41,6 +41,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "8bb43865_668c3a42",
+        "filename": "framework/java/android/net/wifi/WifiNetworkAgentSpecifier.java",
+        "patchSetId": 7
+      },
+      "lineNbr": 144,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-12-07T11:27:24Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "8fa2337a_2515b952",
+      "range": {
+        "startLine": 136,
+        "startChar": 12,
+        "endLine": 144,
+        "endChar": 13
+      },
+      "revId": "9234dde61ad9ced087d99ab32de55b216d3b7c1a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "38e57917_70055f8a",
@@ -54,6 +78,30 @@
       "writtenOn": "2023-12-05T22:40:10Z",
       "side": 1,
       "message": "I think this still pollutes the 5th position bitmap. Can we just do something like:\n    \n    /**\n     * Reserved bit for Multi-internet connection only, not for scanning.\n     * @hide\n     */\n    public static final int WIFI_BAND_INDEX_5_GHZ_LOW \u003d 29;\n    \n    /**\n     * Reserved bit for Multi-internet connection only, not for scanning.\n     * @hide\n     */\n    public static final int WIFI_BAND_INDEX_5_GHZ_HIGH \u003d 30;\n    \n    /**\n     * Reserved for multi-internet connection only, not for scanning.\n     * @hide\n     */\n    public static final int WIFI_BAND_5_GHZ_LOW \u003d 1 \u003c\u003c WIFI_BAND_INDEX_5_GHZ_LOW;\n    /**\n     * Reserved for multi-internet connection only, not for scanning.\n     * @hide\n     */\n    public static final int WIFI_BAND_5_GHZ_HIGH \u003d 1 \u003c\u003c WIFI_BAND_INDEX_5_GHZ_HIGH;\n    \n    \n Bit 29 and 30 are so far out they will probably never get used, so it should be fine to take them.",
+      "range": {
+        "startLine": 83,
+        "startChar": 4,
+        "endLine": 83,
+        "endChar": 67
+      },
+      "revId": "9234dde61ad9ced087d99ab32de55b216d3b7c1a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "8cdcdb87_67501a01",
+        "filename": "framework/java/android/net/wifi/WifiScanner.java",
+        "patchSetId": 7
+      },
+      "lineNbr": 83,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-12-07T11:27:24Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "38e57917_70055f8a",
       "range": {
         "startLine": 83,
         "startChar": 4,
