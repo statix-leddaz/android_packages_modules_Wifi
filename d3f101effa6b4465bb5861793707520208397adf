@@ -1,0 +1,90 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "ad4a556b_e0d9ae58",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 8
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1240997
+      },
+      "writtenOn": "2023-12-08T23:37:52Z",
+      "side": 1,
+      "message": "Thanks for the patch. I created a upstream CL internally and it is currently going through the review process.\n\nIn the comments are the main modifications I made to your code.",
+      "revId": "d3f101effa6b4465bb5861793707520208397adf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "d041a96a_ee62aacb",
+        "filename": "framework/java/android/net/wifi/ScanResult.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 963,
+      "author": {
+        "id": 1240997
+      },
+      "writtenOn": "2023-12-08T23:37:52Z",
+      "side": 1,
+      "message": "I modified this part in the internal upstream to:\n\n    /**\n     * Utility function to check whether 2 frequencies are valid for multi-internet connection\n     * when dual-5GHz is supported.\n     *\n     * The allowed combinations are:\n     * - 2.4GHz + Any 5GHz\n     * - 2.4GHz + 6Ghz\n     * - 5GHz low + 5GHz high\n     * - 5GHz low + 6GHz\n     * @hide\n     */\n    public static boolean isValidCombinedBandForDual5GHz(int freqMhz1, int freqMhz2) {\n        int band1 \u003d toBand(freqMhz1);\n        int band2 \u003d toBand(freqMhz2);\n        if (band1 \u003d\u003d WIFI_BAND_24_GHZ || band2 \u003d\u003d WIFI_BAND_24_GHZ) {\n            return band1 !\u003d band2;\n        }\n\n        // 5GHz Low : b1 36-48 b2 52-64(5320)\n        // 5GHz High : b3 100(5500)-144 b4 149-165\n        if ((freqMhz1 \u003c\u003d BAND_5_GHZ_LOW_HIGHEST_FREQ_MHZ\n                \u0026\u0026 freqMhz2 \u003e\u003d BAND_5_GHZ_HIGH_LOWEST_FREQ_MHZ)\n                    || (freqMhz2 \u003c\u003d BAND_5_GHZ_LOW_HIGHEST_FREQ_MHZ\n                        \u0026\u0026 freqMhz1 \u003e\u003d BAND_5_GHZ_HIGH_LOWEST_FREQ_MHZ)) {\n            return true;\n        }\n        return false;\n    }",
+      "range": {
+        "startLine": 963,
+        "startChar": 26,
+        "endLine": 963,
+        "endChar": 50
+      },
+      "revId": "d3f101effa6b4465bb5861793707520208397adf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "072d2908_e2d08230",
+        "filename": "service/java/com/android/server/wifi/WifiConnectivityManager.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 415,
+      "author": {
+        "id": 1240997
+      },
+      "writtenOn": "2023-12-08T23:37:52Z",
+      "side": 1,
+      "message": "Logic here seems incorrect.\n\nIf this path is entered, then it will always return false when mWifiGlobals.isSupportMultiInternetDual5G() is false. This will make valid combinations of 5Ghz and 5Ghz band get filtered out.\n\nI already modified in the internal upstream CL to:\n\n\n    /**\n     * Utility band filter method for multi-internet use-case.\n     */\n    @VisibleForTesting\n    public boolean filterMultiInternetFrequency(int primaryFreq, int secondaryFreq) {\n        return mWifiGlobals.isSupportMultiInternetDual5G()\n                ? ScanResult.isValidCombinedBandForDual5GHz(primaryFreq, secondaryFreq)\n                : ScanResult.toBand(primaryFreq) !\u003d ScanResult.toBand(secondaryFreq);\n    }\n    \n    \n    \n             // Filter usage\n                    secondaryCmmCandidates \u003d candidates.stream()\n                        .filter(c -\u003e {\n                            return filterMultiInternetFrequency(\n                                    primaryInfo.getFrequency(), c.getFrequency());\n                        })\n                        .collect(Collectors.toList());",
+      "range": {
+        "startLine": 413,
+        "startChar": 28,
+        "endLine": 415,
+        "endChar": 83
+      },
+      "revId": "d3f101effa6b4465bb5861793707520208397adf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "8845567e_0b9ecc70",
+        "filename": "service/java/com/android/server/wifi/WifiConnectivityManager.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 427,
+      "author": {
+        "id": 1240997
+      },
+      "writtenOn": "2023-12-08T23:37:52Z",
+      "side": 1,
+      "message": "Also added the same filter to here",
+      "range": {
+        "startLine": 427,
+        "startChar": 23,
+        "endLine": 427,
+        "endChar": 73
+      },
+      "revId": "d3f101effa6b4465bb5861793707520208397adf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
