@@ -142,9 +142,12 @@ public class WifiShellCommand extends BasicShellCommandHandler {
     // These don't require root access.
     // However, these do perform permission checks in the corresponding WifiService methods.
     private static final String[] NON_PRIVILEGED_COMMANDS = {
+            "add-network",
             "add-suggestion",
+            "connect-network",
             "forget-network",
             "get-country-code",
+            "get-softap-supported-features",
             "help",
             "-h",
             "is-verbose-logging",
