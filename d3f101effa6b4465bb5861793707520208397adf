@@ -41,6 +41,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "531e8663_b95a220a",
+        "filename": "framework/java/android/net/wifi/ScanResult.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 963,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-12-11T03:07:37Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "d041a96a_ee62aacb",
+      "range": {
+        "startLine": 963,
+        "startChar": 26,
+        "endLine": 963,
+        "endChar": 50
+      },
+      "revId": "d3f101effa6b4465bb5861793707520208397adf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "072d2908_e2d08230",
