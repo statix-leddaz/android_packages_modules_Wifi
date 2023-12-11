@@ -66,6 +66,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "48f3265a_879ce3d4",
+        "filename": "service/java/com/android/server/wifi/WifiConnectivityManager.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 415,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-12-11T03:04:37Z",
+      "side": 1,
+      "message": "mWifiGlobals.isSupportMultiInternetDual5G() is for Framework support only. So, when both the primary WIFI and the candidate are not 2.4 ghz, we then use mWifiGlobals.isSupportMultiInternetDual5G() to filter out non-frame support.\nIn fact, the effect should be the same as your filterMultiInternetFrequency().\nOf course, your logic will be clearer when using mWifiGlobals.isSupportMultiInternetDual5G() for judgment first.\nYou are right.",
+      "parentUuid": "072d2908_e2d08230",
+      "range": {
+        "startLine": 413,
+        "startChar": 28,
+        "endLine": 415,
+        "endChar": 83
+      },
+      "revId": "d3f101effa6b4465bb5861793707520208397adf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "8845567e_0b9ecc70",
         "filename": "service/java/com/android/server/wifi/WifiConnectivityManager.java",
         "patchSetId": 8
@@ -77,6 +101,30 @@
       "writtenOn": "2023-12-08T23:37:52Z",
       "side": 1,
       "message": "Also added the same filter to here",
+      "range": {
+        "startLine": 427,
+        "startChar": 23,
+        "endLine": 427,
+        "endChar": 73
+      },
+      "revId": "d3f101effa6b4465bb5861793707520208397adf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "906726c3_5b60af9c",
+        "filename": "service/java/com/android/server/wifi/WifiConnectivityManager.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 427,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-12-11T03:04:37Z",
+      "side": 1,
+      "message": "Yes, the DBS mode should also have the same filtering logic. However, we only considered WIFI_MULTI_INTERNET_MODE_MULTI_AP.",
+      "parentUuid": "8845567e_0b9ecc70",
       "range": {
         "startLine": 427,
         "startChar": 23,
