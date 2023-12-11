@@ -133,6 +133,30 @@
       },
       "revId": "d3f101effa6b4465bb5861793707520208397adf",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b3a9181b_d0cea1b6",
+        "filename": "service/java/com/android/server/wifi/WifiConnectivityManager.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 427,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-12-11T03:06:31Z",
+      "side": 1,
+      "message": "Thank you for pointing that out.",
+      "parentUuid": "906726c3_5b60af9c",
+      "range": {
+        "startLine": 427,
+        "startChar": 23,
+        "endLine": 427,
+        "endChar": 73
+      },
+      "revId": "d3f101effa6b4465bb5861793707520208397adf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
