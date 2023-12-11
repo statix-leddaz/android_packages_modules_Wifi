@@ -88,6 +88,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "b712e468_8c677954",
+        "filename": "service/java/com/android/server/wifi/WifiConnectivityManager.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 415,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-12-11T03:07:21Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "48f3265a_879ce3d4",
+      "range": {
+        "startLine": 413,
+        "startChar": 28,
+        "endLine": 415,
+        "endChar": 83
+      },
+      "revId": "d3f101effa6b4465bb5861793707520208397adf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "8845567e_0b9ecc70",
@@ -149,6 +173,30 @@
       "side": 1,
       "message": "Thank you for pointing that out.",
       "parentUuid": "906726c3_5b60af9c",
+      "range": {
+        "startLine": 427,
+        "startChar": 23,
+        "endLine": 427,
+        "endChar": 73
+      },
+      "revId": "d3f101effa6b4465bb5861793707520208397adf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "2ccdff56_476034bc",
+        "filename": "service/java/com/android/server/wifi/WifiConnectivityManager.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 427,
+      "author": {
+        "id": 1997696
+      },
+      "writtenOn": "2023-12-11T03:07:21Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "b3a9181b_d0cea1b6",
       "range": {
         "startLine": 427,
         "startChar": 23,
