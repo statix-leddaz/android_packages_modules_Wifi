@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "b040b8e2_7310a032",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 6
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-11T12:04:18Z",
+      "side": 1,
+      "message": "Hi Les,\nResolved the review comments and added the framework changes for Supplicant signal poll. Please review and provide feedback.\n\nThanks\nVeerendra",
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
