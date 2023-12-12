@@ -65,6 +65,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "781df092_3319e716",
+        "filename": "service/java/com/android/server/wifi/scanner/WifiScannerImpl.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 67,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-12T14:10:34Z",
+      "side": 1,
+      "message": "Acknowledged",
+      "parentUuid": "65a6e470_fcdec4d8",
+      "range": {
+        "startLine": 67,
+        "startChar": 0,
+        "endLine": 67,
+        "endChar": 94
+      },
+      "revId": "cb8a57a8b421c6e588939c07ee71ecd045bb2cc1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "c04877ff_4f3b7bb6",
@@ -196,6 +220,30 @@
       "side": 1,
       "message": "BaseWifiScannerImplTest is used as the base class in WificondScannerTest and HalWifiScannerTest where the WifiGlobals is required.",
       "parentUuid": "49fd78fd_19483e4d",
+      "range": {
+        "startLine": 74,
+        "startChar": 22,
+        "endLine": 74,
+        "endChar": 34
+      },
+      "revId": "cb8a57a8b421c6e588939c07ee71ecd045bb2cc1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "35b27b0e_7c114e2c",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/scanner/BaseWifiScannerImplTest.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 74,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-12T14:10:34Z",
+      "side": 1,
+      "message": "Acknowledged",
+      "parentUuid": "8554f2d3_dde81b0c",
       "range": {
         "startLine": 74,
         "startChar": 22,
