@@ -1319,10 +1319,21 @@ public class WifiBlocklistMonitor {
      */
     private void setNetworkSelectionStatus(WifiConfiguration config, int reason) {
         NetworkSelectionStatus networkStatus = config.getNetworkSelectionStatus();
+        DisableReasonInfo info = mDisableReasonInfo.get(reason);
+        int disablePermentToTemporaryDurationMs = mContext.getResources().getInteger(
+                R.integer.config_wifiDisablePermanentToTemporaryDurationMs);
         if (reason == NetworkSelectionStatus.DISABLED_NONE) {
             setNetworkSelectionEnabled(config);
         } else if (getNetworkSelectionDisableTimeoutMillis(reason)
                 != DisableReasonInfo.PERMANENT_DISABLE_TIMEOUT) {
+            setNetworkSelectionTemporarilyDisabled(config, reason);
+        } else if (mContext.getResources().getBoolean(
+                R.integer.config_wifiDisablePermanentToTemporaryEnable)) {
+            info = new DisableReasonInfo(
+                            info.mReasonStr,
+                            info.mDisableThreshold,
+                            disablePermentToTemporaryDurationMs);
+            mDisableReasonInfo.put(reason, info);
             setNetworkSelectionTemporarilyDisabled(config, reason);
         } else {
             setNetworkSelectionPermanentlyDisabled(config, reason);
