@@ -119,7 +119,7 @@ public class WifiBlocklistMonitor {
     @VisibleForTesting
     public static final int NUM_CONSECUTIVE_FAILURES_PER_NETWORK_EXP_BACKOFF = 5;
     @VisibleForTesting
-    public static final long WIFI_CONFIG_MAX_DISABLE_DURATION_MILLIS = TimeUnit.HOURS.toMillis(18);
+    public static long WIFI_CONFIG_MAX_DISABLE_DURATION_MILLIS = TimeUnit.HOURS.toMillis(18);
     private static final String TAG = "WifiBlocklistMonitor";
 
     private final Context mContext;
@@ -263,6 +263,8 @@ public class WifiBlocklistMonitor {
         mWifiMetrics = wifiMetrics;
         mWifiPermissionsUtil = wifiPermissionsUtil;
         loadCustomConfigsForDisableReasonInfos();
+        WIFI_CONFIG_MAX_DISABLE_DURATION_MILLIS = mContext.getResources().getInteger(
+                R.integer.config_wifiDisableTemporaryMaximumDurationMs);
     }
 
     // A helper to log debugging information in the local log buffer, which can
@@ -1319,10 +1321,21 @@ public class WifiBlocklistMonitor {
      */
     private void setNetworkSelectionStatus(WifiConfiguration config, int reason) {
         NetworkSelectionStatus networkStatus = config.getNetworkSelectionStatus();
+        DisableReasonInfo info = mDisableReasonInfo.get(reason);
+        int disablePermentToTemporaryDurationMs = mContext.getResources().getInteger(
+                R.integer.config_wifiDisablePermanentToTemporaryDurationMs);
         if (reason == NetworkSelectionStatus.DISABLED_NONE) {
             setNetworkSelectionEnabled(config);
         } else if (getNetworkSelectionDisableTimeoutMillis(reason)
                 != DisableReasonInfo.PERMANENT_DISABLE_TIMEOUT) {
+            setNetworkSelectionTemporarilyDisabled(config, reason);
+        } else if (mContext.getResources().getBoolean(
+                R.integer.config_wifiDisablePermanentToTemporaryEnable)) {
+            info = new DisableReasonInfo(
+                            info.mReasonStr,
+                            info.mDisableThreshold,
+                            disablePermentToTemporaryDurationMs);
+            mDisableReasonInfo.put(reason, info);
             setNetworkSelectionTemporarilyDisabled(config, reason);
         } else {
             setNetworkSelectionPermanentlyDisabled(config, reason);
