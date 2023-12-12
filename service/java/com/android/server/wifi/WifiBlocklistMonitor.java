@@ -119,7 +119,7 @@ public class WifiBlocklistMonitor {
     @VisibleForTesting
     public static final int NUM_CONSECUTIVE_FAILURES_PER_NETWORK_EXP_BACKOFF = 5;
     @VisibleForTesting
-    public static final long WIFI_CONFIG_MAX_DISABLE_DURATION_MILLIS = TimeUnit.HOURS.toMillis(18);
+    public static final long WIFI_CONFIG_MAX_DISABLE_DURATION_MILLIS;
     private static final String TAG = "WifiBlocklistMonitor";
 
     private final Context mContext;
@@ -263,6 +263,8 @@ public class WifiBlocklistMonitor {
         mWifiMetrics = wifiMetrics;
         mWifiPermissionsUtil = wifiPermissionsUtil;
         loadCustomConfigsForDisableReasonInfos();
+        WIFI_CONFIG_MAX_DISABLE_DURATION_MILLIS = mContext.getResources().getInteger(
+                R.integer.config_wifiDisableTemporaryMaximumDurationMs);
     }
 
     // A helper to log debugging information in the local log buffer, which can
