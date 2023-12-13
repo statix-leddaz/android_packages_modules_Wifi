@@ -175,6 +175,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             "set-mock-wifimodem-service",
             "get-mock-wifimodem-service",
             "set-mock-wifimodem-methods",
+            "force-overlay-config-value",
     };
 
     private static final Map<String, Pair<NetworkRequest, ConnectivityManager.NetworkCallback>>
@@ -1834,6 +1835,18 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         pw.print("true");
                     } else {
                         pw.print("fail to set mock method: " + methods);
+                        return -1;
+                    }
+                    return 0;
+                case "force-overlay-config-value":
+                    // TODO - get values for value, configString, enabled from testcase
+                    String value = "true"; //getNextArgRequired()
+                    String configString = "config_wifi_background_scan_support";
+                    boolean isEnabled = true; //getNextArgRequiredTrueOrFalse("enabled", "disabled")
+                    if (mWifiService.forceOverlayConfigValue(configString, value, isEnabled)) {
+                        pw.print("true");
+                    } else {
+                        pw.print("fail to force overlay config value: " + configString);
                         return -1;
                     }
                     return 0;
