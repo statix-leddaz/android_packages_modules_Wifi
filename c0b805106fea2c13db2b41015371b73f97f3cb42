@@ -46,6 +46,30 @@
       },
       "revId": "c0b805106fea2c13db2b41015371b73f97f3cb42",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "ee798c10_ea2ef3ae",
+        "filename": "service/java/com/android/server/wifi/WifiBlocklistMonitor.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 1337,
+      "author": {
+        "id": 1240997
+      },
+      "writtenOn": "2023-12-13T22:23:11Z",
+      "side": 1,
+      "message": "DISABLED_BY_WRONG_PASSWORD: Behavior depends on the version of codebase. In the newer code, I believe even if the network successfully connected before, multiple consecutive wrong password failure will still result in permanently disabling the network. On older code, the permanent disable only happen to network that\u0027s never successfully connected before.\n\nDISABLED_AUTHENTICATION_NO_CREDENTIALS: This is only applicable to SIM based Enterprise networks. Should not be relevant for ATV.",
+      "parentUuid": "6c80f34f_096bc3d3",
+      "range": {
+        "startLine": 1330,
+        "startChar": 10,
+        "endLine": 1337,
+        "endChar": 67
+      },
+      "revId": "c0b805106fea2c13db2b41015371b73f97f3cb42",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
