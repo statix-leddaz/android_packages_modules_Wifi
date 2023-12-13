@@ -24,6 +24,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "747bade8_4a27a64c",
+        "filename": "/COMMIT_MSG",
+        "patchSetId": 6
+      },
+      "lineNbr": 7,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-13T10:40:56Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "c85eb905_4c3f5b65",
+      "range": {
+        "startLine": 7,
+        "startChar": 11,
+        "endLine": 7,
+        "endChar": 42
+      },
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "1a8ece34_dcde48a9",
@@ -37,6 +61,30 @@
       "writtenOn": "2023-12-13T08:47:00Z",
       "side": 1,
       "message": "Please use Bug: 315088283 for this topic",
+      "range": {
+        "startLine": 9,
+        "startChar": 5,
+        "endLine": 9,
+        "endChar": 9
+      },
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "cd2275be_24d0987f",
+        "filename": "/COMMIT_MSG",
+        "patchSetId": 6
+      },
+      "lineNbr": 9,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-13T10:40:56Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "1a8ece34_dcde48a9",
       "range": {
         "startLine": 9,
         "startChar": 5,
@@ -89,6 +137,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "4c1504eb_b94c488f",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockSupplicantManager.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 72,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-13T10:40:56Z",
+      "side": 1,
+      "message": "We are using this method to add all the mocked methods and use this to check if method is mocked or not. \n\nWe are differentiating the methods based on Mocked class name . Reference added below\n \nFor reference : MockWifiServiceUtil - 224 line\n\n if (TAG_MOCK_SUPPLICANT.equals(mockedClassName) \u0026\u0026 mMockSupplicantManager !\u003d null) {\n  mMockSupplicantManager.addMockedMethod(mockedMethodName);\n}\n\n so we dont need to add separate methods for different aidl which are implemented from the ISupplicant.",
+      "parentUuid": "3b6a6df8_b20dd1b0",
+      "range": {
+        "startLine": 72,
+        "startChar": 16,
+        "endLine": 72,
+        "endChar": 31
+      },
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "9fc3ea5e_087d3855",
         "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
         "patchSetId": 6
@@ -100,6 +172,54 @@
       "writtenOn": "2023-12-13T08:47:00Z",
       "side": 1,
       "message": "mMockSupplicantManager \u003d null?",
+      "range": {
+        "startLine": 99,
+        "startChar": 0,
+        "endLine": 99,
+        "endChar": 45
+      },
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "12ca9287_cc0cda24",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 99,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-13T10:40:56Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "9fc3ea5e_087d3855",
+      "range": {
+        "startLine": 99,
+        "startChar": 0,
+        "endLine": 99,
+        "endChar": 45
+      },
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "f2065d2a_345b3bed",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 99,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-13T10:40:56Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "9fc3ea5e_087d3855",
       "range": {
         "startLine": 99,
         "startChar": 0,
