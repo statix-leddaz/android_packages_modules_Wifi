@@ -183,6 +183,54 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "428c23d1_9b48ec9b",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockSupplicantManager.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 72,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-13T11:24:47Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "c519bd19_7126addd",
+      "range": {
+        "startLine": 72,
+        "startChar": 16,
+        "endLine": 72,
+        "endChar": 31
+      },
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "9f655f5b_5939f8ac",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockSupplicantManager.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 72,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-13T11:24:47Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "c519bd19_7126addd",
+      "range": {
+        "startLine": 72,
+        "startChar": 16,
+        "endLine": 72,
+        "endChar": 31
+      },
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "9fc3ea5e_087d3855",
