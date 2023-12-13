@@ -16,6 +16,52 @@
       "message": "Hi Les,\nResolved review comments. Please review and provide feedback.\n\nThanks",
       "revId": "6db64a74241c10d6f8e8d52198b711d6575e43cd",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "5df8ca4f_2ce2f31c",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockSupplicantManager.java",
+        "patchSetId": 9
+      },
+      "lineNbr": 73,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-13T12:30:04Z",
+      "side": 1,
+      "message": "I am ok to handle it in another CL. But do we plan to handle the aidl-method in this file? Or??\n\ni.e. I believe it is not only impact this CL but in the CTS.\nPlease add TODO in both commits if you plan to handle it in another CL.\n\nnit: We usually add bug ID in TODO. Please put bug id inside. Thanks.\n\n\"TODO: b/315088283 - Need to handle same method name from different aidl.\"",
+      "range": {
+        "startLine": 73,
+        "startChar": 0,
+        "endLine": 73,
+        "endChar": 69
+      },
+      "revId": "6db64a74241c10d6f8e8d52198b711d6575e43cd",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "1670f2bb_899040a4",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 9
+      },
+      "lineNbr": 247,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-13T12:30:04Z",
+      "side": 1,
+      "message": "The method name is weird.\nCould you help to rename it to isMethodConfigured?\n\nThanks",
+      "range": {
+        "startLine": 247,
+        "startChar": 19,
+        "endLine": 247,
+        "endChar": 40
+      },
+      "revId": "6db64a74241c10d6f8e8d52198b711d6575e43cd",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
