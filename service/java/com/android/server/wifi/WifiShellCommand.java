@@ -175,6 +175,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             "set-mock-wifimodem-service",
             "get-mock-wifimodem-service",
             "set-mock-wifimodem-methods",
+            "force-overlay-config-value",
     };
 
     private static final Map<String, Pair<NetworkRequest, ConnectivityManager.NetworkCallback>>
@@ -1837,6 +1838,17 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         return -1;
                     }
                     return 0;
+                case "force-overlay-config-value":
+                    String value = getNextArgRequired();
+                    String configString = getNextArgRequired();
+                    boolean isEnabled = getNextArgRequiredTrueOrFalse("enabled", "disabled");
+                    if (mWifiService.forceOverlayConfigValue(configString, value, isEnabled)) {
+                        pw.print("true");
+                    } else {
+                        pw.print("fail to force overlay config value: " + configString);
+                        return -1;
+                    }
+                    return 0;
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -2618,6 +2630,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println(
                 "    get allowed channels in each operation mode from wifiManager if available. "
                         + "Otherwise, it returns from wifiScanner.");
+        pw.println("  force-overlay-config-value");
+        pw.println("    Force overlay for config_wifi_background_scan_support");
     }
 
     private void onHelpPrivileged(PrintWriter pw) {
