@@ -418,6 +418,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
     private WifiP2pConfig mSavedRejectedPeerConfig = null;
 
+    private String mInterfaceAddress = "";
     private boolean mIsBootComplete;
 
     // Constants for configuring P2P GO IP Address Allocation in EAPOL-Key Frames (4-Way Handshake)
@@ -4287,7 +4288,16 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             break;
                         }
                         device = (WifiP2pDevice) message.obj;
-                        deviceAddress = device.deviceAddress;
+                        String deviceInterfaceAddress = device.deviceAddress;
+                        String[] deviceAddressList = deviceInterfaceAddress.split(";");
+                        if (deviceAddressList.length < 2) {
+                            Log.e(TAG, "Illegal argument(s)");
+                            break;
+                        } else {
+                            deviceAddress = deviceAddressList[0];
+                            mInterfaceAddress = deviceAddressList[1];
+                        }
+                        logd("Peer's deviceAddress is:" + deviceAddress + ", mInterfaceAddress is:" + mInterfaceAddress);
                         // Clear timeout that was set when group was started.
                         mWifiNative.setP2pGroupIdle(mGroup.getInterface(), 0);
                         if (deviceAddress != null) {
@@ -4915,6 +4925,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             intent.putExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO, new WifiP2pInfo(mWifiP2pInfo));
             intent.putExtra(WifiP2pManager.EXTRA_NETWORK_INFO, makeNetworkInfo());
             intent.putExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP, eraseOwnDeviceAddress(mGroup));
+            intent.putExtra("device.interfaceaddress", mInterfaceaddress);
+            mInterfaceaddress = "";
             sendBroadcastMultiplePermissions(intent);
             if (mWifiChannel != null) {
                 mWifiChannel.sendMessage(WifiP2pServiceImpl.P2P_CONNECTION_CHANGED,
