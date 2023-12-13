@@ -22,6 +22,30 @@
       },
       "revId": "c0b805106fea2c13db2b41015371b73f97f3cb42",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "6c80f34f_096bc3d3",
+        "filename": "service/java/com/android/server/wifi/WifiBlocklistMonitor.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 1337,
+      "author": {
+        "id": 1903311
+      },
+      "writtenOn": "2023-12-13T18:04:13Z",
+      "side": 1,
+      "message": "I agree to check config_wifiDisablePermanentToTemporaryEnable in ClientModeImpl to avoid unwanted side effects. If we address disable reasons individually, we need to know the frequency of Android Wi-Fi updates to the disable reason list. This will help us estimate the risk of future changes introducing unwanted permanent blocking on ATV devices.\n\nBesides, I want to know more details about the following disable reasons. Do you suggest that we should only turn DISABLED_NO_INTERNET_PERMANENT into temporary blocking, or do you have other permanent blocking disable reason that can also be turned into temporary blocking?\n\n1. DISABLED_BY_WRONG_PASSWORD:\n- If android device has changed the password, it has only connected before password change and never connected again after that. In this case, would Android device put this Wi-Fi into permanent blocklist by this reason? \n\n2. DISABLED_AUTHENTICATION_NO_CREDENTIALS\n- From the user\u0027s perspective, what actions could lead to this state?",
+      "parentUuid": "1c8c52be_4768bb38",
+      "range": {
+        "startLine": 1330,
+        "startChar": 10,
+        "endLine": 1337,
+        "endChar": 67
+      },
+      "revId": "c0b805106fea2c13db2b41015371b73f97f3cb42",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
