@@ -19,6 +19,7 @@ package com.android.server.wifi;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.net.wifi.WifiConfiguration;
+import android.text.TextUtils;
 import android.util.ArraySet;
 
 import com.android.modules.utils.build.SdkLevel;
@@ -26,9 +27,12 @@ import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 
 import javax.annotation.concurrent.ThreadSafe;
 
@@ -36,7 +40,6 @@ import javax.annotation.concurrent.ThreadSafe;
 /** Global wifi service in-memory state that is not persisted. */
 @ThreadSafe
 public class WifiGlobals {
-
     private final Context mContext;
 
     private final AtomicInteger mPollRssiIntervalMillis = new AtomicInteger(-1);
@@ -64,7 +67,7 @@ public class WifiGlobals {
     private final boolean mAdjustPollRssiIntervalEnabled;
     private final boolean mWifiInterfaceAddedSelfRecoveryEnabled;
     private final int mNetworkNotFoundEventThreshold;
-    private final boolean mIsBackgroundScanSupported;
+    private boolean mIsBackgroundScanSupported;
     private final boolean mIsWepDeprecated;
     private final boolean mIsWpaPersonalDeprecated;
 
@@ -73,6 +76,7 @@ public class WifiGlobals {
     private boolean mIsUsingExternalScorer = false;
     private boolean mDisableUnwantedNetworkOnLowRssi = false;
     private Set<String> mMacRandomizationUnsupportedSsidPrefixes = new ArraySet<>();
+    private Map<String, BiConsumer<String, Boolean>> mOverrideMethods = new HashMap<>();
 
     public WifiGlobals(Context context) {
         mContext = context;
@@ -137,6 +141,19 @@ public class WifiGlobals {
                 mMacRandomizationUnsupportedSsidPrefixes.add(cleanedSsid);
             }
         }
+        mOverrideMethods.put("config_wifi_background_scan_support",
+                new BiConsumer<String, Boolean>() {
+                @Override
+                public void accept(String value , Boolean isEnabled) {
+                    if (isEnabled) {
+                        mIsBackgroundScanSupported = Boolean.parseBoolean(value);
+                    } else {
+                        // reset to default
+                        mIsBackgroundScanSupported = mContext.getResources()
+                        .getBoolean(R.bool.config_wifi_background_scan_support);
+                    }
+                }
+            });
     }
 
     public Set<String> getMacRandomizationUnsupportedSsidPrefixes() {
@@ -401,6 +418,20 @@ public class WifiGlobals {
      */
     public int getNetworkNotFoundEventThreshold() {
         return mNetworkNotFoundEventThreshold;
+    }
+
+    /**
+     * Force Overlay Config Value for background scan.
+     */
+    public boolean forceOverlayConfigValue(String configString, String value,
+            boolean isEnabled) {
+        if (TextUtils.isEmpty(value)
+                || TextUtils.isEmpty(configString)
+                || !mOverrideMethods.containsKey(configString)) {
+            return false;
+        }
+        mOverrideMethods.get(configString).accept(value, isEnabled);
+        return true;
     }
 
     /** Dump method for debugging */
