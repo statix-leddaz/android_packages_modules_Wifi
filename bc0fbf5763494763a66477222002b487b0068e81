@@ -161,6 +161,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "c519bd19_7126addd",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockSupplicantManager.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 72,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-13T10:50:40Z",
+      "side": 1,
+      "message": "The design here is adding all relative aidl method under ISupplicant to the supplicant class. But how do we handle if we have two methods which are the same name but they are different aidl? If we didn\u0027t handle this case now, could you add TODO: here for future tracking?\n\nFor example:\ngetName in ISupplicantStaIface.aidl and ISupplicantP2pIface.aidl?",
+      "parentUuid": "4c1504eb_b94c488f",
+      "range": {
+        "startLine": 72,
+        "startChar": 16,
+        "endLine": 72,
+        "endChar": 31
+      },
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "9fc3ea5e_087d3855",
         "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
         "patchSetId": 6
