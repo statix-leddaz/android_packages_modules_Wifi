@@ -1379,6 +1379,8 @@ public class XmlUtil {
         public static final String XML_TAG_HAS_EVER_CONNECTED = "HasEverConnected";
         public static final String XML_TAG_IS_CAPTIVE_PORTAL_NEVER_DETECTED =
                 "CaptivePortalNeverDetected";
+        public static final String XML_TAG_HAS_EVER_VALIDATED_INTERNET_ACCESS =
+                "HasEverValidatedInternetAccess";
         public static final String XML_TAG_CONNECT_CHOICE_RSSI = "ConnectChoiceRssi";
 
         /**
@@ -1402,6 +1404,8 @@ public class XmlUtil {
                     out, XML_TAG_HAS_EVER_CONNECTED, selectionStatus.hasEverConnected());
             XmlUtil.writeNextValue(out, XML_TAG_IS_CAPTIVE_PORTAL_NEVER_DETECTED,
                     selectionStatus.hasNeverDetectedCaptivePortal());
+            XmlUtil.writeNextValue(out, XML_TAG_HAS_EVER_VALIDATED_INTERNET_ACCESS,
+                    selectionStatus.hasEverValidatedInternetAccess());
         }
 
         /**
@@ -1420,6 +1424,10 @@ public class XmlUtil {
             // Initialize hasNeverDetectedCaptivePortal to "false" for upgrading legacy configs
             // which do not have the XML_TAG_IS_CAPTIVE_PORTAL_NEVER_DETECTED tag.
             selectionStatus.setHasNeverDetectedCaptivePortal(false);
+
+            // Initialize hasEverValidatedInternetAccess to "true" for existing configs which don't
+            // have any value stored.
+            selectionStatus.setHasEverValidatedInternetAccess(true);
 
             // Loop through and parse out all the elements from the stream within this section.
             while (!XmlUtil.isNextSectionEnd(in, outerTagDepth)) {
@@ -1446,6 +1454,10 @@ public class XmlUtil {
                         break;
                     case XML_TAG_IS_CAPTIVE_PORTAL_NEVER_DETECTED:
                         selectionStatus.setHasNeverDetectedCaptivePortal((boolean) value);
+                        break;
+                    case XML_TAG_HAS_EVER_VALIDATED_INTERNET_ACCESS:
+                        selectionStatus.setHasEverValidatedInternetAccess((boolean) value);
+                        break;
                     default:
                         Log.w(TAG, "Ignoring unknown value name found: " + valueName[0]);
                         break;
@@ -1511,6 +1523,8 @@ public class XmlUtil {
         public static final String XML_TAG_TRUST_ON_FIRST_USE = "TrustOnFirstUse";
         public static final String XML_TAG_USER_APPROVE_NO_CA_CERT = "UserApproveNoCaCert";
         public static final String XML_TAG_MINIMUM_TLS_VERSION = "MinimumTlsVersion";
+        public static final String XML_TAG_TOFU_DIALOG_STATE = "TofuDialogState";
+        public static final String XML_TAG_TOFU_CONNECTION_STATE = "TofuConnectionState";
 
         /**
          * Write password key to the XML stream.
@@ -1600,6 +1614,10 @@ public class XmlUtil {
                     enterpriseConfig.isUserApproveNoCaCert());
             XmlUtil.writeNextValue(out, XML_TAG_MINIMUM_TLS_VERSION,
                     enterpriseConfig.getMinimumTlsVersion());
+            XmlUtil.writeNextValue(out, XML_TAG_TOFU_DIALOG_STATE,
+                    enterpriseConfig.getTofuDialogState());
+            XmlUtil.writeNextValue(out, XML_TAG_TOFU_CONNECTION_STATE,
+                    enterpriseConfig.getTofuConnectionState());
         }
 
         /**
@@ -1724,6 +1742,12 @@ public class XmlUtil {
                             break;
                         case XML_TAG_MINIMUM_TLS_VERSION:
                             enterpriseConfig.setMinimumTlsVersion((int) value);
+                            break;
+                        case XML_TAG_TOFU_DIALOG_STATE:
+                            enterpriseConfig.setTofuDialogState((int) value);
+                            break;
+                        case XML_TAG_TOFU_CONNECTION_STATE:
+                            enterpriseConfig.setTofuConnectionState((int) value);
                             break;
                         default:
                             Log.w(TAG, "Ignoring unknown value name found: " + valueName[0]);

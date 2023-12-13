@@ -96,6 +96,7 @@
           <item type="bool" name="config_wifiEnable6ghzPscScanning" />
           <item type="bool" name="config_wifiEnablePartialInitialScan" />
           <item type="integer" name="config_wifiInitialPartialScanChannelMaxCount" />
+          <item type="integer" name="config_wifiInitialPartialScanMaxNewChannelsPerNetwork" />
           <item type="integer" name="config_wifiInitialPartialScanChannelCacheAgeMins" />
           <item type="bool" name="config_wifi_framework_use_single_radio_chain_scan_results_network_selection" />
           <item type="bool" name="config_wifiAllowLinkingUnknownDefaultGatewayConfigurations" />
@@ -255,6 +256,7 @@
           <item type="array" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificThreshold_carrier_overrides" />
           <item type="integer" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs" />
           <item type="array" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs_carrier_overrides" />
+          <item type="array" name="config_wifiEapFailureConfig" />
           <item type="bool" name="config_wifiAllowMultipleNetworksOnSameAwareNdi"/>
           <item type="integer" name="config_wifiAwareInstantCommunicationModeDurationMillis" />
           <item type="bool" name="config_wifiSupportChannelOnDataPath"/>
@@ -274,6 +276,7 @@
           <item type="integer" name="config_wifiMaxNumWifiConfigurations" />
           <item type="integer" name="config_wifiMaxNumWifiConfigurationsAddedByAllApps" />
           <item type="bool" name="config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW" />
+          <item type="bool" name="config_wifiAllowMultiInternetConnectDual5GFrequency" />
           <item type="integer" name="config_wifiConnectivityLocalLogMaxLinesLowRam" />
           <item type="integer" name="config_wifiConnectivityLocalLogMaxLinesHighRam" />
           <item type="integer" name="config_wifiClientModeImplNumLogRecs" />
@@ -324,9 +327,11 @@
           <item type="bool" name="config_wifiP2pGoIpAddressAllocationInEapolFrames" />
           <item type="string"  name="config_wifiP2pGoEapolIpAddressRangeStart" />
           <item type="string"  name="config_wifiP2pGoEapolIpAddressRangeEnd" />
+          <item type="bool" name="config_wifiDisableFirmwareRoamingInIdleMode" />
           <item type="bool" name="config_wifiUpdateCountryCodeFromScanResultGeneric" />
           <item type="bool" name="config_wifiSofapHalMapWpa3TransitionModeToWpa3OnlyIn6GHzBand" />
           <item type="bool" name ="config_aware_vdbg_enable_on_verbose_logging" />
+          <item type="bool" name ="config_wifiDisableNudDisconnectsForWapiInSpecificCc" />
 
           <!-- Params from config.xml that can be overlayed -->
 

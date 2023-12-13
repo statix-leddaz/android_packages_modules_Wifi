@@ -67,6 +67,7 @@ import static com.android.server.wifi.SelfRecovery.REASON_API_CALL;
 import static com.android.server.wifi.WifiConfigurationTestUtil.SECURITY_NONE;
 import static com.android.server.wifi.WifiSettingsConfigStore.SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI;
 import static com.android.server.wifi.WifiSettingsConfigStore.SHOW_DIALOG_WHEN_THIRD_PARTY_APPS_ENABLE_WIFI_SET_BY_API;
+import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_STA_FACTORY_MAC_ADDRESS;
 import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_VERBOSE_LOGGING_ENABLED;
 
 import static com.google.common.truth.Truth.assertThat;
@@ -281,6 +282,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     private static final String TEST_PACKAGE_NAME_OTHER = "TestPackageOther";
     private static final String TEST_FEATURE_ID = "TestFeature";
     private static final String SYSUI_PACKAGE_NAME = "com.android.systemui";
+    private static final String CERT_INSTALLER_PACKAGE_NAME = "com.android.certinstaller";
     private static final int TEST_PID = 6789;
     private static final int TEST_PID2 = 9876;
     private static final int TEST_UID = 1200000;
@@ -460,6 +462,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     @Mock WifiPulledAtomLogger mWifiPulledAtomLogger;
     @Mock ScoringParams mScoringParams;
     @Mock ApplicationQosPolicyRequestHandler mApplicationQosPolicyRequestHandler;
+    @Mock WifiDeviceStateChangeManager mWifiDeviceStateChangeManager;
 
     @Captor ArgumentCaptor<Intent> mIntentCaptor;
     @Captor ArgumentCaptor<List> mListCaptor;
@@ -514,6 +517,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
         // needed to mock this to call "handleBootCompleted"
         when(mWifiInjector.getPasspointProvisionerHandlerThread())
                 .thenReturn(mock(HandlerThread.class));
+        when(mWifiInjector.getWifiDeviceStateChangeManager())
+                .thenReturn(mWifiDeviceStateChangeManager);
         when(mHandlerThread.getThreadHandler()).thenReturn(new Handler(mLooper.getLooper()));
         when(mHandlerThread.getLooper()).thenReturn(mLooper.getLooper());
         when(mContext.getResources()).thenReturn(mResources);
@@ -1162,7 +1167,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         when(mResources.getString(R.string.wifi_enable_request_dialog_negative_button))
                 .thenReturn(negativeButtonText);
 
-        // Verify the negative reply does not enable wifi
+        // Launch dialog
         WifiDialogManager.DialogHandle dialogHandle = mock(WifiDialogManager.DialogHandle.class);
         when(mWifiDialogManager.createSimpleDialog(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(dialogHandle);
@@ -1181,6 +1186,22 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 callbackCaptor.capture(),
                 any());
         verify(dialogHandle).launchDialog();
+
+        // Verify extra call to setWifiEnabled won't launch a new dialog
+        assertTrue(mWifiServiceImpl.setWifiEnabled(TEST_PACKAGE_NAME, true));
+        verify(mActiveModeWarden, times(0)).wifiToggled(
+                eq(new WorkSource(Binder.getCallingUid(), TEST_PACKAGE_NAME)));
+        mLooper.dispatchAll();
+        verify(mWifiDialogManager, times(1)).createSimpleDialog(
+                eq(title),
+                eq(message),
+                eq(positiveButtonText),
+                eq(negativeButtonText),
+                eq(null),
+                callbackCaptor.capture(),
+                any());
+
+        // Verify the negative reply does not enable wifi
         callbackCaptor.getValue().onNegativeButtonClicked();
         verify(mActiveModeWarden, times(0)).wifiToggled(
                 eq(new WorkSource(Binder.getCallingUid(), TEST_PACKAGE_NAME)));
@@ -1864,6 +1885,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiConfigManager).loadFromStore();
         verify(mActiveModeWarden).start();
         verify(mActiveModeWarden, never()).wifiToggled(any());
+        verify(mWifiDeviceStateChangeManager).handleBootCompleted();
     }
 
     @Test
@@ -1898,6 +1920,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiConfigManager).loadFromStore();
         verify(mActiveModeWarden).start();
         verify(mWifiNetworkFactory).start();
+        verify(mWifiDeviceStateChangeManager).handleBootCompleted();
     }
 
     @Test
@@ -1925,6 +1948,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiPulledAtomLogger).setPullAtomCallback(WifiStatsLog.WIFI_MODULE_INFO);
         verify(mWifiPulledAtomLogger).setPullAtomCallback(WifiStatsLog.WIFI_SETTING_INFO);
         verify(mWifiPulledAtomLogger).setPullAtomCallback(WifiStatsLog.WIFI_COMPLEX_SETTING_INFO);
+        verify(mWifiPulledAtomLogger).setPullAtomCallback(
+                WifiStatsLog.WIFI_CONFIGURED_NETWORK_INFO);
     }
 
     /**
@@ -5220,6 +5245,46 @@ public class WifiServiceImplTest extends WifiBaseTest {
     }
 
     /**
+     * Verify the secondary internet CMM is stopped when explicit connection is initiated on the
+     * primary.
+     */
+    @Test
+    public void testConnectNetworkStopConnectedSecondaryInternetCmm() throws Exception {
+        // grant permissions to access WifiServiceImpl#connect
+        when(mContext.checkPermission(
+                        eq(android.Manifest.permission.NETWORK_SETTINGS), anyInt(), anyInt()))
+                .thenReturn(PackageManager.PERMISSION_GRANTED);
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+        when(mWifiConfigManager.addOrUpdateNetwork(any(), anyInt()))
+                .thenReturn(new NetworkUpdateResult(TEST_NETWORK_ID));
+        WifiConfiguration config = WifiConfigurationTestUtil.createWpa2Wpa3EnterpriseNetwork();
+        config.SSID = TEST_SSID;
+        WifiConfiguration otherConfig = WifiConfigurationTestUtil.createOpenNetwork(TEST_SSID);
+        when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(config);
+
+        // Mock ActiveModeWarden to return a primary CMM and a secondary CMM to be already
+        // connected to the target network.
+        List<ClientModeManager> clientModeManagers = new ArrayList<>();
+        ClientModeManager primaryCmm = mock(ClientModeManager.class);
+        when(primaryCmm.getRole()).thenReturn(ROLE_CLIENT_PRIMARY);
+        ConcreteClientModeManager secondaryInternetCmm = mock(ConcreteClientModeManager.class);
+        when(secondaryInternetCmm.getRole()).thenReturn(ROLE_CLIENT_SECONDARY_LONG_LIVED);
+        when(secondaryInternetCmm.isSecondaryInternet()).thenReturn(true);
+        when(secondaryInternetCmm.isConnected()).thenReturn(true);
+        when(secondaryInternetCmm.getConnectedWifiConfiguration()).thenReturn(otherConfig);
+        clientModeManagers.add(primaryCmm);
+        clientModeManagers.add(secondaryInternetCmm);
+        when(mActiveModeWarden.getClientModeManagers()).thenReturn(clientModeManagers);
+
+        // Verify that the secondary internet CMM is stopped when manual connection is started
+        mWifiServiceImpl.connect(
+                config, TEST_NETWORK_ID, mock(IActionListener.class), TEST_PACKAGE_NAME);
+        mLooper.dispatchAll();
+        verify(primaryCmm, never()).stop();
+        verify(secondaryInternetCmm).stop();
+    }
+
+    /**
      * Verify that the CONNECT_NETWORK message received from an app with
      * one of the privileged permission will stop secondary CMMs that are alraedy connected to
      * the same network before initiating the connection.
@@ -5242,7 +5307,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         List<ClientModeManager> clientModeManagers = new ArrayList<>();
         ClientModeManager primaryCmm = mock(ClientModeManager.class);
         when(primaryCmm.getRole()).thenReturn(ROLE_CLIENT_PRIMARY);
-        ClientModeManager localOnlyCmm = mock(ClientModeManager.class);
+        ConcreteClientModeManager localOnlyCmm = mock(ConcreteClientModeManager.class);
         when(localOnlyCmm.getRole()).thenReturn(ROLE_CLIENT_LOCAL_ONLY);
         when(localOnlyCmm.isConnected()).thenReturn(true);
         when(localOnlyCmm.getConnectedWifiConfiguration()).thenReturn(localOnlyConfig);
@@ -5761,12 +5826,16 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         // No scans must be made yet as the device is idle.
         verify(mScanRequestProxy, never()).startScan(Process.myUid(), SCAN_PACKAGE_NAME);
+        // Verify ActiveModeWarden is notified of the idle mode change
+        verify(mActiveModeWarden).onIdleModeChanged(true);
 
         // Tell the wifi service that idle mode ended.
         when(mPowerManager.isDeviceIdleMode()).thenReturn(false);
         mLooper.startAutoDispatch();
         TestUtil.sendIdleModeChanged(mBroadcastReceiverCaptor.getValue(), mContext);
         mLooper.stopAutoDispatchAndIgnoreExceptions();
+        // Verify ActiveModeWarden is notified of the idle mode change
+        verify(mActiveModeWarden).onIdleModeChanged(false);
 
         // Must scan now.
         verify(mScanRequestProxy).startScan(Process.myUid(), TEST_PACKAGE_NAME);
@@ -6433,6 +6502,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mWifiScoreCard).clear();
         verify(mWifiHealthMonitor).clear();
         verify(mPasspointManager).getProviderConfigs(anyInt(), anyBoolean());
+        verify(mContext).resetResourceCache();
     }
 
     /**
@@ -7258,6 +7328,8 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testGetFactoryMacAddresses() throws Exception {
+        when(mWifiGlobals.isSaveFactoryMacToConfigStoreEnabled()).thenReturn(true);
+        when(mWifiSettingsConfigStore.get(WIFI_STA_FACTORY_MAC_ADDRESS)).thenReturn(null);
         when(mClientModeManager.getFactoryMacAddress()).thenReturn(TEST_FACTORY_MAC);
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
         mLooper.startAutoDispatch();
@@ -7266,6 +7338,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         assertEquals(1, factoryMacs.length);
         assertEquals(TEST_FACTORY_MAC, factoryMacs[0]);
         verify(mClientModeManager).getFactoryMacAddress();
+        verify(mWifiSettingsConfigStore).get(WIFI_STA_FACTORY_MAC_ADDRESS);
     }
 
     /**
@@ -7313,6 +7386,20 @@ public class WifiServiceImplTest extends WifiBaseTest {
             assertTrue("Exception message should contain 'factory MAC'",
                     e.toString().contains("factory MAC"));
         }
+    }
+
+    @Test
+    public void testGetFactoryMacAddressesSuccessFromSettingStore() throws Exception {
+        when(mWifiGlobals.isSaveFactoryMacToConfigStoreEnabled()).thenReturn(true);
+        when(mWifiSettingsConfigStore.get(WIFI_STA_FACTORY_MAC_ADDRESS))
+                .thenReturn(TEST_FACTORY_MAC);
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
+        when(mClientModeManager.getFactoryMacAddress()).thenReturn(TEST_FACTORY_MAC);
+        final String[] factoryMacs = mWifiServiceImpl.getFactoryMacAddresses();
+        assertEquals(1, factoryMacs.length);
+        assertEquals(TEST_FACTORY_MAC, factoryMacs[0]);
+        mLooper.dispatchAll();
+        verify(mClientModeManager, never()).getFactoryMacAddress();
     }
 
     /**
@@ -7641,7 +7728,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
         verify(mPasspointManager, never())
                 .addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(), anyBoolean(),
                         eq(false));
-
     }
 
     /**
@@ -7747,6 +7833,42 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
                 anyBoolean(), eq(false));
+    }
+
+    /**
+     * Verify that addOrUpdatePasspointConfiguration disconnects from current captive portal network
+     * when provisioned via WifiInstaller.
+     */
+    @Test
+    public void addOrUpdatePasspointConfigDisconnectsCaptivePortal() throws Exception {
+        doReturn(AppOpsManager.MODE_ALLOWED).when(mAppOpsManager)
+                .noteOp(AppOpsManager.OPSTR_CHANGE_WIFI_STATE,
+                        Process.myUid(), CERT_INSTALLER_PACKAGE_NAME);
+        when(mWifiPermissionsUtil.isTargetSdkLessThan(anyString(),
+                eq(Build.VERSION_CODES.R), anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.isSystem(anyString(), anyInt())).thenReturn(true);
+        PasspointConfiguration config = new PasspointConfiguration();
+        HomeSp homeSp = new HomeSp();
+        homeSp.setFqdn("test.com");
+        config.setHomeSp(homeSp);
+        WifiConfiguration captivePortalConfig =
+                WifiConfigurationTestUtil.createCaptivePortalNetwork();
+        WifiInfo wifiInfo = new WifiInfo();
+        wifiInfo.setNetworkId(captivePortalConfig.networkId);
+        when(mActiveModeWarden.getConnectionInfo()).thenReturn(wifiInfo);
+        when(mWifiConfigManager.getConfiguredNetworkWithPassword(captivePortalConfig.networkId))
+                .thenReturn(captivePortalConfig);
+
+        when(mPasspointManager.addOrUpdateProvider(
+                config, Binder.getCallingUid(), CERT_INSTALLER_PACKAGE_NAME, false, true, false))
+                .thenReturn(true);
+        mLooper.startAutoDispatch();
+        assertTrue(mWifiServiceImpl.addOrUpdatePasspointConfiguration(config,
+                CERT_INSTALLER_PACKAGE_NAME));
+        mLooper.stopAutoDispatchAndIgnoreExceptions();
+        verify(mPasspointManager).addOrUpdateProvider(any(), anyInt(), anyString(), anyBoolean(),
+                anyBoolean(), eq(false));
+        verify(mClientModeManager).disconnect();
     }
 
     /**

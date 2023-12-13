@@ -202,6 +202,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private static final int NETWORK_AGENT_TEARDOWN_DELAY_MS = 5_000; // Max teardown delay.
     private static final int DISASSOC_AP_BUSY_DISABLE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
     @VisibleForTesting public static final long CONNECTING_WATCHDOG_TIMEOUT_MS = 30_000; // 30 secs.
+    public static final int PROVISIONING_TIMEOUT_FILS_CONNECTION_MS = 36_000; // 36 secs.
     @VisibleForTesting
     public static final String ARP_TABLE_PATH = "/proc/net/arp";
 
@@ -273,6 +274,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private final ConcreteClientModeManager mClientModeManager;
 
     private final WifiNotificationManager mNotificationManager;
+    private final WifiConnectivityHelper mWifiConnectivityHelper;
     private final QosPolicyRequestHandler mQosPolicyRequestHandler;
 
     private boolean mFailedToResetMacAddress = false;
@@ -560,7 +562,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     @VisibleForTesting
     static final int CMD_PRE_DHCP_ACTION                                = BASE + 255;
-    private static final int CMD_PRE_DHCP_ACTION_COMPLETE               = BASE + 256;
+    @VisibleForTesting
+    static final int CMD_PRE_DHCP_ACTION_COMPLETE                       = BASE + 256;
     private static final int CMD_POST_DHCP_ACTION                       = BASE + 257;
 
     private static final int CMD_CONNECT_NETWORK                        = BASE + 258;
@@ -731,7 +734,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             @NonNull WifiInjector wifiInjector,
             @NonNull WifiSettingsConfigStore settingsConfigStore,
             boolean verboseLoggingEnabled,
-            @NonNull WifiNotificationManager wifiNotificationManager) {
+            @NonNull WifiNotificationManager wifiNotificationManager,
+            @NonNull WifiConnectivityHelper wifiConnectivityHelper) {
         super(TAG, looper);
         mWifiMetrics = wifiMetrics;
         mClock = clock;
@@ -838,6 +842,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         enableVerboseLogging(verboseLoggingEnabled);
 
         mNotificationManager = wifiNotificationManager;
+        mWifiConnectivityHelper = wifiConnectivityHelper;
         mInsecureEapNetworkHandlerCallbacksImpl =
                 new InsecureEapNetworkHandler.InsecureEapNetworkHandlerCallbacks() {
                 @Override
@@ -3066,7 +3071,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (matchingScanResult != null && matchingScanResult.getApMldMacAddress() != null) {
             mWifiInfo.setApMldMacAddress(matchingScanResult.getApMldMacAddress());
             mWifiInfo.setApMloLinkId(matchingScanResult.getApMloLinkId());
-            mWifiInfo.setAffiliatedMloLinks(matchingScanResult.getAffiliatedMloLinks());
+            // Deep copy the affiliated links to avoid any overwrite in future from WifiInfo.
+            List<MloLink> deepCopyAffiliatedMloLinks = new ArrayList<>();
+            for (MloLink link : matchingScanResult.getAffiliatedMloLinks()) {
+                deepCopyAffiliatedMloLinks.add(new MloLink(link, NetworkCapabilities.REDACT_NONE));
+            }
+            mWifiInfo.setAffiliatedMloLinks(deepCopyAffiliatedMloLinks);
         } else {
             mWifiInfo.setApMldMacAddress(null);
             mWifiInfo.setApMloLinkId(MloLink.INVALID_MLO_LINK_ID);
@@ -3168,6 +3178,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // identify WPA3 Enterprise and WEP, so the original configuration
             // is still necessary.
             WifiConfiguration tmp = new WifiConfiguration(config);
+            SecurityParams securityParams =
+                    config.getNetworkSelectionStatus().getLastUsedSecurityParams();
+            tmp.requirePmf = securityParams.isRequirePmf();
+            tmp.allowedProtocols = securityParams.getAllowedProtocols();
+            tmp.allowedPairwiseCiphers = securityParams.getAllowedPairwiseCiphers();
+            tmp.allowedGroupCiphers = securityParams.getAllowedGroupCiphers();
             tmp.setSecurityParams(connectionInfo.keyMgmtMask);
             mWifiInfo.setCurrentSecurityType(tmp.getDefaultSecurityParams().getSecurityType());
             // Update the last used security params.
@@ -3481,7 +3497,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         // Update link layer stats
         getWifiLinkLayerStats();
 
-        if (mWifiP2pConnection.isConnected()) {
+        if (mWifiP2pConnection.isConnected() && !mWifiP2pConnection.isP2pInWaitingState()) {
             // P2P discovery breaks DHCP, so shut it down in order to get through this.
             // Once P2P service receives this message and processes it accordingly, it is supposed
             // to send arg2 (i.e. CMD_PRE_DHCP_ACTION_COMPLETE) in a new Message.what back to
@@ -3942,9 +3958,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // the connected configuration to be null.
             config = getConnectingWifiConfigurationInternal();
         }
-        if (config == null) {
+        if (config == null || (config.getIpAssignment() == IpConfiguration.IpAssignment.STATIC)) {
             // config could be null if it had been removed from WifiConfigManager. In this case
-            // we should simply disconnect.
+            // we should simply disconnect. And if IP reachability failures come from static IP
+            // case(e.g. a misconfigured default gateway IP address), refreshing L3 provisioning
+            // doesn't help improve the situation and also introduces a loop, it's better to
+            // disconnect and disable the auto-rejoin on that network.
             handleIpReachabilityLost(lossReason);
             return;
         }
@@ -3991,6 +4010,19 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
     }
 
+    private boolean shouldIgnoreNudDisconnectForWapiInCn() {
+        // temporary work-around for <=U devices
+        if (SdkLevel.isAtLeastV()) return false;
+
+        if (!mWifiGlobals.disableNudDisconnectsForWapiInSpecificCc() || !"CN".equalsIgnoreCase(
+                mWifiInjector.getWifiCountryCode().getCountryCode())) {
+            return false;
+        }
+        WifiConfiguration config = getConnectedWifiConfigurationInternal();
+        return config != null && (config.allowedProtocols.get(WifiConfiguration.Protocol.WAPI)
+                || config.getAuthType() == WifiConfiguration.KeyMgmt.NONE);
+    }
+
     private void handleIpReachabilityFailure(@NonNull ReachabilityLossInfoParcelable lossInfo) {
         if (lossInfo == null) {
             Log.e(getTag(), "lossInfo should never be null");
@@ -4003,13 +4035,19 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 processIpReachabilityFailure(lossInfo.reason);
                 break;
             case ReachabilityLossReason.CONFIRM:
-            case ReachabilityLossReason.ORGANIC:
+            case ReachabilityLossReason.ORGANIC: {
+                if (shouldIgnoreNudDisconnectForWapiInCn()) {
+                    logd("CMD_IP_REACHABILITY_FAILURE but disconnect disabled for WAPI -- ignore");
+                    return;
+                }
+
                 if (mDeviceConfigFacade.isHandleRssiOrganicKernelFailuresEnabled()) {
                     processIpReachabilityFailure(lossInfo.reason);
                 } else {
                     processLegacyIpReachabilityLost(lossInfo.reason);
                 }
                 break;
+            }
             default:
                 logd("Invalid failure reason " + lossInfo.reason + "from onIpReachabilityFailure");
         }
@@ -4244,6 +4282,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiNative.enableStaAutoReconnect(mInterfaceName, false);
         // STA has higher priority over P2P
         mWifiNative.setConcurrencyPriority(true);
+        if (mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+            // Loads the firmware roaming info which gets used in WifiBlocklistMonitor
+            mWifiConnectivityHelper.getFirmwareRoamingInfo();
+        }
 
         // Retrieve and store the factory MAC address (on first bootup).
         retrieveFactoryMacAddressAndStoreIfNecessary();
@@ -4984,10 +5026,20 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         // Defensive copy to avoid mutating the passed argument
         final WifiConfiguration conf = new WifiConfiguration(currentWifiConfiguration);
         conf.BSSID = currentBssid;
+
+        int band = WifiNetworkSpecifier.getBand(mWifiInfo.getFrequency());
+
+        if (!isPrimary() && mWifiGlobals.isSupportMultiInternetDual5G()
+                && band == ScanResult.WIFI_BAND_5_GHZ) {
+            if (mWifiInfo.getFrequency() <= ScanResult.BAND_5_GHZ_LOW_HIGHEST_FREQ_MHZ) {
+                band = ScanResult.WIFI_BAND_5_GHZ_LOW;
+            } else {
+                band = ScanResult.WIFI_BAND_5_GHZ_HIGH;
+            }
+        }
+
         WifiNetworkAgentSpecifier wns =
-                new WifiNetworkAgentSpecifier(conf,
-                        WifiNetworkSpecifier.getBand(mWifiInfo.getFrequency()),
-                        matchLocationSensitiveInformation);
+                new WifiNetworkAgentSpecifier(conf, band, matchLocationSensitiveInformation);
         return wns;
     }
 
@@ -5919,6 +5971,17 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, 0);
                         handleNetworkDisconnect(false,
                                 WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__UNSPECIFIED);
+                        // TODO(b/302728081): remove the code once the issue is resolved.
+                        if (mDeviceConfigFacade.isAbnormalDisconnectionBugreportEnabled()
+                                && mTargetWifiConfiguration.enterpriseConfig != null
+                                && mTargetWifiConfiguration.enterpriseConfig
+                                        .isAuthenticationSimBased()
+                                && mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(
+                                        mTargetWifiConfiguration.carrierId)) {
+                            String bugTitle = "Wi-Fi BugReport: suspicious NETWORK_NOT_FOUND";
+                            String bugDetail = "Detect abnormal NETWORK_NOT_FOUND error";
+                            mWifiDiagnostics.takeBugReport(bugTitle, bugDetail);
+                        }
                         transitionTo(mDisconnectedState); // End of connection attempt.
                     }
                     break;
@@ -7184,10 +7247,16 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                         mClientModeManager);
                                 mWifiConfigManager.incrementNetworkNoInternetAccessReports(
                                         config.networkId);
-                                // If this was not recently selected by the user, update network
-                                // selection status to temporarily disable the network.
-                                if (!isRecentlySelectedByTheUser(config)
+                                if (!config.getNetworkSelectionStatus()
+                                        .hasEverValidatedInternetAccess()
                                         && !config.noInternetAccessExpected) {
+                                    mWifiConfigManager.updateNetworkSelectionStatus(
+                                            config.networkId,
+                                            DISABLED_NO_INTERNET_PERMANENT);
+                                } else if (!isRecentlySelectedByTheUser(config)
+                                        && !config.noInternetAccessExpected) {
+                                    // If this was not recently selected by the user, update network
+                                    // selection status to temporarily disable the network.
                                     if (config.getNetworkSelectionStatus()
                                             .getNetworkSelectionDisableReason()
                                             != DISABLED_NO_INTERNET_PERMANENT) {
@@ -7981,10 +8050,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             setConfigurationsPriorToIpClientProvisioning(config);
             final ProvisioningConfiguration.Builder prov =
                     new ProvisioningConfiguration.Builder()
-                    .withPreDhcpAction()
-                    .withPreconnection()
-                    .withDisplayName(config.SSID)
-                    .withLayer2Information(layer2Info);
+                            .withPreDhcpAction()
+                            .withPreconnection()
+                            .withDisplayName(config.SSID)
+                            .withLayer2Information(layer2Info)
+                            .withProvisioningTimeoutMs(PROVISIONING_TIMEOUT_FILS_CONNECTION_MS);
             if (mContext.getResources().getBoolean(R.bool.config_wifiEnableApfOnNonPrimarySta)
                     || isPrimary()) {
                 // unclear if the native layer will return the correct non-capabilities if APF is
@@ -8171,6 +8241,54 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         ? WifiNative.ENABLE_FIRMWARE_ROAMING
                         : WifiNative.DISABLE_FIRMWARE_ROAMING);
         return status == WifiNative.SET_FIRMWARE_ROAMING_SUCCESS;
+    }
+
+    private void considerChangingFirmwareRoaming(boolean isIdle) {
+        if (mClientModeManager.getRole() != ROLE_CLIENT_PRIMARY) {
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "Idle mode changed: iface " + mInterfaceName + " is not primary.");
+            }
+            return;
+        }
+        if (!mWifiGlobals.isDisableFirmwareRoamingInIdleMode()
+                || !mWifiConnectivityHelper.isFirmwareRoamingSupported()) {
+            // feature not enabled, or firmware roaming not supported - no need to continue.
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "Idle mode changed: iface " + mInterfaceName
+                        + " firmware roaming not supported");
+            }
+            return;
+        }
+        if (isIdle) {
+            // disable firmware roaming if in idle mode
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "Idle mode changed: iface " + mInterfaceName
+                        + " disabling roaming");
+            }
+            enableRoaming(false);
+            return;
+        }
+        // Exiting idle mode so re-enable firmware roaming, but only if the current use-case is
+        // not the local-only use-case. The local-only use-case requires firmware roaming to be
+        // always disabled.
+        WifiConfiguration config = getConnectedWifiConfigurationInternal();
+        if (config == null) {
+            config = getConnectingWifiConfigurationInternal();
+        }
+        if (config != null && getClientRoleForMetrics(config)
+                == WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__ROLE__ROLE_CLIENT_LOCAL_ONLY) {
+            return;
+        }
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "Idle mode changed: iface " + mInterfaceName
+                    + " enabling roaming");
+        }
+        enableRoaming(true);
+    }
+
+    @Override
+    public void onIdleModeChanged(boolean isIdle) {
+        considerChangingFirmwareRoaming(isIdle);
     }
 
     @Override
