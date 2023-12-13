@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "2ca7bacf_9e7e2b2b",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-13T14:25:01Z",
+      "side": 1,
+      "message": "Hi Les,\nPlease review and provide your inputs. While running presubmit error found due to unapproved changes submitted together.\nThanks,\nPiyali.",
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
