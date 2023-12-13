@@ -1,6 +1,52 @@
 {
   "comments": [
     {
+      "unresolved": true,
+      "key": {
+        "uuid": "c85eb905_4c3f5b65",
+        "filename": "/COMMIT_MSG",
+        "patchSetId": 6
+      },
+      "lineNbr": 7,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-13T08:47:00Z",
+      "side": 1,
+      "message": "Can we add more detail for this CL?\ni.e. What is aidl we support to mock? And more detail.\n\nThank you",
+      "range": {
+        "startLine": 7,
+        "startChar": 11,
+        "endLine": 7,
+        "endChar": 42
+      },
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "1a8ece34_dcde48a9",
+        "filename": "/COMMIT_MSG",
+        "patchSetId": 6
+      },
+      "lineNbr": 9,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-13T08:47:00Z",
+      "side": 1,
+      "message": "Please use Bug: 315088283 for this topic",
+      "range": {
+        "startLine": 9,
+        "startChar": 5,
+        "endLine": 9,
+        "endChar": 9
+      },
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": false,
       "key": {
         "uuid": "b040b8e2_7310a032",
@@ -14,6 +60,52 @@
       "writtenOn": "2023-12-11T12:04:18Z",
       "side": 1,
       "message": "Hi Les,\nResolved the review comments and added the framework changes for Supplicant signal poll. Please review and provide feedback.\n\nThanks\nVeerendra",
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "3b6a6df8_b20dd1b0",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockSupplicantManager.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 72,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-13T08:47:00Z",
+      "side": 1,
+      "message": "The binder is ISupplicant but method is in ISupplicantStaIface.\nDo we confirm that all supplicant aidl under ISupplicant? do we need to separate method for different aidl?",
+      "range": {
+        "startLine": 72,
+        "startChar": 16,
+        "endLine": 72,
+        "endChar": 31
+      },
+      "revId": "bc0fbf5763494763a66477222002b487b0068e81",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "9fc3ea5e_087d3855",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 99,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-13T08:47:00Z",
+      "side": 1,
+      "message": "mMockSupplicantManager \u003d null?",
+      "range": {
+        "startLine": 99,
+        "startChar": 0,
+        "endLine": 99,
+        "endChar": 45
+      },
       "revId": "bc0fbf5763494763a66477222002b487b0068e81",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
