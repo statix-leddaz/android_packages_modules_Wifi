@@ -48,6 +48,9 @@ public class WifiGlobalsTest extends WifiBaseTest {
 
     private static final int TEST_NETWORK_ID = 54;
     private static final String TEST_SSID = "\"GoogleGuest\"";
+    private static final String TEST_CONFIG = "config_wifi_background_scan_support";
+    private static final String TEST_VALUE = "true";
+    private static final Boolean TEST_ISENABLED = true;
 
     @Before
     public void setUp() {
@@ -191,5 +194,29 @@ public class WifiGlobalsTest extends WifiBaseTest {
         mResources.setBoolean(R.bool.config_wifi_background_scan_support, true);
         mWifiGlobals = new WifiGlobals(mContext);
         assertTrue(mWifiGlobals.isBackgroundScanSupported());
+    }
+
+    /**
+     * Verify Force Overlay Config Value
+     */
+    @Test
+    public void testForceOverlayConfigValue() throws Exception {
+        mResources.setBoolean(R.bool.config_wifi_background_scan_support, true);
+        mWifiGlobals = new WifiGlobals(mContext);
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+        assertFalse(mWifiGlobals.forceOverlayConfigValue(null, null, false));
+        assertFalse(mWifiGlobals.forceOverlayConfigValue("", "", false));
+        assertFalse(mWifiGlobals.forceOverlayConfigValue("abc", "", false));
+        assertFalse(mWifiGlobals.forceOverlayConfigValue("abc", "", TEST_ISENABLED));
+        assertFalse(mWifiGlobals.forceOverlayConfigValue("abc", "false", TEST_ISENABLED));
+        assertFalse(mWifiGlobals.forceOverlayConfigValue("abc", "reset", TEST_ISENABLED));
+        assertFalse(mWifiGlobals.forceOverlayConfigValue("abc", TEST_VALUE, TEST_ISENABLED));
+
+        mWifiGlobals = new WifiGlobals(mContext);
+        assertTrue(mWifiGlobals.forceOverlayConfigValue(TEST_CONFIG, TEST_VALUE, false));
+        assertTrue(mWifiGlobals.forceOverlayConfigValue(TEST_CONFIG, "abc", TEST_ISENABLED));
+        assertTrue(mWifiGlobals.forceOverlayConfigValue(TEST_CONFIG, "false", TEST_ISENABLED));
+        assertTrue(mWifiGlobals.forceOverlayConfigValue(TEST_CONFIG, "reset", TEST_ISENABLED));
+        assertTrue(mWifiGlobals.forceOverlayConfigValue(TEST_CONFIG, TEST_VALUE, TEST_ISENABLED));
     }
 }
