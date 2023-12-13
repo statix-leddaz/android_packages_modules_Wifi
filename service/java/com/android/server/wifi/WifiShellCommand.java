@@ -175,6 +175,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             "set-mock-wifimodem-service",
             "get-mock-wifimodem-service",
             "set-mock-wifimodem-methods",
+            "force-overlay-config-value",
     };
 
     private static final Map<String, Pair<NetworkRequest, ConnectivityManager.NetworkCallback>>
@@ -1837,6 +1838,17 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         return -1;
                     }
                     return 0;
+                case "force-overlay-config-value":
+                    String value = getNextArgRequired();
+                    String configString = getNextArgRequired();
+                    boolean isEnabled = getNextArgRequiredTrueOrFalse("enabled", "disabled");
+                    if (mWifiService.forceOverlayConfigValue(configString, value, isEnabled)) {
+                        pw.print("true");
+                    } else {
+                        pw.print("fail to force overlay config value: " + configString);
+                        return -1;
+                    }
+                    return 0;
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -2618,6 +2630,16 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println(
                 "    get allowed channels in each operation mode from wifiManager if available. "
                         + "Otherwise, it returns from wifiScanner.");
+        pw.println("  force-overlay-config-value <value> , configString , [isEnabled]");
+        pw.println("    Force overlay for config_wifi_background_scan_support");
+        pw.println("    <value> - Value used to set background scan support");
+        pw.println("        - Use 'true' or 'false' for setting the value of configString");
+        pw.println("    configString - Value required to force overlay");
+        pw.println("        - Use 'config_wifi_background_scan_support'");
+        pw.println("    isEnabled - Value required to enable or disable the overlay");
+        pw.println("        - Use 'enabled' or 'disabled'");
+        pw.println("           - 'enabled' - the value will be used to set the configString");
+        pw.println("           - 'disabled' - value from the resource file will be used to reset");
     }
 
     private void onHelpPrivileged(PrintWriter pw) {
