@@ -530,6 +530,9 @@ public class SupplicantP2pIfaceCallbackAidlImpl extends ISupplicantP2pIfaceCallb
         }
         try {
             device.deviceAddress = NativeUtil.macAddressFromByteArray(deviceAddressBytes);
+            device.deviceAddress += ";";
+            device.deviceAddress += NativeUtil.macAddressFromByteArray(srcAddress);
+            logd("somewap device.deviceAddress is:" + device.deviceAddress);
         } catch (Exception e) {
             Log.e(TAG, "Could not decode MAC address", e);
             return null;
