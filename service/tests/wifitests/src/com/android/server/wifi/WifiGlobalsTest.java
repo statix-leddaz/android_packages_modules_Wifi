@@ -192,4 +192,50 @@ public class WifiGlobalsTest extends WifiBaseTest {
 
         assertTrue(mWifiGlobals.isDeprecatedSecurityTypeNetwork(config));
     }
+
+    /**
+     * Verify Force Overlay Config Value
+     */
+    @Test
+    public void testForceOverlayConfigValue() throws Exception {
+        mResources.setBoolean(R.bool.config_wifi_background_scan_support, true);
+        mWifiGlobals = new WifiGlobals(mContext);
+        assertFalse(mWifiGlobals.forceOverlayConfigValue(null, null, false));
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+        assertFalse(mWifiGlobals.forceOverlayConfigValue("", "", false));
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+        assertFalse(mWifiGlobals.forceOverlayConfigValue("abc", "", false));
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+        assertFalse(mWifiGlobals.forceOverlayConfigValue("abc", "", true));
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+        assertFalse(mWifiGlobals.forceOverlayConfigValue("abc", "false", true));
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+        assertFalse(mWifiGlobals.forceOverlayConfigValue("abc", "reset", true));
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+        assertFalse(mWifiGlobals.forceOverlayConfigValue("abc", "true", true));
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+        assertTrue(mWifiGlobals.forceOverlayConfigValue("config_wifi_background_scan_support",
+                "true", false));
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+        assertTrue(mWifiGlobals.forceOverlayConfigValue("config_wifi_background_scan_support",
+                "abc", true));
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+        assertTrue(mWifiGlobals.forceOverlayConfigValue("config_wifi_background_scan_support",
+                "true", true));
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+        assertTrue(mWifiGlobals.forceOverlayConfigValue("config_wifi_background_scan_support",
+                "reset", true));
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+
+        // Testing for false case
+        assertTrue(mWifiGlobals.forceOverlayConfigValue("config_wifi_background_scan_support",
+                "false", true));
+        assertFalse(mWifiGlobals.isBackgroundScanSupported());
+        mResources.setBoolean(R.bool.config_wifi_background_scan_support, false);
+        mWifiGlobals = new WifiGlobals(mContext);
+        assertFalse(mWifiGlobals.isBackgroundScanSupported());
+        assertTrue(mWifiGlobals.forceOverlayConfigValue("config_wifi_background_scan_support",
+                "true", true));
+        assertTrue(mWifiGlobals.isBackgroundScanSupported());
+    }
 }
