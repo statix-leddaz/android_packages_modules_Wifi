@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "8c383544_47d87b31",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1288034
+      },
+      "writtenOn": "2023-12-14T04:28:07Z",
+      "side": 1,
+      "message": "Nate: here\u0027s a change from Zebra to add the creator UID to our IpClient provisioning configuration. This is needed for an IpClient feature that we only enable if networks are created by enterprise management apps.",
+      "revId": "72b88915a26d219ffd17bd0ca290436ad8799c57",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
