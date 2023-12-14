@@ -16,6 +16,138 @@
       "message": "Hi Les,\nPlease review and provide your inputs. While running presubmit error found due to unapproved changes submitted together.\nThanks,\nPiyali.",
       "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "441d33f9_45fa492b",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-14T00:57:49Z",
+      "side": 1,
+      "message": "Unit test for WifiGlobals is required.",
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "2ba9bf7b_54943125",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 73,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-14T00:57:49Z",
+      "side": 1,
+      "message": "Any reason we need to set up false here? My understanding is that the default value of boolean is false, it is redundant.",
+      "range": {
+        "startLine": 73,
+        "startChar": 46,
+        "endLine": 73,
+        "endChar": 54
+      },
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "756bb89e_9161868f",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 155,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-14T00:57:49Z",
+      "side": 1,
+      "message": "Please catch the exact exception. Not general exception.",
+      "range": {
+        "startLine": 155,
+        "startChar": 22,
+        "endLine": 155,
+        "endChar": 42
+      },
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "ee787694_ce11f895",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 431,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-14T00:57:49Z",
+      "side": 1,
+      "message": "What is the case when value is invalid?\nWhat is the case when configString is invalid?\nWhat is the case when configString didn\u0027t exist?",
+      "range": {
+        "startLine": 431,
+        "startChar": 0,
+        "endLine": 431,
+        "endChar": 44
+      },
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "aac51e4e_f2fc2d4c",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 435,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-14T00:57:49Z",
+      "side": 1,
+      "message": "The logic here is reset all of invalid input case to default, is it expected?",
+      "range": {
+        "startLine": 435,
+        "startChar": 0,
+        "endLine": 435,
+        "endChar": 41
+      },
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "f122dcf7_46a4d527",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 436,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-14T00:57:49Z",
+      "side": 1,
+      "message": "ditto, here may happen NPE.",
+      "range": {
+        "startLine": 436,
+        "startChar": 8,
+        "endLine": 436,
+        "endChar": 42
+      },
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
