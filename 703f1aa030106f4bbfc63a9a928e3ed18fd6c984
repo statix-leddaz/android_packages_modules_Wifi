@@ -177,6 +177,29 @@
       },
       "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "4bae5462_c8ab9e4b",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 203,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-15T15:23:12Z",
+      "side": 1,
+      "message": "Please check if the value is configured correctly.\n\ni.e. The return value from API: isBackgroundScanSupported",
+      "range": {
+        "startLine": 203,
+        "startChar": 16,
+        "endLine": 203,
+        "endChar": 43
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
