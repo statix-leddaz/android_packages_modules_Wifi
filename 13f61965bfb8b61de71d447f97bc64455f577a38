@@ -58,6 +58,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "af2ae8ee_b35ba9a5",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 73,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-15T14:58:15Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "2ba9bf7b_54943125",
+      "range": {
+        "startLine": 73,
+        "startChar": 46,
+        "endLine": 73,
+        "endChar": 54
+      },
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "756bb89e_9161868f",
@@ -71,6 +95,30 @@
       "writtenOn": "2023-12-14T00:57:49Z",
       "side": 1,
       "message": "Please catch the exact exception. Not general exception.",
+      "range": {
+        "startLine": 155,
+        "startChar": 22,
+        "endLine": 155,
+        "endChar": 42
+      },
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "cb5ef2db_e2dc440d",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 155,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-15T14:58:15Z",
+      "side": 1,
+      "message": "Since JAVA 1.5, parseBoolean doesnot throw ParseException it returns false for any unexpected values like null,interger,etc. So removed try catch block.",
+      "parentUuid": "756bb89e_9161868f",
       "range": {
         "startLine": 155,
         "startChar": 22,
@@ -104,6 +152,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "af8b0389_6e692688",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 431,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-15T14:58:15Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "ee787694_ce11f895",
+      "range": {
+        "startLine": 431,
+        "startChar": 0,
+        "endLine": 431,
+        "endChar": 44
+      },
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "aac51e4e_f2fc2d4c",
@@ -127,6 +199,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "2accce20_f2fb3be3",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 435,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-15T14:58:15Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "aac51e4e_f2fc2d4c",
+      "range": {
+        "startLine": 435,
+        "startChar": 0,
+        "endLine": 435,
+        "endChar": 41
+      },
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "f122dcf7_46a4d527",
@@ -140,6 +236,30 @@
       "writtenOn": "2023-12-14T00:57:49Z",
       "side": 1,
       "message": "ditto, here may happen NPE.",
+      "range": {
+        "startLine": 436,
+        "startChar": 8,
+        "endLine": 436,
+        "endChar": 42
+      },
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "aedd69ec_d1c86ada",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 436,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-15T14:58:15Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "f122dcf7_46a4d527",
       "range": {
         "startLine": 436,
         "startChar": 8,
