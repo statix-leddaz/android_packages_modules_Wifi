@@ -70,6 +70,30 @@
       },
       "revId": "c0b805106fea2c13db2b41015371b73f97f3cb42",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "c4f30bea_2199466f",
+        "filename": "service/java/com/android/server/wifi/WifiBlocklistMonitor.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 1337,
+      "author": {
+        "id": 1903311
+      },
+      "writtenOn": "2023-12-15T23:11:01Z",
+      "side": 1,
+      "message": "Thanks, we\u0027ll put disable ! Do you think we should also put DISABLED_BY_WRONG_PASSWORD into temporary? Since the real reason could be hidden due to security consideration.",
+      "parentUuid": "ee798c10_ea2ef3ae",
+      "range": {
+        "startLine": 1330,
+        "startChar": 10,
+        "endLine": 1337,
+        "endChar": 67
+      },
+      "revId": "c0b805106fea2c13db2b41015371b73f97f3cb42",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
