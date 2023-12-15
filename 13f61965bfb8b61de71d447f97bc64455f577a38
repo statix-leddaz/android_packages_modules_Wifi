@@ -129,6 +129,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "98559984_fa740242",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 155,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-15T15:20:47Z",
+      "side": 1,
+      "message": "Acknowledged",
+      "parentUuid": "cb5ef2db_e2dc440d",
+      "range": {
+        "startLine": 155,
+        "startChar": 22,
+        "endLine": 155,
+        "endChar": 42
+      },
+      "revId": "13f61965bfb8b61de71d447f97bc64455f577a38",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "ee787694_ce11f895",

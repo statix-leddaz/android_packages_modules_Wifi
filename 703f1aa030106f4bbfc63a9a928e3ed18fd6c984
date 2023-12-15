@@ -16,6 +16,167 @@
       "message": "Hi Les,\nPlease review and provide your inputs.\nThanks,\nPiyali.",
       "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "3a4f0c58_d41e702b",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 426,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-15T15:20:47Z",
+      "side": 1,
+      "message": "I suggest that we can revise logic likes\n\nStep#1: Check invalid input -\u003e do nothing, return false; (You can check key is exist here)\nStep#2: based on the step#1, you don\u0027t need to worry the error handling here and handle enable/disable cases based on the input.\nStep#3: We should handle the \"value\" inside the accept function.",
+      "range": {
+        "startLine": 426,
+        "startChar": 19,
+        "endLine": 426,
+        "endChar": 42
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "2b465546_95b156f5",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 428,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-15T15:20:47Z",
+      "side": 1,
+      "message": "Use TextUtil\nhttps://developer.android.com/reference/android/text/TextUtils#isEmpty(java.lang.CharSequence)",
+      "range": {
+        "startLine": 428,
+        "startChar": 24,
+        "endLine": 428,
+        "endChar": 55
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b1b54e79_c6a84b94",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 432,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-15T15:20:47Z",
+      "side": 1,
+      "message": "The NPE may happen.\n\nhttps://developer.android.com/reference/java/util/HashMap#get(java.lang.Object)\n\nthe value to which the specified key is mapped, or null if this map contains no mapping for the key",
+      "range": {
+        "startLine": 432,
+        "startChar": 20,
+        "endLine": 432,
+        "endChar": 53
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "6be33b00_fcd69458",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 433,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-15T15:20:47Z",
+      "side": 1,
+      "message": "This function should handle generally. We should move value check into handler (i.e. accept function)\n\nBTW: Why do we reset when value is not true or false?",
+      "range": {
+        "startLine": 433,
+        "startChar": 18,
+        "endLine": 433,
+        "endChar": 22
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b9a87c0b_cd79044a",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 437,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-15T15:20:47Z",
+      "side": 1,
+      "message": "We should avoid the exception happen, not catch the exception.",
+      "range": {
+        "startLine": 437,
+        "startChar": 0,
+        "endLine": 437,
+        "endChar": 41
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "7a998d5f_a19b1f07",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 441,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-15T15:20:47Z",
+      "side": 1,
+      "message": "Where do we handle the disable case?",
+      "range": {
+        "startLine": 441,
+        "startChar": 8,
+        "endLine": 441,
+        "endChar": 9
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "08c8e003_ef75a77d",
+        "filename": "service/java/com/android/server/wifi/WifiServiceImpl.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 7866,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-15T15:20:47Z",
+      "side": 1,
+      "message": "Comment didn\u0027t match the code behavior",
+      "range": {
+        "startLine": 7866,
+        "startChar": 0,
+        "endLine": 7866,
+        "endChar": 36
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
