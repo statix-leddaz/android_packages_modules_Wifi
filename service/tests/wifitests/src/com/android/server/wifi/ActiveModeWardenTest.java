@@ -16,6 +16,7 @@
 
 package com.android.server.wifi;
 
+import static android.net.wifi.WifiManager.WIFI_STATE_DISABLING;
 import static android.net.wifi.WifiManager.WIFI_STATE_ENABLED;
 
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_LOCAL_ONLY;
@@ -35,6 +36,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -316,6 +318,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         when(mWifiInjector.getSelfRecovery()).thenReturn(mSelfRecovery);
         when(mContext.getPackageManager()).thenReturn(mPackageManager);
         when(mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_RTT)).thenReturn(true);
+        warden.setWifiStateForApiCalls(WIFI_STATE_ENABLED);
         return warden;
     }
 
@@ -1539,6 +1542,54 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         });
         verify(mLastCallerInfoManager).put(eq(WifiManager.API_WIFI_ENABLED), anyInt(), anyInt(),
                 anyInt(), eq("android_apm"), eq(false));
+    }
+
+    /** Wi-Fi state is restored properly when SoftAp is enabled during airplane mode. */
+    @Test
+    public void testWifiStateRestoredWhenSoftApEnabledDuringApm() throws Exception {
+        enableWifi();
+        assertInEnabledState();
+
+        // enabling airplane mode shuts down wifi
+        assertWifiShutDown(
+                () -> {
+                    when(mSettingsStore.isAirplaneModeOn()).thenReturn(true);
+                    mActiveModeWarden.airplaneModeToggled();
+                    mLooper.dispatchAll();
+                });
+        verify(mLastCallerInfoManager)
+                .put(
+                        eq(WifiManager.API_WIFI_ENABLED),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        eq("android_apm"),
+                        eq(false));
+        mClientListener.onStopped(mClientModeManager);
+        mLooper.dispatchAll();
+
+        // start SoftAp
+        mActiveModeWarden.startSoftAp(
+                new SoftApModeConfiguration(
+                        WifiManager.IFACE_IP_MODE_LOCAL_ONLY,
+                        null,
+                        mSoftApCapability,
+                        TEST_COUNTRYCODE),
+                TEST_WORKSOURCE);
+        mLooper.dispatchAll();
+
+        // disabling airplane mode enables wifi
+        when(mSettingsStore.isAirplaneModeOn()).thenReturn(false);
+        mActiveModeWarden.airplaneModeToggled();
+        mLooper.dispatchAll();
+        verify(mLastCallerInfoManager)
+                .put(
+                        eq(WifiManager.API_WIFI_ENABLED),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        eq("android_apm"),
+                        eq(true));
     }
 
     /**
@@ -3279,6 +3330,27 @@ public class ActiveModeWardenTest extends WifiBaseTest {
     }
 
     @Test
+    public void testRequestSecondaryClientModeManagerWhenWifiIsDisabling()
+            throws Exception {
+        // Ensure that we can create more client ifaces.
+        when(mWifiNative.isItPossibleToCreateStaIface(any())).thenReturn(true);
+        when(mResources.getBoolean(R.bool.config_wifiMultiStaLocalOnlyConcurrencyEnabled))
+                .thenReturn(true);
+        assertTrue(mActiveModeWarden.canRequestMoreClientModeManagersInRole(
+                TEST_WORKSOURCE, ROLE_CLIENT_LOCAL_ONLY, false));
+
+        // Set wifi to disabling and verify secondary CMM is not obtained
+        mActiveModeWarden.setWifiStateForApiCalls(WIFI_STATE_DISABLING);
+        ExternalClientModeManagerRequestListener externalRequestListener = mock(
+                ExternalClientModeManagerRequestListener.class);
+        mActiveModeWarden.requestLocalOnlyClientModeManager(
+                externalRequestListener, TEST_WORKSOURCE, TEST_SSID_1, TEST_BSSID_1, false);
+        mLooper.dispatchAll();
+
+        verify(externalRequestListener).onAnswer(null);
+    }
+
+    @Test
     public void requestLocalOnlyClientModeManagerWhenWifiIsOff() throws Exception {
         // Ensure that we can create more client ifaces.
         when(mWifiNative.isItPossibleToCreateStaIface(any())).thenReturn(true);
@@ -3976,6 +4048,23 @@ public class ActiveModeWardenTest extends WifiBaseTest {
     }
 
     @Test
+    public void testGetActiveModeManagersOrder() throws Exception {
+        enableWifi();
+        enterSoftApActiveMode();
+        assertInEnabledState();
+
+        Collection<ActiveModeManager> activeModeManagers =
+                mActiveModeWarden.getActiveModeManagers();
+        if (activeModeManagers == null) {
+            fail("activeModeManagers list should not be null");
+        }
+        Object[] modeManagers = activeModeManagers.toArray();
+        assertEquals(2, modeManagers.length);
+        assertTrue(modeManagers[0] instanceof SoftApManager);
+        assertTrue(modeManagers[1] instanceof ConcreteClientModeManager);
+    }
+
+    @Test
     public void airplaneModeToggleOnDisablesSoftAp() throws Exception {
         enterSoftApActiveMode();
         assertInEnabledState();
@@ -4115,17 +4204,18 @@ public class ActiveModeWardenTest extends WifiBaseTest {
     public void propagateConnectedWifiScorerToPrimaryClientModeManager() throws Exception {
         IBinder iBinder = mock(IBinder.class);
         IWifiConnectedNetworkScorer iScorer = mock(IWifiConnectedNetworkScorer.class);
-        mActiveModeWarden.setWifiConnectedNetworkScorer(iBinder, iScorer);
+        mActiveModeWarden.setWifiConnectedNetworkScorer(iBinder, iScorer, TEST_UID);
         verify(iScorer).onSetScoreUpdateObserver(mExternalScoreUpdateObserverProxy);
         enterClientModeActiveState();
         assertInEnabledState();
-        verify(mClientModeManager).setWifiConnectedNetworkScorer(iBinder, iScorer);
+        verify(mClientModeManager).setWifiConnectedNetworkScorer(iBinder, iScorer, TEST_UID);
 
         mActiveModeWarden.clearWifiConnectedNetworkScorer();
         verify(mClientModeManager).clearWifiConnectedNetworkScorer();
 
-        mActiveModeWarden.setWifiConnectedNetworkScorer(iBinder, iScorer);
-        verify(mClientModeManager, times(2)).setWifiConnectedNetworkScorer(iBinder, iScorer);
+        mActiveModeWarden.setWifiConnectedNetworkScorer(iBinder, iScorer, TEST_UID);
+        verify(mClientModeManager, times(2)).setWifiConnectedNetworkScorer(iBinder, iScorer,
+                TEST_UID);
     }
 
     @Test
@@ -4133,11 +4223,11 @@ public class ActiveModeWardenTest extends WifiBaseTest {
             throws Exception {
         IBinder iBinder = mock(IBinder.class);
         IWifiConnectedNetworkScorer iScorer = mock(IWifiConnectedNetworkScorer.class);
-        mActiveModeWarden.setWifiConnectedNetworkScorer(iBinder, iScorer);
+        mActiveModeWarden.setWifiConnectedNetworkScorer(iBinder, iScorer, TEST_UID);
         verify(iScorer).onSetScoreUpdateObserver(mExternalScoreUpdateObserverProxy);
         enterClientModeActiveState();
         assertInEnabledState();
-        verify(mClientModeManager).setWifiConnectedNetworkScorer(iBinder, iScorer);
+        verify(mClientModeManager).setWifiConnectedNetworkScorer(iBinder, iScorer, TEST_UID);
 
         enterScanOnlyModeActiveState(true);
 
@@ -4149,12 +4239,13 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         IBinder iBinder = mock(IBinder.class);
         IWifiConnectedNetworkScorer iScorer = mock(IWifiConnectedNetworkScorer.class);
         doThrow(new RemoteException()).when(iScorer).onSetScoreUpdateObserver(any());
-        mActiveModeWarden.setWifiConnectedNetworkScorer(iBinder, iScorer);
+        mActiveModeWarden.setWifiConnectedNetworkScorer(iBinder, iScorer, TEST_UID);
         verify(iScorer).onSetScoreUpdateObserver(mExternalScoreUpdateObserverProxy);
         enterClientModeActiveState();
         assertInEnabledState();
         // Ensure we did not propagate the scorer.
-        verify(mClientModeManager, never()).setWifiConnectedNetworkScorer(iBinder, iScorer);
+        verify(mClientModeManager, never()).setWifiConnectedNetworkScorer(iBinder, iScorer,
+                TEST_UID);
     }
 
     /** Verify that the primary changed callback is triggered when entering client mode. */
@@ -5122,6 +5213,17 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         mActiveModeWarden.handleSatelliteModeChange();
         mLooper.dispatchAll();
         assertInEnabledState();
+    }
+
+    @Test
+    public void testOnIdleModeChanged() throws Exception {
+        enterClientModeActiveState();
+        List<ClientModeManager> currentCMMs = mActiveModeWarden.getClientModeManagers();
+        assertTrue(currentCMMs.size() >= 1);
+        mActiveModeWarden.onIdleModeChanged(true);
+        for (ClientModeManager cmm : currentCMMs) {
+            verify(cmm).onIdleModeChanged(true);
+        }
     }
 
 }
