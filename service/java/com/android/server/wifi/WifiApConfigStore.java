@@ -89,6 +89,7 @@ public class WifiApConfigStore {
     private boolean mForceApChannel = false;
     private int mForcedApBand;
     private int mForcedApChannel;
+    private int mForcedApMaximumChannelBandWidth;
     private final boolean mIsAutoAppendLowerBandEnabled;
 
     /**
@@ -164,13 +165,31 @@ public class WifiApConfigStore {
         }
 
         if (mForceApChannel) {
-            Log.d(TAG, "getApConfiguration: Band force to " + mForcedApBand
-                    + ", and channel force to " + mForcedApChannel);
-            return mForcedApChannel == 0
-                    ? new SoftApConfiguration.Builder(mPersistentWifiApConfig)
-                            .setBand(mForcedApBand).build()
-                    : new SoftApConfiguration.Builder(mPersistentWifiApConfig)
-                            .setChannel(mForcedApChannel, mForcedApBand).build();
+            Log.d(TAG, "getApConfiguration: Band force to "
+                    + mForcedApBand
+                    + ", and channel force to "
+                    + mForcedApChannel
+                    + ", and maximum channel width limited to "
+                    + mForcedApMaximumChannelBandWidth);
+            if (SdkLevel.isAtLeastT()) {
+                return mForcedApChannel == 0
+                        ? new SoftApConfiguration.Builder(mPersistentWifiApConfig)
+                                .setBand(mForcedApBand)
+                                .setMaxChannelBandwidth(mForcedApMaximumChannelBandWidth)
+                                .build()
+                        : new SoftApConfiguration.Builder(mPersistentWifiApConfig)
+                                .setChannel(mForcedApChannel, mForcedApBand)
+                                .setMaxChannelBandwidth(mForcedApMaximumChannelBandWidth)
+                                .build();
+            } else {
+                return mForcedApChannel == 0
+                        ? new SoftApConfiguration.Builder(mPersistentWifiApConfig)
+                                .setBand(mForcedApBand)
+                                .build()
+                        : new SoftApConfiguration.Builder(mPersistentWifiApConfig)
+                                .setChannel(mForcedApChannel, mForcedApBand)
+                                .build();
+            }
         }
         return mPersistentWifiApConfig;
     }
@@ -369,7 +388,7 @@ public class WifiApConfigStore {
             mLastConfiguredPassphrase = config.getPassphrase();
         }
         mHasNewDataToSerialize = true;
-        mWifiConfigManager.saveToStore(true);
+        mHandler.post(() -> mWifiConfigManager.saveToStore(true));
         mBackupManagerProxy.notifyDataChanged();
     }
 
@@ -638,9 +657,12 @@ public class WifiApConfigStore {
 
         if (ApConfigUtil.isSecurityTypeRestrictedFor6gBand(authType)) {
             for (int band : apConfig.getBands()) {
-                // Only return failure if requested band is limitted to 6GHz only
-                if (band == SoftApConfiguration.BAND_6GHZ) {
-                    Log.d(TAG, "security type is not allowed for softap in 6GHz band");
+                // Only return failure if requested band is limited to 6GHz only
+                if (band == SoftApConfiguration.BAND_6GHZ
+                        && !ApConfigUtil.canHALConvertRestrictedSecurityTypeFor6GHz(
+                                context.getResources(), authType)) {
+                    Log.d(TAG, "security type: " +  authType
+                            + " is not allowed for softap in 6GHz band");
                     return false;
                 }
             }
@@ -704,12 +726,14 @@ public class WifiApConfigStore {
      *
      * @param forcedApBand The forced band.
      * @param forcedApChannel The forced IEEE channel number or 0 when forced AP band only.
+     * @param forcedApMaximumChannelBandWidth The forced maximum channel bandwidth.
      */
-    public synchronized void enableForceSoftApBandOrChannel(@BandType int forcedApBand,
-            int forcedApChannel) {
+    public synchronized void enableForceSoftApBandOrChannel(
+            @BandType int forcedApBand, int forcedApChannel, int forcedApMaximumChannelBandWidth) {
         mForceApChannel = true;
         mForcedApChannel = forcedApChannel;
         mForcedApBand = forcedApBand;
+        mForcedApMaximumChannelBandWidth = forcedApMaximumChannelBandWidth;
     }
 
     /**

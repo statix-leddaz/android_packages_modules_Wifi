@@ -1197,16 +1197,24 @@ public class PasspointManager {
             return Collections.emptyList();
         }
         List<WifiConfiguration> configs = new ArrayList<>();
-        Set<String> uniqueIdSet = new HashSet<>();
-        uniqueIdSet.addAll(idList);
+        Set<String> uniqueIdSet = new HashSet<>(idList);
+        boolean refreshed = false;
         for (String uniqueId : uniqueIdSet) {
             PasspointProvider provider = mProviders.get(uniqueId);
             if (provider == null) {
                 continue;
             }
-            WifiConfiguration config = provider.getWifiConfig();
-            config = mWifiConfigManager.getConfiguredNetwork(config.getProfileKey());
+            String profileKey = provider.getWifiConfig().getProfileKey();
+            WifiConfiguration config = mWifiConfigManager
+                    .getConfiguredNetwork(profileKey);
+            if (config == null && !refreshed) {
+                // Refresh the WifiConfigManager, this may caused by new ANQP response
+                mPasspointNetworkNominateHelper.refreshWifiConfigsForProviders();
+                refreshed = true;
+                config = mWifiConfigManager.getConfiguredNetwork(profileKey);
+            }
             if (config == null) {
+                Log.e(TAG, "After refresh, still not in the WifiConfig, ignore");
                 continue;
             }
             // If the Passpoint configuration is from a suggestion, check if the app shares this
@@ -1232,21 +1240,32 @@ public class PasspointManager {
     }
 
     /**
-     * Returns the corresponding wifi configurations for all non-suggestion Passpoint profiles
-     * that include a recent SSID.
+     * Returns the corresponding Wifi configurations for all non-suggestion Passpoint profiles.
      *
+     * @param requireSsid If true, this method will only return Passpoint configs that include an
+     *     SSID. If false, this method will return all Passpoint configs, including those which do
+     *     not include an SSID.
+     *     <p>Note: Passpoint SSIDs are recorded upon successful connection to a network. Having an
+     *     SSID indicates that a Passpoint network has connected since the last reboot.
      * @return List of {@link WifiConfiguration} converted from {@link PasspointProvider}.
      */
-    public List<WifiConfiguration> getWifiConfigsForPasspointProfilesWithSsids() {
+    public List<WifiConfiguration> getWifiConfigsForPasspointProfiles(boolean requireSsid) {
+        if (mProviders.isEmpty()) return Collections.emptyList();
+        List<PasspointProvider> sortedProviders = new ArrayList<>(mProviders.values());
+        Collections.sort(sortedProviders, new PasspointProvider.ConnectionTimeComparator());
+
         List<WifiConfiguration> configs = new ArrayList<>();
-        for (PasspointProvider provider : mProviders.values()) {
-            if (provider == null || provider.getMostRecentSsid() == null
-                    || provider.isFromSuggestion()) {
+        for (PasspointProvider provider : sortedProviders) {
+            if (provider == null
+                    || provider.isFromSuggestion()
+                    || (requireSsid && provider.getMostRecentSsid() == null)) {
                 continue;
             }
             WifiConfiguration config = provider.getWifiConfig();
             config.SSID = provider.getMostRecentSsid();
-            config.getNetworkSelectionStatus().setHasEverConnected(true);
+            if (config.SSID != null) {
+                config.getNetworkSelectionStatus().setHasEverConnected(true);
+            }
             configs.add(config);
         }
         return configs;
@@ -1282,6 +1301,7 @@ public class PasspointManager {
             provider.setHasEverConnected(true);
         }
         provider.setMostRecentSsid(ssid);
+        provider.updateMostRecentConnectionTime();
     }
 
     /**
