@@ -41,6 +41,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "20cec0f2_08b06d54",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 426,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-18T17:01:11Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "3a4f0c58_d41e702b",
+      "range": {
+        "startLine": 426,
+        "startChar": 19,
+        "endLine": 426,
+        "endChar": 42
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "2b465546_95b156f5",
@@ -54,6 +78,30 @@
       "writtenOn": "2023-12-15T15:20:47Z",
       "side": 1,
       "message": "Use TextUtil\nhttps://developer.android.com/reference/android/text/TextUtils#isEmpty(java.lang.CharSequence)",
+      "range": {
+        "startLine": 428,
+        "startChar": 24,
+        "endLine": 428,
+        "endChar": 55
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "824bf6a7_b9cc0e58",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 428,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-18T17:01:11Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "2b465546_95b156f5",
       "range": {
         "startLine": 428,
         "startChar": 24,
@@ -87,6 +135,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "02bc6566_8e5044a4",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 432,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-18T17:01:11Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "b1b54e79_c6a84b94",
+      "range": {
+        "startLine": 432,
+        "startChar": 20,
+        "endLine": 432,
+        "endChar": 53
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "6be33b00_fcd69458",
@@ -100,6 +172,30 @@
       "writtenOn": "2023-12-15T15:20:47Z",
       "side": 1,
       "message": "This function should handle generally. We should move value check into handler (i.e. accept function)\n\nBTW: Why do we reset when value is not true or false?",
+      "range": {
+        "startLine": 433,
+        "startChar": 18,
+        "endLine": 433,
+        "endChar": 22
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "19c8f793_0d1311c5",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 433,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-18T17:01:11Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "6be33b00_fcd69458",
       "range": {
         "startLine": 433,
         "startChar": 18,
@@ -133,6 +229,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "9ea83f34_ae7ce318",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 437,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-18T17:01:11Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "b9a87c0b_cd79044a",
+      "range": {
+        "startLine": 437,
+        "startChar": 0,
+        "endLine": 437,
+        "endChar": 41
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "7a998d5f_a19b1f07",
@@ -146,6 +266,30 @@
       "writtenOn": "2023-12-15T15:20:47Z",
       "side": 1,
       "message": "Where do we handle the disable case?",
+      "range": {
+        "startLine": 441,
+        "startChar": 8,
+        "endLine": 441,
+        "endChar": 9
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "494abd36_5151a05e",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 441,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-18T17:01:11Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "7a998d5f_a19b1f07",
       "range": {
         "startLine": 441,
         "startChar": 8,
@@ -179,6 +323,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "63361281_1f766b26",
+        "filename": "service/java/com/android/server/wifi/WifiServiceImpl.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 7866,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-18T17:01:11Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "08c8e003_ef75a77d",
+      "range": {
+        "startLine": 7866,
+        "startChar": 0,
+        "endLine": 7866,
+        "endChar": 36
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "4bae5462_c8ab9e4b",
@@ -192,6 +360,30 @@
       "writtenOn": "2023-12-15T15:23:12Z",
       "side": 1,
       "message": "Please check if the value is configured correctly.\n\ni.e. The return value from API: isBackgroundScanSupported",
+      "range": {
+        "startLine": 203,
+        "startChar": 16,
+        "endLine": 203,
+        "endChar": 43
+      },
+      "revId": "703f1aa030106f4bbfc63a9a928e3ed18fd6c984",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "8ac670ed_088bebe7",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 203,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-18T17:01:11Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "4bae5462_c8ab9e4b",
       "range": {
         "startLine": 203,
         "startChar": 16,
