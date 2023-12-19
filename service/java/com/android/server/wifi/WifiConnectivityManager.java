@@ -189,6 +189,7 @@ public class WifiConnectivityManager {
 
     private WifiScannerInternal mScanner;
     private final MultiInternetManager mMultiInternetManager;
+    private boolean mIsDebuggable = Build.IS_DEBUGGABLE;
     private boolean mDbg = false;
     private boolean mVerboseLoggingEnabled = false;
     private boolean mWifiEnabled = false;
@@ -445,8 +446,13 @@ public class WifiConnectivityManager {
             return false;
         }
         localLog(listenerName + ":secondaryCmmCandidate "
-                + secondaryCmmCandidate.getNetworkSelectionStatus().getCandidate().SSID + " / "
-                + secondaryCmmCandidate.getNetworkSelectionStatus().getCandidate().BSSID);
+                + (mIsDebuggable
+                        ? secondaryCmmCandidate.getNetworkSelectionStatus().getCandidate().SSID
+                        : "XXX")
+                + " / "
+                + (mIsDebuggable
+                        ? secondaryCmmCandidate.getNetworkSelectionStatus().getCandidate().BSSID
+                        : "XXX"));
         // Check if secondary candidate is the same SSID and network id with primary.
         final boolean isDbsAp = TextUtils.equals(primaryInfo.getSSID(),
                 secondaryCmmCandidate.SSID) && (primaryInfo.getNetworkId()
@@ -468,8 +474,9 @@ public class WifiConnectivityManager {
 
         final String targetBssid2 = secondaryCmmCandidate.getNetworkSelectionStatus()
                 .getCandidate().BSSID;
-        localLog(listenerName + " targetBssid2 " + targetBssid2 + " primary cmm connected to bssid "
-                + primaryCcm.getConnectedBssid());
+        localLog(listenerName + " targetBssid2 " + (mIsDebuggable ? targetBssid2 : "XXX")
+                + " primary cmm connected to bssid "
+                + (mIsDebuggable ? primaryCcm.getConnectedBssid() : "XXX"));
         // For secondary STA of multi internet connection, when ROLE_CLIENT_SECONDARY_LONG_LIVED
         // is used, specify the target BSSID explicitly to avoid firmware choosing same BSSID
         // as primary STA.
@@ -507,9 +514,11 @@ public class WifiConnectivityManager {
                     ccm.setSecondaryInternet(true);
                     ccm.setSecondaryInternetDbsAp(isDbsAp);
                     localLog(listenerName + ": WNS candidate(secondary)-"
-                            + secondaryCmmCandidate.SSID + " / "
-                            + secondaryCmmCandidate.getNetworkSelectionStatus()
-                            .getCandidate().BSSID + " isDbsAp " + isDbsAp);
+                            + (mIsDebuggable ? secondaryCmmCandidate.SSID : "XXX")  + " / "
+                            + (mIsDebuggable
+                                    ? secondaryCmmCandidate.getNetworkSelectionStatus()
+                                    .getCandidate().BSSID : "XXX")
+                            + " isDbsAp " + isDbsAp);
                     // Secondary candidate cannot be null (otherwise we would have switched to
                     // legacy flow above). Use the explicit bssid for network connection.
                     WifiConfiguration targetNetwork = new WifiConfiguration(secondaryCmmCandidate);
@@ -747,13 +756,14 @@ public class WifiConnectivityManager {
                     // If we also selected a primary candidate trigger connection.
                     if (primaryCmmCandidate != null) {
                         localLog(listenerName + ":  WNS candidate(primary)-"
-                                + primaryCmmCandidate.SSID);
+                                + (mIsDebuggable ? primaryCmmCandidate.SSID : "XXX"));
                         connectToNetworkUsingCmmWithoutMbb(
                                 getPrimaryClientModeManager(), primaryCmmCandidate);
                     }
 
                     localLog(listenerName + ":  WNS candidate(secondary)-"
-                            + secondaryCmmCandidate.SSID + " / " + secondaryCmmCandidateBssid);
+                            + (mIsDebuggable ? secondaryCmmCandidate.SSID  : "XXX") + " / "
+                            + (mIsDebuggable ?  secondaryCmmCandidateBssid)  : "XXX");
                     // Secndary candidate cannot be null (otherwise we would have switched to legacy
                     // flow above)
                     connectToNetworkUsingCmmWithoutMbb(cm, secondaryCmmCandidate);
@@ -775,7 +785,8 @@ public class WifiConnectivityManager {
             @NonNull List<ScanDetail> scanDetails) {
         WifiConfiguration candidate = mNetworkSelector.selectNetwork(candidates);
         if (candidate != null) {
-            localLog(listenerName + ":  WNS candidate-" + candidate.SSID);
+            localLog(listenerName + ":  WNS candidate-"
+                    + (mIsDebuggable ? candidate.SSID : "XXX"));
             if (hasMultiInternetConnection()) {
                 // Disconnect secondary cmm first before connecting the primary.
                 final ConcreteClientModeManager secondaryCcm = mActiveModeWarden
@@ -1003,7 +1014,8 @@ public class WifiConnectivityManager {
             }
 
             if (mDbg) {
-                localLog("AllSingleScanListener onFullResult: " + fullScanResult.SSID
+                localLog("AllSingleScanListener onFullResult: "
+                        + (mIsDebuggable ? fullScanResult.SSID : "XXX")
                         + " capabilities " + fullScanResult.capabilities);
             }
 
@@ -1732,8 +1744,10 @@ public class WifiConnectivityManager {
         if (targetNetwork.BSSID != null
                 && !targetNetwork.BSSID.equals(ClientModeImpl.SUPPLICANT_BSSID_ANY)
                 && !targetNetwork.BSSID.equals(targetBssid)) {
-            localLog("connectToNetwork(" + clientModeManager + "): target BSSID " + targetBssid
-                    + " does not match the config specified BSSID " + targetNetwork.BSSID
+            localLog("connectToNetwork(" + clientModeManager + "): target BSSID "
+                    + (mIsDebuggable ? targetBssid : "XXX")
+                    + " does not match the config specified BSSID "
+                    + (mIsDebuggable ? targetNetwork.BSSID : "XXX")
                     + ". Drop it!");
             return;
         }
@@ -1925,7 +1939,7 @@ public class WifiConnectivityManager {
         for (Integer channel : network.getFrequencies(ageInMillis)) {
             if (maxCount > 0 && channelSet.size() >= maxCount) {
                 localLog("addChannelFromWifiScoreCard: size limit reached for network:"
-                        + ssid);
+                        + (mIsDebuggable ? ssid : "XXX"));
                 return false;
             }
             channelSet.add(channel);
@@ -3069,7 +3083,8 @@ public class WifiConnectivityManager {
             }
             WifiConfiguration candidate = mNetworkSelector.selectNetwork(mLatestCandidates);
             if (candidate != null) {
-                localLog("Automatic retry on the next best WNS candidate-" + candidate.SSID);
+                localLog("Automatic retry on the next best WNS candidate-"
+                        + (mIsDebuggable ? candidate.SSID : "XXX"));
                 // Make sure that the failed BSSID is blocked for at least TEMP_BSSID_BLOCK_DURATION
                 // to prevent the supplicant from trying it again.
                 mWifiBlocklistMonitor.blockBssidForDurationMs(bssid, configuration,
@@ -3212,7 +3227,7 @@ public class WifiConnectivityManager {
         if (config == null) {
             return;
         }
-        localLog("prepareForForcedConnection: SSID=" + config.SSID);
+        localLog("prepareForForcedConnection: SSID=" + (mIsDebuggable ? config.SSID : "XXX"));
 
         clearConnectionAttemptTimeStamps();
         mWifiBlocklistMonitor.clearBssidBlocklistForSsid(config.SSID);
