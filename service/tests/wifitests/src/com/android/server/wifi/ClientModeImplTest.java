@@ -40,6 +40,7 @@ import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_LO
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_TRANSIENT;
 import static com.android.server.wifi.ClientModeImpl.ARP_TABLE_PATH;
 import static com.android.server.wifi.ClientModeImpl.CMD_PRE_DHCP_ACTION;
+import static com.android.server.wifi.ClientModeImpl.CMD_PRE_DHCP_ACTION_COMPLETE;
 import static com.android.server.wifi.ClientModeImpl.CMD_UNWANTED_NETWORK;
 import static com.android.server.wifi.ClientModeImpl.WIFI_WORK_SOURCE;
 import static com.android.server.wifi.WifiSettingsConfigStore.SECONDARY_WIFI_STA_FACTORY_MAC_ADDRESS;
@@ -176,6 +177,7 @@ import com.android.server.wifi.hotspot2.NetworkDetail;
 import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.hotspot2.PasspointProvisioningTestUtil;
 import com.android.server.wifi.hotspot2.WnmData;
+import com.android.server.wifi.p2p.WifiP2pServiceImpl;
 import com.android.server.wifi.proto.nano.WifiMetricsProto;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.StaEvent;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.WifiIsUnusableEvent;
@@ -583,6 +585,7 @@ public class ClientModeImplTest extends WifiBaseTest {
     @Mock SsidTranslator mSsidTranslator;
     @Mock ApplicationQosPolicyRequestHandler mApplicationQosPolicyRequestHandler;
     @Mock LocalLog mLocalLog;
+    @Mock WifiCountryCode mWifiCountryCode;
 
     @Captor ArgumentCaptor<WifiConfigManager.OnNetworkUpdateListener> mConfigUpdateListenerCaptor;
     @Captor ArgumentCaptor<WifiNetworkAgent.Callback> mWifiNetworkAgentCallbackCaptor;
@@ -662,6 +665,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(mMultiInternetManager.hasPendingConnectionRequests()).thenReturn(true);
         when(mApplicationQosPolicyRequestHandler.isFeatureEnabled()).thenReturn(true);
         when(mWifiInjector.getWifiHandlerLocalLog()).thenReturn(mLocalLog);
+        when(mWifiInjector.getWifiCountryCode()).thenReturn(mWifiCountryCode);
         when(mWifiInjector.getApplicationQosPolicyRequestHandler())
                 .thenReturn(mApplicationQosPolicyRequestHandler);
 
@@ -680,6 +684,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         when(mWifiGlobals.getPollRssiIntervalMillis()).thenReturn(3000);
         when(mWifiGlobals.getIpReachabilityDisconnectEnabled()).thenReturn(true);
+        when(mWifiGlobals.getRepeatedNudFailuresThreshold()).thenReturn(Integer.MAX_VALUE);
 
         when(mFrameworkFacade.getIntegerSetting(mContext,
                 Settings.Global.WIFI_FREQUENCY_BAND,
@@ -5159,6 +5164,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         currentNetwork.SSID = DEFAULT_TEST_SSID;
         currentNetwork.noInternetAccessExpected = false;
         currentNetwork.numNoInternetAccessReports = 1;
+        currentNetwork.getNetworkSelectionStatus().setHasEverValidatedInternetAccess(true);
 
         // not user selected
         when(mWifiConfigManager.getConfiguredNetwork(FRAMEWORK_NETWORK_ID))
@@ -5256,7 +5262,26 @@ public class ClientModeImplTest extends WifiBaseTest {
     }
 
     @Test
-    public void testInternetValidationFailureUserSelectedRecentlyExpectNotDisabled()
+    public void testInternetValidationFailureUserSelectedRecently_ExpectDisabled()
+            throws Exception {
+        testInternetValidationUserSelectedRecently(false);
+        // expect disabled because the network has never had internet validation passed
+        verify(mWifiConfigManager).updateNetworkSelectionStatus(
+                FRAMEWORK_NETWORK_ID, DISABLED_NO_INTERNET_PERMANENT);
+    }
+
+    @Test
+    public void testInternetValidationFailureUserSelectedRecently_ExpectNotDisabled()
+            throws Exception {
+        testInternetValidationUserSelectedRecently(true);
+        // expect not disabled
+        verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(
+                FRAMEWORK_NETWORK_ID, DISABLED_NO_INTERNET_PERMANENT);
+        verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(
+                FRAMEWORK_NETWORK_ID, DISABLED_NO_INTERNET_TEMPORARY);
+    }
+
+    private void testInternetValidationUserSelectedRecently(boolean hasEverValidatedInternetAccess)
             throws Exception {
         connect();
         verify(mWifiInjector).makeWifiNetworkAgent(any(), any(), any(), any(),
@@ -5266,6 +5291,8 @@ public class ClientModeImplTest extends WifiBaseTest {
         currentNetwork.networkId = FRAMEWORK_NETWORK_ID;
         currentNetwork.noInternetAccessExpected = false;
         currentNetwork.numNoInternetAccessReports = 1;
+        currentNetwork.getNetworkSelectionStatus().setHasEverValidatedInternetAccess(
+                hasEverValidatedInternetAccess);
 
         // user last picked this network
         when(mWifiConfigManager.getConfiguredNetwork(FRAMEWORK_NETWORK_ID))
@@ -5283,9 +5310,6 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         verify(mWifiConfigManager)
                 .incrementNetworkNoInternetAccessReports(FRAMEWORK_NETWORK_ID);
-        // expect not disabled
-        verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(
-                FRAMEWORK_NETWORK_ID, DISABLED_NO_INTERNET_TEMPORARY);
     }
 
     @Test
@@ -5299,6 +5323,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         currentNetwork.networkId = FRAMEWORK_NETWORK_ID;
         currentNetwork.noInternetAccessExpected = false;
         currentNetwork.numNoInternetAccessReports = 1;
+        currentNetwork.getNetworkSelectionStatus().setHasEverValidatedInternetAccess(true);
 
         // user last picked this network
         when(mWifiConfigManager.getConfiguredNetwork(FRAMEWORK_NETWORK_ID))
@@ -5323,7 +5348,7 @@ public class ClientModeImplTest extends WifiBaseTest {
     }
 
     @Test
-    public void testNetworkInternetValidationFailureNotUserSelectedExpectNotDisabled()
+    public void testNetworkInternetValidationFailureNoInternetExpected_ExpectNotDisabled()
             throws Exception {
         connect();
         verify(mWifiInjector).makeWifiNetworkAgent(any(), any(), any(), any(),
@@ -5349,7 +5374,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         verify(mWifiConfigManager)
                 .incrementNetworkNoInternetAccessReports(FRAMEWORK_NETWORK_ID);
-        // expect not disabled
+        // expect not disabled since no internet is expected on this network
         verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(
                 FRAMEWORK_NETWORK_ID, DISABLED_NO_INTERNET_TEMPORARY);
     }
@@ -6400,7 +6425,7 @@ public class ClientModeImplTest extends WifiBaseTest {
      * over the threshold.
      */
     @Test
-    public void testHighPrababilityInternetTemporarilyDisableNetwork() throws Exception {
+    public void testHighProbabilityInternetTemporarilyDisableNetwork() throws Exception {
         connect();
         when(mPerBssid.estimatePercentInternetAvailability()).thenReturn(
                 ClientModeImpl.PROBABILITY_WITH_INTERNET_TO_PERMANENTLY_DISABLE_NETWORK);
@@ -7223,12 +7248,41 @@ public class ClientModeImplTest extends WifiBaseTest {
         expectRegisterNetworkAgent((agentConfig) -> { }, (cap) -> { });
         reset(mWifiNetworkAgent);
 
+        // normal behavior w/o overlay
+        when(mWifiGlobals.disableNudDisconnectsForWapiInSpecificCc()).thenReturn(false);
+        when(mWifiCountryCode.getCountryCode()).thenReturn("CN");
+
         // Trigger ip reachability failure and ensure we trigger a disconnect.
         ReachabilityLossInfoParcelable lossInfo =
                 new ReachabilityLossInfoParcelable("", ReachabilityLossReason.CONFIRM);
         mIpClientCallback.onReachabilityFailure(lossInfo);
         mLooper.dispatchAll();
         verify(mWifiNative).disconnect(WIFI_IFACE_NAME);
+    }
+
+    @Test
+    public void testIpReachabilityFailureConfirmDoesNotTriggersDisconnectionForWapi()
+            throws Exception {
+        mConnectedNetwork = spy(WifiConfigurationTestUtil.createWapiPskNetwork());
+
+        assumeTrue(SdkLevel.isAtLeastT());
+        connect();
+        expectRegisterNetworkAgent((agentConfig) -> { }, (cap) -> { });
+        reset(mWifiNetworkAgent);
+
+        when(mWifiGlobals.disableNudDisconnectsForWapiInSpecificCc()).thenReturn(true);
+        when(mWifiCountryCode.getCountryCode()).thenReturn("CN");
+
+        // Trigger ip reachability failure and ensure we trigger a disconnect.
+        ReachabilityLossInfoParcelable lossInfo =
+                new ReachabilityLossInfoParcelable("", ReachabilityLossReason.CONFIRM);
+        mIpClientCallback.onReachabilityFailure(lossInfo);
+        mLooper.dispatchAll();
+        if (SdkLevel.isAtLeastV()) {
+            verify(mWifiNative).disconnect(WIFI_IFACE_NAME);
+        } else {
+            verify(mWifiNative, never()).disconnect(WIFI_IFACE_NAME);
+        }
     }
 
     @Test
@@ -7270,6 +7324,10 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
         expectRegisterNetworkAgent((agentConfig) -> {}, (cap) -> {});
         reset(mWifiNetworkAgent);
+
+        // normal behavior outside specific CC
+        when(mWifiGlobals.disableNudDisconnectsForWapiInSpecificCc()).thenReturn(true);
+        when(mWifiCountryCode.getCountryCode()).thenReturn("US");
 
         // Trigger IP reachability failure and ensure we trigger a disconnection due to static IP.
         ReachabilityLossInfoParcelable lossInfo =
@@ -7316,6 +7374,11 @@ public class ClientModeImplTest extends WifiBaseTest {
             throws Exception {
         when(mDeviceConfigFacade.isHandleRssiOrganicKernelFailuresEnabled()).thenReturn(false);
 
+        // should still disconnect in following scenario
+        mConnectedNetwork = spy(WifiConfigurationTestUtil.createPskNetwork());
+        when(mWifiGlobals.disableNudDisconnectsForWapiInSpecificCc()).thenReturn(true);
+        when(mWifiCountryCode.getCurrentDriverCountryCode()).thenReturn("CN");
+
         doIpReachabilityFailureTest(ReachabilityLossReason.CONFIRM,
                 true /* shouldWifiDisconnect */);
     }
@@ -7332,6 +7395,57 @@ public class ClientModeImplTest extends WifiBaseTest {
                 new ReachabilityLossInfoParcelable("", ReachabilityLossReason.ORGANIC);
         mIpClientCallback.onReachabilityFailure(lossInfo);
         mLooper.dispatchAll();
+        verify(mWifiNative).disconnect(WIFI_IFACE_NAME);
+    }
+
+    /**
+     * Verify that when HandleRssiOrganicKernelFailuresEnabled, multiple IP reachability failures
+     * within a specified time window will lead to disconnect and network disabled.
+     */
+    @Test
+    public void testRepeatedIpReachabilityFailureDisableNetwork() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastU());
+        when(mDeviceConfigFacade.isHandleRssiOrganicKernelFailuresEnabled()).thenReturn(true);
+        int failureThreshold = 5;
+        int failureWindowMs = 60000;
+        when(mWifiGlobals.getRepeatedNudFailuresThreshold()).thenReturn(failureThreshold);
+        when(mWifiGlobals.getRepeatedNudFailuresWindowMs()).thenReturn(failureWindowMs);
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(0L);
+
+        connect();
+        expectRegisterNetworkAgent((agentConfig) -> { }, (cap) -> { });
+        reset(mWifiNetworkAgent);
+
+        for (int i = 0; i < failureThreshold; i++) {
+            // increment time outside the failure window. Failure counter should never add up and
+            // thus not trigger blocking.
+            when(mClock.getElapsedSinceBootMillis()).thenReturn(
+                    (long) (i + 1) * (failureWindowMs + 1));
+            verify(mWifiNative, never()).disconnect(WIFI_IFACE_NAME);
+            verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(anyInt(),
+                    eq(WifiConfiguration.NetworkSelectionStatus.DISABLED_REPEATED_NUD_FAILURES));
+            ReachabilityLossInfoParcelable lossInfo =
+                    new ReachabilityLossInfoParcelable("", ReachabilityLossReason.ORGANIC);
+            mIpClientCallback.onReachabilityFailure(lossInfo);
+            mLooper.dispatchAll();
+        }
+
+        // Now trigger NUD failure within the failure window and verify the network is blocked.
+        for (int i = 0; i < failureThreshold - 1; i++) {
+            when(mClock.getElapsedSinceBootMillis()).thenReturn(
+                    (long) (i + failureThreshold + 1) * (failureWindowMs));
+            verify(mWifiNative, never()).disconnect(WIFI_IFACE_NAME);
+            verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(anyInt(),
+                    eq(WifiConfiguration.NetworkSelectionStatus.DISABLED_REPEATED_NUD_FAILURES));
+            ReachabilityLossInfoParcelable lossInfo =
+                    new ReachabilityLossInfoParcelable("", ReachabilityLossReason.ORGANIC);
+            mIpClientCallback.onReachabilityFailure(lossInfo);
+            mLooper.dispatchAll();
+        }
+
+        // Should disconnect and block network after the last iteration.
+        verify(mWifiConfigManager).updateNetworkSelectionStatus(anyInt(),
+                eq(WifiConfiguration.NetworkSelectionStatus.DISABLED_REPEATED_NUD_FAILURES));
         verify(mWifiNative).disconnect(WIFI_IFACE_NAME);
     }
 
@@ -7903,7 +8017,7 @@ public class ClientModeImplTest extends WifiBaseTest {
     public void testCarrierEapFailure() throws Exception {
         initializeAndAddNetworkAndVerifySuccess();
         WifiBlocklistMonitor.CarrierSpecificEapFailureConfig eapFailureConfig =
-                new WifiBlocklistMonitor.CarrierSpecificEapFailureConfig(1, -1);
+                new WifiBlocklistMonitor.CarrierSpecificEapFailureConfig(1, -1, true);
 
         startConnectSuccess();
 
@@ -9871,6 +9985,15 @@ public class ClientModeImplTest extends WifiBaseTest {
         assertEquals(mWifiInfo.getAssociatedMloLinks().size(),
                 mWifiInfo.getAffiliatedMloLinks().size());
 
+        // verify that affiliated link state the scan results are still in unassociated state.
+        for (MloLink link : mScanResult.getAffiliatedMloLinks()) {
+            assertEquals(MloLink.MLO_LINK_STATE_UNASSOCIATED, link.getState());
+        }
+        // verify that affiliated link state are active
+        for (MloLink link : mWifiInfo.getAffiliatedMloLinks()) {
+            assertEquals(MloLink.MLO_LINK_STATE_ACTIVE, link.getState());
+        }
+
         setScanResultWithMloInfo();
         // Send FOUR_WAY_HANDSHAKE, GROUP_HANDSHAKE and COMPLETED and verify all links are still
         // asscoaited.
@@ -10486,5 +10609,68 @@ public class ClientModeImplTest extends WifiBaseTest {
         assertEquals(links.get(1).getBand(), WifiScanner.WIFI_BAND_5_GHZ);
         assertEquals(links.get(1).getChannel(), TEST_CHANNEL_1);
         assertEquals(links.get(1).getLinkId(), TEST_MLO_LINK_ID_1);
+    }
+
+    /**
+     * Verify that during DHCP process, 1. If P2P is in waiting state, clientModeImpl doesn't send a
+     * message to block P2P discovery. 2. If P2P is not in waiting state, clientModeImpl sends a
+     * message to block P2P discovery. 3. On DHCP completion, clientModeImpl sends a message to
+     * unblock P2P discovery.
+     */
+    @Test
+    public void testP2pBlockDiscoveryDuringDhcp() throws Exception {
+        initializeAndAddNetworkAndVerifySuccess();
+
+        startConnectSuccess();
+
+        mCmi.sendMessage(
+                WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT,
+                0,
+                0,
+                new StateChangeResult(
+                        0, TEST_WIFI_SSID, TEST_BSSID_STR, sFreq, SupplicantState.ASSOCIATED));
+        mLooper.dispatchAll();
+
+        mCmi.sendMessage(
+                WifiMonitor.NETWORK_CONNECTION_EVENT,
+                new NetworkConnectionEventInfo(0, TEST_WIFI_SSID, TEST_BSSID_STR, false, null));
+        mLooper.dispatchAll();
+        verify(mWifiBlocklistMonitor).handleBssidConnectionSuccess(TEST_BSSID_STR, TEST_SSID);
+
+        mCmi.sendMessage(
+                WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT,
+                0,
+                0,
+                new StateChangeResult(
+                        0, TEST_WIFI_SSID, TEST_BSSID_STR, sFreq, SupplicantState.COMPLETED));
+        mLooper.dispatchAll();
+
+        assertEquals("L3ProvisioningState", getCurrentState().getName());
+
+        when(mWifiP2pConnection.isConnected()).thenReturn(true);
+        when(mWifiP2pConnection.isP2pInWaitingState()).thenReturn(true);
+
+        mIpClientCallback.onPreDhcpAction();
+        mLooper.dispatchAll();
+        verify(mWifiP2pConnection, never()).sendMessage(anyInt(), anyInt(), anyInt());
+        verify(mIpClient).completedPreDhcpAction();
+
+        when(mWifiP2pConnection.isConnected()).thenReturn(true);
+        when(mWifiP2pConnection.isP2pInWaitingState()).thenReturn(false);
+
+        mIpClientCallback.onPreDhcpAction();
+        mLooper.dispatchAll();
+        verify(mWifiP2pConnection)
+                .sendMessage(
+                        eq(WifiP2pServiceImpl.BLOCK_DISCOVERY),
+                        eq(WifiP2pServiceImpl.ENABLED),
+                        eq(CMD_PRE_DHCP_ACTION_COMPLETE));
+        verify(mIpClient).completedPreDhcpAction();
+
+        mIpClientCallback.onPostDhcpAction();
+        mLooper.dispatchAll();
+        verify(mWifiP2pConnection)
+                .sendMessage(
+                        eq(WifiP2pServiceImpl.BLOCK_DISCOVERY), eq(WifiP2pServiceImpl.DISABLED));
     }
 }
