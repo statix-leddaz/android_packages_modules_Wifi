@@ -16,6 +16,75 @@
       "message": "Hi Les,\nPlease review and provide your inputs.\nThanks,\nPiyali.",
       "revId": "399b4f00a986bcab6d3cae09a6cfe381339bf075",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "325a1c14_b9e7daa1",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 7
+      },
+      "lineNbr": 429,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-19T02:09:24Z",
+      "side": 1,
+      "message": "Logic is not correct, when we are doing invalid check, we should use \"||\", not \u0026\u0026",
+      "range": {
+        "startLine": 429,
+        "startChar": 16,
+        "endLine": 429,
+        "endChar": 19
+      },
+      "revId": "399b4f00a986bcab6d3cae09a6cfe381339bf075",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "61f5a81b_0cfb3b69",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 7
+      },
+      "lineNbr": 438,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-19T02:09:24Z",
+      "side": 1,
+      "message": "Too complex, I suggest revising to\n\n1. Invalid input check (i.e. TextUtils.isEmpty(value) ||(TextUtils.isEmpty(configString) || mOverrideMethods.containsKey(configString)\n\nSee: Hashmap API https://developer.android.com/reference/java/util/HashMap#containsKey(java.lang.Object)\n\n2. Enable -\u003e  mOverrideMethods.get(configString).accept(value);\n3. Disable -\u003e reset",
+      "range": {
+        "startLine": 428,
+        "startChar": 0,
+        "endLine": 438,
+        "endChar": 9
+      },
+      "revId": "399b4f00a986bcab6d3cae09a6cfe381339bf075",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "91588520_4dd67855",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 7
+      },
+      "lineNbr": 207,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-19T02:09:24Z",
+      "side": 1,
+      "message": "The previous comment was that you should verify isBackgroundScanSupported value after each \"forceOverlayConfigValue\" since isBackgroundScanSupported may be changed after you all forceOverlayConfigValue",
+      "range": {
+        "startLine": 207,
+        "startChar": 0,
+        "endLine": 207,
+        "endChar": 32
+      },
+      "revId": "399b4f00a986bcab6d3cae09a6cfe381339bf075",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
