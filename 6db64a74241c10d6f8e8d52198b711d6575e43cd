@@ -41,6 +41,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "b212cb36_a0e8009c",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockSupplicantManager.java",
+        "patchSetId": 9
+      },
+      "lineNbr": 73,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-19T11:48:17Z",
+      "side": 1,
+      "message": "Hi Les, \nAdded the proposed solution for this problem in the document. Please review and provide feedback.\nAs for now added bug ID as per the review comment.\n\nThanks",
+      "parentUuid": "5df8ca4f_2ce2f31c",
+      "range": {
+        "startLine": 73,
+        "startChar": 0,
+        "endLine": 73,
+        "endChar": 69
+      },
+      "revId": "6db64a74241c10d6f8e8d52198b711d6575e43cd",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "1670f2bb_899040a4",
@@ -54,6 +78,30 @@
       "writtenOn": "2023-12-13T12:30:04Z",
       "side": 1,
       "message": "The method name is weird.\nCould you help to rename it to isMethodConfigured?\n\nThanks",
+      "range": {
+        "startLine": 247,
+        "startChar": 19,
+        "endLine": 247,
+        "endChar": 40
+      },
+      "revId": "6db64a74241c10d6f8e8d52198b711d6575e43cd",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "14173c8a_b043004e",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 9
+      },
+      "lineNbr": 247,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2023-12-19T11:48:17Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "1670f2bb_899040a4",
       "range": {
         "startLine": 247,
         "startChar": 19,
