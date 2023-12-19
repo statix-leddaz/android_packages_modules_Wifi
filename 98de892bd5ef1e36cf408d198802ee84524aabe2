@@ -16,6 +16,24 @@
       "message": "Commit message must be readable:\n\nTop-line: ONE line summary of what this does\nEmpty line\nParagraph or two: description of what this commit does (not a full description of the code).\n\nBased on reading the code this can be:\n\n------------\n\nRestructure code to use WifiGlobals for support of background scan\n\nRestructure code to use WifiGlobals for support of background scan. This is necessary for subsequent changes which will provide a mechanism to override that overlay value.\n\nNote: this change is purely a refactor. It has no functional change.",
       "revId": "98de892bd5ef1e36cf408d198802ee84524aabe2",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "7aa1c2a8_7dc0b610",
+        "filename": "/COMMIT_MSG",
+        "patchSetId": 15
+      },
+      "lineNbr": 7,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-19T00:44:10Z",
+      "side": 1,
+      "message": "Implemented.",
+      "parentUuid": "5638d96b_3fbd289d",
+      "revId": "98de892bd5ef1e36cf408d198802ee84524aabe2",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
