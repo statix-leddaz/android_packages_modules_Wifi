@@ -41,6 +41,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "a618c6ba_43a9dfe0",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 7
+      },
+      "lineNbr": 429,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-20T10:15:05Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "325a1c14_b9e7daa1",
+      "range": {
+        "startLine": 429,
+        "startChar": 16,
+        "endLine": 429,
+        "endChar": 19
+      },
+      "revId": "399b4f00a986bcab6d3cae09a6cfe381339bf075",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "61f5a81b_0cfb3b69",
@@ -64,6 +88,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "a1a95f83_c8516acb",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 7
+      },
+      "lineNbr": 438,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-20T10:15:05Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "61f5a81b_0cfb3b69",
+      "range": {
+        "startLine": 428,
+        "startChar": 0,
+        "endLine": 438,
+        "endChar": 9
+      },
+      "revId": "399b4f00a986bcab6d3cae09a6cfe381339bf075",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "91588520_4dd67855",
@@ -77,6 +125,30 @@
       "writtenOn": "2023-12-19T02:09:24Z",
       "side": 1,
       "message": "The previous comment was that you should verify isBackgroundScanSupported value after each \"forceOverlayConfigValue\" since isBackgroundScanSupported may be changed after you all forceOverlayConfigValue",
+      "range": {
+        "startLine": 207,
+        "startChar": 0,
+        "endLine": 207,
+        "endChar": 32
+      },
+      "revId": "399b4f00a986bcab6d3cae09a6cfe381339bf075",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "cfcca399_9a6914ad",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 7
+      },
+      "lineNbr": 207,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-20T10:15:05Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "91588520_4dd67855",
       "range": {
         "startLine": 207,
         "startChar": 0,
