@@ -16,6 +16,98 @@
       "message": "Hi Les,\nPlease review and provide your inputs.\nThanks,\nPiyali.",
       "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "8e292acd_92bf7a02",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 225,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-20T10:20:31Z",
+      "side": 1,
+      "message": "Why do we need to set \u0026 regenerate WifiGlobals again?",
+      "range": {
+        "startLine": 224,
+        "startChar": 0,
+        "endLine": 225,
+        "endChar": 49
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "882419a0_3da046e1",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 227,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-20T10:20:31Z",
+      "side": 1,
+      "message": "After calling \"forceOverlayConfigValue\", we should verify mWifiGlobals.isBackgroundScanSupported again.",
+      "range": {
+        "startLine": 227,
+        "startChar": 0,
+        "endLine": 227,
+        "endChar": 95
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "2e3e1f12_6ed3ab26",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 230,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-20T10:20:31Z",
+      "side": 1,
+      "message": "ditto",
+      "range": {
+        "startLine": 229,
+        "startChar": 0,
+        "endLine": 230,
+        "endChar": 49
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "936900ab_547bec7d",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 234,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-20T10:20:31Z",
+      "side": 1,
+      "message": "Some place is using TEST_VALUE but other is \"true\" or \"false\",\nNot sure the reason, please align the implementation.\n\nThanks",
+      "range": {
+        "startLine": 234,
+        "startChar": 69,
+        "endLine": 234,
+        "endChar": 79
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
