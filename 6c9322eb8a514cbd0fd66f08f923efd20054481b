@@ -16,6 +16,121 @@
       "message": "Hi Les,\nResolved the review comments . Please review and provide feedback.\n\nThanks\nVeerendra",
       "revId": "6c9322eb8a514cbd0fd66f08f923efd20054481b",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "43c64347_5787d2c2",
+        "filename": "service/java/com/android/server/wifi/SupplicantStaIfaceHalAidlImpl.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 3035,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-20T18:04:07Z",
+      "side": 1,
+      "message": "Question for clarification (i.e. I don\u0027t suggest something is wrong): can the `getMockSupplicantManager()` return null?",
+      "range": {
+        "startLine": 3035,
+        "startChar": 63,
+        "endLine": 3035,
+        "endChar": 87
+      },
+      "revId": "6c9322eb8a514cbd0fd66f08f923efd20054481b",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "a1bc4654_506a392d",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockSupplicantManager.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 38,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-20T18:04:07Z",
+      "side": 1,
+      "message": "nit: `Map`",
+      "range": {
+        "startLine": 38,
+        "startChar": 12,
+        "endLine": 38,
+        "endChar": 19
+      },
+      "revId": "6c9322eb8a514cbd0fd66f08f923efd20054481b",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "bfc03d99_793704c0",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockSupplicantManager.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 48,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-20T18:04:07Z",
+      "side": 1,
+      "message": "Printing the exception helps in debugging:\n```\nLog.e(TAG, \"Failed ... - \" + e);\n```",
+      "range": {
+        "startLine": 48,
+        "startChar": 81,
+        "endLine": 48,
+        "endChar": 82
+      },
+      "revId": "6c9322eb8a514cbd0fd66f08f923efd20054481b",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "9ced1f77_f16f190c",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockSupplicantManager.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 48,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-20T18:04:07Z",
+      "side": 1,
+      "message": "`Log.e` - an error",
+      "range": {
+        "startLine": 48,
+        "startChar": 20,
+        "endLine": 48,
+        "endChar": 21
+      },
+      "revId": "6c9322eb8a514cbd0fd66f08f923efd20054481b",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "093f44ba_720239fb",
+        "filename": "service/java/com/android/server/wifi/mockwifi/MockWifiServiceUtil.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 36,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-20T18:04:07Z",
+      "side": 1,
+      "message": "Create an `@IntDef` from these two. Then use it whenever you use these as an argument or return value - e.g. `bindToMockModemService(@MockServiceType int service)`. It will make the code easier to read.",
+      "range": {
+        "startLine": 35,
+        "startChar": 4,
+        "endLine": 36,
+        "endChar": 56
+      },
+      "revId": "6c9322eb8a514cbd0fd66f08f923efd20054481b",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
