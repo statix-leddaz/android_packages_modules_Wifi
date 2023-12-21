@@ -1,0 +1,50 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "7ae84f45_1af6dc77",
+        "filename": "service/ServiceWifiResources/res/values/config.xml",
+        "patchSetId": 7
+      },
+      "lineNbr": 587,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-21T16:27:43Z",
+      "side": 1,
+      "message": "Must be added to the overlayable.xml file as well.",
+      "range": {
+        "startLine": 587,
+        "startChar": 40,
+        "endLine": 587,
+        "endChar": 84
+      },
+      "revId": "f9be0e0a4359eef3debfdaac26ab22e790fb3a1d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "e68f23ef_3e39b6f4",
+        "filename": "service/java/com/android/server/wifi/WifiBlocklistMonitor.java",
+        "patchSetId": 7
+      },
+      "lineNbr": 122,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-21T16:27:43Z",
+      "side": 1,
+      "message": "Move this to WifiGlobals (and variables shouldn\u0027t be all upper case).",
+      "range": {
+        "startLine": 122,
+        "startChar": 23,
+        "endLine": 122,
+        "endChar": 62
+      },
+      "revId": "f9be0e0a4359eef3debfdaac26ab22e790fb3a1d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
