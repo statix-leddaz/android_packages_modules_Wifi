@@ -20,6 +20,75 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "e6731fb9_11110e40",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 152,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-21T06:42:30Z",
+      "side": 1,
+      "message": "We should check invalid input here, the inavlid input cause set to \"false\".\nBut invalid input should \"do nothing\" in our logic.",
+      "range": {
+        "startLine": 152,
+        "startChar": 0,
+        "endLine": 152,
+        "endChar": 77
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "5823c67e_9648fc9e",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 53,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-21T06:42:30Z",
+      "side": 1,
+      "message": "naming should match the define.\nex: TEST_CONFIG -\u003e CONFOG_WIFI_BACKGRAND_SCAN_SUPPORT_OVERLAY_STRING\n\nTEST_VALUE -\u003e TEST_STRING_TRUE\n\nTEST_ISENABLED -\u003e BOOLEAN_TRUE_OBJECT",
+      "range": {
+        "startLine": 51,
+        "startChar": 0,
+        "endLine": 53,
+        "endChar": 55
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "c336bef5_9379e42c",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 203,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-21T06:42:30Z",
+      "side": 1,
+      "message": "The until test should cover \"all possible input case\" and \"verify all output\"\n\n1. No test about when \n        mResources.setBoolean(R.bool.config_wifi_background_scan_support, false);\nWe should make sure API behavior is right when   mResources.setBoolean(R.bool.config_wifi_background_scan_support, false);\n\n2. No verify for #222, the invalid input but we don\u0027t verify it.\n\n3. Only re-create a new WifiGlobals when you like to run constructor again, it should only happen when we like to change the input which is decided in constructor.",
+      "range": {
+        "startLine": 203,
+        "startChar": 16,
+        "endLine": 203,
+        "endChar": 43
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "8e292acd_92bf7a02",
         "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
         "patchSetId": 8
