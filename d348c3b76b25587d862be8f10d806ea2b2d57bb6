@@ -41,6 +41,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "5eea1e57_7cbbe134",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 152,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-21T18:26:41Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "e6731fb9_11110e40",
+      "range": {
+        "startLine": 152,
+        "startChar": 0,
+        "endLine": 152,
+        "endChar": 77
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "5823c67e_9648fc9e",
@@ -66,6 +90,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "16be456a_0f408c90",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 53,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-21T18:26:41Z",
+      "side": 1,
+      "message": "As discussed,removed the global constants and made it aligned.",
+      "parentUuid": "5823c67e_9648fc9e",
+      "range": {
+        "startLine": 51,
+        "startChar": 0,
+        "endLine": 53,
+        "endChar": 55
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "c336bef5_9379e42c",
         "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
         "patchSetId": 8
@@ -77,6 +125,30 @@
       "writtenOn": "2023-12-21T06:42:30Z",
       "side": 1,
       "message": "The until test should cover \"all possible input case\" and \"verify all output\"\n\n1. No test about when \n        mResources.setBoolean(R.bool.config_wifi_background_scan_support, false);\nWe should make sure API behavior is right when   mResources.setBoolean(R.bool.config_wifi_background_scan_support, false);\n\n2. No verify for #222, the invalid input but we don\u0027t verify it.\n\n3. Only re-create a new WifiGlobals when you like to run constructor again, it should only happen when we like to change the input which is decided in constructor.",
+      "range": {
+        "startLine": 203,
+        "startChar": 16,
+        "endLine": 203,
+        "endChar": 43
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "bf2ea2ee_0a8c0408",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 203,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-21T18:26:41Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "c336bef5_9379e42c",
       "range": {
         "startLine": 203,
         "startChar": 16,
@@ -112,6 +184,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "579fce7f_ff529358",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 225,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-21T18:26:41Z",
+      "side": 1,
+      "message": "Instantiated WifiGlobals for false case now.",
+      "parentUuid": "8e292acd_92bf7a02",
+      "range": {
+        "startLine": 224,
+        "startChar": 0,
+        "endLine": 225,
+        "endChar": 49
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "882419a0_3da046e1",
         "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
         "patchSetId": 8
@@ -123,6 +219,30 @@
       "writtenOn": "2023-12-20T10:20:31Z",
       "side": 1,
       "message": "After calling \"forceOverlayConfigValue\", we should verify mWifiGlobals.isBackgroundScanSupported again.",
+      "range": {
+        "startLine": 227,
+        "startChar": 0,
+        "endLine": 227,
+        "endChar": 95
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "ba665d8d_f040c175",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 227,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-21T18:26:41Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "882419a0_3da046e1",
       "range": {
         "startLine": 227,
         "startChar": 0,
@@ -156,6 +276,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "8c50460f_7a874d1d",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 230,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-21T18:26:41Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "2e3e1f12_6ed3ab26",
+      "range": {
+        "startLine": 229,
+        "startChar": 0,
+        "endLine": 230,
+        "endChar": 49
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "936900ab_547bec7d",
@@ -169,6 +313,30 @@
       "writtenOn": "2023-12-20T10:20:31Z",
       "side": 1,
       "message": "Some place is using TEST_VALUE but other is \"true\" or \"false\",\nNot sure the reason, please align the implementation.\n\nThanks",
+      "range": {
+        "startLine": 234,
+        "startChar": 69,
+        "endLine": 234,
+        "endChar": 79
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "a5670cb0_39af9fe7",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 234,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-21T18:26:41Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "936900ab_547bec7d",
       "range": {
         "startLine": 234,
         "startChar": 69,
