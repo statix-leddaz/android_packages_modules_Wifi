@@ -94,6 +94,30 @@
       },
       "revId": "c0b805106fea2c13db2b41015371b73f97f3cb42",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "e7cf3a17_bd10d1c0",
+        "filename": "service/java/com/android/server/wifi/WifiBlocklistMonitor.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 1337,
+      "author": {
+        "id": 1903311
+      },
+      "writtenOn": "2023-12-21T15:53:20Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "c4f30bea_2199466f",
+      "range": {
+        "startLine": 1330,
+        "startChar": 10,
+        "endLine": 1337,
+        "endChar": 67
+      },
+      "revId": "c0b805106fea2c13db2b41015371b73f97f3cb42",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
