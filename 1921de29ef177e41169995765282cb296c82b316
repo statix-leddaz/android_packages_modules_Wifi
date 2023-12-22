@@ -58,6 +58,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "f329c9be_b00b0dc0",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 9
+      },
+      "lineNbr": 218,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-22T12:23:52Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "c50b60e3_f53e5c01",
+      "range": {
+        "startLine": 218,
+        "startChar": 17,
+        "endLine": 218,
+        "endChar": 21
+      },
+      "revId": "1921de29ef177e41169995765282cb296c82b316",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "2a0b8968_c743ca9b",
@@ -71,6 +95,30 @@
       "writtenOn": "2023-12-22T01:36:10Z",
       "side": 1,
       "message": "nit\nditto, it is better to inject opposite value (false) and verify it is changed.",
+      "range": {
+        "startLine": 224,
+        "startChar": 17,
+        "endLine": 224,
+        "endChar": 21
+      },
+      "revId": "1921de29ef177e41169995765282cb296c82b316",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "8b07d543_590b94ff",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 9
+      },
+      "lineNbr": 224,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-22T12:23:52Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "2a0b8968_c743ca9b",
       "range": {
         "startLine": 224,
         "startChar": 17,

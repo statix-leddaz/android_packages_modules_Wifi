@@ -112,6 +112,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "1866a182_ada1ed34",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 53,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-22T12:23:52Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "16be456a_0f408c90",
+      "range": {
+        "startLine": 51,
+        "startChar": 0,
+        "endLine": 53,
+        "endChar": 55
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "c336bef5_9379e42c",
@@ -196,6 +220,30 @@
       "side": 1,
       "message": "Instantiated WifiGlobals for false case now.",
       "parentUuid": "8e292acd_92bf7a02",
+      "range": {
+        "startLine": 224,
+        "startChar": 0,
+        "endLine": 225,
+        "endChar": 49
+      },
+      "revId": "d348c3b76b25587d862be8f10d806ea2b2d57bb6",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "3650afec_8b196483",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiGlobalsTest.java",
+        "patchSetId": 8
+      },
+      "lineNbr": 225,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-22T12:23:52Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "579fce7f_ff529358",
       "range": {
         "startLine": 224,
         "startChar": 0,
