@@ -16,6 +16,75 @@
       "message": "Hi Les,\nPlease review and provide your inputs.\nThanks,\nPiyali.",
       "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "f70b15bc_868fee6b",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 178,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-22T17:58:08Z",
+      "side": 1,
+      "message": "Please add a help string below (see pattern for other commands).",
+      "range": {
+        "startLine": 178,
+        "startChar": 13,
+        "endLine": 178,
+        "endChar": 39
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "90d70796_8765fd79",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 1841,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-22T17:58:08Z",
+      "side": 1,
+      "message": "This isn\u0027t a generic overlay override. Need a different name.",
+      "range": {
+        "startLine": 1841,
+        "startChar": 28,
+        "endLine": 1841,
+        "endChar": 35
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "cce85b81_b062cccf",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 1843,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-22T17:58:08Z",
+      "side": 1,
+      "message": "There seems to be a magic value for `configString` (\"reset\"). That doesn\u0027t work in the general case (what if what you\u0027re overriding is a string which accepts \"reset\"!?).\n\nAlternative: accept a single argument which enabled|disabled|reset",
+      "range": {
+        "startLine": 1843,
+        "startChar": 27,
+        "endLine": 1843,
+        "endChar": 39
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
