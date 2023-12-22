@@ -20,6 +20,29 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "0e73bd51_58afdabc",
+        "filename": "service/java/com/android/server/wifi/WifiServiceImpl.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 7870,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-22T17:58:44Z",
+      "side": 1,
+      "message": "Out of curiosity - does CTS have this permission? I.e. does this work?",
+      "range": {
+        "startLine": 7870,
+        "startChar": 34,
+        "endLine": 7870,
+        "endChar": 64
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "f70b15bc_868fee6b",
         "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
         "patchSetId": 10
