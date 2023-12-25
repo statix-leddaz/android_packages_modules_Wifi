@@ -45,6 +45,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import com.android.server.wifi.util.InformationElementUtil;
+import java.util.stream.Collectors;
+
 /**
  * Class used for processing all P2P callbacks for the AIDL implementation.
  */
@@ -258,7 +261,7 @@ public class SupplicantP2pIfaceCallbackAidlImpl extends ISupplicantP2pIfaceCallb
             int frequency, byte[] psk, String passphrase, byte[] goDeviceAddress,
             boolean isPersistent) {
         onGroupStarted(groupIfName, isGroupOwner, ssid, frequency, psk, passphrase, goDeviceAddress,
-                isPersistent, /* goInterfaceAddress */ null, /*p2pClientIpInfo */ null);
+                isPersistent, /* goInterfaceAddress */ null, /*p2pClientIpInfo */ null, null);
     }
 
     /**
@@ -274,13 +277,15 @@ public class SupplicantP2pIfaceCallbackAidlImpl extends ISupplicantP2pIfaceCallb
                 groupStartedEventParams.passphrase, groupStartedEventParams.goDeviceAddress,
                 groupStartedEventParams.isPersistent, groupStartedEventParams.goInterfaceAddress,
                 groupStartedEventParams.isP2pClientEapolIpAddressInfoPresent
-                        ? groupStartedEventParams.p2pClientIpInfo : null);
+                        ? groupStartedEventParams.p2pClientIpInfo : null,
+                groupStartedEventParams.infoElements);
     }
 
     private void onGroupStarted(String groupIfName, boolean isGroupOwner, byte[] ssid,
             int frequency, byte[] psk, String passphrase, byte[] goDeviceAddress,
             boolean isPersistent, byte[] goInterfaceAddress,
-            P2pClientEapolIpAddressInfo p2pClientIpInfo) {
+            P2pClientEapolIpAddressInfo p2pClientIpInfo,
+            byte[] infoElements) {
         if (groupIfName == null) {
             Log.e(TAG, "Missing group interface name.");
             return;
@@ -311,7 +316,13 @@ public class SupplicantP2pIfaceCallbackAidlImpl extends ISupplicantP2pIfaceCallb
         }
 
         WifiP2pDevice owner = new WifiP2pDevice();
-
+        if (infoElements != null) {
+            ScanResult.InformationElement[] ies =
+                    InformationElementUtil.parseInformationElements(infoElements);
+            List<ScanResult.InformationElement> list = Arrays.stream(ies)
+                    .collect(Collectors.toList());
+            owner.setVendorElements(list);
+        }
         try {
             owner.deviceAddress = NativeUtil.macAddressFromByteArray(goDeviceAddress);
         } catch (Exception e) {
