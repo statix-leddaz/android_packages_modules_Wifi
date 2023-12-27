@@ -382,6 +382,30 @@
       },
       "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "dad90fbe_11e91fa3",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 1843,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-27T17:28:49Z",
+      "side": 1,
+      "message": "I prefer to not use magic values at all - just be explicit. E.g. add another boolean - that way the code is readable and maintainable.",
+      "parentUuid": "1855f486_80882dc2",
+      "range": {
+        "startLine": 1843,
+        "startChar": 27,
+        "endLine": 1843,
+        "endChar": 39
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
