@@ -131,6 +131,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "08512b0b_16087f0b",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 178,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-27T05:56:14Z",
+      "side": 1,
+      "message": "Correct.\n\nPer next (now resolved) comment: please add a list of the overlays which this command can handle (it will be expanded in the future).",
+      "parentUuid": "8439f65e_d4bdf5b7",
+      "range": {
+        "startLine": 178,
+        "startChar": 13,
+        "endLine": 178,
+        "endChar": 39
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "90d70796_8765fd79",
         "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
         "patchSetId": 10
@@ -200,6 +224,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "2616349e_ed83e068",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 1841,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-27T05:56:14Z",
+      "side": 1,
+      "message": "It isn\u0027t generic since not all overlays are modified via WifiGlobals - but I suppose we can leave the name - IF you clarify in the help string which overlays are handled today (i.e. let\u0027s do that instead).",
+      "parentUuid": "a1df750b_a981cf50",
+      "range": {
+        "startLine": 1841,
+        "startChar": 28,
+        "endLine": 1841,
+        "endChar": 35
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "cce85b81_b062cccf",
@@ -237,6 +285,30 @@
       "side": 1,
       "message": "As per my understanding configString accepts config_wifi_background_scan_support and value accepts true|false|reset. I have checked other shellCommands and observed that even though they are accepting enabled or disabled,they are converting it to true or false. \nI am not clear but I am supposed to convert the accepted string to enabled|disabled|reset from true|false|reset. Is it correct?",
       "parentUuid": "cce85b81_b062cccf",
+      "range": {
+        "startLine": 1843,
+        "startChar": 27,
+        "endLine": 1843,
+        "endChar": 39
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "9cbe8370_327c95f5",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 1843,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2023-12-27T05:56:14Z",
+      "side": 1,
+      "message": "What if the overlay is a string (in the future)?\n\nOverlay types:\n- boolean: true|false|reset \n- int: \u003cinteger\u003e|reset\n- string: \u003carbitrary string value\u003e|reset \u003c--- how do you differentiate??\n\nThe command can be made generic/future-safe with:\n\nforce-overlay-config-value \u003cvalue\u003e|[-reset]\n\nWhere value is:\n- true|false for booleans\n- \u003cint\u003e for integers\n- string for strings\n\nThe above is still ambiguous is you want the string to be \"-reset\". Possibly in this case need:\n\nforce-overlay-config-value \u003cvalue\u003e [-reset]\n\nI.e. not an \"OR\" but an \"AND\" - always need to supply value - even if dummy and not used (in the reset case).\n\nFeedback?",
+      "parentUuid": "f36d95af_973955ed",
       "range": {
         "startLine": 1843,
         "startChar": 27,
