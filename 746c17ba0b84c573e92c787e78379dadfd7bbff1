@@ -18,6 +18,23 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "90cf0599_f6d9491f",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 10
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-27T04:47:42Z",
+      "side": 1,
+      "message": "Hi Etan,\nI have added some comments, please review and provide your valuable input.\nThanks,\nPiyali",
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "0e73bd51_58afdabc",
@@ -41,6 +58,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "6e63ecaa_4cc8534e",
+        "filename": "service/java/com/android/server/wifi/WifiServiceImpl.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 7870,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-27T04:47:42Z",
+      "side": 1,
+      "message": "Yes it is returning true.",
+      "parentUuid": "0e73bd51_58afdabc",
+      "range": {
+        "startLine": 7870,
+        "startChar": 34,
+        "endLine": 7870,
+        "endChar": 64
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "f70b15bc_868fee6b",
@@ -54,6 +95,30 @@
       "writtenOn": "2023-12-22T17:58:08Z",
       "side": 1,
       "message": "Please add a help string below (see pattern for other commands).",
+      "range": {
+        "startLine": 178,
+        "startChar": 13,
+        "endLine": 178,
+        "endChar": 39
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "8439f65e_d4bdf5b7",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 178,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-27T04:47:42Z",
+      "side": 1,
+      "message": "I am not clear on the review comment. As per my understanding, we need to add the help string in onHelpNonPrivileged() i.e. force-overlay-config-value : Force overlay for Background Scan supported. Is it correct?",
+      "parentUuid": "f70b15bc_868fee6b",
       "range": {
         "startLine": 178,
         "startChar": 13,
@@ -113,6 +178,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "a1df750b_a981cf50",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 1841,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-27T04:47:42Z",
+      "side": 1,
+      "message": "@etancohen@google.com Should I modify the name to force-pno-overlay-config-value.",
+      "parentUuid": "b0530939_6d7bd7bb",
+      "range": {
+        "startLine": 1841,
+        "startChar": 28,
+        "endLine": 1841,
+        "endChar": 35
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "cce85b81_b062cccf",
         "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
         "patchSetId": 10
@@ -124,6 +213,30 @@
       "writtenOn": "2023-12-22T17:58:08Z",
       "side": 1,
       "message": "There seems to be a magic value for `configString` (\"reset\"). That doesn\u0027t work in the general case (what if what you\u0027re overriding is a string which accepts \"reset\"!?).\n\nAlternative: accept a single argument which enabled|disabled|reset",
+      "range": {
+        "startLine": 1843,
+        "startChar": 27,
+        "endLine": 1843,
+        "endChar": 39
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "f36d95af_973955ed",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 1843,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2023-12-27T04:47:42Z",
+      "side": 1,
+      "message": "As per my understanding configString accepts config_wifi_background_scan_support and value accepts true|false|reset. I have checked other shellCommands and observed that even though they are accepting enabled or disabled,they are converting it to true or false. \nI am not clear but I am supposed to convert the accepted string to enabled|disabled|reset from true|false|reset. Is it correct?",
+      "parentUuid": "cce85b81_b062cccf",
       "range": {
         "startLine": 1843,
         "startChar": 27,
