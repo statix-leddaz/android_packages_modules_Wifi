@@ -317,6 +317,30 @@
       },
       "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "7ee7f2b9_d75b5f49",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 10
+      },
+      "lineNbr": 1843,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-27T13:31:51Z",
+      "side": 1,
+      "message": "Agree to Etan\u0027s concern.\n\nBut the \"reset\" is used in WifiGlobal internally when shell command is \"disabled\".\nIt seems to me that it is fine to keep the design in shell command but we should add another mechanism in WifiGlobal.\n\nI am thinking that if we can use Object \"NULL\" as magic value.\nReason:\nThe overlay configuration maybe a boolean or string value but it never be a NULL since it was read from overlay value.\n\nOr we can do reset directly instead of sending a magic value \"reset\" to avoid this case but it may require another interface or hash method to do reset thing.\n\nWDYT?",
+      "parentUuid": "9cbe8370_327c95f5",
+      "range": {
+        "startLine": 1843,
+        "startChar": 27,
+        "endLine": 1843,
+        "endChar": 39
+      },
+      "revId": "746c17ba0b84c573e92c787e78379dadfd7bbff1",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
