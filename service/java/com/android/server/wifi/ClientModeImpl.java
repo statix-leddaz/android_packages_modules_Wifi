@@ -357,6 +357,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     // This is is used to track the number of TDLS peers enabled in driver via enableTdls()
     private Set<String> mEnabledTdlsPeers = new ArraySet<>();
 
+    // Tracks the last NUD failure timestamp, and number of failures.
+    private Pair<Long, Integer> mNudFailureCounter = new Pair<>(0L, 0);
+
     /**
      * Method to clear {@link #mTargetBssid} and reset the current connected network's
      * bssid in wpa_supplicant after a roam/connect attempt.
@@ -1938,7 +1941,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      */
     public boolean enableTdls(String remoteMacAddress, boolean enable) {
         boolean ret;
-        if (!canEnableTdls()) {
+        if (enable && !canEnableTdls()) {
             return false;
         }
         ret = mWifiNative.startTdls(mInterfaceName, remoteMacAddress, enable);
@@ -3454,6 +3457,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mLastSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
         mCurrentConnectionDetectedCaptivePortal = false;
         mLastSimBasedConnectionCarrierName = null;
+        mNudFailureCounter = new Pair<>(0L, 0);
         checkAbnormalDisconnectionAndTakeBugReport();
         mWifiScoreCard.resetConnectionState(mInterfaceName);
         updateLayer2Information();
@@ -3967,6 +3971,21 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             handleIpReachabilityLost(lossReason);
             return;
         }
+        final long curTime = mClock.getElapsedSinceBootMillis();
+        if (curTime - mNudFailureCounter.first <= mWifiGlobals.getRepeatedNudFailuresWindowMs()) {
+            mNudFailureCounter = new Pair<>(curTime, mNudFailureCounter.second + 1);
+        } else {
+            mNudFailureCounter = new Pair<>(curTime, 1);
+        }
+        if (mNudFailureCounter.second >= mWifiGlobals.getRepeatedNudFailuresThreshold()) {
+            // Disable and disconnect due to repeated NUD failures within limited time window.
+            mWifiConfigManager.updateNetworkSelectionStatus(config.networkId,
+                    WifiConfiguration.NetworkSelectionStatus.DISABLED_REPEATED_NUD_FAILURES);
+            handleIpReachabilityLost(lossReason);
+            mNudFailureCounter = new Pair<>(0L, 0);
+            return;
+        }
+
         final NetworkAgentConfig naConfig = getNetworkAgentConfigInternal(config);
         final NetworkCapabilities nc = getCapabilities(
                 getConnectedWifiConfigurationInternal(), getConnectedBssidInternal());
@@ -4282,6 +4301,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiNative.enableStaAutoReconnect(mInterfaceName, false);
         // STA has higher priority over P2P
         mWifiNative.setConcurrencyPriority(true);
+        if (mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+            // Loads the firmware roaming info which gets used in WifiBlocklistMonitor
+            mWifiConnectivityHelper.getFirmwareRoamingInfo();
+        }
 
         // Retrieve and store the factory MAC address (on first bootup).
         retrieveFactoryMacAddressAndStoreIfNecessary();
@@ -5022,10 +5045,20 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         // Defensive copy to avoid mutating the passed argument
         final WifiConfiguration conf = new WifiConfiguration(currentWifiConfiguration);
         conf.BSSID = currentBssid;
+
+        int band = WifiNetworkSpecifier.getBand(mWifiInfo.getFrequency());
+
+        if (!isPrimary() && mWifiGlobals.isSupportMultiInternetDual5G()
+                && band == ScanResult.WIFI_BAND_5_GHZ) {
+            if (mWifiInfo.getFrequency() <= ScanResult.BAND_5_GHZ_LOW_HIGHEST_FREQ_MHZ) {
+                band = ScanResult.WIFI_BAND_5_GHZ_LOW;
+            } else {
+                band = ScanResult.WIFI_BAND_5_GHZ_HIGH;
+            }
+        }
+
         WifiNetworkAgentSpecifier wns =
-                new WifiNetworkAgentSpecifier(conf,
-                        WifiNetworkSpecifier.getBand(mWifiInfo.getFrequency()),
-                        matchLocationSensitiveInformation);
+                new WifiNetworkAgentSpecifier(conf, band, matchLocationSensitiveInformation);
         return wns;
     }
 
@@ -8039,6 +8072,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             .withPreDhcpAction()
                             .withPreconnection()
                             .withDisplayName(config.SSID)
+                            .withCreatorUid(config.creatorUid)
                             .withLayer2Information(layer2Info)
                             .withProvisioningTimeoutMs(PROVISIONING_TIMEOUT_FILS_CONNECTION_MS);
             if (mContext.getResources().getBoolean(R.bool.config_wifiEnableApfOnNonPrimarySta)
@@ -8092,6 +8126,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     .withNetwork(network)
                     .withDisplayName(config.SSID)
                     .withScanResultInfo(scanResultInfo)
+                    .withCreatorUid(config.creatorUid)
                     .withLayer2Information(layer2Info);
             } else {
                 StaticIpConfiguration staticIpConfig = config.getStaticIpConfiguration();
@@ -8099,6 +8134,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         .withStaticConfiguration(staticIpConfig)
                         .withNetwork(network)
                         .withDisplayName(config.SSID)
+                        .withCreatorUid(config.creatorUid)
                         .withLayer2Information(layer2Info);
             }
             if (mContext.getResources().getBoolean(R.bool.config_wifiEnableApfOnNonPrimarySta)

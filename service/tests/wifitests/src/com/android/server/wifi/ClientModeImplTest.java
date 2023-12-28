@@ -684,6 +684,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         when(mWifiGlobals.getPollRssiIntervalMillis()).thenReturn(3000);
         when(mWifiGlobals.getIpReachabilityDisconnectEnabled()).thenReturn(true);
+        when(mWifiGlobals.getRepeatedNudFailuresThreshold()).thenReturn(Integer.MAX_VALUE);
 
         when(mFrameworkFacade.getIntegerSetting(mContext,
                 Settings.Global.WIFI_FREQUENCY_BAND,
@@ -7397,6 +7398,57 @@ public class ClientModeImplTest extends WifiBaseTest {
         verify(mWifiNative).disconnect(WIFI_IFACE_NAME);
     }
 
+    /**
+     * Verify that when HandleRssiOrganicKernelFailuresEnabled, multiple IP reachability failures
+     * within a specified time window will lead to disconnect and network disabled.
+     */
+    @Test
+    public void testRepeatedIpReachabilityFailureDisableNetwork() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastU());
+        when(mDeviceConfigFacade.isHandleRssiOrganicKernelFailuresEnabled()).thenReturn(true);
+        int failureThreshold = 5;
+        int failureWindowMs = 60000;
+        when(mWifiGlobals.getRepeatedNudFailuresThreshold()).thenReturn(failureThreshold);
+        when(mWifiGlobals.getRepeatedNudFailuresWindowMs()).thenReturn(failureWindowMs);
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(0L);
+
+        connect();
+        expectRegisterNetworkAgent((agentConfig) -> { }, (cap) -> { });
+        reset(mWifiNetworkAgent);
+
+        for (int i = 0; i < failureThreshold; i++) {
+            // increment time outside the failure window. Failure counter should never add up and
+            // thus not trigger blocking.
+            when(mClock.getElapsedSinceBootMillis()).thenReturn(
+                    (long) (i + 1) * (failureWindowMs + 1));
+            verify(mWifiNative, never()).disconnect(WIFI_IFACE_NAME);
+            verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(anyInt(),
+                    eq(WifiConfiguration.NetworkSelectionStatus.DISABLED_REPEATED_NUD_FAILURES));
+            ReachabilityLossInfoParcelable lossInfo =
+                    new ReachabilityLossInfoParcelable("", ReachabilityLossReason.ORGANIC);
+            mIpClientCallback.onReachabilityFailure(lossInfo);
+            mLooper.dispatchAll();
+        }
+
+        // Now trigger NUD failure within the failure window and verify the network is blocked.
+        for (int i = 0; i < failureThreshold - 1; i++) {
+            when(mClock.getElapsedSinceBootMillis()).thenReturn(
+                    (long) (i + failureThreshold + 1) * (failureWindowMs));
+            verify(mWifiNative, never()).disconnect(WIFI_IFACE_NAME);
+            verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(anyInt(),
+                    eq(WifiConfiguration.NetworkSelectionStatus.DISABLED_REPEATED_NUD_FAILURES));
+            ReachabilityLossInfoParcelable lossInfo =
+                    new ReachabilityLossInfoParcelable("", ReachabilityLossReason.ORGANIC);
+            mIpClientCallback.onReachabilityFailure(lossInfo);
+            mLooper.dispatchAll();
+        }
+
+        // Should disconnect and block network after the last iteration.
+        verify(mWifiConfigManager).updateNetworkSelectionStatus(anyInt(),
+                eq(WifiConfiguration.NetworkSelectionStatus.DISABLED_REPEATED_NUD_FAILURES));
+        verify(mWifiNative).disconnect(WIFI_IFACE_NAME);
+    }
+
     @Test
     public void testIpReachabilityFailureOrganic_enableHandleRssiOrganicKernelFailuresFlag()
             throws Exception {
@@ -10444,18 +10496,19 @@ public class ClientModeImplTest extends WifiBaseTest {
     @Test
     public void testEnableTdls() throws Exception {
         connect();
-        when(mWifiNative.getMaxSupportedConcurrentTdlsSessions(WIFI_IFACE_NAME)).thenReturn(5);
+        when(mWifiNative.getMaxSupportedConcurrentTdlsSessions(WIFI_IFACE_NAME)).thenReturn(1);
         when(mWifiNative.getSupportedFeatureSet(WIFI_IFACE_NAME))
                 .thenReturn(WifiManager.WIFI_FEATURE_TDLS);
         when(mWifiNative.startTdls(eq(WIFI_IFACE_NAME), eq(TEST_TDLS_PEER_ADDR_STR), anyBoolean()))
                 .thenReturn(true);
-        assertEquals(5, mCmi.getMaxSupportedConcurrentTdlsSessions());
+        assertEquals(1, mCmi.getMaxSupportedConcurrentTdlsSessions());
         assertTrue(mCmi.isTdlsOperationCurrentlyAvailable());
-        mCmi.enableTdls(TEST_TDLS_PEER_ADDR_STR, true);
+        assertTrue(mCmi.enableTdls(TEST_TDLS_PEER_ADDR_STR, true));
         assertEquals(1, mCmi.getNumberOfEnabledTdlsSessions());
         verify(mWifiNative).startTdls(eq(WIFI_IFACE_NAME), eq(TEST_TDLS_PEER_ADDR_STR),
                 eq(true));
-        mCmi.enableTdls(TEST_TDLS_PEER_ADDR_STR, false);
+        assertFalse(mCmi.enableTdls(TEST_TDLS_PEER_ADDR_STR, true));
+        assertTrue(mCmi.enableTdls(TEST_TDLS_PEER_ADDR_STR, false));
         verify(mWifiNative).startTdls(eq(WIFI_IFACE_NAME), eq(TEST_TDLS_PEER_ADDR_STR),
                 eq(false));
         assertEquals(0, mCmi.getNumberOfEnabledTdlsSessions());
