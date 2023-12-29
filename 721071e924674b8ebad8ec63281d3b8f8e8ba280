@@ -16,6 +16,52 @@
       "message": "Hi Etan,\nPlease review and provide your inputs.\nThanks,\nPiyali.",
       "revId": "721071e924674b8ebad8ec63281d3b8f8e8ba280",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "aa26b2ec_34d62a99",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 11
+      },
+      "lineNbr": 149,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-29T02:28:33Z",
+      "side": 1,
+      "message": "Why do we still need a magic value \"reset\"?",
+      "range": {
+        "startLine": 149,
+        "startChar": 24,
+        "endLine": 149,
+        "endChar": 45
+      },
+      "revId": "721071e924674b8ebad8ec63281d3b8f8e8ba280",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "6165453c_b124e755",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 11
+      },
+      "lineNbr": 2634,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2023-12-29T02:28:33Z",
+      "side": 1,
+      "message": "Please reference other commands, we need to point out the guideline about this command (for example: point out what is the configString we support it now and what is the expected value for this config and what will happen when disable)\n\nsee example: \n\n        pw.println(\"  start-softap \u003cssid\u003e (open|wpa2|wpa3|wpa3_transition|owe|owe_transition) \"",
+      "range": {
+        "startLine": 2634,
+        "startChar": 0,
+        "endLine": 2634,
+        "endChar": 80
+      },
+      "revId": "721071e924674b8ebad8ec63281d3b8f8e8ba280",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
