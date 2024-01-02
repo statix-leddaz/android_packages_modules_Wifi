@@ -3012,7 +3012,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
         private final String mPackageName;
         private final WorkSource mWorkSource;
         private boolean mScanWorkReported = false;
-        protected final IWifiScannerListener mListener;
+        protected IWifiScannerListener mListener;
 
         ClientInfo(int uid, String packageName, IWifiScannerListener listener) {
             mUid = uid;
@@ -3035,7 +3035,7 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
         /**
          * Unregister this client from main client map.
          */
-        private void unregister() {
+        protected void unregister() {
             if (isVerboseLoggingEnabled()) {
                 Log.i(TAG, "Unregistering listener= " + mListener + " uid=" + mUid
                         + " packageName=" + mPackageName + " workSource=" + mWorkSource);
@@ -3148,12 +3148,13 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
          * If the client is no longer connected then messages to it will be silently dropped
          */
         private boolean mDisconnected = false;
+        private DeathRecipient mListenerDeathRecipient = null;
 
         ExternalClientInfo(int uid, String packageName, IWifiScannerListener listener) {
             super(uid, packageName, listener);
             if (DBG) localLog("New client, listener: " + listener);
             try {
-                listener.asBinder().linkToDeath(new DeathRecipient() {
+                mListenerDeathRecipient = new DeathRecipient() {
                     @Override
                     public void binderDied() {
                         mWifiThreadRunner.post(() -> {
@@ -3164,7 +3165,8 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
                             cleanup();
                         });
                     }
-                }, 0);
+                };
+                listener.asBinder().linkToDeath(mListenerDeathRecipient, 0);
             } catch (RemoteException e) {
                 Log.e(TAG, "can't register death recipient! " + listener);
             }
@@ -3175,6 +3177,17 @@ public class WifiScanningServiceImpl extends IWifiScanner.Stub {
                 cb.callListener(mListener);
             }
         }
+
+        @Override
+        public void unregister() {
+            if (mListener != null) {
+                Log.i(TAG, "Unlink to death, listener=" + mListener);
+                mListener.asBinder().unlinkToDeath(mListenerDeathRecipient, 0);
+            }
+            super.unregister();
+            mListener = null;
+            mListenerDeathRecipient = null;
+    }
 
         @Override
         public void cleanup() {
