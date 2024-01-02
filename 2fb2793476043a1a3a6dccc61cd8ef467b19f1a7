@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "1b83b3fb_3bde5fc0",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1957754
+      },
+      "writtenOn": "2024-01-02T07:01:26Z",
+      "side": 1,
+      "message": "This gerrit is yet to be merged..",
+      "revId": "2fb2793476043a1a3a6dccc61cd8ef467b19f1a7",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
