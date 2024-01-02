@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "790d3974_f8e5f16c",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-02T15:40:43Z",
+      "side": 1,
+      "message": "SSID/BSSID information is critical for debugging purposes of any issues. Logcats are extremely secure and require user approval to access.",
+      "revId": "25364297fd419258afcb4a5dc7644708ea7c331a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
