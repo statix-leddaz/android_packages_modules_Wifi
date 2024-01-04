@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "889c8c57_4bd946e9",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 13
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2036611
+      },
+      "writtenOn": "2024-01-04T10:21:20Z",
+      "side": 1,
+      "message": "Hi Les,\nAdded the changes for same method in different AIDL. Please review and provide feedback.\n\nThanks",
+      "revId": "ce9b255a1a6384d0e04b10315833e2bf00ed2b97",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
