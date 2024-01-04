@@ -77,6 +77,9 @@ public class WifiConfigurationTestUtil {
     public static final String[] TEST_WEP_KEYS =
             {"\"WifiTestWep12\"", "\"WifiTestWep34\"",
                     "45342312ab", "45342312ab45342312ab34ac12"};
+    public static final String[] TEST_WEP_KEYS_WITH_NULL = {
+        "\"WifiTestWep12\"", "\"WifiTestWep34\"", "45342312ab45342312ab34ac12", null
+    };
     public static final String TEST_EAP_PASSWORD = "WifiConfigurationTestUtilEapPassword";
     public static final int TEST_WEP_TX_KEY_INDEX = 1;
     public static final String TEST_FQDN = "WifiConfigurationTestUtilFQDN";
@@ -378,6 +381,15 @@ public class WifiConfigurationTestUtil {
     public static WifiConfiguration createPskHiddenNetwork() {
         WifiConfiguration configuration = createPskNetwork();
         configuration.hiddenSSID = true;
+        return configuration;
+    }
+
+    public static WifiConfiguration createCaptivePortalNetwork() {
+        WifiConfiguration configuration = createPskNetwork();
+        NetworkSelectionStatus.Builder builder = new NetworkSelectionStatus.Builder();
+        NetworkSelectionStatus networkSelectionStatus = builder.build();
+        networkSelectionStatus.setHasNeverDetectedCaptivePortal(false);
+        configuration.setNetworkSelectionStatus(networkSelectionStatus);
         return configuration;
     }
 
@@ -715,6 +727,7 @@ public class WifiConfigurationTestUtil {
         assertEquals(expected.requirePmf, actual.requirePmf);
         assertEquals(expected.allowedKeyManagement, actual.allowedKeyManagement);
         assertEquals(expected.allowedAuthAlgorithms, actual.allowedAuthAlgorithms);
+        assertEquals(expected.priority, actual.priority);
         // Supplicant backup does not include the following fields.
         if (!isSupplicantBackup) {
             assertEquals(expected.allowedProtocols, actual.allowedProtocols);

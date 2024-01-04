@@ -8243,7 +8243,9 @@ public class WifiManager {
     public void enableVerboseLogging(@VerboseLoggingLevel int verbose) {
         try {
             mService.enableVerboseLogging(verbose);
-            mVerboseLoggingEnabled = verbose == VERBOSE_LOGGING_LEVEL_ENABLED;
+            mVerboseLoggingEnabled =
+                    verbose == VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY
+                            || verbose == VERBOSE_LOGGING_LEVEL_ENABLED;
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -8261,7 +8263,9 @@ public class WifiManager {
      */
     @SystemApi
     public boolean isVerboseLoggingEnabled() {
-        return getVerboseLoggingLevel() > 0;
+        int verboseLoggingLevel = getVerboseLoggingLevel();
+        return verboseLoggingLevel == VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY
+                || verboseLoggingLevel == VERBOSE_LOGGING_LEVEL_ENABLED;
     }
 
     /**
@@ -8964,11 +8968,18 @@ public class WifiManager {
     @SystemApi
     public static final int VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY = 2;
 
+    /**
+     * Verbose logging mode: only enable for Wi-Fi Aware feature.
+     * @hide
+     */
+    public static final int VERBOSE_LOGGING_LEVEL_WIFI_AWARE_ENABLED_ONLY = 3;
+
     /** @hide */
     @IntDef(prefix = {"VERBOSE_LOGGING_LEVEL_"}, value = {
             VERBOSE_LOGGING_LEVEL_DISABLED,
             VERBOSE_LOGGING_LEVEL_ENABLED,
             VERBOSE_LOGGING_LEVEL_ENABLED_SHOW_KEY,
+            VERBOSE_LOGGING_LEVEL_WIFI_AWARE_ENABLED_ONLY,
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface VerboseLoggingLevel {
