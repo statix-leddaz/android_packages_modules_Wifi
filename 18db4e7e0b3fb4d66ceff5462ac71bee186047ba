@@ -1,0 +1,165 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "f2278c03_fb350e69",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 152,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-04T23:23:12Z",
+      "side": 1,
+      "message": "This isn\u0027t necessary consider the `if (!isEnabled)`.",
+      "range": {
+        "startLine": 152,
+        "startChar": 78,
+        "endLine": 152,
+        "endChar": 91
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "f30fe8d6_060973da",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 152,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-04T23:23:12Z",
+      "side": 1,
+      "message": "Seems to replicate the `parseBoolean` below. Simpler:\n\n```\n  if (!isEnabled) {\n     ....\n  } else {\n     try {\n              mIsBackgroundScanSupported \u003d Boolean.parseBoolean(value);\n     } catch Exception() {\n              Log.xxxxx\n     }\n  }\n```\n\nNote that the above doesn\u0027t return any error codes on bad configuration. This is a side-effect of the possibly over optimization of using `BiConsumer`. Consider something much simpler.",
+      "range": {
+        "startLine": 152,
+        "startChar": 31,
+        "endLine": 152,
+        "endChar": 77
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "2b0a7c4f_f7616e59",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 430,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-04T23:23:12Z",
+      "side": 1,
+      "message": "No need for an extra set of parenthesis: \n\nA || (B || C) \u003d\u003d\u003d A || B || C",
+      "range": {
+        "startLine": 430,
+        "startChar": 18,
+        "endLine": 430,
+        "endChar": 20
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "3f28cdec_480ab6de",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 430,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-04T23:23:12Z",
+      "side": 1,
+      "message": "Why is this condition valid - is an empty string not a possible correct value for an overlay?",
+      "range": {
+        "startLine": 430,
+        "startChar": 20,
+        "endLine": 430,
+        "endChar": 51
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "80c5d657_7830a2d9",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 2633,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-04T23:23:12Z",
+      "side": 1,
+      "message": "this string is the actual string that users should type. IIUC users should not type commas \",\" - please remove.",
+      "range": {
+        "startLine": 2633,
+        "startChar": 56,
+        "endLine": 2633,
+        "endChar": 58
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "3031f6b0_0f3b4564",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 2633,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-04T23:23:12Z",
+      "side": 1,
+      "message": "Is this optional? That\u0027s the implication of \"[]\".\n\nIf mandatory: \"enable|disable\" \u003c----- [it\u0027s mandatory]\nIf optional: \"[enable|disable]\"\n\nThen fix the \"isEnabled\" line #2639 below. E.g.:\n```\n  enable|disable: mandatory. Use `enable` to use the \u003cvalue\u003e to override the overlay. Use `disable` to reset the override and use the value from the resource file.\n```",
+      "range": {
+        "startLine": 2633,
+        "startChar": 74,
+        "endLine": 2633,
+        "endChar": 85
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "dd945b1d_709878e5",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 2633,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-04T23:23:12Z",
+      "side": 1,
+      "message": "The format for user input is something like \"\u003cconfig_string\u003e\".",
+      "range": {
+        "startLine": 2633,
+        "startChar": 59,
+        "endLine": 2633,
+        "endChar": 71
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
