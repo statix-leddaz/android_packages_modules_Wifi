@@ -370,10 +370,12 @@
     <!-- Indicates that AP mode MAC randomization is supported on this device -->
     <bool translatable="false" name="config_wifi_ap_mac_randomization_supported">true</bool>
 
-    <!-- Indicates that bridged AP mode is supported on this device -->
+    <!-- Indicates that bridged AP mode is supported on this device provided that
+     the device interface combination allows for it -->
     <bool translatable="false" name="config_wifiBridgedSoftApSupported">false</bool>
 
-    <!-- Indicates that STA + bridged AP concurrency mode is supported on this device -->
+    <!-- Indicates that STA + bridged AP concurrency mode is supported on this device provided
+     that the device interface combination allows for it-->
     <bool translatable="false" name="config_wifiStaWithBridgedSoftApConcurrencySupported">false</bool>
 
     <!-- Indicates that dynamic country code update in AP mode is supported on this device -->
@@ -598,6 +600,12 @@
     <integer translatable="false" name="config_wifiDisableReasonByWrongPasswordDurationMs"> -1 </integer>
     <integer translatable="false" name="config_wifiDisableReasonAuthenticationNoSubscriptionDurationMs"> -1 </integer>
     <integer translatable="false" name="config_wifiDisableReasonConsecutiveFailuresDurationMs"> 300000 </integer>
+
+    <!-- Configuration for disabling a network due to repeated NUD failures -->
+    <!-- The number of NUD failures that need to happen to trigger blocking -->
+    <integer translatable="false" name="config_wifiDisableReasonRepeatedNudFailuresThreshold"> 5 </integer>
+    <!-- The NUD failures need to happen within this time window or else the counter will be reset -->
+    <integer translatable="false" name="config_wifiDisableReasonRepeatedNudFailuresWindowMs"> 60000 </integer>
 
     <!-- List of constants that indicate the number of consecutive failures per type needed to block a BSSID.
     A blocked BSSID will not be considered in network selection and firmware roaming.-->
@@ -875,6 +883,21 @@
     <string-array translatable="false" name="config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs_carrier_overrides">
         <item><xliff:g id="carrier_id_prefix">:::1839:::</xliff:g>14400000</item>
     </string-array>
+
+    <!-- Configure the Carrier specific override for EAP failure disable behavior starting from Android 14.
+         Should be a comma separated list of the following information:
+           - Carrier ID
+           - EAP failure code
+           - display notification or not (0=false, 1=true)
+           - EAP profile failure threshold
+           - EAP profile disable duration in minutes -->
+    <string-array translatable="false" name="config_wifiEapFailureConfig">
+        <item>1839, 0,     0, 1, 240 </item>
+        <item>1839, 16384, 0, 1, 5 </item>
+        <item>1839, 1026,  0, 1, 240 </item>
+        <item>1839, 1031,  1, 1, 1440 </item>
+        <item>1839, 16385, 0, 3, 120 </item>
+    </string-array>
     <!-- Flush ANQP cache on Wi-Fi toggle off event -->
     <bool translatable="false" name="config_wifiFlushAnqpCacheOnWifiToggleOffEvent">true</bool>
 
@@ -962,6 +985,9 @@
          certificate is not validated, by not specifying a Root CA certificate and/or server domain
          name. It is STRONGLY RECOMMENDED to be set to false -->
     <bool translatable="false" name="config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW">false</bool>
+
+    <!-- Configuration that allows Multi-internet to connect simultaneously to both 5GHz high and 5GHz low -->
+    <bool translatable="false" name="config_wifiAllowMultiInternetConnectDual5GFrequency">false</bool>
 
     <!-- Indicate the max lines for connectivity local log based on the device ram size -->
     <integer translatable="false" name="config_wifiConnectivityLocalLogMaxLinesLowRam">256</integer>
@@ -1220,4 +1246,10 @@
     <!-- Boolean indication whether enable VDBG for more detailed log when Wi-Fi aware verbose
     logging is enabled -->
     <bool translatable="false" name ="config_aware_vdbg_enable_on_verbose_logging">false</bool>
+    <!-- Boolean indicating whether to disable disconnects on NUD failures. Such a configuration
+         is limited to WAPI and to a specific country code.
+     true: do not disconnect IF the connection type is WAPI and in the specific country code
+           regulatory domain.
+     false: disconnect on NUD failures (normal/default action). -->
+    <bool translatable="false" name ="config_wifiDisableNudDisconnectsForWapiInSpecificCc">false</bool>
 </resources>

@@ -357,6 +357,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     // This is is used to track the number of TDLS peers enabled in driver via enableTdls()
     private Set<String> mEnabledTdlsPeers = new ArraySet<>();
 
+    // Tracks the last NUD failure timestamp, and number of failures.
+    private Pair<Long, Integer> mNudFailureCounter = new Pair<>(0L, 0);
+
     /**
      * Method to clear {@link #mTargetBssid} and reset the current connected network's
      * bssid in wpa_supplicant after a roam/connect attempt.
@@ -562,7 +565,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     @VisibleForTesting
     static final int CMD_PRE_DHCP_ACTION                                = BASE + 255;
-    private static final int CMD_PRE_DHCP_ACTION_COMPLETE               = BASE + 256;
+    @VisibleForTesting
+    static final int CMD_PRE_DHCP_ACTION_COMPLETE                       = BASE + 256;
     private static final int CMD_POST_DHCP_ACTION                       = BASE + 257;
 
     private static final int CMD_CONNECT_NETWORK                        = BASE + 258;
@@ -1937,7 +1941,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      */
     public boolean enableTdls(String remoteMacAddress, boolean enable) {
         boolean ret;
-        if (!canEnableTdls()) {
+        if (enable && !canEnableTdls()) {
             return false;
         }
         ret = mWifiNative.startTdls(mInterfaceName, remoteMacAddress, enable);
@@ -3453,6 +3457,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mLastSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
         mCurrentConnectionDetectedCaptivePortal = false;
         mLastSimBasedConnectionCarrierName = null;
+        mNudFailureCounter = new Pair<>(0L, 0);
         checkAbnormalDisconnectionAndTakeBugReport();
         mWifiScoreCard.resetConnectionState(mInterfaceName);
         updateLayer2Information();
@@ -3496,7 +3501,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         // Update link layer stats
         getWifiLinkLayerStats();
 
-        if (mWifiP2pConnection.isConnected()) {
+        if (mWifiP2pConnection.isConnected() && !mWifiP2pConnection.isP2pInWaitingState()) {
             // P2P discovery breaks DHCP, so shut it down in order to get through this.
             // Once P2P service receives this message and processes it accordingly, it is supposed
             // to send arg2 (i.e. CMD_PRE_DHCP_ACTION_COMPLETE) in a new Message.what back to
@@ -3966,6 +3971,21 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             handleIpReachabilityLost(lossReason);
             return;
         }
+        final long curTime = mClock.getElapsedSinceBootMillis();
+        if (curTime - mNudFailureCounter.first <= mWifiGlobals.getRepeatedNudFailuresWindowMs()) {
+            mNudFailureCounter = new Pair<>(curTime, mNudFailureCounter.second + 1);
+        } else {
+            mNudFailureCounter = new Pair<>(curTime, 1);
+        }
+        if (mNudFailureCounter.second >= mWifiGlobals.getRepeatedNudFailuresThreshold()) {
+            // Disable and disconnect due to repeated NUD failures within limited time window.
+            mWifiConfigManager.updateNetworkSelectionStatus(config.networkId,
+                    WifiConfiguration.NetworkSelectionStatus.DISABLED_REPEATED_NUD_FAILURES);
+            handleIpReachabilityLost(lossReason);
+            mNudFailureCounter = new Pair<>(0L, 0);
+            return;
+        }
+
         final NetworkAgentConfig naConfig = getNetworkAgentConfigInternal(config);
         final NetworkCapabilities nc = getCapabilities(
                 getConnectedWifiConfigurationInternal(), getConnectedBssidInternal());
@@ -4009,6 +4029,19 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
     }
 
+    private boolean shouldIgnoreNudDisconnectForWapiInCn() {
+        // temporary work-around for <=U devices
+        if (SdkLevel.isAtLeastV()) return false;
+
+        if (!mWifiGlobals.disableNudDisconnectsForWapiInSpecificCc() || !"CN".equalsIgnoreCase(
+                mWifiInjector.getWifiCountryCode().getCountryCode())) {
+            return false;
+        }
+        WifiConfiguration config = getConnectedWifiConfigurationInternal();
+        return config != null && (config.allowedProtocols.get(WifiConfiguration.Protocol.WAPI)
+                || config.getAuthType() == WifiConfiguration.KeyMgmt.NONE);
+    }
+
     private void handleIpReachabilityFailure(@NonNull ReachabilityLossInfoParcelable lossInfo) {
         if (lossInfo == null) {
             Log.e(getTag(), "lossInfo should never be null");
@@ -4021,13 +4054,19 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 processIpReachabilityFailure(lossInfo.reason);
                 break;
             case ReachabilityLossReason.CONFIRM:
-            case ReachabilityLossReason.ORGANIC:
+            case ReachabilityLossReason.ORGANIC: {
+                if (shouldIgnoreNudDisconnectForWapiInCn()) {
+                    logd("CMD_IP_REACHABILITY_FAILURE but disconnect disabled for WAPI -- ignore");
+                    return;
+                }
+
                 if (mDeviceConfigFacade.isHandleRssiOrganicKernelFailuresEnabled()) {
                     processIpReachabilityFailure(lossInfo.reason);
                 } else {
                     processLegacyIpReachabilityLost(lossInfo.reason);
                 }
                 break;
+            }
             default:
                 logd("Invalid failure reason " + lossInfo.reason + "from onIpReachabilityFailure");
         }
@@ -4262,6 +4301,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiNative.enableStaAutoReconnect(mInterfaceName, false);
         // STA has higher priority over P2P
         mWifiNative.setConcurrencyPriority(true);
+        if (mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+            // Loads the firmware roaming info which gets used in WifiBlocklistMonitor
+            mWifiConnectivityHelper.getFirmwareRoamingInfo();
+        }
 
         // Retrieve and store the factory MAC address (on first bootup).
         retrieveFactoryMacAddressAndStoreIfNecessary();
@@ -5002,10 +5045,20 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         // Defensive copy to avoid mutating the passed argument
         final WifiConfiguration conf = new WifiConfiguration(currentWifiConfiguration);
         conf.BSSID = currentBssid;
+
+        int band = WifiNetworkSpecifier.getBand(mWifiInfo.getFrequency());
+
+        if (!isPrimary() && mWifiGlobals.isSupportMultiInternetDual5G()
+                && band == ScanResult.WIFI_BAND_5_GHZ) {
+            if (mWifiInfo.getFrequency() <= ScanResult.BAND_5_GHZ_LOW_HIGHEST_FREQ_MHZ) {
+                band = ScanResult.WIFI_BAND_5_GHZ_LOW;
+            } else {
+                band = ScanResult.WIFI_BAND_5_GHZ_HIGH;
+            }
+        }
+
         WifiNetworkAgentSpecifier wns =
-                new WifiNetworkAgentSpecifier(conf,
-                        WifiNetworkSpecifier.getBand(mWifiInfo.getFrequency()),
-                        matchLocationSensitiveInformation);
+                new WifiNetworkAgentSpecifier(conf, band, matchLocationSensitiveInformation);
         return wns;
     }
 
@@ -7213,10 +7266,16 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                         mClientModeManager);
                                 mWifiConfigManager.incrementNetworkNoInternetAccessReports(
                                         config.networkId);
-                                // If this was not recently selected by the user, update network
-                                // selection status to temporarily disable the network.
-                                if (!isRecentlySelectedByTheUser(config)
+                                if (!config.getNetworkSelectionStatus()
+                                        .hasEverValidatedInternetAccess()
                                         && !config.noInternetAccessExpected) {
+                                    mWifiConfigManager.updateNetworkSelectionStatus(
+                                            config.networkId,
+                                            DISABLED_NO_INTERNET_PERMANENT);
+                                } else if (!isRecentlySelectedByTheUser(config)
+                                        && !config.noInternetAccessExpected) {
+                                    // If this was not recently selected by the user, update network
+                                    // selection status to temporarily disable the network.
                                     if (config.getNetworkSelectionStatus()
                                             .getNetworkSelectionDisableReason()
                                             != DISABLED_NO_INTERNET_PERMANENT) {
@@ -8013,6 +8072,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             .withPreDhcpAction()
                             .withPreconnection()
                             .withDisplayName(config.SSID)
+                            .withCreatorUid(config.creatorUid)
                             .withLayer2Information(layer2Info)
                             .withProvisioningTimeoutMs(PROVISIONING_TIMEOUT_FILS_CONNECTION_MS);
             if (mContext.getResources().getBoolean(R.bool.config_wifiEnableApfOnNonPrimarySta)
@@ -8066,6 +8126,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     .withNetwork(network)
                     .withDisplayName(config.SSID)
                     .withScanResultInfo(scanResultInfo)
+                    .withCreatorUid(config.creatorUid)
                     .withLayer2Information(layer2Info);
             } else {
                 StaticIpConfiguration staticIpConfig = config.getStaticIpConfiguration();
@@ -8073,6 +8134,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         .withStaticConfiguration(staticIpConfig)
                         .withNetwork(network)
                         .withDisplayName(config.SSID)
+                        .withCreatorUid(config.creatorUid)
                         .withLayer2Information(layer2Info);
             }
             if (mContext.getResources().getBoolean(R.bool.config_wifiEnableApfOnNonPrimarySta)
