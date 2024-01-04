@@ -68,6 +68,9 @@ public class WifiGlobals {
     private final int mClientRssiMonitorThresholdDbm;
     private final int mClientRssiMonitorHysteresisDb;
     private boolean mDisableFirmwareRoamingInIdleMode = false;
+    private final boolean mIsSupportMultiInternetDual5G;
+    private final int mRepeatedNudFailuresThreshold;
+    private final int mRepeatedNudFailuresWindowMs;
     private final boolean mAdjustPollRssiIntervalEnabled;
     private final boolean mWifiInterfaceAddedSelfRecoveryEnabled;
     private final int mNetworkNotFoundEventThreshold;
@@ -128,6 +131,12 @@ public class WifiGlobals {
                 R.bool.config_wifiAdjustPollRssiIntervalEnabled);
         mDisableFirmwareRoamingInIdleMode = mContext.getResources()
                 .getBoolean(R.bool.config_wifiDisableFirmwareRoamingInIdleMode);
+        mIsSupportMultiInternetDual5G = mContext.getResources().getBoolean(
+                R.bool.config_wifiAllowMultiInternetConnectDual5GFrequency);
+        mRepeatedNudFailuresThreshold = mContext.getResources()
+                .getInteger(R.integer.config_wifiDisableReasonRepeatedNudFailuresThreshold);
+        mRepeatedNudFailuresWindowMs = mContext.getResources()
+                .getInteger(R.integer.config_wifiDisableReasonRepeatedNudFailuresWindowMs);
         mWifiInterfaceAddedSelfRecoveryEnabled = mContext.getResources().getBoolean(
                 R.bool.config_wifiInterfaceAddedSelfRecoveryEnabled);
         mDisableUnwantedNetworkOnLowRssi = mContext.getResources().getBoolean(
@@ -292,6 +301,28 @@ public class WifiGlobals {
      */
     public boolean isDisableFirmwareRoamingInIdleMode() {
         return mDisableFirmwareRoamingInIdleMode;
+    }
+
+    /**
+     * Get the configuration for whether Multi-internet are allowed to
+     * connect simultaneously to both 5GHz high and 5GHz low.
+     */
+    public boolean isSupportMultiInternetDual5G() {
+        return mIsSupportMultiInternetDual5G;
+    }
+
+    /**
+     * Get number of repeated NUD failures needed to disable a network.
+     */
+    public int getRepeatedNudFailuresThreshold() {
+        return mRepeatedNudFailuresThreshold;
+    }
+
+    /**
+     * Get the time window in millis to count for repeated NUD failures.
+     */
+    public int getRepeatedNudFailuresWindowMs() {
+        return mRepeatedNudFailuresWindowMs;
     }
 
     /**
@@ -523,6 +554,8 @@ public class WifiGlobals {
         pw.println("mIsWepDeprecated=" + mIsWepDeprecated);
         pw.println("mIsWpaPersonalDeprecated=" + mIsWpaPersonalDeprecated);
         pw.println("mDisableFirmwareRoamingInIdleMode=" + mDisableFirmwareRoamingInIdleMode);
+        pw.println("mRepeatedNudFailuresThreshold=" + mRepeatedNudFailuresThreshold);
+        pw.println("mRepeatedNudFailuresWindowMs=" + mRepeatedNudFailuresWindowMs);
         pw.println("mCarrierSpecificEapFailureConfigMapPerCarrierId mapping below:");
         for (int i = 0; i < mCarrierSpecificEapFailureConfigMapPerCarrierId.size(); i++) {
             int carrierId = mCarrierSpecificEapFailureConfigMapPerCarrierId.keyAt(i);
@@ -537,5 +570,6 @@ public class WifiGlobals {
                         + ", durationMs=" + perFailureMap.valueAt(j).durationMs);
             }
         }
+        pw.println("mIsSupportMultiInternetDual5G=" + mIsSupportMultiInternetDual5G);
     }
 }

@@ -85,10 +85,12 @@ public class WifiApConfigStore {
     private final MacAddressUtil mMacAddressUtil;
     private final WifiConfigManager mWifiConfigManager;
     private final ActiveModeWarden mActiveModeWarden;
+    private final WifiNative mWifiNative;
     private boolean mHasNewDataToSerialize = false;
     private boolean mForceApChannel = false;
     private int mForcedApBand;
     private int mForcedApChannel;
+    private int mForcedApMaximumChannelBandWidth;
     private final boolean mIsAutoAppendLowerBandEnabled;
 
     /**
@@ -134,7 +136,7 @@ public class WifiApConfigStore {
         mWifiConfigManager = wifiConfigManager;
         mActiveModeWarden = activeModeWarden;
         mWifiMetrics = wifiMetrics;
-
+        mWifiNative = wifiInjector.getWifiNative();
         // Register store data listener
         wifiConfigStore.registerStoreData(
                 wifiInjector.makeSoftApStoreData(new SoftApStoreDataSource()));
@@ -164,13 +166,31 @@ public class WifiApConfigStore {
         }
 
         if (mForceApChannel) {
-            Log.d(TAG, "getApConfiguration: Band force to " + mForcedApBand
-                    + ", and channel force to " + mForcedApChannel);
-            return mForcedApChannel == 0
-                    ? new SoftApConfiguration.Builder(mPersistentWifiApConfig)
-                            .setBand(mForcedApBand).build()
-                    : new SoftApConfiguration.Builder(mPersistentWifiApConfig)
-                            .setChannel(mForcedApChannel, mForcedApBand).build();
+            Log.d(TAG, "getApConfiguration: Band force to "
+                    + mForcedApBand
+                    + ", and channel force to "
+                    + mForcedApChannel
+                    + ", and maximum channel width limited to "
+                    + mForcedApMaximumChannelBandWidth);
+            if (SdkLevel.isAtLeastT()) {
+                return mForcedApChannel == 0
+                        ? new SoftApConfiguration.Builder(mPersistentWifiApConfig)
+                                .setBand(mForcedApBand)
+                                .setMaxChannelBandwidth(mForcedApMaximumChannelBandWidth)
+                                .build()
+                        : new SoftApConfiguration.Builder(mPersistentWifiApConfig)
+                                .setChannel(mForcedApChannel, mForcedApBand)
+                                .setMaxChannelBandwidth(mForcedApMaximumChannelBandWidth)
+                                .build();
+            } else {
+                return mForcedApChannel == 0
+                        ? new SoftApConfiguration.Builder(mPersistentWifiApConfig)
+                                .setBand(mForcedApBand)
+                                .build()
+                        : new SoftApConfiguration.Builder(mPersistentWifiApConfig)
+                                .setChannel(mForcedApChannel, mForcedApBand)
+                                .build();
+            }
         }
         return mPersistentWifiApConfig;
     }
@@ -196,7 +216,7 @@ public class WifiApConfigStore {
     public synchronized SoftApConfiguration upgradeSoftApConfiguration(
             @NonNull SoftApConfiguration config) {
         SoftApConfiguration.Builder configBuilder = new SoftApConfiguration.Builder(config);
-        if (SdkLevel.isAtLeastS() && ApConfigUtil.isBridgedModeSupported(mContext)
+        if (SdkLevel.isAtLeastS() && ApConfigUtil.isBridgedModeSupported(mContext, mWifiNative)
                 && config.getBands().length == 1 && mContext.getResources().getBoolean(
                         R.bool.config_wifiSoftapAutoUpgradeToBridgedConfigWhenSupported)) {
             int[] dual_bands = new int[] {
@@ -271,7 +291,7 @@ public class WifiApConfigStore {
         }
 
         if (SdkLevel.isAtLeastS() && config.getBands().length > 1) {
-            if (!ApConfigUtil.isBridgedModeSupported(mContext)
+            if (!ApConfigUtil.isBridgedModeSupported(mContext, mWifiNative)
                     || !isBandsSupported(config.getBands(), mContext)) {
                 int newSingleApBand = 0;
                 for (int targetBand : config.getBands()) {
@@ -399,7 +419,7 @@ public class WifiApConfigStore {
 
         // It is new overlay configuration, it should always false in R. Add SdkLevel.isAtLeastS for
         // lint check
-        if (ApConfigUtil.isBridgedModeSupported(mContext)) {
+        if (ApConfigUtil.isBridgedModeSupported(mContext, mWifiNative)) {
             if (SdkLevel.isAtLeastS()) {
                 int[] dual_bands = new int[] {
                         SoftApConfiguration.BAND_2GHZ,
@@ -570,11 +590,12 @@ public class WifiApConfigStore {
      *
      * @param apConfig {@link SoftApConfiguration} to use for softap mode
      * @param isPrivileged indicate the caller can pass some fields check or not
+     * @param wifiNative to use native API to get iface combinations.
      * @return boolean true if the provided config meets the minimum set of details, false
      * otherwise.
      */
     static boolean validateApWifiConfiguration(@NonNull SoftApConfiguration apConfig,
-            boolean isPrivileged, Context context) {
+            boolean isPrivileged, Context context, WifiNative wifiNative) {
         // first check the SSID
         WifiSsid ssid = apConfig.getWifiSsid();
         if (ssid == null || ssid.getBytes().length == 0) {
@@ -651,7 +672,7 @@ public class WifiApConfigStore {
 
         if (SdkLevel.isAtLeastT()
                 && authType == SECURITY_TYPE_WPA3_OWE_TRANSITION) {
-            if (!ApConfigUtil.isBridgedModeSupported(context)) {
+            if (!ApConfigUtil.isBridgedModeSupported(context, wifiNative)) {
                 Log.d(TAG, "softap owe transition needs bridge mode support");
                 return false;
             } else if (apConfig.getBands().length > 1) {
@@ -707,12 +728,14 @@ public class WifiApConfigStore {
      *
      * @param forcedApBand The forced band.
      * @param forcedApChannel The forced IEEE channel number or 0 when forced AP band only.
+     * @param forcedApMaximumChannelBandWidth The forced maximum channel bandwidth.
      */
-    public synchronized void enableForceSoftApBandOrChannel(@BandType int forcedApBand,
-            int forcedApChannel) {
+    public synchronized void enableForceSoftApBandOrChannel(
+            @BandType int forcedApBand, int forcedApChannel, int forcedApMaximumChannelBandWidth) {
         mForceApChannel = true;
         mForcedApChannel = forcedApChannel;
         mForcedApBand = forcedApBand;
+        mForcedApMaximumChannelBandWidth = forcedApMaximumChannelBandWidth;
     }
 
     /**
