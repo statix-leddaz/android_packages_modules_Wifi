@@ -1,0 +1,50 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "a0d7d07d_211d9f38",
+        "filename": "service/java/com/android/server/wifi/WifiServiceImpl.java",
+        "patchSetId": 4
+      },
+      "lineNbr": 7161,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2024-01-04T14:19:04Z",
+      "side": 1,
+      "message": "Please add @VisableForTesting tag if the outside caller is unit test only.",
+      "range": {
+        "startLine": 7161,
+        "startChar": 0,
+        "endLine": 7161,
+        "endChar": 37
+      },
+      "revId": "2c18843e701174704e6aa509938dbc3725178598",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "16142dd2_86bc6b3e",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiServiceImplTest.java",
+        "patchSetId": 4
+      },
+      "lineNbr": 11656,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2024-01-04T14:19:04Z",
+      "side": 1,
+      "message": "Can you reference other test function about how to mock supported feature?\n\nhttps://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Wifi/service/tests/wifitests/src/com/android/server/wifi/WifiServiceImplTest.java;l\u003d10068?q\u003dservice%2Ftests%2Fwifitests%2Fsrc%2Fcom%2Fandroid%2Fserver%2Fwifi%2FWifiServiceImplTest.java",
+      "range": {
+        "startLine": 11656,
+        "startChar": 16,
+        "endLine": 11656,
+        "endChar": 34
+      },
+      "revId": "2c18843e701174704e6aa509938dbc3725178598",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
