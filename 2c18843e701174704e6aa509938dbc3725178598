@@ -117,6 +117,30 @@
       },
       "revId": "2c18843e701174704e6aa509938dbc3725178598",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "13dafbc9_4bb640fd",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiServiceImplTest.java",
+        "patchSetId": 4
+      },
+      "lineNbr": 11656,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-05T12:28:20Z",
+      "side": 1,
+      "message": "In WifiServiceImpl.java, we have getSupportedFeatures(), in mActiveModeWarden we have getSupportedFeatureSet() which is different. isPnoSupported is checking getSupportedFeatures() and not getSupportedFeatureSet(). \n\nDo I need to use when(mActiveModeWarden.getSupportedFeatureSet())\n.thenReturn(WifiManager.WIFI_FEATURE_PNO) instead of when(mWifiServiceImpl.getSupportedFeatures()).thenReturn(WifiManager.WIFI_FEATURE_PNO)?",
+      "parentUuid": "1ed1cd19_4350952c",
+      "range": {
+        "startLine": 11656,
+        "startChar": 16,
+        "endLine": 11656,
+        "endChar": 34
+      },
+      "revId": "2c18843e701174704e6aa509938dbc3725178598",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
