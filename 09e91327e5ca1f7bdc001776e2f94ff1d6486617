@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "56ad1a5c_ba082a30",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 15
+      },
+      "lineNbr": 149,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2024-01-05T11:43:16Z",
+      "side": 1,
+      "message": "The logic is incorrect. We should check the input \"value\" is valid. (i.e. true | false string for mIsBackgroundScanSupported). Why do you remove it?\nOtherwise any invalid input will cause mIsBackgroundScanSupported to false.\n\nMy understanding is that Etan\u0027s suggestion was we should have a way to know those \"invalid\" input case. (i.e. BiConsumer didn\u0027t support it)\n\nJust for reference:\n\nBiFunction can be a candidate.\nhttps://developer.android.com/reference/java/util/function/BiFunction",
+      "range": {
+        "startLine": 149,
+        "startChar": 0,
+        "endLine": 149,
+        "endChar": 81
+      },
+      "revId": "09e91327e5ca1f7bdc001776e2f94ff1d6486617",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
