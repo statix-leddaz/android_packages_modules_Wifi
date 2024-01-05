@@ -49,6 +49,54 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "13fbcac5_8467bcb5",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 152,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-05T10:35:49Z",
+      "side": 1,
+      "message": "The previous logic is if value has valid input i.e true|false then only the value is changed for mIsBackgroundScanSupported.\nAfter change, new logic if it is enabled value will be changed to true|false even if the \u003cvalue\u003e has invalid user input like null, \"\", etc. as returned by Boolean.parseBoolean(value).",
+      "parentUuid": "f2278c03_fb350e69",
+      "range": {
+        "startLine": 152,
+        "startChar": 78,
+        "endLine": 152,
+        "endChar": 91
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "355ccb81_4963b6d2",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 152,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-05T10:35:49Z",
+      "side": 1,
+      "message": "Since JAVA 1.5, parseBoolean doesnot throw ParseException it returns false for any unexpected values like null,interger,etc. So try catch block is not required.\n\nAs I understand, no return value is required as per the given logic. It takes two input and according to the isEnabled value is modified for mIsBackgroundScanSupported.\n\nApart from BiConsumer, interfaces like Bifunction returns value and takes two inputs as per the requirement.",
+      "parentUuid": "f30fe8d6_060973da",
+      "range": {
+        "startLine": 152,
+        "startChar": 31,
+        "endLine": 152,
+        "endChar": 77
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "2b0a7c4f_f7616e59",
         "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
         "patchSetId": 13
@@ -83,6 +131,54 @@
       "writtenOn": "2024-01-04T23:23:12Z",
       "side": 1,
       "message": "Why is this condition valid - is an empty string not a possible correct value for an overlay?",
+      "range": {
+        "startLine": 430,
+        "startChar": 20,
+        "endLine": 430,
+        "endChar": 51
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "97fdd69a_dacc3601",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 430,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-05T10:35:49Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "2b0a7c4f_f7616e59",
+      "range": {
+        "startLine": 430,
+        "startChar": 18,
+        "endLine": 430,
+        "endChar": 20
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "a38516e6_919f1e2b",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 430,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-05T10:35:49Z",
+      "side": 1,
+      "message": "configString cannot be empty or any other value. It has to be the actual string i.e \"config_wifi_background_scan_support\".",
+      "parentUuid": "3f28cdec_480ab6de",
       "range": {
         "startLine": 430,
         "startChar": 20,
@@ -157,6 +253,78 @@
         "startChar": 59,
         "endLine": 2633,
         "endChar": 71
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "39983330_63e299d2",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 2633,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-05T10:35:49Z",
+      "side": 1,
+      "message": "The format \"\u003cconfig_string\u003e\" is giving compilation error inside the pw.println statement.",
+      "parentUuid": "dd945b1d_709878e5",
+      "range": {
+        "startLine": 2633,
+        "startChar": 59,
+        "endLine": 2633,
+        "endChar": 71
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "00c23de6_b2d9cd78",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 2633,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-05T10:35:49Z",
+      "side": 1,
+      "message": "force-overlay-config-value requires three mandatory parameters value, configString and isEnabled. The values required for the fields are also described.",
+      "parentUuid": "3031f6b0_0f3b4564",
+      "range": {
+        "startLine": 2633,
+        "startChar": 74,
+        "endLine": 2633,
+        "endChar": 85
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "c9a9ccf2_ce7b346e",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 2633,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-05T10:35:49Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "80c5d657_7830a2d9",
+      "range": {
+        "startLine": 2633,
+        "startChar": 56,
+        "endLine": 2633,
+        "endChar": 58
       },
       "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
