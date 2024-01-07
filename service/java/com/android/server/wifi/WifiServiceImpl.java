@@ -287,8 +287,8 @@ public class WifiServiceImpl extends BaseWifiService {
     private final WifiPseudonymManager mWifiPseudonymManager;
     private final WifiNetworkFactory mWifiNetworkFactory;
     private @WifiManager.VerboseLoggingLevel int mVerboseLoggingLevel =
-            WifiManager.VERBOSE_LOGGING_LEVEL_DISABLED;
-    private boolean mVerboseLoggingEnabled = false;
+            WifiManager.VERBOSE_LOGGING_LEVEL_ENABLED;
+    private boolean mVerboseLoggingEnabled = true;
     private final RemoteCallbackList<IWifiVerboseLoggingStatusChangedListener>
             mRegisteredWifiLoggingStatusListeners = new RemoteCallbackList<>();
 
