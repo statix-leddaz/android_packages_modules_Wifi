@@ -471,7 +471,8 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
         assertTrue(WifiConfigurationUtil.validate(config, SUPPORTED_FEATURES_ALL,
                 WifiConfigurationUtil.VALIDATE_FOR_ADD));
 
-        config.preSharedKey = "abcd123456788990013453445345465465476546";
+        config.preSharedKey = "01234567890123456789012345678901234567890123456789012345678901234567"
+                + "890123456789012345678901234567890";
         assertFalse(WifiConfigurationUtil.validate(config, SUPPORTED_FEATURES_ALL,
                 WifiConfigurationUtil.VALIDATE_FOR_ADD));
         config.preSharedKey = "";
@@ -1335,11 +1336,25 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
         EnterpriseConfig eapConfig1 = new EnterpriseConfig(WifiEnterpriseConfig.Eap.TLS);
         eapConfig1.enterpriseConfig.setDomainSuffixMatch("wlan.android.com");
 
-        EnterpriseConfig eapConfig2 = new EnterpriseConfig(WifiEnterpriseConfig.Eap.TTLS);
+        EnterpriseConfig eapConfig2 = new EnterpriseConfig(WifiEnterpriseConfig.Eap.TLS);
         eapConfig1.enterpriseConfig.setDomainSuffixMatch("wifi.android.com");
 
         assertTrue(WifiConfigurationUtil.hasEnterpriseConfigChanged(eapConfig1.enterpriseConfig,
                 eapConfig2.enterpriseConfig));
+    }
+
+    /** Verify WifiEnterpriseConfig Minimum TLS Version changes are detected. */
+    @Test
+    public void testMinimumTlsVersionChangesDetected() {
+        EnterpriseConfig eapConfig1 = new EnterpriseConfig(WifiEnterpriseConfig.Eap.TLS);
+        eapConfig1.enterpriseConfig.setMinimumTlsVersion(WifiEnterpriseConfig.TLS_V1_3);
+
+        EnterpriseConfig eapConfig2 = new EnterpriseConfig(WifiEnterpriseConfig.Eap.TLS);
+        eapConfig2.enterpriseConfig.setMinimumTlsVersion(WifiEnterpriseConfig.TLS_V1_0);
+
+        assertTrue(
+                WifiConfigurationUtil.hasEnterpriseConfigChanged(
+                        eapConfig1.enterpriseConfig, eapConfig2.enterpriseConfig));
     }
 
     /**

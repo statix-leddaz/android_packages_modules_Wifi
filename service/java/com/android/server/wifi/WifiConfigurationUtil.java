@@ -163,6 +163,13 @@ public class WifiConfigurationUtil {
     }
 
     /**
+     * Helper method to check if the provided |config| corresponds to a DPP network or not.
+     */
+    public static boolean isConfigForDppNetwork(WifiConfiguration config) {
+        return config.isSecurityType(WifiConfiguration.SECURITY_TYPE_DPP);
+    }
+
+    /**
      * Helper method to check if the provided |config| corresponds to a WEP network or not.
      */
     public static boolean isConfigForWepNetwork(WifiConfiguration config) {
@@ -336,6 +343,10 @@ public class WifiConfigurationUtil {
                     existingEnterpriseConfig.getDomainSuffixMatch())) {
                 return true;
             }
+            if (newEnterpriseConfig.getMinimumTlsVersion()
+                    != existingEnterpriseConfig.getMinimumTlsVersion()) {
+                return true;
+            }
         } else {
             // One of the configs may have an enterpriseConfig
             if (existingEnterpriseConfig != null || newEnterpriseConfig != null) {
@@ -475,7 +486,8 @@ public class WifiConfigurationUtil {
         return true;
     }
 
-    private static boolean validatePassword(String password, boolean isAdd, boolean isSae) {
+    private static boolean validatePassword(String password, boolean isAdd, boolean isSae,
+            boolean isWapi) {
         if (isAdd) {
             if (password == null) {
                 Log.e(TAG, "validatePassword: null string");
@@ -517,7 +529,14 @@ public class WifiConfigurationUtil {
             }
         } else {
             // HEX PSK string
-            if (password.length() != PSK_SAE_HEX_LEN) {
+            if (isWapi) {
+                // Protect system against malicious actors injecting arbitrarily large passwords.
+                if (password.length() > 100) {
+                    Log.e(TAG, "validatePassword failed: WAPI hex string too long: "
+                            + password.length());
+                    return false;
+                }
+            } else if (password.length() != PSK_SAE_HEX_LEN) {
                 Log.e(TAG, "validatePassword failed: hex string size mismatch: "
                         + password.length());
                 return false;
@@ -725,15 +744,15 @@ public class WifiConfigurationUtil {
             return false;
         }
         if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)
-                && !validatePassword(config.preSharedKey, isAdd, false)) {
+                && !validatePassword(config.preSharedKey, isAdd, false, false)) {
             return false;
         }
         if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE)
-                && !validatePassword(config.preSharedKey, isAdd, true)) {
+                && !validatePassword(config.preSharedKey, isAdd, true, false)) {
             return false;
         }
         if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_WAPI_PSK)
-                && !validatePassword(config.preSharedKey, isAdd, false)) {
+                && !validatePassword(config.preSharedKey, isAdd, false, true)) {
             return false;
         }
         if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_DPP)
@@ -897,11 +916,11 @@ public class WifiConfigurationUtil {
             return false;
         }
         if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)
-                && !validatePassword(config.preSharedKey, true, false)) {
+                && !validatePassword(config.preSharedKey, true, false, false)) {
             return false;
         }
         if (config.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE)
-                && !validatePassword(config.preSharedKey, true, true)) {
+                && !validatePassword(config.preSharedKey, true, true, false)) {
             return false;
         }
         // TBD: Validate some enterprise params as well in the future here.

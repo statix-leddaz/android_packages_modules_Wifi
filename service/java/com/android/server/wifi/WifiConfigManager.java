@@ -52,6 +52,7 @@ import android.provider.Settings;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.LocalLog;
 import android.util.Log;
@@ -1105,6 +1106,20 @@ public class WifiConfigManager {
         }
     }
 
+    private static @WifiEnterpriseConfig.TofuConnectionState int mergeTofuConnectionState(
+            WifiConfiguration internalConfig, WifiConfiguration externalConfig) {
+        // Prioritize the internal config if it has reached a post-connection state.
+        int internalTofuState = internalConfig.enterpriseConfig.getTofuConnectionState();
+        if (internalTofuState == WifiEnterpriseConfig.TOFU_STATE_CONFIGURE_ROOT_CA
+                || internalTofuState == WifiEnterpriseConfig.TOFU_STATE_CERT_PINNING) {
+            return internalTofuState;
+        }
+        // Else assign a pre-connection state based on the latest external config.
+        return externalConfig.enterpriseConfig.isTrustOnFirstUseEnabled()
+                ? WifiEnterpriseConfig.TOFU_STATE_ENABLED_PRE_CONNECTION
+                : WifiEnterpriseConfig.TOFU_STATE_NOT_ENABLED;
+    }
+
     /**
      * Copy over public elements from an external WifiConfiguration object to the internal
      * configuration object if element has been set in the provided external WifiConfiguration.
@@ -1134,7 +1149,15 @@ public class WifiConfigManager {
         }
         internalConfig.BSSID = externalConfig.BSSID == null ? null
                 : externalConfig.BSSID.toLowerCase();
-        internalConfig.hiddenSSID = externalConfig.hiddenSSID;
+        if (externalConfig.hiddenSSID) {
+            internalConfig.hiddenSSID = true;
+        } else if (internalConfig.getSecurityParams(
+                externalConfig.getDefaultSecurityParams().getSecurityType()) != null) {
+            // Only set hiddenSSID to false if we're updating an existing config.
+            // This is to prevent users from mistakenly converting an existing hidden config to
+            // unhidden when adding a new config of the same security family.
+            internalConfig.hiddenSSID = false;
+        }
 
         if (externalConfig.preSharedKey != null
                 && !externalConfig.preSharedKey.equals(PASSWORD_MASK)) {
@@ -1190,10 +1213,18 @@ public class WifiConfigManager {
         }
 
         internalConfig.allowAutojoin = externalConfig.allowAutojoin;
-        // Copy over the |WifiEnterpriseConfig| parameters if set.
+        // Copy over the |WifiEnterpriseConfig| parameters if set. For fields which should
+        // only be set by the framework, cache the internal config's value and restore.
         if (externalConfig.enterpriseConfig != null) {
+            boolean userApproveNoCaCertInternal =
+                    internalConfig.enterpriseConfig.isUserApproveNoCaCert();
+            int tofuDialogStateInternal = internalConfig.enterpriseConfig.getTofuDialogState();
+            int tofuConnectionState = mergeTofuConnectionState(internalConfig, externalConfig);
             internalConfig.enterpriseConfig.copyFromExternal(
                     externalConfig.enterpriseConfig, PASSWORD_MASK);
+            internalConfig.enterpriseConfig.setUserApproveNoCaCert(userApproveNoCaCertInternal);
+            internalConfig.enterpriseConfig.setTofuDialogState(tofuDialogStateInternal);
+            internalConfig.enterpriseConfig.setTofuConnectionState(tofuConnectionState);
         }
 
         // Copy over any metered information.
@@ -1702,6 +1733,43 @@ public class WifiConfigManager {
     }
 
     /**
+     * Filter non app-added networks from the input list.
+     *
+     * Note: Optimized to avoid checking the permissions for each config in the input list,
+     * since {@link WifiPermissionsUtil#isProfileOwner(int, String)} is fairly expensive.
+     *
+     * Many configs will have the same creator, so we can cache the permissions per-creator.
+     *
+     * @param networks List of WifiConfigurations to filter.
+     * @return List of app-added networks.
+     */
+    @VisibleForTesting
+    protected List<WifiConfiguration> filterNonAppAddedNetworks(List<WifiConfiguration> networks) {
+        List<WifiConfiguration> appAddedNetworks = new ArrayList<>();
+        Map<Pair<Integer, String>, Boolean> isAppAddedCache = new ArrayMap<>();
+
+        for (WifiConfiguration network : networks) {
+            Pair<Integer, String> identityPair =
+                    new Pair<>(network.creatorUid, network.creatorName);
+            boolean isAppAdded;
+
+            // Checking the DO/PO/System permissions is expensive - cache the result.
+            if (isAppAddedCache.containsKey(identityPair)) {
+                isAppAdded = isAppAddedCache.get(identityPair);
+            } else {
+                isAppAdded = !isDeviceOwnerProfileOwnerOrSystem(
+                        network.creatorUid, network.creatorName);
+                isAppAddedCache.put(identityPair, isAppAdded);
+            }
+
+            if (isAppAdded) {
+                appAddedNetworks.add(network);
+            }
+        }
+        return appAddedNetworks;
+    }
+
+    /**
      * Removes excess networks in case the number of saved networks exceeds the max limit
      * specified in config_wifiMaxNumWifiConfigurations.
      *
@@ -1741,10 +1809,7 @@ public class WifiConfigManager {
 
         if (callerIsApp && maxNumAppAddedConfigs >= 0
                 && networkList.size() > maxNumAppAddedConfigs) {
-            List<WifiConfiguration> appAddedNetworks = networkList
-                    .stream()
-                    .filter(n -> !isDeviceOwnerProfileOwnerOrSystem(n.creatorUid, n.creatorName))
-                    .collect(Collectors.toList());
+            List<WifiConfiguration> appAddedNetworks = filterNonAppAddedNetworks(networkList);
             int numExcessAppAddedNetworks = appAddedNetworks.size() - maxNumAppAddedConfigs;
             if (numExcessAppAddedNetworks > 0) {
                 // Only enforce the limit on app-added networks if it has been exceeded.
@@ -2063,13 +2128,21 @@ public class WifiConfigManager {
     private boolean updateNetworkSelectionStatus(@NonNull WifiConfiguration config, int reason) {
         int prevNetworkSelectionStatus = config.getNetworkSelectionStatus()
                 .getNetworkSelectionStatus();
+        int prevAuthFailureCounter = config.getNetworkSelectionStatus().getDisableReasonCounter(
+                WifiConfiguration.NetworkSelectionStatus.DISABLED_AUTHENTICATION_FAILURE);
         if (!mWifiBlocklistMonitor.updateNetworkSelectionStatus(config, reason)) {
             return false;
         }
         int newNetworkSelectionStatus = config.getNetworkSelectionStatus()
                 .getNetworkSelectionStatus();
+        int newAuthFailureCounter = config.getNetworkSelectionStatus().getDisableReasonCounter(
+                WifiConfiguration.NetworkSelectionStatus.DISABLED_AUTHENTICATION_FAILURE);
         if (prevNetworkSelectionStatus != newNetworkSelectionStatus) {
             sendNetworkSelectionStatusChangedUpdate(config, newNetworkSelectionStatus, reason);
+            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
+        } else if (prevAuthFailureCounter != newAuthFailureCounter) {
+            // Send out configured network changed broadcast in this special case since the UI
+            // may need to update the wrong password text.
             sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
         }
         saveToStore(false);
@@ -2522,6 +2595,7 @@ public class WifiConfigManager {
         config.validatedInternetAccess = validated;
         if (validated) {
             config.numNoInternetAccessReports = 0;
+            config.getNetworkSelectionStatus().setHasEverValidatedInternetAccess(true);
         }
         saveToStore(false);
         return true;
@@ -4309,6 +4383,41 @@ public class WifiConfigManager {
         if (!internalConfig.isEnterprise()) return;
         if (!internalConfig.enterpriseConfig.isEapMethodServerCertUsed()) return;
         internalConfig.enterpriseConfig.enableTrustOnFirstUse(enable);
+    }
+
+    /**
+     * Indicate whether the user approved the TOFU dialog for this network.
+     *
+     * @param networkId networkId corresponding to the network to be updated.
+     * @param approved true if the user approved the dialog, false otherwise.
+     */
+    public void setTofuDialogApproved(int networkId, boolean approved) {
+        WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
+        if (internalConfig == null) return;
+        if (!internalConfig.isEnterprise()) return;
+        if (!internalConfig.enterpriseConfig.isEapMethodServerCertUsed()) return;
+        internalConfig.enterpriseConfig.setTofuDialogApproved(approved);
+    }
+
+    /**
+     * Indicate the post-connection TOFU state for this network.
+     *
+     * @param networkId networkId corresponding to the network to be updated.
+     * @param state one of the post-connection {@link WifiEnterpriseConfig.TofuConnectionState}
+     *              values
+     */
+    public void setTofuPostConnectionState(int networkId,
+            @WifiEnterpriseConfig.TofuConnectionState int state) {
+        if (state != WifiEnterpriseConfig.TOFU_STATE_CONFIGURE_ROOT_CA
+                && state != WifiEnterpriseConfig.TOFU_STATE_CERT_PINNING) {
+            Log.e(TAG, "Invalid post-connection TOFU state " + state);
+            return;
+        }
+        WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
+        if (internalConfig == null) return;
+        if (!internalConfig.isEnterprise()) return;
+        if (!internalConfig.enterpriseConfig.isEapMethodServerCertUsed()) return;
+        internalConfig.enterpriseConfig.setTofuConnectionState(state);
     }
 
     /**

@@ -1924,6 +1924,101 @@ public class WifiConfigManagerTest extends WifiBaseTest {
     }
 
     /**
+     * Verify that the protected WifiEnterpriseConfig fields are set correctly.
+     */
+    @Test
+    public void testWifiEnterpriseConfigProtectedFields() {
+        // Add an external config. Expect the internal config to have the default values.
+        WifiConfiguration externalConfig = WifiConfigurationTestUtil.createEapNetwork();
+        externalConfig.enterpriseConfig.setUserApproveNoCaCert(true);
+        externalConfig.enterpriseConfig.setTofuDialogState(
+                WifiEnterpriseConfig.TOFU_DIALOG_STATE_ACCEPTED);
+
+        NetworkUpdateResult result = verifyAddNetworkToWifiConfigManager(externalConfig);
+        WifiConfiguration internalConfig = mWifiConfigManager.getConfiguredNetwork(
+                result.getNetworkId());
+        assertFalse(internalConfig.enterpriseConfig.isUserApproveNoCaCert());
+        assertEquals(
+                WifiEnterpriseConfig.TOFU_DIALOG_STATE_UNSPECIFIED,
+                internalConfig.enterpriseConfig.getTofuDialogState());
+
+        // Update using an external config. Expect internal config to retain the default values.
+        result = verifyUpdateNetworkToWifiConfigManager(externalConfig);
+        internalConfig = mWifiConfigManager.getConfiguredNetwork(
+                result.getNetworkId());
+        assertFalse(internalConfig.enterpriseConfig.isUserApproveNoCaCert());
+        assertEquals(
+                WifiEnterpriseConfig.TOFU_DIALOG_STATE_UNSPECIFIED,
+                internalConfig.enterpriseConfig.getTofuDialogState());
+
+        // If the internal config's values are updated by the framework, merging
+        // with an external config should not overwrite the internal values.
+        mWifiConfigManager.setUserApproveNoCaCert(externalConfig.networkId, true);
+        mWifiConfigManager.setTofuDialogApproved(externalConfig.networkId, true);
+        externalConfig.enterpriseConfig.setUserApproveNoCaCert(false);
+        externalConfig.enterpriseConfig.setTofuDialogApproved(false);
+
+        result = verifyUpdateNetworkToWifiConfigManager(externalConfig);
+        internalConfig = mWifiConfigManager.getConfiguredNetwork(
+                result.getNetworkId());
+        assertTrue(internalConfig.enterpriseConfig.isUserApproveNoCaCert());
+        assertEquals(
+                WifiEnterpriseConfig.TOFU_DIALOG_STATE_ACCEPTED,
+                internalConfig.enterpriseConfig.getTofuDialogState());
+    }
+
+    /**
+     * Verify that the TOFU connection state is set correctly when an Enterprise config is added or
+     * updated.
+     */
+    @Test
+    public void testEnterpriseConfigTofuStateMerge() {
+        long featureSet = WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE;
+        when(mPrimaryClientModeManager.getSupportedFeatures()).thenReturn(featureSet);
+
+        // If the configuration has never connected, the merged TOFU connection state
+        // should be set based on the latest external configuration.
+        WifiConfiguration config =
+                prepareTofuEapConfig(
+                        WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE);
+        config.enterpriseConfig.enableTrustOnFirstUse(false);
+        NetworkUpdateResult result = addNetworkToWifiConfigManager(config);
+        WifiConfiguration internalConfig =
+                mWifiConfigManager.getConfiguredNetwork(result.getNetworkId());
+        assertEquals(
+                WifiEnterpriseConfig.TOFU_STATE_NOT_ENABLED,
+                internalConfig.enterpriseConfig.getTofuConnectionState());
+
+        // Enabling TOFU in the external config should lead to the Enabled Pre-Connection state.
+        config.enterpriseConfig.enableTrustOnFirstUse(true);
+        config.enterpriseConfig.setEapMethod(WifiEnterpriseConfig.Eap.PEAP);
+        result = updateNetworkToWifiConfigManager(config);
+        internalConfig = mWifiConfigManager.getConfiguredNetwork(result.getNetworkId());
+        assertEquals(
+                WifiEnterpriseConfig.TOFU_STATE_ENABLED_PRE_CONNECTION,
+                internalConfig.enterpriseConfig.getTofuConnectionState());
+
+        // Invalid post-connection values in the external config should be ignored,
+        // since external configs should not be setting their own TOFU connection state.
+        config.enterpriseConfig.setTofuConnectionState(
+                WifiEnterpriseConfig.TOFU_STATE_CERT_PINNING);
+        result = updateNetworkToWifiConfigManager(config);
+        internalConfig = mWifiConfigManager.getConfiguredNetwork(result.getNetworkId());
+        assertEquals(
+                WifiEnterpriseConfig.TOFU_STATE_ENABLED_PRE_CONNECTION,
+                internalConfig.enterpriseConfig.getTofuConnectionState());
+
+        // Post-connection states in the internal config should always persist.
+        mWifiConfigManager.setTofuPostConnectionState(
+                result.getNetworkId(), WifiEnterpriseConfig.TOFU_STATE_CERT_PINNING);
+        result = updateNetworkToWifiConfigManager(config);
+        internalConfig = mWifiConfigManager.getConfiguredNetwork(result.getNetworkId());
+        assertEquals(
+                WifiEnterpriseConfig.TOFU_STATE_CERT_PINNING,
+                internalConfig.enterpriseConfig.getTofuConnectionState());
+    }
+
+    /**
      * Verifies the modification of a single network using
      * {@link WifiConfigManager#addOrUpdateNetwork(WifiConfiguration, int)} by passing in nulls
      * in all the publicly exposed fields.
@@ -6707,6 +6802,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         assertTrue(mergedNetwork.isSecurityType(upgradableSecurityType));
         assertEquals(upgradableConfig.getDefaultSecurityParams().isAddedByAutoUpgrade(),
                 mergedNetwork.getSecurityParams(upgradableSecurityType).isAddedByAutoUpgrade());
+        assertEquals(upgradableConfig.hiddenSSID, mergedNetwork.hiddenSSID);
     }
 
     /**
@@ -6743,6 +6839,47 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         upgradedConfig.setSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE);
         upgradedConfig.preSharedKey = "\"Passw0rd\"";
         upgradedConfig.getDefaultSecurityParams().setIsAddedByAutoUpgrade(true);
+
+        verifyAddUpgradableNetwork(baseConfig, upgradedConfig);
+    }
+
+    /**
+     * Verifies that adding an unhidden upgraded config will update the existing network to
+     * unhidden.
+     * {@link WifiConfigManager#addOrUpdateNetwork(WifiConfiguration, int)}
+     */
+    @Test
+    public void testAddUnhiddenUpgradedNetworkOverwritesHiddenSsidValue() {
+        WifiConfiguration baseConfig = new WifiConfiguration();
+        baseConfig.SSID = "\"upgradableNetwork\"";
+        baseConfig.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+        baseConfig.preSharedKey = "\"Passw0rd\"";
+        baseConfig.hiddenSSID = true;
+        WifiConfiguration upgradedConfig = new WifiConfiguration();
+        upgradedConfig.SSID = "\"upgradableNetwork\"";
+        upgradedConfig.setSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE);
+        upgradedConfig.preSharedKey = "\"Passw0rd\"";
+        upgradedConfig.hiddenSSID = false;
+
+        verifyAddUpgradableNetwork(baseConfig, upgradedConfig);
+    }
+
+    /**
+     * Verifies that adding a hidden upgraded config will update the existing network to hidden.
+     * {@link WifiConfigManager#addOrUpdateNetwork(WifiConfiguration, int)}
+     */
+    @Test
+    public void testAddHiddenUpgradedNetworkOverwritesHiddenSsidValue() {
+        WifiConfiguration baseConfig = new WifiConfiguration();
+        baseConfig.SSID = "\"upgradableNetwork\"";
+        baseConfig.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+        baseConfig.preSharedKey = "\"Passw0rd\"";
+        baseConfig.hiddenSSID = false;
+        WifiConfiguration upgradedConfig = new WifiConfiguration();
+        upgradedConfig.SSID = "\"upgradableNetwork\"";
+        upgradedConfig.setSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE);
+        upgradedConfig.preSharedKey = "\"Passw0rd\"";
+        upgradedConfig.hiddenSSID = true;
 
         verifyAddUpgradableNetwork(baseConfig, upgradedConfig);
     }
@@ -6816,7 +6953,14 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         assertTrue(mergedNetwork.isSecurityType(downgradableSecurityType));
         assertFalse(mergedNetwork.getSecurityParams(baseSecurityType)
                 .isAddedByAutoUpgrade());
+        if (baseConfig.hiddenSSID && !downgradableConfig.hiddenSSID) {
+            // Merged network should still be hidden if the base config is hidden.
+            assertTrue(mergedNetwork.hiddenSSID);
+        } else {
+            assertEquals(downgradableConfig.hiddenSSID, mergedNetwork.hiddenSSID);
+        }
     }
+
     /**
      * Verifies the addition of a downgradable network using
      * {@link WifiConfigManager#addOrUpdateNetwork(WifiConfiguration, int)}
@@ -6873,6 +7017,48 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         verifyAddDowngradableNetwork(
                 baseConfig,
                 downgradableConfig);
+    }
+
+    /**
+     * Verifies that adding an unhidden downgraded config won't update a hidden existing network to
+     * unhidden. This is to prevent the case where a user adds a downgraded network that's only
+     * visible due to scanning for a hidden SSID from an existing upgradeable config.
+     * {@link WifiConfigManager#addOrUpdateNetwork(WifiConfiguration, int)}
+     */
+    @Test
+    public void testAddUnhiddenDowngradedNetworkDoesntOverwriteHiddenSsidValue() {
+        WifiConfiguration baseConfig = new WifiConfiguration();
+        baseConfig.SSID = "\"downgradableConfig\"";
+        baseConfig.setSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE);
+        baseConfig.preSharedKey = "\"Passw0rd\"";
+        baseConfig.hiddenSSID = true;
+        WifiConfiguration downgradableConfig = new WifiConfiguration();
+        downgradableConfig.SSID = "\"downgradableConfig\"";
+        downgradableConfig.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+        downgradableConfig.preSharedKey = "\"Passw0rd\"";
+        downgradableConfig.hiddenSSID = false;
+
+        verifyAddDowngradableNetwork(baseConfig, downgradableConfig);
+    }
+
+    /**
+     * Verifies that adding an hidden downgraded config updates an existing network to hidden.
+     * {@link WifiConfigManager#addOrUpdateNetwork(WifiConfiguration, int)}
+     */
+    @Test
+    public void testAddHiddenDowngradedNetworkOverwritesHiddenSsidValueToTrue() {
+        WifiConfiguration baseConfig = new WifiConfiguration();
+        baseConfig.SSID = "\"downgradableConfig\"";
+        baseConfig.setSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE);
+        baseConfig.preSharedKey = "\"Passw0rd\"";
+        baseConfig.hiddenSSID = false;
+        WifiConfiguration downgradableConfig = new WifiConfiguration();
+        downgradableConfig.SSID = "\"downgradableConfig\"";
+        downgradableConfig.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
+        downgradableConfig.preSharedKey = "\"Passw0rd\"";
+        downgradableConfig.hiddenSSID = true;
+
+        verifyAddDowngradableNetwork(baseConfig, downgradableConfig);
     }
 
     private void verifyLoadFromStoreMergeUpgradableConfigurations(
@@ -7176,6 +7362,36 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         // Verify that we can add a new network.
         verifyAddNetworkToWifiConfigManager(WifiConfigurationTestUtil.createOpenNetwork());
         assertEquals(2, mWifiConfigManager.getConfiguredNetworks().size());
+    }
+
+    /**
+     * Verify that the protected WifiEnterpriseConfig fields are loaded correctly
+     * from the XML store.
+     */
+    @Test
+    public void testLoadEnterpriseConfigProtectedFields() throws Exception {
+        WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
+        config.enterpriseConfig.setUserApproveNoCaCert(true);
+        config.enterpriseConfig.setTofuDialogState(WifiEnterpriseConfig.TOFU_DIALOG_STATE_ACCEPTED);
+        config.enterpriseConfig.setTofuConnectionState(
+                WifiEnterpriseConfig.TOFU_STATE_CERT_PINNING);
+        List<WifiConfiguration> storedConfigs = Arrays.asList(config);
+
+        // Setup xml storage
+        setupStoreDataForRead(storedConfigs, Arrays.asList());
+        assertTrue(mWifiConfigManager.loadFromStore());
+        verify(mWifiConfigStore).read();
+
+        List<WifiConfiguration> retrievedNetworks =
+                mWifiConfigManager.getConfiguredNetworksWithPasswords();
+        assertEquals(1, retrievedNetworks.size());
+        assertTrue(retrievedNetworks.get(0).enterpriseConfig.isUserApproveNoCaCert());
+        assertEquals(
+                WifiEnterpriseConfig.TOFU_DIALOG_STATE_ACCEPTED,
+                retrievedNetworks.get(0).enterpriseConfig.getTofuDialogState());
+        assertEquals(
+                WifiEnterpriseConfig.TOFU_STATE_CERT_PINNING,
+                retrievedNetworks.get(0).enterpriseConfig.getTofuConnectionState());
     }
 
     /**
@@ -7487,6 +7703,128 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                 fail("System-added config was deleted: " + systemAddedConfig);
             }
         }
+    }
+
+    /**
+     * Verifies that excess app-added networks are only considered for removal
+     * if the total number of networks reaches the app-added limit.
+     *
+     * This directly tests an optimization for enforcing the app-added limit. Retrieving the
+     * list of app-added configs is expensive (since we need to check the permissions on
+     * all the stored configs), so we should only retrieve it when necessary.
+     */
+    @Test
+    public void testFilterAtAppAddedLimit() {
+        final int maxTotalConfigs = 4;
+        final int maxAppAddedConfigs = 3;
+        mResources.setInteger(R.integer.config_wifiMaxNumWifiConfigurations, maxTotalConfigs);
+        mResources.setInteger(R.integer.config_wifiMaxNumWifiConfigurationsAddedByAllApps,
+                maxAppAddedConfigs);
+
+        when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), any())).thenReturn(false);
+        when(mWifiPermissionsUtil.isProfileOwner(anyInt(), any())).thenReturn(false);
+        when(mWifiPermissionsUtil.isSystem(any(), eq(TEST_CREATOR_UID)))
+                .thenReturn(true);
+        when(mWifiPermissionsUtil.isSystem(any(), eq(TEST_OTHER_USER_UID)))
+                .thenReturn(false);
+
+        // Add the maximum number of app-added configs.
+        for (int i = 0; i < maxAppAddedConfigs; i++) {
+            WifiConfiguration appAddedConfig = WifiConfigurationTestUtil.createPskNetwork();
+            appAddedConfig.creatorUid = TEST_OTHER_USER_UID;
+            verifyAddNetworkToWifiConfigManager(appAddedConfig);
+        }
+        assertEquals(maxAppAddedConfigs, mWifiConfigManager.getConfiguredNetworks().size());
+
+        // Since the app-added limit was not exceeded, the app-added config list was not retrieved.
+        // We only expect a single permission check per add.
+        int expectedNumPermissionChecks = maxAppAddedConfigs;
+        verify(mWifiPermissionsUtil, times(expectedNumPermissionChecks))
+                .isProfileOwner(anyInt(), any());
+
+        // The next app-added config will trigger the retrieval of the app-added config list.
+        // Expect the normal permission check, plus one additional from when
+        // the app-added config list is generated.
+        WifiConfiguration appAddedConfig = WifiConfigurationTestUtil.createPskNetwork();
+        appAddedConfig.creatorUid = TEST_OTHER_USER_UID;
+        verifyAddNetworkToWifiConfigManager(appAddedConfig);
+        assertEquals(maxAppAddedConfigs, mWifiConfigManager.getConfiguredNetworks().size());
+
+        expectedNumPermissionChecks += 2;
+        verify(mWifiPermissionsUtil, times(expectedNumPermissionChecks))
+                .isProfileOwner(anyInt(), any());
+
+        // Adding a system config will not trigger the retrieval of the app-added config list.
+        // We only expect a single permission check for this add.
+        WifiConfiguration systemConfig = WifiConfigurationTestUtil.createPskNetwork();
+        systemConfig.creatorUid = TEST_CREATOR_UID;
+        verifyAddNetworkToWifiConfigManager(systemConfig);
+        assertEquals(maxTotalConfigs, mWifiConfigManager.getConfiguredNetworks().size());
+
+        expectedNumPermissionChecks += 1;
+        verify(mWifiPermissionsUtil, times(expectedNumPermissionChecks))
+                .isProfileOwner(anyInt(), any());
+    }
+
+    /**
+     * Verifies that {@link WifiConfigManager#filterNonAppAddedNetworks(List)} properly filters
+     * out non app-added networks. Also checks that the permissions are cached for networks
+     * with the same creator.
+     */
+    @Test
+    public void testFilterNonAppAddedNetworks() {
+        int totalConfigs = 3;
+        List<WifiConfiguration> configs = new ArrayList<>();
+        for (int i = 0; i < totalConfigs; i++) {
+            configs.add(WifiConfigurationTestUtil.createPskNetwork());
+        }
+
+        // Configs 0 and 1 will belong to the same creator.
+        configs.get(0).creatorUid = 1;
+        configs.get(1).creatorUid = 1;
+        configs.get(2).creatorUid = 2;
+
+        configs.get(0).creatorName = "common";
+        configs.get(1).creatorName = "common";
+        configs.get(2).creatorName = "different";
+
+        // UIDs 1 and 2 belong to a PO and an app, respectively.
+        when(mWifiPermissionsUtil.isProfileOwner(eq(1), anyString())).thenReturn(true);
+        when(mWifiPermissionsUtil.isProfileOwner(eq(2), anyString())).thenReturn(false);
+        when(mWifiPermissionsUtil.isDeviceOwner(anyInt(), any())).thenReturn(false);
+        when(mWifiPermissionsUtil.isSystem(any(), anyInt())).thenReturn(false);
+        when(mWifiPermissionsUtil.isSignedWithPlatformKey(anyInt())).thenReturn(false);
+
+        // Verify that the non app-added networks (those created by UID 1) are filtered out.
+        List<WifiConfiguration> appAddedNetworks =
+                mWifiConfigManager.filterNonAppAddedNetworks(configs);
+        assertEquals(1, appAddedNetworks.size());
+
+        // Permissions should only be checked once per unique creator.
+        verify(mWifiPermissionsUtil, times(2)).isProfileOwner(anyInt(), any());
+    }
+
+    @Test
+    public void testNetworkValidation() {
+        ArgumentCaptor<WifiConfiguration> wifiConfigCaptor =
+                ArgumentCaptor.forClass(WifiConfiguration.class);
+        WifiConfiguration openNetwork = WifiConfigurationTestUtil.createOpenNetwork();
+
+        NetworkUpdateResult result = verifyAddNetworkToWifiConfigManager(openNetwork);
+
+        // Set internet to be validated and verify internet validation tracking is updated.
+        int networkId = result.getNetworkId();
+        mWifiConfigManager.setNetworkValidatedInternetAccess(networkId, true);
+        WifiConfiguration updatedConfig = mWifiConfigManager.getConfiguredNetwork(networkId);
+        assertTrue(updatedConfig.getNetworkSelectionStatus().hasEverValidatedInternetAccess());
+        assertTrue(updatedConfig.validatedInternetAccess);
+
+        // Set internet validation failed now and verify again. hasEverValidatedInternetAccess
+        // should still be true but validatedInternetAccess should be false.
+        mWifiConfigManager.setNetworkValidatedInternetAccess(networkId, false);
+        updatedConfig = mWifiConfigManager.getConfiguredNetwork(networkId);
+        assertTrue(updatedConfig.getNetworkSelectionStatus().hasEverValidatedInternetAccess());
+        assertFalse(updatedConfig.validatedInternetAccess);
     }
 
     /**
