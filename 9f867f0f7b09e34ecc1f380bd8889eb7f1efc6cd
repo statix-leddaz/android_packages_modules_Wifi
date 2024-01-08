@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "504cc3a2_cd05f55a",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 6
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-08T11:11:16Z",
+      "side": 1,
+      "message": "Hi Les,\nPlease review and provide your inputs.\nThanks,\nPiyali.",
+      "revId": "9f867f0f7b09e34ecc1f380bd8889eb7f1efc6cd",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
