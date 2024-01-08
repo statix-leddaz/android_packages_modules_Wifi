@@ -52,6 +52,24 @@
       "parentUuid": "803a6805_140e44f9",
       "revId": "25364297fd419258afcb4a5dc7644708ea7c331a",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "f07e3069_ec78cf42",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2034333
+      },
+      "writtenOn": "2024-01-08T04:58:10Z",
+      "side": 1,
+      "message": "Hi Etan,\n\nhttps://android-review.googlesource.com/c/platform/system/netd/+/2891931 changes has been accepted by google to hide the IPV4/6 leak from logcat. \nShould we not hide this SSID/BSSID leak ?",
+      "parentUuid": "d0f81135_e51d5b9a",
+      "revId": "25364297fd419258afcb4a5dc7644708ea7c331a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
