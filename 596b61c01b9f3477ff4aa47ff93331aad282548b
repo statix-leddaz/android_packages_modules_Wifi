@@ -16,6 +16,29 @@
       "message": "Hi Les,\nPlease review and provide your inputs.\nThanks,\nPiyali.",
       "revId": "596b61c01b9f3477ff4aa47ff93331aad282548b",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "ed8984a7_41fb6541",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 16
+      },
+      "lineNbr": 155,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2024-01-09T12:25:42Z",
+      "side": 1,
+      "message": "why return true even if the value is invalid? (i.e. not \"true\" or \"false\")?",
+      "range": {
+        "startLine": 155,
+        "startChar": 20,
+        "endLine": 155,
+        "endChar": 32
+      },
+      "revId": "596b61c01b9f3477ff4aa47ff93331aad282548b",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
