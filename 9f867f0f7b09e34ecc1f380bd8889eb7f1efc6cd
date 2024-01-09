@@ -16,6 +16,29 @@
       "message": "Hi Les,\nPlease review and provide your inputs.\nThanks,\nPiyali.",
       "revId": "9f867f0f7b09e34ecc1f380bd8889eb7f1efc6cd",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "8154f7a6_467c13bf",
+        "filename": "service/tests/wifitests/src/com/android/server/wifi/WifiServiceImplTest.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 11661,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2024-01-09T12:21:33Z",
+      "side": 1,
+      "message": "Not sure why do you keep this? I provide comment on patch#4. We should not mock WifiServiceImp when testing WifiServiceImp.\n\nWhy can\u0027t mock by when(mActiveModeWarden.getSupportedFeatureSet())\n.thenReturn(WifiManager.WIFI_FEATURE_PNO) instead of when(mWifiServiceImpl.getSupportedFeatures()).thenReturn(WifiManager.WIFI_FEATURE_PNO)?",
+      "range": {
+        "startLine": 11661,
+        "startChar": 0,
+        "endLine": 11661,
+        "endChar": 69
+      },
+      "revId": "9f867f0f7b09e34ecc1f380bd8889eb7f1efc6cd",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
