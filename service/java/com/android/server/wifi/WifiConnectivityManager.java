@@ -18,6 +18,7 @@ package com.android.server.wifi;
 
 import static android.net.wifi.WifiConfiguration.INVALID_NETWORK_ID;
 import static android.net.wifi.WifiConfiguration.RANDOMIZATION_NONE;
+
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SCAN_ONLY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_LONG_LIVED;
@@ -380,6 +381,16 @@ public class WifiConnectivityManager {
     }
 
     /**
+     * Utility band filter method for multi-internet use-case.
+     */
+    @VisibleForTesting
+    public boolean filterMultiInternetFrequency(int primaryFreq, int secondaryFreq) {
+        return mWifiGlobals.isSupportMultiInternetDual5G()
+                ? ScanResult.isValidCombinedBandForDual5GHz(primaryFreq, secondaryFreq)
+                : ScanResult.toBand(primaryFreq) != ScanResult.toBand(secondaryFreq);
+    }
+
+    /**
      * Helper method to consolidate handling of scan results when multi internet is enabled.
      */
     private boolean handleConnectToMultiInternetConnectionInternal(
@@ -416,13 +427,16 @@ public class WifiConnectivityManager {
                 // A BSSID can only exist in one band, so when evaluating candidates, only those
                 // with a different band from the primary will be considered.
                 secondaryCmmCandidates = candidates.stream()
-                        .filter(c -> ScanResult.toBand(c.getFrequency()) != primaryBand)
+                        .filter(c -> {
+                            return filterMultiInternetFrequency(
+                                    primaryInfo.getFrequency(), c.getFrequency());
+                        })
                         .collect(Collectors.toList());
             }
         } else {
             // Only allow the candidates have the same SSID as the primary.
             secondaryCmmCandidates = candidates.stream().filter(c -> {
-                return ScanResult.toBand(c.getFrequency()) != primaryBand
+                return filterMultiInternetFrequency(primaryInfo.getFrequency(), c.getFrequency())
                         && !primaryCcm.isAffiliatedLinkBssid(c.getKey().bssid) && TextUtils.equals(
                         c.getKey().matchInfo.networkSsid, primaryInfo.getSSID())
                         && c.getKey().networkId == primaryInfo.getNetworkId()
@@ -3081,9 +3095,7 @@ public class WifiConnectivityManager {
      */
     public void handleConnectionStateChanged(
             ConcreteClientModeManager clientModeManager, int state) {
-        List<ClientModeManager> internetConnectivityCmms =
-                mActiveModeWarden.getInternetConnectivityClientModeManagers();
-        if (!(internetConnectivityCmms.contains(clientModeManager))) {
+        if (clientModeManager.getRole() != ROLE_CLIENT_PRIMARY) {
             Log.w(TAG, "Ignoring call from non primary Mode Manager " + clientModeManager,
                     new Throwable());
             return;
@@ -3264,6 +3276,11 @@ public class WifiConnectivityManager {
             mUntrustedConnectionAllowed = allowed;
             checkAllStatesAndEnableAutoJoin();
         }
+    }
+
+    @VisibleForTesting
+    public int getWifiState() {
+        return mWifiState;
     }
 
     /**
