@@ -370,10 +370,12 @@
     <!-- Indicates that AP mode MAC randomization is supported on this device -->
     <bool translatable="false" name="config_wifi_ap_mac_randomization_supported">true</bool>
 
-    <!-- Indicates that bridged AP mode is supported on this device -->
+    <!-- Indicates that bridged AP mode is supported on this device provided that
+     the device interface combination allows for it -->
     <bool translatable="false" name="config_wifiBridgedSoftApSupported">false</bool>
 
-    <!-- Indicates that STA + bridged AP concurrency mode is supported on this device -->
+    <!-- Indicates that STA + bridged AP concurrency mode is supported on this device provided
+     that the device interface combination allows for it-->
     <bool translatable="false" name="config_wifiStaWithBridgedSoftApConcurrencySupported">false</bool>
 
     <!-- Indicates that dynamic country code update in AP mode is supported on this device -->
@@ -598,6 +600,12 @@
     <integer translatable="false" name="config_wifiDisableReasonByWrongPasswordDurationMs"> -1 </integer>
     <integer translatable="false" name="config_wifiDisableReasonAuthenticationNoSubscriptionDurationMs"> -1 </integer>
     <integer translatable="false" name="config_wifiDisableReasonConsecutiveFailuresDurationMs"> 300000 </integer>
+
+    <!-- Configuration for disabling a network due to repeated NUD failures -->
+    <!-- The number of NUD failures that need to happen to trigger blocking -->
+    <integer translatable="false" name="config_wifiDisableReasonRepeatedNudFailuresThreshold"> 5 </integer>
+    <!-- The NUD failures need to happen within this time window or else the counter will be reset -->
+    <integer translatable="false" name="config_wifiDisableReasonRepeatedNudFailuresWindowMs"> 60000 </integer>
 
     <!-- List of constants that indicate the number of consecutive failures per type needed to block a BSSID.
     A blocked BSSID will not be considered in network selection and firmware roaming.-->
