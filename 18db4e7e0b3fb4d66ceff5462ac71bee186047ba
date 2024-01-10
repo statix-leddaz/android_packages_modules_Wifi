@@ -95,6 +95,54 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "39d45479_7bb989fe",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 152,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-10T17:01:39Z",
+      "side": 1,
+      "message": "Acknowledged",
+      "parentUuid": "355ccb81_4963b6d2",
+      "range": {
+        "startLine": 152,
+        "startChar": 31,
+        "endLine": 152,
+        "endChar": 77
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "929065d1_109c4b19",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 152,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-10T17:01:39Z",
+      "side": 1,
+      "message": "Acknowledged",
+      "parentUuid": "13fbcac5_8467bcb5",
+      "range": {
+        "startLine": 152,
+        "startChar": 78,
+        "endLine": 152,
+        "endChar": 91
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "2b0a7c4f_f7616e59",
@@ -179,6 +227,30 @@
       "side": 1,
       "message": "configString cannot be empty or any other value. It has to be the actual string i.e \"config_wifi_background_scan_support\".",
       "parentUuid": "3f28cdec_480ab6de",
+      "range": {
+        "startLine": 430,
+        "startChar": 20,
+        "endLine": 430,
+        "endChar": 51
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "43614e8c_2207fda2",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 430,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-10T17:01:39Z",
+      "side": 1,
+      "message": "Sorry - misplaced comment - I was referring to `value` - why can\u0027t it be empty?",
+      "parentUuid": "a38516e6_919f1e2b",
       "range": {
         "startLine": 430,
         "startChar": 20,
@@ -325,6 +397,30 @@
         "startChar": 56,
         "endLine": 2633,
         "endChar": 58
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "9ba76a07_f4ac26e2",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 2633,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-10T17:01:39Z",
+      "side": 1,
+      "message": "Acknowledged",
+      "parentUuid": "00c23de6_b2d9cd78",
+      "range": {
+        "startLine": 2633,
+        "startChar": 74,
+        "endLine": 2633,
+        "endChar": 85
       },
       "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"

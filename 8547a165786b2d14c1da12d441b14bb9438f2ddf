@@ -16,6 +16,98 @@
       "message": "Hi Les,\nPlease review and provide your inputs.\nThanks,\nPiyali.",
       "revId": "8547a165786b2d14c1da12d441b14bb9438f2ddf",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "8fe93220_3da0292a",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 17
+      },
+      "lineNbr": 153,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-10T17:01:39Z",
+      "side": 1,
+      "message": "nit: `else` after a `return` is dead code - it doesn\u0027t do anything. Simply start another `if` clause.",
+      "range": {
+        "startLine": 153,
+        "startChar": 22,
+        "endLine": 153,
+        "endChar": 26
+      },
+      "revId": "8547a165786b2d14c1da12d441b14bb9438f2ddf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "ba7c9d85_ec63692d",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 17
+      },
+      "lineNbr": 2636,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-10T17:01:39Z",
+      "side": 1,
+      "message": "nit: ... support - see individual overlays for permitted values.\n\ntrue|false is for specific overlay (the only one current supported - but there will be others).",
+      "range": {
+        "startLine": 2635,
+        "startChar": 75,
+        "endLine": 2636,
+        "endChar": 95
+      },
+      "revId": "8547a165786b2d14c1da12d441b14bb9438f2ddf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "f884b17f_371d5206",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 17
+      },
+      "lineNbr": 2638,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-10T17:01:39Z",
+      "side": 1,
+      "message": "nit: specify \u003cvalue\u003e\u003dtrue|false.\n\nNot need for a second line (#2639) it doesn\u0027t add any information.",
+      "range": {
+        "startLine": 2638,
+        "startChar": 68,
+        "endLine": 2638,
+        "endChar": 77
+      },
+      "revId": "8547a165786b2d14c1da12d441b14bb9438f2ddf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "a605cf72_6b382b72",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 17
+      },
+      "lineNbr": 2640,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-10T17:01:39Z",
+      "side": 1,
+      "message": "nit: enabled|disabled",
+      "range": {
+        "startLine": 2640,
+        "startChar": 24,
+        "endLine": 2640,
+        "endChar": 34
+      },
+      "revId": "8547a165786b2d14c1da12d441b14bb9438f2ddf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
