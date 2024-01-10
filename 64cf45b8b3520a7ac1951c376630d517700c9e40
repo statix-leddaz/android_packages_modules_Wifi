@@ -16,6 +16,23 @@
       "message": "Hi Les,\nResolved the merge conflicts. Pleas review and provide feedback.\n\nThanks\nVeerendra",
       "revId": "64cf45b8b3520a7ac1951c376630d517700c9e40",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "e99a4ada_8e1f1f2b",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 15
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2024-01-10T12:24:11Z",
+      "side": 1,
+      "message": "Etan,\n\nIt is a reviewed CL but resubmit to fix conflict.",
+      "revId": "64cf45b8b3520a7ac1951c376630d517700c9e40",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
