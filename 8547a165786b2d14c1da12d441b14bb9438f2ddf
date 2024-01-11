@@ -41,6 +41,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "c9cef320_f338d64f",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 17
+      },
+      "lineNbr": 153,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-11T11:26:08Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "8fe93220_3da0292a",
+      "range": {
+        "startLine": 153,
+        "startChar": 22,
+        "endLine": 153,
+        "endChar": 26
+      },
+      "revId": "8547a165786b2d14c1da12d441b14bb9438f2ddf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "ba7c9d85_ec63692d",
@@ -54,6 +78,30 @@
       "writtenOn": "2024-01-10T17:01:39Z",
       "side": 1,
       "message": "nit: ... support - see individual overlays for permitted values.\n\ntrue|false is for specific overlay (the only one current supported - but there will be others).",
+      "range": {
+        "startLine": 2635,
+        "startChar": 75,
+        "endLine": 2636,
+        "endChar": 95
+      },
+      "revId": "8547a165786b2d14c1da12d441b14bb9438f2ddf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "c13a819b_f6659b2c",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 17
+      },
+      "lineNbr": 2636,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-11T11:26:08Z",
+      "side": 1,
+      "message": "Not that clear about this comment, did you mean the following change.",
+      "parentUuid": "ba7c9d85_ec63692d",
       "range": {
         "startLine": 2635,
         "startChar": 75,
@@ -87,6 +135,30 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "7df11445_d66b4ff8",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 17
+      },
+      "lineNbr": 2638,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-11T11:26:08Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "f884b17f_371d5206",
+      "range": {
+        "startLine": 2638,
+        "startChar": 68,
+        "endLine": 2638,
+        "endChar": 77
+      },
+      "revId": "8547a165786b2d14c1da12d441b14bb9438f2ddf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "a605cf72_6b382b72",
@@ -100,6 +172,30 @@
       "writtenOn": "2024-01-10T17:01:39Z",
       "side": 1,
       "message": "nit: enabled|disabled",
+      "range": {
+        "startLine": 2640,
+        "startChar": 24,
+        "endLine": 2640,
+        "endChar": 34
+      },
+      "revId": "8547a165786b2d14c1da12d441b14bb9438f2ddf",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "4d3df5c3_e0df7a9e",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 17
+      },
+      "lineNbr": 2640,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-11T11:26:08Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "a605cf72_6b382b72",
       "range": {
         "startLine": 2640,
         "startChar": 24,
