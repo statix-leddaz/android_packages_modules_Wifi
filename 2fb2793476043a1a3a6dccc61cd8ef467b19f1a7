@@ -16,6 +16,24 @@
       "message": "This gerrit is yet to be merged..",
       "revId": "2fb2793476043a1a3a6dccc61cd8ef467b19f1a7",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "6bc575ba_30937a9f",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1288034
+      },
+      "writtenOn": "2024-01-11T04:22:25Z",
+      "side": 1,
+      "message": "Note this is already merged in the branch used for monthly Wifi module releases, so it should show up under the aml_wif_* tag when that version is released (see for example the tag for the November release: https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/tags/aml_wif_341110010)",
+      "parentUuid": "1b83b3fb_3bde5fc0",
+      "revId": "2fb2793476043a1a3a6dccc61cd8ef467b19f1a7",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
