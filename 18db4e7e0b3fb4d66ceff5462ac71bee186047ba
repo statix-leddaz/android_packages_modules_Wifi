@@ -287,6 +287,30 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "51991cb1_9b566f3c",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 13
+      },
+      "lineNbr": 430,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2024-01-11T11:41:08Z",
+      "side": 1,
+      "message": "Not correct.\n\nThe empty string may be a valid value for other overlay configuration. We should remove the empty check in the function forceOverlayConfigValue since it is checked in the BiFunction which can be customized for different overlay configuration.",
+      "parentUuid": "8fa46027_939d8302",
+      "range": {
+        "startLine": 430,
+        "startChar": 20,
+        "endLine": 430,
+        "endChar": 51
+      },
+      "revId": "18db4e7e0b3fb4d66ceff5462ac71bee186047ba",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "80c5d657_7830a2d9",
         "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
         "patchSetId": 13
