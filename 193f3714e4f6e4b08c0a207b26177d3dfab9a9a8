@@ -39,6 +39,30 @@
       },
       "revId": "193f3714e4f6e4b08c0a207b26177d3dfab9a9a8",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "3f293150_869be249",
+        "filename": "service/java/com/android/server/wifi/WifiGlobals.java",
+        "patchSetId": 19
+      },
+      "lineNbr": 432,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-12T14:03:50Z",
+      "side": 1,
+      "message": "Done",
+      "parentUuid": "e2abdf6c_001b4b72",
+      "range": {
+        "startLine": 432,
+        "startChar": 12,
+        "endLine": 432,
+        "endChar": 36
+      },
+      "revId": "193f3714e4f6e4b08c0a207b26177d3dfab9a9a8",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
