@@ -16,6 +16,46 @@
       "message": "Hi Les,\nPlease review and provide your inputs.\nThanks,\nPiyali.",
       "revId": "13b7de5136b48c0474f5725ccc48e243fa692a09",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "6561420e_f4479d87",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 20
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-13T00:30:24Z",
+      "side": 1,
+      "message": "LGTM - please just fix the help string.",
+      "revId": "13b7de5136b48c0474f5725ccc48e243fa692a09",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "418fa778_4bbde77e",
+        "filename": "service/java/com/android/server/wifi/WifiShellCommand.java",
+        "patchSetId": 20
+      },
+      "lineNbr": 2642,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-13T00:30:24Z",
+      "side": 1,
+      "message": "The text should be:\n```\nforce-overlay-config-value \u003coverlayName\u003e \u003cconfigString\u003e enabled|disabled\n  Force overlay to a specified value. See below for supported overlays.\n  \u003coverlayName\u003e - name of the overlay whose value is overriden.\n     - Currently supports:\n       - config_wifi_background_scan_support: accepts boolean \u003cconfigString\u003e \u003d true|false.\n  \u003cconfigString\u003e - override value of the overlay. See above for accepted values per overlay.\n  enabled|disabled: enable the override or disable it and revert to using the built-in value.\n```\n\nYou\u0027ll of course have to put it into the pw.println(.) to get the right indentation.",
+      "range": {
+        "startLine": 2633,
+        "startChar": 7,
+        "endLine": 2642,
+        "endChar": 81
+      },
+      "revId": "13b7de5136b48c0474f5725ccc48e243fa692a09",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
