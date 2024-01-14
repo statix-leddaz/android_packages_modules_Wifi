@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "3020071c_0b6c6211",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 4923,
+      "author": {
+        "id": 1391574
+      },
+      "writtenOn": "2024-01-14T19:58:24Z",
+      "side": 1,
+      "message": "The change works for this use case. Because interfaceaddress is initialized during the AP_STA_CONNECTED event and gets cleared from this method as sendP2pConnectionChangedBroadcast is called for every AP_STA_CONNECTED event. But it is not an ideal solution. The reasons are,\n\n1. This is an SDK interface and should be public/system API. This is a custom change which works for your application/use case. We cannot accept this change in AOSP.\n2. This is not the right interface to add interface address. This is a Peer client interface address on the GO side. Where as WIFI_P2P_CONNECTION_CHANGED_ACTION is used for multiple purposes and this field doesn\u0027t make sense for other.",
+      "range": {
+        "startLine": 4923,
+        "startChar": 0,
+        "endLine": 4923,
+        "endChar": 73
+      },
+      "revId": "2bdc9bcd6f4b6f84618239b1e34a32cbd8eff695",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
