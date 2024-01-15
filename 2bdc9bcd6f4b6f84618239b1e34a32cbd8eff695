@@ -3,6 +3,74 @@
     {
       "unresolved": true,
       "key": {
+        "uuid": "9f4efec9_db878f10",
+        "filename": "service/java/com/android/server/wifi/p2p/SupplicantP2pIfaceCallbackAidlImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 535,
+      "author": {
+        "id": 1888886
+      },
+      "writtenOn": "2024-01-15T01:18:49Z",
+      "side": 1,
+      "message": "For consistency, log message starts will an uppercase letter.",
+      "revId": "2bdc9bcd6f4b6f84618239b1e34a32cbd8eff695",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "dfc4bae1_538b00cf",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 421,
+      "author": {
+        "id": 1888886
+      },
+      "writtenOn": "2024-01-15T01:18:49Z",
+      "side": 1,
+      "message": "Please follow the code convention, mInterfaceAddress",
+      "revId": "2bdc9bcd6f4b6f84618239b1e34a32cbd8eff695",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "ea99eb67_3b5d7b97",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 4292,
+      "author": {
+        "id": 1888886
+      },
+      "writtenOn": "2024-01-15T01:18:49Z",
+      "side": 1,
+      "message": "please fix the typo and also add a check that split(\u0027;\u0027) returns at least 2 elements, as the code following assumes it.",
+      "revId": "2bdc9bcd6f4b6f84618239b1e34a32cbd8eff695",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "dddde44a_8200a681",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 4294,
+      "author": {
+        "id": 1888886
+      },
+      "writtenOn": "2024-01-15T01:18:49Z",
+      "side": 1,
+      "message": "code convention. interfaceAddress",
+      "revId": "2bdc9bcd6f4b6f84618239b1e34a32cbd8eff695",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
         "uuid": "3020071c_0b6c6211",
         "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
         "patchSetId": 1
