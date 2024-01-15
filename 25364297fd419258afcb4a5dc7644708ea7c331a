@@ -88,6 +88,24 @@
       "parentUuid": "f07e3069_ec78cf42",
       "revId": "25364297fd419258afcb4a5dc7644708ea7c331a",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "f35517b2_bdeede37",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2034333
+      },
+      "writtenOn": "2024-01-15T09:54:01Z",
+      "side": 1,
+      "message": "Hi Etan,\n\nany update on above thoughts ?",
+      "parentUuid": "afedf87a_f0da4c0a",
+      "revId": "25364297fd419258afcb4a5dc7644708ea7c331a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
