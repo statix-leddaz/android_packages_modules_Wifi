@@ -106,6 +106,24 @@
       "parentUuid": "afedf87a_f0da4c0a",
       "revId": "25364297fd419258afcb4a5dc7644708ea7c331a",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "daeed59a_27b34ccc",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-01-15T22:21:20Z",
+      "side": 1,
+      "message": "There is no update. The above has been discussed extensively with the privacy team.",
+      "parentUuid": "f35517b2_bdeede37",
+      "revId": "25364297fd419258afcb4a5dc7644708ea7c331a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
