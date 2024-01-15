@@ -380,6 +380,8 @@ public class WifiConnectivityManager {
             @NonNull HandleScanResultsListener handleScanResultsListener) {
         final ConcreteClientModeManager primaryCcm = mActiveModeWarden
                 .getPrimaryClientModeManagerNullable();
+        final ConcreteClientModeManager secondaryCcm = mActiveModeWarden
+                .getClientModeManagerInRole(ROLE_CLIENT_SECONDARY_LONG_LIVED);
         if (primaryCcm == null || !primaryCcm.isConnected()) {
             // The second internet can only be connected after the primary network connected.
             // Firmware can choose the best BSSID when connecting the primary CMM, so we must
@@ -387,7 +389,7 @@ public class WifiConnectivityManager {
             // a different band with the primary.
             return false;
         }
-        if (WifiInjector.getInstance().getHalDeviceManager()
+        if (secondaryCcm == null && WifiInjector.getInstance().getHalDeviceManager()
                 .creatingIfaceWillDeletePrivilegedIface(HalDeviceManager.HDM_CREATE_IFACE_STA,
                         mMultiInternetConnectionRequestorWs)) {
             localLog(listenerName + ": No secondary cmm candidate");
