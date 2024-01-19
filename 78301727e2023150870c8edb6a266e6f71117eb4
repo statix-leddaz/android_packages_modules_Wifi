@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "6dfb3fc0_f9d1d79a",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 21
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2029698
+      },
+      "writtenOn": "2024-01-19T11:54:05Z",
+      "side": 1,
+      "message": "Hi Etan,\nPlease review and provide your inputs.\nThanks,\nPiyali.",
+      "revId": "78301727e2023150870c8edb6a266e6f71117eb4",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
