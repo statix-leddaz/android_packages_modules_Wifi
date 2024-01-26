@@ -35,6 +35,24 @@
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     },
     {
+      "unresolved": false,
+      "key": {
+        "uuid": "92f2177e_1a3fa3b3",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 421,
+      "author": {
+        "id": 2063975
+      },
+      "writtenOn": "2024-01-26T05:45:56Z",
+      "side": 1,
+      "message": "We modified it in patch 3, Thank you",
+      "parentUuid": "c73460b7_01b89b35",
+      "revId": "9670220a2ac605f13ca7594415988bc327166958",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
       "unresolved": true,
       "key": {
         "uuid": "172828a3_3aedb132",
@@ -48,6 +66,24 @@
       "writtenOn": "2024-01-26T01:16:44Z",
       "side": 1,
       "message": "\"Common typo found: \"splited\" -- should it be \"split\"?\"\n\nYou can also rename to something shorter, such as \"info\" or \"fields\"",
+      "revId": "9670220a2ac605f13ca7594415988bc327166958",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "1df5a654_10c2719a",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 4292,
+      "author": {
+        "id": 2063975
+      },
+      "writtenOn": "2024-01-26T05:45:56Z",
+      "side": 1,
+      "message": "We modified it in patch 3, Thank you",
+      "parentUuid": "172828a3_3aedb132",
       "revId": "9670220a2ac605f13ca7594415988bc327166958",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
