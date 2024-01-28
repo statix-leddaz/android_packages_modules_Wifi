@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "bfc74ac7_a58e6fb8",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 23
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1368080
+      },
+      "writtenOn": "2024-01-28T15:44:53Z",
+      "side": 1,
+      "message": "Etan,\n\nRebased the commit. Please help +2 again.",
+      "revId": "f0bb9fbb6880075a4a4dba87b8a8d71cb996c2c0",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
