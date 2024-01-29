@@ -52,6 +52,7 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.NetworkStack;
+import android.net.TetheringManager.TetheringRequest;
 import android.net.Uri;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
@@ -5559,12 +5560,61 @@ public class WifiManager {
     })
     public boolean startTetheredHotspot(@Nullable SoftApConfiguration softApConfig) {
         try {
-            return mService.startTetheredHotspot(softApConfig, mContext.getOpPackageName());
+            return mService.startTetheredHotspotLegacy(softApConfig, mContext.getOpPackageName());
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
     }
 
+    /**
+     * Start Soft AP (hotspot) mode for tethering purposes with the specified TetheringRequest.
+     * Note that starting Soft AP mode may disable station mode operation if the device does not
+     * support concurrency.
+     *
+     * Note: Call {@link WifiManager#validateSoftApConfiguration(SoftApConfiguration)} on the
+     * SoftApConfiguration embedded in TetheringRequest to avoid unexpected error due to invalid
+     * configuration.
+     *
+     * @param request A valid TetheringRequest with an embedded SoftApConfiguration specifying the
+     *               configuration of the SAP.
+     * @return {@code true} if the operation succeeded, {@code false} otherwise
+     *
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(anyOf = {
+            android.Manifest.permission.NETWORK_STACK,
+            NetworkStack.PERMISSION_MAINLINE_NETWORK_STACK
+    })
+    public boolean startTetheredHotspot(
+            @NonNull TetheringRequest request, @NonNull SoftApCallback softApCallback) {
+        try {
+            return mService.startTetheredHotspot(
+                    request, softApCallback, mContext.getOpPackageName());
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Stop Soft AP (hotspot) mode that was started with the given TetheringRequest.
+     *
+     * @param request the original TetheringRequest that started the Soft AP.
+     *
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(anyOf = {
+            android.Manifest.permission.NETWORK_STACK,
+            NetworkStack.PERMISSION_MAINLINE_NETWORK_STACK
+    })
+    public void stopTetheredHotspot(@NonNull TetheringRequest request) {
+        try {
+            return mService.stopTetheredHotspot(request, mContext.getOpPackageName());
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
 
     /**
      * Stop SoftAp mode.

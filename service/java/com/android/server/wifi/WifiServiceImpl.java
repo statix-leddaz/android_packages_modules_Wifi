@@ -89,6 +89,7 @@ import android.net.MacAddress;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkStack;
+import android.net.TetheringManager.TetheringRequest;
 import android.net.Uri;
 import android.net.ip.IpClientUtil;
 import android.net.wifi.BaseWifiService;
@@ -1706,7 +1707,7 @@ public class WifiServiceImpl extends BaseWifiService {
      * @throws SecurityException if the caller does not have permission to start softap
      */
     @Override
-    public boolean startTetheredHotspot(@Nullable SoftApConfiguration softApConfig,
+    public boolean startTetheredHotspotLegacy(@Nullable SoftApConfiguration softApConfig,
             @NonNull String packageName) {
         // NETWORK_STACK is a signature only permission.
         enforceNetworkStackPermission();
@@ -1742,6 +1743,19 @@ public class WifiServiceImpl extends BaseWifiService {
         }
         mLastCallerInfoManager.put(WifiManager.API_TETHERED_HOTSPOT, Process.myTid(),
                 callingUid, Binder.getCallingPid(), packageName, true);
+        return true;
+    }
+
+    @Override
+    public boolean startTetheredHotspot(@NonNull TetheringRequest request,
+            @Nullable ISoftApCallback callback,
+            @NonNull String packageName) {
+        return true;
+    }
+
+    @Override
+    public void stopTetheredHotspot(@NonNull TetheringRequest request,
+            @NonNull String packageName) {
         return true;
     }
 

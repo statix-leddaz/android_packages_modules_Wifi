@@ -23,6 +23,7 @@ import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.DhcpInfo;
 import android.net.DhcpOption;
 import android.net.Network;
+import android.net.TetheringManager.TetheringRequest;
 import android.net.wifi.CoexUnsafeChannel;
 import android.net.wifi.IActionListener;
 import android.net.wifi.IBooleanListener;
@@ -224,7 +225,11 @@ interface IWifiManager
 
     boolean startSoftAp(in WifiConfiguration wifiConfig, String packageName);
 
-    boolean startTetheredHotspot(in SoftApConfiguration softApConfig, String packageName);
+    boolean startTetheredHotspotLegacy(in SoftApConfiguration softApConfig, String packageName);
+
+    boolean startTetheredHotspot(in TetheringRequest request, in ISoftApCallback callback, String packageName);
+
+    void stopTetheredHotspot(in TetheringRequest request, String packageName);
 
     boolean stopSoftAp();
 

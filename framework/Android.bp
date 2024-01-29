@@ -136,6 +136,7 @@ java_library {
     libs: [
         "framework-annotations-lib",
         "framework-connectivity.stubs.module_lib",
+        "framework-tethering.stubs.module_lib",
     ],
     installable: false,
     visibility: [
@@ -159,16 +160,23 @@ java_sdk_library {
 
     impl_only_libs: [
         "framework-connectivity.stubs.module_lib",
+        "framework-tethering.stubs.module_lib",
     ],
 
     public: {
         libs: ["framework-connectivity.stubs"],
     },
     system: {
-        libs: ["framework-connectivity.stubs.system"],
+        libs: [
+            "framework-connectivity.stubs.system",
+            "framework-tethering.stubs.system",
+        ],
     },
     module_lib: {
-        libs: ["framework-connectivity.stubs.module_lib"],
+        libs: [
+            "framework-connectivity.stubs.module_lib",
+            "framework-tethering.stubs.module_lib",
+        ],
     },
     api_srcs: [
         ":wifi_javadoc_only_files",

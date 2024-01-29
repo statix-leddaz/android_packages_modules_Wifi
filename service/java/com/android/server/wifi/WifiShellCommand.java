@@ -800,7 +800,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     SoftApCallbackProxy softApCallback =
                             new SoftApCallbackProxy(pw, countDownLatch);
                     mWifiService.registerSoftApCallback(softApCallback);
-                    if (!mWifiService.startTetheredHotspot(config, SHELL_PACKAGE_NAME)) {
+                    if (!mWifiService.startTetheredHotspotLegacy(config, SHELL_PACKAGE_NAME)) {
                         pw.println("Soft AP failed to start. Please check config parameters");
                     }
                     // Wait for softap to start and complete callback
