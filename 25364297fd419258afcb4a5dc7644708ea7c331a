@@ -142,6 +142,24 @@
       "parentUuid": "daeed59a_27b34ccc",
       "revId": "25364297fd419258afcb4a5dc7644708ea7c331a",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "cf747514_9f9a532d",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2034333
+      },
+      "writtenOn": "2024-01-31T06:08:49Z",
+      "side": 1,
+      "message": "Hi Etan, any update to merge SSID/BSSID leak fix from logging side ?",
+      "parentUuid": "6a9a1cec_a2886575",
+      "revId": "25364297fd419258afcb4a5dc7644708ea7c331a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
