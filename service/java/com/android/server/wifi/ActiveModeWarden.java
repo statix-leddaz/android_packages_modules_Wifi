@@ -174,6 +174,9 @@ public class ActiveModeWarden {
     @GuardedBy("mServiceApiLock")
     private WifiInfo mCurrentConnectionInfo = new WifiInfo();
 
+    @GuardedBy("mServiceApiLock")
+    private final ArraySet<WorkSource> mRequestWs = new ArraySet<>();
+
     /**
      * One of  {@link WifiManager#WIFI_STATE_DISABLED},
      * {@link WifiManager#WIFI_STATE_DISABLING},
@@ -206,6 +209,17 @@ public class ActiveModeWarden {
             default:
                 Log.d(TAG, "attempted to set an invalid state: " + newState);
                 break;
+        }
+    }
+
+    /**
+     * Get the request WorkSource for secondary CMM
+     *
+     * @return the WorkSources of the current secondary CMMs
+     */
+    public Set<WorkSource> getSecondaryRequestWs() {
+        synchronized (mServiceApiLock) {
+            return new ArraySet<>(mRequestWs);
         }
     }
 
@@ -1397,6 +1411,11 @@ public class ActiveModeWarden {
         ConcreteClientModeManager manager = mWifiInjector.makeClientModeManager(
                 listener, requestorWs, role, mVerboseLoggingEnabled);
         mClientModeManagers.add(manager);
+        if (ROLE_CLIENT_SECONDARY_LONG_LIVED.equals(role) || ROLE_CLIENT_LOCAL_ONLY.equals(role)) {
+            synchronized (mServiceApiLock) {
+                mRequestWs.add(new WorkSource(requestorWs));
+            }
+        }
         return true;
     }
 
@@ -1410,6 +1429,14 @@ public class ActiveModeWarden {
             @NonNull WorkSource requestorWs) {
         Log.d(TAG, "Switching role for additional ClientModeManager to role: " + role);
         ClientListener listener = new ClientListener(externalRequestListener);
+        synchronized (mServiceApiLock) {
+            mRequestWs.remove(manager.getRequestorWs());
+        }
+        if (ROLE_CLIENT_SECONDARY_LONG_LIVED.equals(role) || ROLE_CLIENT_LOCAL_ONLY.equals(role)) {
+            synchronized (mServiceApiLock) {
+                mRequestWs.add(new WorkSource(requestorWs));
+            }
+        }
         manager.setRole(role, requestorWs, listener);
         return true;
     }
@@ -1660,6 +1687,12 @@ public class ActiveModeWarden {
 
         private void onStoppedOrStartFailure(ConcreteClientModeManager clientModeManager) {
             mClientModeManagers.remove(clientModeManager);
+            if (ROLE_CLIENT_SECONDARY_LONG_LIVED.equals(clientModeManager.getPreviousRole())
+                    || ROLE_CLIENT_LOCAL_ONLY.equals(clientModeManager.getPreviousRole())) {
+                synchronized (mServiceApiLock) {
+                    mRequestWs.remove(clientModeManager.getRequestorWs());
+                }
+            }
             mGraveyard.inter(clientModeManager);
             updateClientScanMode();
             updateBatteryStats();
@@ -2474,8 +2507,7 @@ public class ActiveModeWarden {
 
                 // fallback decision
                 if (requestInfo.clientRole == ROLE_CLIENT_LOCAL_ONLY
-                        && mContext.getResources().getBoolean(
-                        R.bool.config_wifiMultiStaLocalOnlyConcurrencyEnabled)
+                        && isStaStaConcurrencySupportedForLocalOnlyConnections()
                         && !mWifiPermissionsUtil.isTargetSdkLessThan(
                         requestInfo.requestorWs.getPackageName(0), Build.VERSION_CODES.S,
                         requestInfo.requestorWs.getUid(0))) {
@@ -2783,7 +2815,7 @@ public class ActiveModeWarden {
      */
     public @NonNull WifiInfo getConnectionInfo() {
         synchronized (mServiceApiLock) {
-            return mCurrentConnectionInfo;
+            return new WifiInfo(mCurrentConnectionInfo);
         }
     }
 
