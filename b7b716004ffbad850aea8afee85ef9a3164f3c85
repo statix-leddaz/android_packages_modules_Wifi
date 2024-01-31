@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "1c14e6fe_ad635ab0",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 4928,
+      "author": {
+        "id": 1888886
+      },
+      "writtenOn": "2024-01-31T11:11:51Z",
+      "side": 1,
+      "message": "Should it be `mInterfaceAddress`?",
+      "revId": "b7b716004ffbad850aea8afee85ef9a3164f3c85",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
