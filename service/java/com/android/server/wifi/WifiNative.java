@@ -506,6 +506,7 @@ public class WifiNative {
         @Override
         public void onScanFailed() {
             Log.d(TAG, "Pno Scan failed event");
+            mWifiMonitor.broadcastPnoScanFailedEvent(mIfaceName);
             WifiStatsLog.write(WifiStatsLog.PNO_SCAN_STOPPED,
                     WifiStatsLog.PNO_SCAN_STOPPED__STOP_REASON__SCAN_FAILED,
                     0, false, false, false, false, // default values

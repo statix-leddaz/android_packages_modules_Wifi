@@ -114,6 +114,8 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
                 WifiMonitor.PNO_SCAN_RESULTS_EVENT, mEventHandler);
         wifiMonitor.registerHandler(getIfaceName(),
                 WifiMonitor.SCAN_RESULTS_EVENT, mEventHandler);
+        wifiMonitor.registerHandler(getIfaceName(),
+                WifiMonitor.PNO_SCAN_FAILED_EVENT, mEventHandler);
     }
 
     @Override
@@ -298,6 +300,10 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
                 Log.w(TAG, "Scan failed: error code: " + msg.arg1);
                 cancelScanTimeout();
                 reportScanFailure(msg.arg1);
+                break;
+            case WifiMonitor.PNO_SCAN_FAILED_EVENT:
+                Log.w(TAG, "PNO scan failed");
+                reportPnoScanFailure();
                 break;
             case WifiMonitor.PNO_SCAN_RESULTS_EVENT:
                 pollLatestScanDataForPno();

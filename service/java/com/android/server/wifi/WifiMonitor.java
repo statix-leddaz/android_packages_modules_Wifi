@@ -85,7 +85,8 @@ public class WifiMonitor {
     public static final int SCAN_FAILED_EVENT                    = BASE + 17;
     /* Pno scan results are available */
     public static final int PNO_SCAN_RESULTS_EVENT               = BASE + 18;
-
+    /* Pno scan failed */
+    public static final int PNO_SCAN_FAILED_EVENT                = BASE + 19;
 
     /* Indicates assoc reject event */
     public static final int ASSOCIATION_REJECTION_EVENT          = BASE + 43;
@@ -525,6 +526,14 @@ public class WifiMonitor {
      */
     public void broadcastScanFailedEvent(String iface, int errorCode) {
         sendMessage(iface, SCAN_FAILED_EVENT, errorCode);
+    }
+
+    /**
+     * Broadcast pno scan failed event to all the handlers registered for this event.
+     * @param iface Name of iface on which this occurred.
+     */
+    public void broadcastPnoScanFailedEvent(String iface) {
+        sendMessage(iface, PNO_SCAN_FAILED_EVENT);
     }
 
     /**
