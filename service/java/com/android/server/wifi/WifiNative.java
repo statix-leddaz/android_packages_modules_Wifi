@@ -1756,6 +1756,13 @@ public class WifiNative {
                 return copyList;
             }
         }
+        if (mMockWifiModem != null
+                && mMockWifiModem.isMethodConfigured(
+                MockWifiServiceUtil.MOCK_NL80211_SERVICE, "getScanResults")) {
+            Log.i(TAG, "getScanResults was called from mock wificond");
+            return convertNativeScanResults(ifaceName, mMockWifiModem.getWifiNl80211Manager()
+                   .getScanResults(ifaceName, WifiNl80211Manager.SCAN_TYPE_SINGLE_SCAN));
+        }
         return convertNativeScanResults(ifaceName, mWifiCondManager.getScanResults(
                 ifaceName, WifiNl80211Manager.SCAN_TYPE_SINGLE_SCAN));
     }
@@ -1807,6 +1814,13 @@ public class WifiNative {
      * Returns an empty ArrayList on failure.
      */
     public ArrayList<ScanDetail> getPnoScanResults(@NonNull String ifaceName) {
+        if (mMockWifiModem != null
+                && mMockWifiModem.isMethodConfigured(
+                    MockWifiServiceUtil.MOCK_NL80211_SERVICE, "getPnoScanResults")) {
+            Log.i(TAG, "getPnoScanResults was called from mock wificond");
+            return convertNativeScanResults(ifaceName, mMockWifiModem.getWifiNl80211Manager()
+                   .getScanResults(ifaceName, WifiNl80211Manager.SCAN_TYPE_PNO_SCAN));
+        }
         return convertNativeScanResults(ifaceName, mWifiCondManager.getScanResults(ifaceName,
                 WifiNl80211Manager.SCAN_TYPE_PNO_SCAN));
     }
@@ -1916,6 +1930,23 @@ public class WifiNative {
      * @return true on success.
      */
     public boolean startPnoScan(@NonNull String ifaceName, PnoSettings pnoSettings) {
+        if (mMockWifiModem != null
+                && mMockWifiModem.isMethodConfigured(
+                MockWifiServiceUtil.MOCK_NL80211_SERVICE, "startPnoScan")) {
+            Log.i(TAG, "startPnoScan was called from mock wificond");
+            return mMockWifiModem.getWifiNl80211Manager()
+                    .startPnoScan(ifaceName, pnoSettings.toNativePnoSettings(),
+                    Runnable::run,
+                        new WifiNl80211Manager.PnoScanRequestCallback() {
+                            @Override
+                            public void onPnoRequestSucceeded() {
+                            }
+
+                            @Override
+                            public void onPnoRequestFailed() {
+                            }
+                        });
+        }
         return mWifiCondManager.startPnoScan(ifaceName, pnoSettings.toNativePnoSettings(),
                 Runnable::run,
                 new WifiNl80211Manager.PnoScanRequestCallback() {
@@ -3709,9 +3740,9 @@ public class WifiNative {
      */
     @Nullable
     public WifiSignalPollResults signalPoll(@NonNull String ifaceName) {
-        if (mMockWifiModem != null && mMockWifiModem.getWifiNl80211Manager() != null
-                && mMockWifiModem.getMockWifiNl80211Manager() != null
-                && mMockWifiModem.getMockWifiNl80211Manager().isMethodConfigured("signalPoll")) {
+        if (mMockWifiModem != null
+                && mMockWifiModem.isMethodConfigured(
+                    MockWifiServiceUtil.MOCK_NL80211_SERVICE, "signalPoll")) {
             Log.i(TAG, "signalPoll was called from mock wificond");
             WifiNl80211Manager.SignalPollResult result =
                     mMockWifiModem.getWifiNl80211Manager().signalPoll(ifaceName);
@@ -4824,10 +4855,13 @@ public class WifiNative {
     public void setMockWifiService(String serviceName) {
         Log.d(TAG, "set MockWifiModemService to " + serviceName);
         if (TextUtils.isEmpty(serviceName)) {
+            mMockWifiModem.unbindMockModemService();
             mMockWifiModem = null;
+            mWifiInjector.setMockWifiServiceUtil(null);
             return;
         }
         mMockWifiModem = new MockWifiServiceUtil(mContext, serviceName, mWifiMonitor);
+        mWifiInjector.setMockWifiServiceUtil(mMockWifiModem);
         if (mMockWifiModem == null) {
             Log.e(TAG, "MockWifiServiceUtil creation failed.");
             return;

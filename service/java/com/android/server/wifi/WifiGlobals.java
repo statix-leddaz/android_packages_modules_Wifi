@@ -26,9 +26,12 @@ import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
 
 import javax.annotation.concurrent.ThreadSafe;
 
@@ -36,7 +39,6 @@ import javax.annotation.concurrent.ThreadSafe;
 /** Global wifi service in-memory state that is not persisted. */
 @ThreadSafe
 public class WifiGlobals {
-
     private final Context mContext;
 
     private final AtomicInteger mPollRssiIntervalMillis = new AtomicInteger(-1);
@@ -64,6 +66,7 @@ public class WifiGlobals {
     private final boolean mAdjustPollRssiIntervalEnabled;
     private final boolean mWifiInterfaceAddedSelfRecoveryEnabled;
     private final int mNetworkNotFoundEventThreshold;
+    private boolean mIsBackgroundScanSupported;
     private final boolean mIsWepDeprecated;
     private final boolean mIsWpaPersonalDeprecated;
 
@@ -72,6 +75,7 @@ public class WifiGlobals {
     private boolean mIsUsingExternalScorer = false;
     private boolean mDisableUnwantedNetworkOnLowRssi = false;
     private Set<String> mMacRandomizationUnsupportedSsidPrefixes = new ArraySet<>();
+    private Map<String, BiFunction<String, Boolean, Boolean>> mOverrideMethods = new HashMap<>();
 
     public WifiGlobals(Context context) {
         mContext = context;
@@ -120,6 +124,8 @@ public class WifiGlobals {
                 R.bool.config_wifiDisableUnwantedNetworkOnLowRssi);
         mNetworkNotFoundEventThreshold = mContext.getResources().getInteger(
                 R.integer.config_wifiNetworkNotFoundEventThreshold);
+        mIsBackgroundScanSupported = mContext.getResources()
+                .getBoolean(R.bool.config_wifi_background_scan_support);
         mIsWepDeprecated = mContext.getResources()
                 .getBoolean(R.bool.config_wifiWepDeprecated);
         mIsWpaPersonalDeprecated = mContext.getResources()
@@ -134,6 +140,23 @@ public class WifiGlobals {
                 mMacRandomizationUnsupportedSsidPrefixes.add(cleanedSsid);
             }
         }
+        mOverrideMethods.put("config_wifi_background_scan_support",
+                new BiFunction<String, Boolean, Boolean>() {
+                @Override
+                public Boolean apply(String value , Boolean isEnabled) {
+                    // reset to default
+                    if (!isEnabled) {
+                        mIsBackgroundScanSupported = mContext.getResources()
+                        .getBoolean(R.bool.config_wifi_background_scan_support);
+                        return true;
+                    }
+                    if ("true".equals(value) || "false".equals(value)) {
+                        mIsBackgroundScanSupported = Boolean.parseBoolean(value);
+                        return true;
+                    }
+                    return false;
+                }
+            });
     }
 
     public Set<String> getMacRandomizationUnsupportedSsidPrefixes() {
@@ -380,6 +403,13 @@ public class WifiGlobals {
     }
 
     /**
+     * Get whether background scan is supported.
+     */
+    public boolean isBackgroundScanSupported() {
+        return mIsBackgroundScanSupported;
+    };
+
+    /**
      * Get whether to temporarily disable a unwanted network that has low RSSI.
      */
     public boolean disableUnwantedNetworkOnLowRssi() {
@@ -391,6 +421,17 @@ public class WifiGlobals {
      */
     public int getNetworkNotFoundEventThreshold() {
         return mNetworkNotFoundEventThreshold;
+    }
+
+    /**
+     * Force Overlay Config Value for background scan.
+     */
+    public boolean forceOverlayConfigValue(String configString, String value,
+            boolean isEnabled) {
+        if (!mOverrideMethods.containsKey(configString)) {
+            return false;
+        }
+        return mOverrideMethods.get(configString).apply(value, isEnabled);
     }
 
     /** Dump method for debugging */
@@ -421,6 +462,7 @@ public class WifiGlobals {
                 + mWifiInterfaceAddedSelfRecoveryEnabled);
         pw.println("mDisableUnwantedNetworkOnLowRssi=" + mDisableUnwantedNetworkOnLowRssi);
         pw.println("mNetworkNotFoundEventThreshold=" + mNetworkNotFoundEventThreshold);
+        pw.println("mIsBackgroundScanSupported=" + mIsBackgroundScanSupported);
         pw.println("mIsWepDeprecated=" + mIsWepDeprecated);
         pw.println("mIsWpaPersonalDeprecated=" + mIsWpaPersonalDeprecated);
     }
