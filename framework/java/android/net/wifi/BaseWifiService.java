@@ -21,6 +21,7 @@ import android.annotation.Nullable;
 import android.net.DhcpInfo;
 import android.net.DhcpOption;
 import android.net.Network;
+import android.net.TetheringManager;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.hotspot2.PasspointConfiguration;
@@ -449,7 +450,8 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
-    public boolean startTetheredHotspot(SoftApConfiguration softApConfig, String packageName) {
+    public boolean startTetheredHotspot(SoftApConfiguration softApConfig,
+            TetheringManager.TetheringRequest request, String packageName) {
         throw new UnsupportedOperationException();
     }
 
