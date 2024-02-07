@@ -89,6 +89,7 @@ import android.net.MacAddress;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkStack;
+import android.net.TetheringManager;
 import android.net.Uri;
 import android.net.ip.IpClientUtil;
 import android.net.wifi.BaseWifiService;
@@ -1707,6 +1708,7 @@ public class WifiServiceImpl extends BaseWifiService {
      */
     @Override
     public boolean startTetheredHotspot(@Nullable SoftApConfiguration softApConfig,
+            @Nullable TetheringManager.TetheringRequest request,
             @NonNull String packageName) {
         // NETWORK_STACK is a signature only permission.
         enforceNetworkStackPermission();
