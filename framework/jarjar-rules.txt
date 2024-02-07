@@ -23,6 +23,7 @@ rule android.net.RouteInfoParcel* com.android.wifi.x.@0
 rule android.net.ScanResultInfoParcelable* com.android.wifi.x.@0
 rule android.net.TcpKeepalivePacketDataParcelable* com.android.wifi.x.@0
 rule android.net.TetherConfigParcel* com.android.wifi.x.@0
+rule android.net.TetheringManager* com.android.wifi.x.@0
 rule android.net.TetherOffloadRuleParcel* com.android.wifi.x.@0
 rule android.net.TetherStatsParcel* com.android.wifi.x.@0
 rule android.net.UidRangeParcel* com.android.wifi.x.@0

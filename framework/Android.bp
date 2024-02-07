@@ -114,6 +114,7 @@ java_defaults {
         "androidx.annotation_annotation",
         "unsupportedappusage", // for android.compat.annotation.UnsupportedAppUsage
         "app-compat-annotations",
+        "sdk_module-lib_current_framework-connectivity",
     ],
     aidl: {
         generate_get_transaction_name: true,
@@ -188,6 +189,11 @@ java_sdk_library {
         "//packages/modules/Wifi/service:__subpackages__",
         "//packages/modules/Wifi/WifiDialog:__subpackages__",
     ] + test_access_hidden_api_whitelist,
+
+    stub_only_libs: [
+        "framework-connectivity.stubs.module_lib",
+        "sdk_module-lib_current_framework-connectivity",
+    ],
 
     apex_available: [
         "com.android.wifi",
