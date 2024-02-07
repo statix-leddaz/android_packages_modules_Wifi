@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "72f8fe81_1f7e395e",
+        "filename": "framework/api/system-current.txt",
+        "patchSetId": 4
+      },
+      "lineNbr": 691,
+      "author": {
+        "id": 1039338
+      },
+      "writtenOn": "2024-02-07T09:18:31Z",
+      "side": 1,
+      "message": "This is the problem. I don\u0027t know why it is happening but this should be `android.net.TetheringManager.TetheringRequest`. Did you add or modify this yourself or just run `m update-api`?",
+      "range": {
+        "startLine": 691,
+        "startChar": 187,
+        "endLine": 691,
+        "endChar": 220
+      },
+      "revId": "e221663edd849e6c4cb348ede4128d451030b99d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
