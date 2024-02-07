@@ -46,6 +46,30 @@
       },
       "revId": "e221663edd849e6c4cb348ede4128d451030b99d",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "60a20b47_82c6f370",
+        "filename": "framework/api/system-current.txt",
+        "patchSetId": 4
+      },
+      "lineNbr": 691,
+      "author": {
+        "id": 1198173
+      },
+      "writtenOn": "2024-02-07T09:24:12Z",
+      "side": 1,
+      "message": "I\u0027ll see if changing it to `android.net.TetheringManager.TetheringRequest` fixes this",
+      "parentUuid": "ba24154e_64aa1d18",
+      "range": {
+        "startLine": 691,
+        "startChar": 187,
+        "endLine": 691,
+        "endChar": 220
+      },
+      "revId": "e221663edd849e6c4cb348ede4128d451030b99d",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
