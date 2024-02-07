@@ -389,7 +389,8 @@ public class SoftApManager implements ActiveModeManager {
         }
         // Store mode configuration before update the configuration.
         mOriginalModeConfiguration = new SoftApModeConfiguration(apConfig.getTargetMode(),
-                mCurrentSoftApConfiguration, mCurrentSoftApCapability, mCountryCode);
+                mCurrentSoftApConfiguration, mCurrentSoftApCapability, mCountryCode,
+                apConfig.getTetheringRequest());
         if (mCurrentSoftApConfiguration != null) {
             mIsUnsetBssid = mCurrentSoftApConfiguration.getBssid() == null;
             if (mCurrentSoftApCapability.areFeaturesSupported(
@@ -539,7 +540,8 @@ public class SoftApManager implements ActiveModeManager {
      */
     public SoftApModeConfiguration getSoftApModeConfiguration() {
         return new SoftApModeConfiguration(mOriginalModeConfiguration.getTargetMode(),
-                mCurrentSoftApConfiguration, mCurrentSoftApCapability, mCountryCode);
+                mCurrentSoftApConfiguration, mCurrentSoftApCapability, mCountryCode,
+                mOriginalModeConfiguration.getTetheringRequest());
     }
 
     /**
@@ -643,6 +645,8 @@ public class SoftApManager implements ActiveModeManager {
 
         intent.putExtra(WifiManager.EXTRA_WIFI_AP_INTERFACE_NAME, mApInterfaceName);
         intent.putExtra(WifiManager.EXTRA_WIFI_AP_MODE, mOriginalModeConfiguration.getTargetMode());
+        intent.putExtra(WifiManager.EXTRA_WIFI_AP_TETHERING_REQUEST,
+                mOriginalModeConfiguration.getTetheringRequest());
         if (SdkLevel.isAtLeastSv2()) {
             mContext.sendBroadcastAsUser(intent, UserHandle.ALL,
                     android.Manifest.permission.ACCESS_WIFI_STATE);

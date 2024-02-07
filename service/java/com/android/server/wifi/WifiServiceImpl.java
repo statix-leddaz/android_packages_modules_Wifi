@@ -89,6 +89,7 @@ import android.net.MacAddress;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkStack;
+import android.net.TetheringManager;
 import android.net.Uri;
 import android.net.ip.IpClientUtil;
 import android.net.wifi.BaseWifiService;
@@ -1690,7 +1691,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (!startSoftApInternal(new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, softApConfig,
                 mTetheredSoftApTracker.getSoftApCapability(),
-                mCountryCode.getCountryCode()), requestorWs)) {
+                mCountryCode.getCountryCode(), null), requestorWs)) {
             mTetheredSoftApTracker.setFailedWhileEnabling();
             return false;
         }
@@ -1707,6 +1708,7 @@ public class WifiServiceImpl extends BaseWifiService {
      */
     @Override
     public boolean startTetheredHotspot(@Nullable SoftApConfiguration softApConfig,
+            @Nullable TetheringManager.TetheringRequest request,
             @NonNull String packageName) {
         // NETWORK_STACK is a signature only permission.
         enforceNetworkStackPermission();
@@ -1736,7 +1738,7 @@ public class WifiServiceImpl extends BaseWifiService {
         if (!startSoftApInternal(new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, softApConfig,
                 mTetheredSoftApTracker.getSoftApCapability(),
-                mCountryCode.getCountryCode()), requestorWs)) {
+                mCountryCode.getCountryCode(), request), requestorWs)) {
             mTetheredSoftApTracker.setFailedWhileEnabling();
             return false;
         }
@@ -2341,7 +2343,7 @@ public class WifiServiceImpl extends BaseWifiService {
 
             mActiveConfig = new SoftApModeConfiguration(
                     WifiManager.IFACE_IP_MODE_LOCAL_ONLY,
-                    softApConfig, lohsCapability, mCountryCode.getCountryCode());
+                    softApConfig, lohsCapability, mCountryCode.getCountryCode(), null);
             mIsExclusive = (request.getCustomConfig() != null);
             // Report the error if we got failure in startSoftApInternal
             if (!startSoftApInternal(mActiveConfig, request.getWorkSource())) {
