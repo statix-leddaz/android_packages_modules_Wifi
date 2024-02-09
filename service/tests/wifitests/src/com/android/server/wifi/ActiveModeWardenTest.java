@@ -3048,8 +3048,9 @@ public class ActiveModeWardenTest extends WifiBaseTest {
     }
 
     private void requestRemoveAdditionalClientModeManagerWhenNotAllowed(
-            ClientConnectivityRole role, boolean clientIsExpected) throws Exception {
-        enterClientModeActiveState();
+            ClientConnectivityRole role, boolean clientIsExpected,
+            long featureSet) throws Exception {
+        enterClientModeActiveState(false, featureSet);
 
         // Connected to ssid1/bssid1
         WifiConfiguration config1 = new WifiConfiguration();
@@ -3264,7 +3265,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         when(mWifiNative.isItPossibleToCreateStaIface(any())).thenReturn(false);
         assertFalse(mActiveModeWarden.canRequestMoreClientModeManagersInRole(
                 TEST_WORKSOURCE, ROLE_CLIENT_LOCAL_ONLY, false));
-        requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_LOCAL_ONLY, true);
+        requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_LOCAL_ONLY, true,
+                TEST_FEATURE_SET);
     }
 
     @Test
@@ -3275,7 +3277,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                 .thenReturn(false);
         assertFalse(mActiveModeWarden.canRequestMoreClientModeManagersInRole(
                 TEST_WORKSOURCE, ROLE_CLIENT_LOCAL_ONLY, false));
-        requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_LOCAL_ONLY, true);
+        requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_LOCAL_ONLY, true,
+                TEST_FEATURE_SET);
     }
 
     @Test
@@ -3345,7 +3348,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         WorkSource workSource = new WorkSource(TEST_WORKSOURCE);
         workSource.add(SETTINGS_WORKSOURCE);
         verify(mWifiNative).isItPossibleToCreateStaIface(eq(workSource));
-        requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_LOCAL_ONLY, true);
+        requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_LOCAL_ONLY,
+                true,  TEST_FEATURE_SET);
     }
 
     @Test
@@ -3369,6 +3373,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
             throws Exception {
         // Ensure that we can't create more client ifaces - so will attempt to fallback (which we
         // should be able to do for <S apps)
+        when(mWifiNative.isStaStaConcurrencySupported()).thenReturn(true);
         when(mWifiNative.isItPossibleToCreateStaIface(any())).thenReturn(false);
         when(mResources.getBoolean(R.bool.config_wifiMultiStaLocalOnlyConcurrencyEnabled))
                 .thenReturn(true);
@@ -3378,14 +3383,12 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                 .thenReturn(true);
         assertFalse(mActiveModeWarden.canRequestMoreClientModeManagersInRole(
                 TEST_WORKSOURCE, ROLE_CLIENT_LOCAL_ONLY, false));
-        requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_LOCAL_ONLY, true);
+        requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_LOCAL_ONLY,
+                true,  TEST_FEATURE_SET | WifiManager.WIFI_FEATURE_ADDITIONAL_STA_LOCAL_ONLY);
     }
 
-    @Test
-    public void requestRemoveLoClientModeManagerWhenNotSystemAppAndTargetSdkEqualToSAndCantCreate()
-            throws Exception {
-        // Ensure that we can't create more client ifaces - so will attempt to fallback (which we
-        // can't for >=S apps)
+    private void testLoFallbackAboveAndroidS(boolean isStaStaSupported) throws Exception {
+        when(mWifiNative.isStaStaConcurrencySupported()).thenReturn(isStaStaSupported);
         when(mWifiNative.isItPossibleToCreateStaIface(any())).thenReturn(false);
         when(mResources.getBoolean(R.bool.config_wifiMultiStaLocalOnlyConcurrencyEnabled))
                 .thenReturn(true);
@@ -3395,7 +3398,30 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                 .thenReturn(false);
         assertFalse(mActiveModeWarden.canRequestMoreClientModeManagersInRole(
                 TEST_WORKSOURCE, ROLE_CLIENT_LOCAL_ONLY, false));
-        requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_LOCAL_ONLY, false);
+        long expectedFeatureSet = TEST_FEATURE_SET;
+        if (isStaStaSupported) {
+            expectedFeatureSet |= WifiManager.WIFI_FEATURE_ADDITIONAL_STA_LOCAL_ONLY;
+        }
+
+        requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_LOCAL_ONLY,
+                !isStaStaSupported,
+                expectedFeatureSet);
+    }
+
+    @Test
+    public void requestRemoveLoClientModeManagerWhenNotSystemAppAndTargetSdkEqualToSAndCantCreate()
+            throws Exception {
+        // Ensure that we can't create more client ifaces - so will attempt to fallback (which we
+        // can't for >=S apps)
+        testLoFallbackAboveAndroidS(true);
+    }
+
+    @Test
+    public void requestRemoveLoClientModeManagerWhenNotSystemAppAndTargetSdkEqualToSAndCantCreate2()
+            throws Exception {
+        // Ensure that we can't create more client ifaces and STA+STA is not supported, we
+        // fallback even for >=S apps
+        testLoFallbackAboveAndroidS(false);
     }
 
     @Test
@@ -3418,7 +3444,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         assertFalse(mActiveModeWarden.canRequestMoreClientModeManagersInRole(
                 TEST_WORKSOURCE, ROLE_CLIENT_SECONDARY_LONG_LIVED, false));
         requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_SECONDARY_LONG_LIVED,
-                true);
+                true,  TEST_FEATURE_SET);
     }
 
     @Test
@@ -3431,7 +3457,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         assertFalse(mActiveModeWarden.canRequestMoreClientModeManagersInRole(
                 TEST_WORKSOURCE, ROLE_CLIENT_SECONDARY_LONG_LIVED, false));
         requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_SECONDARY_LONG_LIVED,
-                true);
+                true,  TEST_FEATURE_SET);
     }
 
     @Test
@@ -3507,7 +3533,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         assertFalse(mActiveModeWarden.canRequestMoreClientModeManagersInRole(
                 TEST_WORKSOURCE, ROLE_CLIENT_SECONDARY_TRANSIENT, false));
         requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_SECONDARY_TRANSIENT,
-                true);
+                true,  TEST_FEATURE_SET);
     }
 
     @Test
@@ -3521,7 +3547,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         assertFalse(mActiveModeWarden.canRequestMoreClientModeManagersInRole(
                 TEST_WORKSOURCE, ROLE_CLIENT_SECONDARY_TRANSIENT, false));
         requestRemoveAdditionalClientModeManagerWhenNotAllowed(ROLE_CLIENT_SECONDARY_TRANSIENT,
-                true);
+                true,  TEST_FEATURE_SET);
     }
 
     @Test
