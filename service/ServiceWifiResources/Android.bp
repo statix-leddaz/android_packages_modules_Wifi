@@ -24,6 +24,10 @@ android_app {
     name: "ServiceWifiResources",
     package_name: "com.android.wifi.resources",
     defaults: ["wifi-service-common"],
+
+    // Prevent ServiceWifiResources (included in APEX) from using product-specific resources
+    aaptflags: ["--product default"],
+
     resource_dirs: [
         "res",
     ],

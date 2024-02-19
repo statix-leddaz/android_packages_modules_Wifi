@@ -369,6 +369,8 @@
           <item type="string" name="wifi_p2p_enter_pin_message" />
           <item type="string" name="wifi_p2p_show_pin_message" />
           <item type="string" name="wifi_p2p_frequency_conflict_message" />
+          <item type="string" name="wifi_p2p_frequency_conflict_message_tablet" />
+          <item type="string" name="wifi_p2p_frequency_conflict_message_tv" />
           <item type="string" name="dlg_ok" />
           <item type="string" name="wifi_cannot_connect_with_randomized_mac_title" />
           <item type="string" name="wifi_cannot_connect_with_randomized_mac_message" />
