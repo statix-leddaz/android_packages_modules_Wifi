@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "5cd0a0e7_c3d2003f",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 4132,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-02-19T19:49:52Z",
+      "side": 1,
+      "message": "Why is this necessary? Each device can have its own set of overlays. Is the purpose to have category-wide default string? \n\nIf so - is there a generic solution for this (as opposed to creating duplicate resources)? E.g.\n- Have category-wide overloads (the same way we have language-wide overloads)\n- Or allow string replacement which are automatically replaced by a platform name",
+      "range": {
+        "startLine": 4127,
+        "startChar": 15,
+        "endLine": 4132,
+        "endChar": 17
+      },
+      "revId": "4a4324a1331c04598715c4f6ba2acaa5e3f7b458",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
