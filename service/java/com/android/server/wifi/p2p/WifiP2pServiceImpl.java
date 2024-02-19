@@ -91,6 +91,7 @@ import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.RemoteException;
 import android.os.SystemClock;
+import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.WorkSource;
@@ -4118,11 +4119,25 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 notifyFrequencyConflict();
             }
 
+            private String getWifiP2PFrequencyConflictMessage() {
+                List<String> characteristics = Arrays.asList(
+                        SystemProperties.get("ro.build.characteristics").split(","));
+
+                int id = R.string.wifi_p2p_frequency_conflict_message;
+                if (characteristics.contains("tablet")) {
+                    id = R.string.wifi_p2p_frequency_conflict_message_tablet;
+                } else if (characteristics.contains("tv")) {
+                    id = R.string.wifi_p2p_frequency_conflict_message_tv;
+                }
+
+                return mContext.getResources().getString(id, getDeviceName(
+                        mSavedPeerConfig.deviceAddress));
+            }
+
             private void showFrequencyConflictDialogPreT() {
                 Resources r = mContext.getResources();
                 AlertDialog dialog = mFrameworkFacade.makeAlertDialogBuilder(mContext)
-                        .setMessage(r.getString(R.string.wifi_p2p_frequency_conflict_message,
-                                getDeviceName(mSavedPeerConfig.deviceAddress)))
+                        .setMessage(getWifiP2PFrequencyConflictMessage())
                         .setPositiveButton(r.getString(R.string.dlg_ok), (dialog1, which) ->
                                 sendMessage(DROP_WIFI_USER_ACCEPT))
                         .setNegativeButton(r.getString(R.string.decline), (dialog2, which) ->
@@ -4143,8 +4158,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 WifiDialogManager.DialogHandle dialog = mWifiInjector.getWifiDialogManager()
                         .createSimpleDialog(
                                 null /* title */,
-                                r.getString(R.string.wifi_p2p_frequency_conflict_message,
-                                        getDeviceName(mSavedPeerConfig.deviceAddress)),
+                                getWifiP2PFrequencyConflictMessage(),
                                 r.getString(R.string.dlg_ok),
                                 r.getString(R.string.decline),
                                 null /* neutralButtonText */,
