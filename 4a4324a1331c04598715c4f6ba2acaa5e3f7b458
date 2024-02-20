@@ -46,6 +46,30 @@
       },
       "revId": "4a4324a1331c04598715c4f6ba2acaa5e3f7b458",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "3ccf9e23_826273ae",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 4132,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-02-20T05:33:59Z",
+      "side": 1,
+      "message": "Ack.\n\nConsidering it is a single case - I\u0027d rather consider changing the string to be more neutral e.g. \"your device\".\n\nGive us a few days to discuss.",
+      "parentUuid": "fe9c68df_ddd532a9",
+      "range": {
+        "startLine": 4127,
+        "startChar": 15,
+        "endLine": 4132,
+        "endChar": 17
+      },
+      "revId": "4a4324a1331c04598715c4f6ba2acaa5e3f7b458",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
