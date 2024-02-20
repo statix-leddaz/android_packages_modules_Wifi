@@ -22,6 +22,30 @@
       },
       "revId": "4a4324a1331c04598715c4f6ba2acaa5e3f7b458",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "fe9c68df_ddd532a9",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 4132,
+      "author": {
+        "id": 1291338
+      },
+      "writtenOn": "2024-02-20T01:47:18Z",
+      "side": 1,
+      "message": "\u003e Each device can have its own set of overlays.\n\nTrue, but this can be problematic if the app is inside APEX and/or the app is installed to /system (both for this case), as I said on the commit message.\n\n* Device-specific resources like `product\u003d\"tablet\"` overrides default resources. Compiled APK will only contain device-specific resources as a result.\n* AFAIK Mainline modules are built in a single target. APEXes built on the target won\u0027t have device-specific resources, just using default (phone). Installing such APEXes on devices other than phone will break.\n* Also it causes system.img divergence among targets, which is against our ongoing effort to make system.img generic.\n\nWe already merged a similar change on Nfc (ag/26255218) and SettingsLib (ag/26012397).\n\n\u003e Have category-wide overloads (the same way we have language-wide overloads)\n\nThis approach was considered but abandoned (ag/24379246).\n\n\u003e Or allow string replacement which are automatically replaced by a platform name\n\nWe can do this by autogenerating RRO, if the app is guaranteed to be installed (e.g. aosp/2950225, aosp/2819317). It won\u0027t work for apps on APEX.",
+      "parentUuid": "5cd0a0e7_c3d2003f",
+      "range": {
+        "startLine": 4127,
+        "startChar": 15,
+        "endLine": 4132,
+        "endChar": 17
+      },
+      "revId": "4a4324a1331c04598715c4f6ba2acaa5e3f7b458",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
