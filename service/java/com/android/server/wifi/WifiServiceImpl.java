@@ -554,10 +554,7 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     /**
-     * Check if we are ready to start wifi.
-     *
-     * First check if we will be restarting system services to decrypt the device. If the device is
-     * not encrypted, check if Wi-Fi needs to be enabled and start if needed
+     * Check if Wi-Fi needs to be enabled and start it if needed.
      *
      * This function is used only at boot time.
      */
@@ -1601,7 +1598,7 @@ public class WifiServiceImpl extends BaseWifiService {
         int uid = Binder.getCallingUid();
         boolean privileged = isSettingsOrSuw(Binder.getCallingPid(), uid);
         return WifiApConfigStore.validateApWifiConfiguration(
-                config, privileged, mContext);
+                config, privileged, mContext, mWifiNative);
     }
 
     /**
@@ -1760,7 +1757,7 @@ public class WifiServiceImpl extends BaseWifiService {
         SoftApConfiguration softApConfig = apConfig.getSoftApConfiguration();
         if (softApConfig != null
                 && (!WifiApConfigStore.validateApWifiConfiguration(
-                    softApConfig, privileged, mContext))) {
+                    softApConfig, privileged, mContext, mWifiNative))) {
             Log.e(TAG, "Invalid SoftApConfiguration");
             return false;
         }
@@ -2872,7 +2869,7 @@ public class WifiServiceImpl extends BaseWifiService {
         SoftApConfiguration softApConfig = ApConfigUtil.fromWifiConfiguration(wifiConfig);
         if (softApConfig == null) return false;
         if (!WifiApConfigStore.validateApWifiConfiguration(
-                softApConfig, false, mContext)) {
+                softApConfig, false, mContext, mWifiNative)) {
             Log.e(TAG, "Invalid WifiConfiguration");
             return false;
         }
@@ -2900,7 +2897,8 @@ public class WifiServiceImpl extends BaseWifiService {
         }
         mLog.info("setSoftApConfiguration uid=%").c(uid).flush();
         if (softApConfig == null) return false;
-        if (WifiApConfigStore.validateApWifiConfiguration(softApConfig, privileged, mContext)) {
+        if (WifiApConfigStore.validateApWifiConfiguration(softApConfig, privileged, mContext,
+                mWifiNative)) {
             mWifiApConfigStore.setApConfiguration(softApConfig);
             // Send the message for AP config update after the save is done.
             mActiveModeWarden.updateSoftApConfiguration(softApConfig);
