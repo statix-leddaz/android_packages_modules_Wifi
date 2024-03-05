@@ -34,6 +34,24 @@
       "parentUuid": "fc88eb33_ff80ae80",
       "revId": "a1e9533c3aa57b1fbb8646b6ebfd971adc30f8f4",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "999a73a4_f810ad82",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 5115,
+      "author": {
+        "id": 1955380
+      },
+      "writtenOn": "2024-03-05T17:29:16Z",
+      "side": 1,
+      "message": "Copying the API document below. It can be null only when caller has insufficient permission. But here we are calling this API inside the framework. Please let me know, in your test, the link MAC address coming as null at this location.\n\n```\n    /**\n     * Returns the AP MAC address of this link.\n     *\n     * @return AP MAC address for this link or null when the caller has insufficient\n     * permissions to access the access point MAC Address.\n     */\n    public @Nullable MacAddress getApMacAddress()\n```",
+      "parentUuid": "75ecfc95_3429fd91",
+      "revId": "a1e9533c3aa57b1fbb8646b6ebfd971adc30f8f4",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
