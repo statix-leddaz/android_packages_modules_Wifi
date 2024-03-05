@@ -16,6 +16,24 @@
       "message": "Change looks good. But do we know in what condition link MAC address can be NULL?",
       "revId": "a1e9533c3aa57b1fbb8646b6ebfd971adc30f8f4",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "75ecfc95_3429fd91",
+        "filename": "service/java/com/android/server/wifi/ClientModeImpl.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 5115,
+      "author": {
+        "id": 3183690
+      },
+      "writtenOn": "2024-03-05T13:02:06Z",
+      "side": 1,
+      "message": "200      public @Nullable MacAddress getApMacAddress() {\n201          return mApMacAddress;\n202      }\nthis method can return null ,so this code exist the NPE,this change can protect this suition.",
+      "parentUuid": "fc88eb33_ff80ae80",
+      "revId": "a1e9533c3aa57b1fbb8646b6ebfd971adc30f8f4",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
