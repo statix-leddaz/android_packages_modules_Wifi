@@ -134,7 +134,11 @@ java_library {
     libs: [
         "framework-annotations-lib",
         "framework-connectivity.stubs.module_lib",
+<<<<<<< HEAD
         "framework-location.stubs.module_lib",
+=======
+        "framework-tethering.stubs.module_lib",
+>>>>>>> 8073603c48 (Add V Wifi API signatures for Tethering)
     ],
     installable: false,
     visibility: [
@@ -154,31 +158,32 @@ java_sdk_library {
     ],
 
     impl_only_libs: [
-        "framework-location.stubs.module_lib",
         "framework-connectivity.stubs.module_lib",
+        "framework-location.stubs.module_lib",
+        "framework-tethering.stubs.module_lib",
     ],
 
     public: {
         libs: [
-            "framework-location.stubs",
             "framework-connectivity.stubs",
+            "framework-location.stubs",
+            "framework-tethering.stubs",
         ],
     },
     system: {
         libs: [
-            "framework-location.stubs.system",
             "framework-connectivity.stubs.system",
+            "framework-location.stubs.system",
+            "framework-tethering.stubs.system",
         ],
     },
     module_lib: {
         libs: [
-            "framework-location.stubs.module_lib",
             "framework-connectivity.stubs.module_lib",
+            "framework-location.stubs.module_lib",
+            "framework-tethering.stubs.module_lib",
         ],
     },
-    api_srcs: [
-        ":wifi_javadoc_only_files",
-    ],
 
     jarjar_rules: ":wifi-jarjar-rules",
 
