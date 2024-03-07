@@ -530,9 +530,6 @@ public class SupplicantP2pIfaceCallbackAidlImpl extends ISupplicantP2pIfaceCallb
         }
         try {
             device.deviceAddress = NativeUtil.macAddressFromByteArray(deviceAddressBytes);
-            device.deviceAddress += ";";
-            device.deviceAddress += NativeUtil.macAddressFromByteArray(srcAddress);
-            logd("Peer's deviceAddress is:" + device.deviceAddress);
         } catch (Exception e) {
             Log.e(TAG, "Could not decode MAC address", e);
             return null;
@@ -552,6 +549,15 @@ public class SupplicantP2pIfaceCallbackAidlImpl extends ISupplicantP2pIfaceCallb
         WifiP2pDevice device = createStaEventDevice(srcAddress, p2pDeviceAddress);
         if (device == null) {
             return;
+        }
+        String tmpAddress = device.deviceAddress;
+        try {
+            device.deviceAddress += ";";
+            device.deviceAddress += NativeUtil.macAddressFromByteArray(srcAddress);
+            logd("Add interface MAC address, Peer's deviceAddress is:" + device.deviceAddress);
+        } catch (Exception e) {
+            Log.e(TAG, "Could not add interface MAC address, use default deviceAddress", e);
+            device.deviceAddress = tmpAddress;
         }
         mMonitor.broadcastP2pApStaConnected(mInterface, device);
     }
