@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "285f7181_71d89876",
+        "filename": "framework/java/android/net/wifi/WifiManager.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 5597,
+      "author": {
+        "id": 1947461
+      },
+      "writtenOn": "2024-03-08T02:50:37Z",
+      "side": 1,
+      "message": "Will we call this from Connectivity?\nIf yes, is it ok to throw? aosp build could be V.",
+      "range": {
+        "startLine": 5597,
+        "startChar": 78,
+        "endLine": 5597,
+        "endChar": 79
+      },
+      "revId": "8073603c480037dd3d21a9c442d9088596e60955",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
