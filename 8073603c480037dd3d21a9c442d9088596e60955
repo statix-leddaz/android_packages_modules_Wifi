@@ -70,6 +70,30 @@
       },
       "revId": "8073603c480037dd3d21a9c442d9088596e60955",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "e6cf91df_2b663d8a",
+        "filename": "framework/java/android/net/wifi/WifiManager.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 5597,
+      "author": {
+        "id": 1947461
+      },
+      "writtenOn": "2024-03-13T02:31:21Z",
+      "side": 1,
+      "message": "At least, trunk_staging build in aosp is V(isAtleastV returns true) I think.\nAlso, ConnectivityService can not check trunkstable flag before calling `startTetheredHotspotRequest` since trunkstable related soong targets are not available on udc-mainline-prod.",
+      "parentUuid": "75c89e48_7f5abdac",
+      "range": {
+        "startLine": 5597,
+        "startChar": 78,
+        "endLine": 5597,
+        "endChar": 79
+      },
+      "revId": "8073603c480037dd3d21a9c442d9088596e60955",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
