@@ -46,6 +46,30 @@
       },
       "revId": "8073603c480037dd3d21a9c442d9088596e60955",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "75c89e48_7f5abdac",
+        "filename": "framework/java/android/net/wifi/WifiManager.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 5597,
+      "author": {
+        "id": 1198173
+      },
+      "writtenOn": "2024-03-13T01:51:31Z",
+      "side": 1,
+      "message": "Also, I changed this to the flagged api",
+      "parentUuid": "085de9fc_10ccf6f0",
+      "range": {
+        "startLine": 5597,
+        "startChar": 78,
+        "endLine": 5597,
+        "endChar": 79
+      },
+      "revId": "8073603c480037dd3d21a9c442d9088596e60955",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
