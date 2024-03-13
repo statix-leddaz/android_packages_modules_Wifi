@@ -22,6 +22,30 @@
       },
       "revId": "8073603c480037dd3d21a9c442d9088596e60955",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "085de9fc_10ccf6f0",
+        "filename": "framework/java/android/net/wifi/WifiManager.java",
+        "patchSetId": 6
+      },
+      "lineNbr": 5597,
+      "author": {
+        "id": 1198173
+      },
+      "writtenOn": "2024-03-13T01:51:09Z",
+      "side": 1,
+      "message": "This will be called from Connectivity. But I thought AOSP isn\u0027t V yet. Once the V changes are merged to AOSP, then the actual API implementation will be merged.",
+      "parentUuid": "285f7181_71d89876",
+      "range": {
+        "startLine": 5597,
+        "startChar": 78,
+        "endLine": 5597,
+        "endChar": 79
+      },
+      "revId": "8073603c480037dd3d21a9c442d9088596e60955",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
