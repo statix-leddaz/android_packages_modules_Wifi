@@ -85,6 +85,10 @@ public class WakeupController {
 
         @Override
         public void onResults(WifiScanner.ScanData[] results) {
+            if (!isUsable() || !mIsActive) {
+                Log.d(TAG, "Not usable or not started, ignore ScanListener onResults");
+                return;
+            }
             // We treat any full band scans (with DFS or not) as "full".
             if (results.length == 1
                     && WifiScanner.isFullBandScan(results[0].getScannedBandsInternal(), true)) {
@@ -284,7 +288,15 @@ public class WakeupController {
      * it performs its initialization steps and sets {@link #mIsActive} to true.
      */
     public void start() {
+        if (!isUsable()) {
+            return;
+        }
         Log.d(TAG, "start()");
+        // If already active, we don't want to restart the session, so return early.
+        if (mIsActive) {
+            mWifiWakeMetrics.recordIgnoredStart();
+            return;
+        }
         if (getGoodSavedNetworksAndSuggestions().isEmpty()) {
             Log.i(TAG, "Ignore wakeup start since there are no good networks.");
             return;
@@ -292,11 +304,6 @@ public class WakeupController {
         mWifiInjector.getWifiScanner().registerScanListener(
                 new HandlerExecutor(mHandler), mScanListener);
 
-        // If already active, we don't want to restart the session, so return early.
-        if (mIsActive) {
-            mWifiWakeMetrics.recordIgnoredStart();
-            return;
-        }
         setActive(true);
 
         // ensure feature is enabled and store data has been read before performing work
