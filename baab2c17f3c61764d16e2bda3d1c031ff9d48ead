@@ -1,0 +1,55 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "ec2dc448_388cdf88",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1879828
+      },
+      "writtenOn": "2024-03-22T07:48:36Z",
+      "side": 1,
+      "message": "solution description",
+      "revId": "baab2c17f3c61764d16e2bda3d1c031ff9d48ead",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "68a75dcd_72028c6c",
+        "filename": "service/java/com/android/server/wifi/WakeupController.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 88,
+      "author": {
+        "id": 1879828
+      },
+      "writtenOn": "2024-03-22T07:48:36Z",
+      "side": 1,
+      "message": "if ScanListener is not unregistered, add protect to avoid handleScanResults.",
+      "revId": "baab2c17f3c61764d16e2bda3d1c031ff9d48ead",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "28000dbb_492ea7c5",
+        "filename": "service/java/com/android/server/wifi/WakeupController.java",
+        "patchSetId": 1
+      },
+      "lineNbr": 296,
+      "author": {
+        "id": 1879828
+      },
+      "writtenOn": "2024-03-22T07:48:36Z",
+      "side": 1,
+      "message": "first check whether isActive is true or false, avoid to repeat registerScanListener",
+      "revId": "baab2c17f3c61764d16e2bda3d1c031ff9d48ead",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
