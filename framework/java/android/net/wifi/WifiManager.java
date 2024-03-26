@@ -5073,6 +5073,7 @@ public class WifiManager {
      */
     @Deprecated
     public boolean setWifiEnabled(boolean enabled) {
+        Log.w(TAG, "setWifiEnabled called with " + enabled, new Exception());
         try {
             return mService.setWifiEnabled(mContext.getOpPackageName(), enabled);
         } catch (RemoteException e) {
