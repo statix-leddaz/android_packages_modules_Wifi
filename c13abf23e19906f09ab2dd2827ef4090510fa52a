@@ -16,6 +16,23 @@
       "message": "Just wanted to emphasize there\u0027s a couple of patchsets here, with the first one doing things differently (see Bug: in commit message), but we realized that if PS1 were a preferred approach, it would also no longer need to check for the tethering package at all (and shouldn\u0027t), so would allow for/require more removals.\n\nThanks in advance for the review.",
       "revId": "c13abf23e19906f09ab2dd2827ef4090510fa52a",
       "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "98347bff_f3390892",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 2
+      },
+      "lineNbr": 5049,
+      "author": {
+        "id": 2047253
+      },
+      "writtenOn": "2024-04-10T17:01:20Z",
+      "side": 1,
+      "message": "Remove the duplicate \"and\"",
+      "revId": "c13abf23e19906f09ab2dd2827ef4090510fa52a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
     }
   ]
 }
