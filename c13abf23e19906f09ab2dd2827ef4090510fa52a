@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "dd1d78ba_76719e60",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 2
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1958109
+      },
+      "writtenOn": "2024-04-10T14:57:00Z",
+      "side": 1,
+      "message": "Just wanted to emphasize there\u0027s a couple of patchsets here, with the first one doing things differently (see Bug: in commit message), but we realized that if PS1 were a preferred approach, it would also no longer need to check for the tethering package at all (and shouldn\u0027t), so would allow for/require more removals.\n\nThanks in advance for the review.",
+      "revId": "c13abf23e19906f09ab2dd2827ef4090510fa52a",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
