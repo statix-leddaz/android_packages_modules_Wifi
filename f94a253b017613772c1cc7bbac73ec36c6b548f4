@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "e835df96_e2cbf548",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 2047253
+      },
+      "writtenOn": "2024-04-11T22:37:54Z",
+      "side": 1,
+      "message": "Thank you. But the issue had been fixed in following change.\nhttps://partner-android.googlesource.com/platform/packages/modules/Wifi/+/77baf392228746e5f58437f0a51816de0dc7f440\nPlease wait for the new release.",
+      "revId": "f94a253b017613772c1cc7bbac73ec36c6b548f4",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
