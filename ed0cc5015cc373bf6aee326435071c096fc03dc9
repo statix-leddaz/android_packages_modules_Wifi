@@ -1,0 +1,50 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "24e5dffd_465aac12",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 2114,
+      "author": {
+        "id": 1810265
+      },
+      "writtenOn": "2024-04-23T23:51:33Z",
+      "side": 1,
+      "message": "Missing failure reason",
+      "range": {
+        "startLine": 2114,
+        "startChar": 24,
+        "endLine": 2114,
+        "endChar": 53
+      },
+      "revId": "ed0cc5015cc373bf6aee326435071c096fc03dc9",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "70bc1727_051b6889",
+        "filename": "service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 3430,
+      "author": {
+        "id": 1810265
+      },
+      "writtenOn": "2024-04-23T23:51:33Z",
+      "side": 1,
+      "message": "What is the reasoning behind using `handleGroupRemoved` here instead of `handleGroupCreationFailure` like the other scenario?\n\n`handleGroupRemoved` does not call `mWifiNative.p2pGroupRemove`. \nIs that the desired behavior?",
+      "range": {
+        "startLine": 3430,
+        "startChar": 28,
+        "endLine": 3430,
+        "endChar": 49
+      },
+      "revId": "ed0cc5015cc373bf6aee326435071c096fc03dc9",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
