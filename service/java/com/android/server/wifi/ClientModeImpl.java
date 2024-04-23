@@ -5925,6 +5925,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         private boolean isValidTransitionDisableIndicationSource(String bssid,
                 @WifiMonitor.TransitionDisableIndication int indicationBit) {
+            if (null == mLastBssid) return false;
             ScanResult result = mScanRequestProxy.getScanResult(mLastBssid);
             if (null == result) return false;
 
