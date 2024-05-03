@@ -811,11 +811,10 @@ public class WifiNetworkSelector {
             tempConfig = mWifiConfigManager.getConfiguredNetwork(key);
 
             if (tempConfig != null) {
-                if (seenNetworks.contains(tempConfig.getProfileKey())) {
+                if (seenNetworks.contains(tempConfig.getProfileKey()) && scanResultCandidate != null) {
                     Log.wtf(TAG, "user connected network is a loop, use candidate:"
                             + candidate);
-                    mWifiConfigManager.setLegacyUserConnectChoice(candidate,
-                            candidate.getNetworkSelectionStatus().getCandidate().level);
+                    mWifiConfigManager.setLegacyUserConnectChoice(candidate,scanResultCandidate.level);
                     break;
                 }
                 seenNetworks.add(tempConfig.getProfileKey());
