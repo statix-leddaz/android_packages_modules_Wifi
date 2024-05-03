@@ -1,0 +1,27 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "29f4f960_93d5bc09",
+        "filename": "/COMMIT_MSG",
+        "patchSetId": 1
+      },
+      "lineNbr": 9,
+      "author": {
+        "id": 1039103
+      },
+      "writtenOn": "2024-05-03T14:12:16Z",
+      "side": 1,
+      "message": "This bug isn\u0027t related to the CL - please open individual bugs for each new topic.",
+      "range": {
+        "startLine": 9,
+        "startChar": 5,
+        "endLine": 9,
+        "endChar": 14
+      },
+      "revId": "4e103c1e7ffb49e7b41d699d0978507940709753",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
