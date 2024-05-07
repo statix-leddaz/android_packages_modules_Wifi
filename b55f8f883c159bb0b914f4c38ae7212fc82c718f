@@ -1,0 +1,67 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "7f6d9c75_eb43fc8d",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 1143404
+      },
+      "writtenOn": "2024-05-07T00:06:40Z",
+      "side": 1,
+      "message": "Please fix those two warnings as well as the comment raised by etancohen@ regarding bug number.",
+      "revId": "b55f8f883c159bb0b914f4c38ae7212fc82c718f",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "eda747cb_b5e011cb",
+        "filename": "service/java/com/android/server/wifi/WifiNetworkSelector.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 814,
+      "author": {
+        "id": 1143404
+      },
+      "writtenOn": "2024-05-07T00:06:40Z",
+      "side": 1,
+      "message": "Please fix this WARNING reported by Check Contents: Lines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details. See go/ayeaye-long-lines for ayeaye-specific info.\n\nAnalyzer Description: Validates that changes do not have prohibited expressions in them.\nOwner: ayeaye-team@google.com\n\nLines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details. See go/ayeaye-long-lines for ayeaye-specific info.",
+      "range": {
+        "startLine": 814,
+        "startChar": 0,
+        "endLine": 814,
+        "endChar": 103
+      },
+      "revId": "b55f8f883c159bb0b914f4c38ae7212fc82c718f",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "b8b0f249_84f1f696",
+        "filename": "service/java/com/android/server/wifi/WifiNetworkSelector.java",
+        "patchSetId": 3
+      },
+      "lineNbr": 817,
+      "author": {
+        "id": 1143404
+      },
+      "writtenOn": "2024-05-07T00:06:40Z",
+      "side": 1,
+      "message": "Please fix this WARNING reported by Check Contents: Lines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details. See go/ayeaye-long-lines for ayeaye-specific info.\n\nAnalyzer Description: Validates that changes do not have prohibited expressions in them.\nOwner: ayeaye-team@google.com\n\nLines longer than 100 characters should be wrapped to improve readability; see https://source.android.com/setup/contribute/code-style#limit-line-length for more details. See go/ayeaye-long-lines for ayeaye-specific info.",
+      "range": {
+        "startLine": 817,
+        "startChar": 0,
+        "endLine": 817,
+        "endChar": 103
+      },
+      "revId": "b55f8f883c159bb0b914f4c38ae7212fc82c718f",
+      "serverId": "85c56323-6fa9-3386-8a01-6480fb634889"
+    }
+  ]
+}
