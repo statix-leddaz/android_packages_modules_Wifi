@@ -28,7 +28,7 @@ import android.util.SparseArray;
 
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.WifiNetworkSuggestionsManager.ExtendedWifiNetworkSuggestion;
-import com.android.server.wifi.hotspot2.PasspointNetworkNominateHelper;
+import com.android.server.wifi.entitlement.PseudonymInfo;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -56,44 +56,48 @@ public class NetworkSuggestionNominator implements WifiNetworkSelector.NetworkNo
 
     private final WifiNetworkSuggestionsManager mWifiNetworkSuggestionsManager;
     private final WifiConfigManager mWifiConfigManager;
-    private final PasspointNetworkNominateHelper mPasspointNetworkNominateHelper;
     private final LocalLog mLocalLog;
     private final WifiCarrierInfoManager mWifiCarrierInfoManager;
+    private final WifiPseudonymManager mWifiPseudonymManager;
     private final WifiMetrics mWifiMetrics;
 
     NetworkSuggestionNominator(WifiNetworkSuggestionsManager networkSuggestionsManager,
-            WifiConfigManager wifiConfigManager, PasspointNetworkNominateHelper nominateHelper,
+            WifiConfigManager wifiConfigManager,
             LocalLog localLog, WifiCarrierInfoManager wifiCarrierInfoManager,
-            WifiMetrics wifiMetrics) {
+            WifiPseudonymManager wifiPseudonymManager, WifiMetrics wifiMetrics) {
         mWifiNetworkSuggestionsManager = networkSuggestionsManager;
         mWifiConfigManager = wifiConfigManager;
-        mPasspointNetworkNominateHelper = nominateHelper;
         mLocalLog = localLog;
         mWifiCarrierInfoManager = wifiCarrierInfoManager;
+        mWifiPseudonymManager = wifiPseudonymManager;
         mWifiMetrics = wifiMetrics;
     }
 
     @Override
     public void update(List<ScanDetail> scanDetails) {
-        // Update the matching profiles into WifiConfigManager, help displaying Suggestion and
-        // Passpoint networks in Wifi Picker
+        // Update the matching profiles into WifiConfigManager, help displaying Suggestion
+        // networks in Wifi Picker
         addOrUpdateSuggestionsToWifiConfigManger(scanDetails);
-        mPasspointNetworkNominateHelper.updatePasspointConfig(scanDetails);
     }
 
     @Override
-    public void nominateNetworks(List<ScanDetail> scanDetails,
+    public void nominateNetworks(@NonNull List<ScanDetail> scanDetails,
+            @NonNull List<Pair<ScanDetail, WifiConfiguration>> passpointCandidates,
             boolean untrustedNetworkAllowed, boolean oemPaidNetworkAllowed,
-            boolean oemPrivateNetworkAllowed, Set<Integer> restrictedNetworkAllowedUids,
+            boolean oemPrivateNetworkAllowed,
+            @NonNull Set<Integer> restrictedNetworkAllowedUids,
             @NonNull OnConnectableListener onConnectableListener) {
         if (scanDetails.isEmpty()) {
             return;
         }
         MatchMetaInfo matchMetaInfo = new MatchMetaInfo();
+        if (passpointCandidates != null) {
+            findMatchedPasspointSuggestionNetworks(
+                    passpointCandidates, matchMetaInfo, untrustedNetworkAllowed,
+                    oemPaidNetworkAllowed,
+                    oemPrivateNetworkAllowed, restrictedNetworkAllowedUids);
+        }
 
-        findMatchedPasspointSuggestionNetworks(
-                scanDetails, matchMetaInfo, untrustedNetworkAllowed, oemPaidNetworkAllowed,
-                oemPrivateNetworkAllowed, restrictedNetworkAllowedUids);
         findMatchedSuggestionNetworks(scanDetails, matchMetaInfo, untrustedNetworkAllowed,
                 oemPaidNetworkAllowed,
                 oemPrivateNetworkAllowed, restrictedNetworkAllowedUids);
@@ -186,14 +190,16 @@ public class NetworkSuggestionNominator implements WifiNetworkSelector.NetworkNo
         return false;
     }
 
-    private void findMatchedPasspointSuggestionNetworks(List<ScanDetail> scanDetails,
+    private void findMatchedPasspointSuggestionNetworks(
+            List<Pair<ScanDetail, WifiConfiguration>> candidates,
             MatchMetaInfo matchMetaInfo, boolean untrustedNetworkAllowed,
             boolean oemPaidNetworkAllowed, boolean oemPrivateNetworkAllowed,
             Set<Integer> restrictedNetworkAllowedUids) {
-        List<Pair<ScanDetail, WifiConfiguration>> candidates =
-                mPasspointNetworkNominateHelper.getPasspointNetworkCandidates(scanDetails, true);
         for (Pair<ScanDetail, WifiConfiguration> candidate : candidates) {
             WifiConfiguration config = candidate.second;
+            if (!config.fromWifiNetworkSuggestion) {
+                continue;
+            }
             Set<ExtendedWifiNetworkSuggestion> matchingExtNetworkSuggestions =
                     mWifiNetworkSuggestionsManager.getNetworkSuggestionsForFqdn(config.FQDN);
             if (matchingExtNetworkSuggestions.isEmpty()) {
@@ -214,7 +220,10 @@ public class NetworkSuggestionNominator implements WifiNetworkSelector.NetworkNo
             if (!isNetworkAvailableToAutoConnect(config, untrustedNetworkAllowed,
                     oemPaidNetworkAllowed, oemPrivateNetworkAllowed,
                     restrictedNetworkAllowedUids)) {
+                mWifiPseudonymManager.retrievePseudonymOnFailureTimeoutExpired(config);
                 continue;
+            } else {
+                mWifiPseudonymManager.updateWifiConfiguration(config);
             }
 
             matchMetaInfo.put(matchingPasspointExtSuggestion.get(), config, candidate.first);
@@ -259,12 +268,17 @@ public class NetworkSuggestionNominator implements WifiNetworkSelector.NetworkNo
                 if (!isNetworkAvailableToAutoConnect(wCmConfiguredNetwork, untrustedNetworkAllowed,
                         oemPaidNetworkAllowed, oemPrivateNetworkAllowed,
                         restrictedNetworkAllowedUids)) {
+                    mWifiPseudonymManager.retrievePseudonymOnFailureTimeoutExpired(
+                            wCmConfiguredNetwork);
                     continue;
+                } else {
+                    mWifiPseudonymManager.updateWifiConfiguration(wCmConfiguredNetwork);
                 }
                 matchMetaInfo.put(ewns, wCmConfiguredNetwork, scanDetail);
             }
         }
     }
+
 
     private boolean isNetworkAvailableToAutoConnect(WifiConfiguration config,
             boolean untrustedNetworkAllowed, boolean oemPaidNetworkAllowed,
@@ -330,11 +344,23 @@ public class NetworkSuggestionNominator implements WifiNetworkSelector.NetworkNo
             return true;
         }
         int subId = config.subscriptionId;
+        int carrierId = config.carrierId;
         if (mWifiCarrierInfoManager.requiresImsiEncryption(subId)
                 && !mWifiCarrierInfoManager.isImsiEncryptionInfoAvailable(subId)) {
             mLocalLog.log("Ignoring SIM based network IMSI encryption info not Available, subId: "
                     + subId);
             return false;
+        }
+        if (mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(carrierId)) {
+            Optional<PseudonymInfo> pseudonymInfo =
+                    mWifiPseudonymManager.getValidPseudonymInfo(carrierId);
+            if (pseudonymInfo.isEmpty()) {
+                // matching on network is seen.
+                mLocalLog.log(
+                        "Ignoring SIM based network because there isn't any valid pseudonym, "
+                                + "subId: " + subId + " carrierId: " + carrierId);
+                return false;
+            }
         }
         return true;
     }

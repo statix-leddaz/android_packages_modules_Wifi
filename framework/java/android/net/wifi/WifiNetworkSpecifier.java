@@ -16,6 +16,8 @@
 
 package android.net.wifi;
 
+import static android.net.wifi.ScanResult.UNSPECIFIED;
+
 import static com.android.internal.util.Preconditions.checkNotNull;
 
 import android.annotation.NonNull;
@@ -37,6 +39,7 @@ import com.android.modules.utils.build.SdkLevel;
 
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Objects;
 
 /**
@@ -60,6 +63,7 @@ import java.util.Objects;
  * </p>
  */
 public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parcelable {
+
     private static final String TAG = "WifiNetworkSpecifier";
 
     /**
@@ -76,7 +80,23 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
         } else if (ScanResult.is60GHz(freqMHz)) {
             return ScanResult.WIFI_BAND_60_GHZ;
         }
-        return ScanResult.UNSPECIFIED;
+        return UNSPECIFIED;
+    }
+
+    /**
+     * Check the channel in the array is valid.
+     * @hide
+     */
+    public static boolean validateChannelFrequencyInMhz(@NonNull int[] channels) {
+        if (channels == null) {
+            return false;
+        }
+        for (int channel : channels) {
+            if (ScanResult.convertFrequencyMhzToChannelIfSupported(channel) == UNSPECIFIED) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -87,9 +107,11 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
      */
     public static boolean validateBand(@WifiBand int band) {
         switch (band) {
-            case ScanResult.UNSPECIFIED:
+            case UNSPECIFIED:
             case ScanResult.WIFI_BAND_24_GHZ:
             case ScanResult.WIFI_BAND_5_GHZ:
+            case ScanResult.WIFI_BAND_5_GHZ_LOW:
+            case ScanResult.WIFI_BAND_5_GHZ_HIGH:
             case ScanResult.WIFI_BAND_6_GHZ:
             case ScanResult.WIFI_BAND_60_GHZ:
                 return true;
@@ -168,6 +190,8 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
          */
         @WifiBand private int mBand;
 
+        private int[] mChannels;
+
         public Builder() {
             mSsidPatternMatcher = null;
             mBssidPatternMatcher = null;
@@ -177,7 +201,8 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
             mWpa2EnterpriseConfig = null;
             mWpa3EnterpriseConfig = null;
             mIsHiddenSSID = false;
-            mBand = ScanResult.UNSPECIFIED;
+            mBand = UNSPECIFIED;
+            mChannels = new int[0];
         }
 
         /**
@@ -306,7 +331,10 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
 
         /**
          * Set the associated enterprise configuration for this network. Needed for authenticating
-         * to WPA2-EAP networks. See {@link WifiEnterpriseConfig} for description.
+         * to WPA2-EAP networks. See {@link WifiEnterpriseConfig} for description. Local-only
+         * connection will not support Trust On First Use (TOFU). If TOFU is enabled on this
+         * Enterprise Config, framework will reject the connection. See {@link
+         * WifiEnterpriseConfig#enableTrustOnFirstUse}
          *
          * @param enterpriseConfig Instance of {@link WifiEnterpriseConfig}.
          * @return Instance of {@link Builder} to enable chaining of the builder method.
@@ -344,8 +372,11 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
         /**
          * Set the associated enterprise configuration for this network. Needed for authenticating
          * to standard WPA3-Enterprise networks. See {@link WifiEnterpriseConfig} for description.
-         * For WPA3-Enterprise in 192-bit security mode networks,
-         * see {@link #setWpa3Enterprise192BitModeConfig(WifiEnterpriseConfig)} for description.
+         * For WPA3-Enterprise in 192-bit security mode networks, see {@link
+         * #setWpa3Enterprise192BitModeConfig(WifiEnterpriseConfig)} for description. Local-only
+         * connection will not support Trust On First Use (TOFU). If TOFU is enabled on this
+         * Enterprise Config, framework will reject the connection. See {@link
+         * WifiEnterpriseConfig#enableTrustOnFirstUse}
          *
          * @param enterpriseConfig Instance of {@link WifiEnterpriseConfig}.
          * @return Instance of {@link Builder} to enable chaining of the builder method.
@@ -361,15 +392,17 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
         /**
          * Set the associated enterprise configuration for this network. Needed for authenticating
          * to WPA3-Enterprise in 192-bit security mode networks. See {@link WifiEnterpriseConfig}
-         * for description. Both the client and CA certificates must be provided,
-         * and must be of type of either sha384WithRSAEncryption with key length of 3072bit or
-         * more (OID 1.2.840.113549.1.1.12), or ecdsa-with-SHA384 with key length of 384bit or
-         * more (OID 1.2.840.10045.4.3.3).
+         * for description. Both the client and CA certificates must be provided, and must be of
+         * type of either sha384WithRSAEncryption with key length of 3072bit or more (OID
+         * 1.2.840.113549.1.1.12), or ecdsa-with-SHA384 with key length of 384bit or more (OID
+         * 1.2.840.10045.4.3.3). Local-only connection will not support Trust On First Use (TOFU).
+         * If TOFU is enabled on this Enterprise Config, framework will reject the connection. See
+         * {@link WifiEnterpriseConfig#enableTrustOnFirstUse}
          *
          * @param enterpriseConfig Instance of {@link WifiEnterpriseConfig}.
          * @return Instance of {@link Builder} to enable chaining of the builder method.
-         * @throws IllegalArgumentException if the EAP type or certificates do not
-         *                                  meet 192-bit mode requirements.
+         * @throws IllegalArgumentException if the EAP type or certificates do not meet 192-bit mode
+         *     requirements.
          */
         public @NonNull Builder setWpa3Enterprise192BitModeConfig(
                 @NonNull WifiEnterpriseConfig enterpriseConfig) {
@@ -423,6 +456,27 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
                 throw new IllegalArgumentException("Unexpected band in setBand : " + band);
             }
             mBand = band;
+            return this;
+        }
+
+        /**
+         * Specifies the preferred channels for this network. The channels set in the request will
+         * be used to optimize the scan and connection.
+         * <p>
+         * <li>Should only be set to request local-only network</li>
+         * <li>If not set, defaults to an empty array and device will do a full band scan.</li>
+         *
+         * @param channelFreqs an Array of the channels in MHz. The length of the array must not
+         *                     exceed {@link WifiManager#getMaxNumberOfChannelsPerNetworkSpecifierRequest()}
+         *
+         * @return Instance of {@link Builder} to enable chaining of the builder method.
+         */
+        @NonNull public Builder setPreferredChannelsFrequenciesMhz(@NonNull int[] channelFreqs) {
+            Objects.requireNonNull(channelFreqs);
+            if (!validateChannelFrequencyInMhz(channelFreqs)) {
+                throw new IllegalArgumentException("Invalid channel frequency in the input array");
+            }
+            mChannels = channelFreqs.clone();
             return this;
         }
 
@@ -604,7 +658,7 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
          * @throws IllegalStateException on invalid params set.
          */
         public @NonNull WifiNetworkSpecifier build() {
-            if (!hasSetAnyPattern() && mBand == ScanResult.UNSPECIFIED) {
+            if (!hasSetAnyPattern() && mBand == UNSPECIFIED) {
                 throw new IllegalStateException("one of setSsidPattern/setSsid/setBssidPattern/"
                         + "setBssid/setBand should be invoked for specifier");
             }
@@ -612,12 +666,16 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
             if (hasSetMatchNonePattern()) {
                 throw new IllegalStateException("cannot set match-none pattern for specifier");
             }
-            if (hasSetMatchAllPattern() && mBand == ScanResult.UNSPECIFIED) {
+            if (hasSetMatchAllPattern() && mBand == UNSPECIFIED) {
                 throw new IllegalStateException("cannot set match-all pattern for specifier");
             }
             if (mIsHiddenSSID && mSsidPatternMatcher.getType() != PatternMatcher.PATTERN_LITERAL) {
                 throw new IllegalStateException("setSsid should also be invoked when "
                         + "setIsHiddenSsid is invoked for network specifier");
+            }
+            if (mChannels.length != 0 && mBand != UNSPECIFIED) {
+                throw new IllegalStateException("cannot setPreferredChannelsFrequencyInMhz with "
+                        + "setBand together");
             }
             validateSecurityParams();
 
@@ -625,7 +683,8 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
                     mSsidPatternMatcher,
                     mBssidPatternMatcher,
                     mBand,
-                    buildWifiConfiguration());
+                    buildWifiConfiguration(),
+                    mChannels);
         }
     }
 
@@ -647,6 +706,8 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
      */
     @WifiBand private final int mBand;
 
+    private final int[] mChannelFreqs;
+
     /**
      * Security credentials for the network.
      * <p>
@@ -665,9 +726,10 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
 
     /** @hide */
     public WifiNetworkSpecifier(@NonNull PatternMatcher ssidPatternMatcher,
-                                @NonNull Pair<MacAddress, MacAddress> bssidPatternMatcher,
-                                @WifiBand int band,
-                                @NonNull WifiConfiguration wifiConfiguration) {
+            @NonNull Pair<MacAddress, MacAddress> bssidPatternMatcher,
+            @WifiBand int band,
+            @NonNull WifiConfiguration wifiConfiguration,
+            @NonNull int[] channelFreqs) {
         checkNotNull(ssidPatternMatcher);
         checkNotNull(bssidPatternMatcher);
         checkNotNull(wifiConfiguration);
@@ -676,6 +738,7 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
         this.bssidPatternMatcher = bssidPatternMatcher;
         this.mBand = band;
         this.wifiConfiguration = wifiConfiguration;
+        this.mChannelFreqs = channelFreqs;
     }
 
     /**
@@ -683,6 +746,14 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
      */
     @WifiBand public int getBand() {
         return mBand;
+    }
+
+    /**
+     * The preferred channels fot this network specifier.
+     * @see Builder#setPreferredChannelsFrequenciesMhz(int[])
+     */
+    @NonNull public int[] getPreferredChannelFrequenciesMhz() {
+        return mChannelFreqs.clone();
     }
 
     public static final @NonNull Creator<WifiNetworkSpecifier> CREATOR =
@@ -696,8 +767,9 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
                             Pair.create(baseAddress, mask);
                     int band = in.readInt();
                     WifiConfiguration wifiConfiguration = in.readParcelable(null);
+                    int[] mChannels = in.createIntArray();
                     return new WifiNetworkSpecifier(ssidPatternMatcher, bssidPatternMatcher, band,
-                            wifiConfiguration);
+                            wifiConfiguration, mChannels);
                 }
 
                 @Override
@@ -718,13 +790,14 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
         dest.writeParcelable(bssidPatternMatcher.second, flags);
         dest.writeInt(mBand);
         dest.writeParcelable(wifiConfiguration, flags);
+        dest.writeIntArray(mChannelFreqs);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(
                 ssidPatternMatcher.getPath(), ssidPatternMatcher.getType(), bssidPatternMatcher,
-                mBand, wifiConfiguration.allowedKeyManagement);
+                mBand, wifiConfiguration.allowedKeyManagement, Arrays.hashCode(mChannelFreqs));
     }
 
     @Override
@@ -744,7 +817,8 @@ public final class WifiNetworkSpecifier extends NetworkSpecifier implements Parc
                     lhs.bssidPatternMatcher)
                 && this.mBand == lhs.mBand
                 && Objects.equals(this.wifiConfiguration.allowedKeyManagement,
-                    lhs.wifiConfiguration.allowedKeyManagement);
+                    lhs.wifiConfiguration.allowedKeyManagement)
+                && Arrays.equals(mChannelFreqs, lhs.mChannelFreqs);
     }
 
     @Override

@@ -16,6 +16,22 @@
 
 package com.android.server.wifi.util;
 
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_ACS_OFFLOAD;
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED;
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED;
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_BAND_60G_SUPPORTED;
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_BAND_6G_SUPPORTED;
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT;
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_IEEE80211_AX;
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_IEEE80211_BE;
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_MAC_ADDRESS_CUSTOMIZATION;
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_WPA3_OWE;
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_WPA3_OWE_TRANSITION;
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_WPA3_SAE;
+
+import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_AP_BRIDGE;
+import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_STA;
+
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
@@ -37,7 +53,9 @@ import android.util.SparseArray;
 import android.util.SparseIntArray;
 
 import com.android.modules.utils.build.SdkLevel;
+import com.android.server.wifi.SoftApManager;
 import com.android.server.wifi.WifiNative;
+import com.android.server.wifi.WifiSettingsConfigStore;
 import com.android.server.wifi.coex.CoexManager;
 import com.android.wifi.resources.R;
 
@@ -65,12 +83,6 @@ public class ApConfigUtil {
     public static final int DEFAULT_AP_BAND = SoftApConfiguration.BAND_2GHZ;
     public static final int DEFAULT_AP_CHANNEL = 6;
     public static final int HIGHEST_2G_AP_CHANNEL = 14;
-
-    /* Return code for updateConfiguration. */
-    public static final int SUCCESS = 0;
-    public static final int ERROR_NO_CHANNEL = 1;
-    public static final int ERROR_GENERIC = 2;
-    public static final int ERROR_UNSUPPORTED_CONFIGURATION = 3;
 
     /* Random number generator used for AP channel selection. */
     private static final Random sRandom = new Random();
@@ -617,6 +629,67 @@ public class ApConfigUtil {
     }
 
     /**
+     * Remove unavailable bands from the softAp configuration and return the updated configuration.
+     * Unavailable bands are those which don't have channels available.
+     *
+     * @param config The current {@link SoftApConfiguration}.
+     * @param capability SoftApCapability which indicates supported channel list.
+     * @param coexManager reference to CoexManager
+     * @param context the caller context used to get value from resource file.
+     *
+     * @return the updated SoftApConfiguration.
+     */
+    public static SoftApConfiguration removeUnavailableBandsFromConfig(
+            SoftApConfiguration config, SoftApCapability capability, CoexManager coexManager,
+            @NonNull Context context) {
+        SoftApConfiguration.Builder builder = new SoftApConfiguration.Builder(config);
+
+        try {
+            if (config.getBands().length == 1) {
+                int configuredBand = config.getBand();
+                int availableBand = ApConfigUtil.removeUnavailableBands(
+                        capability,
+                        configuredBand, coexManager);
+                if (availableBand != configuredBand) {
+                    availableBand = ApConfigUtil.append24GToBandIf24GSupported(availableBand,
+                            context);
+                    Log.i(TAG, "Reset band from " + configuredBand + " to "
+                            + availableBand + " in single AP configuration");
+                    builder.setBand(availableBand);
+                }
+            } else if (SdkLevel.isAtLeastS()) {
+                SparseIntArray channels = config.getChannels();
+                SparseIntArray newChannels = new SparseIntArray(channels.size());
+                for (int i = 0; i < channels.size(); i++) {
+                    int configuredBand = channels.keyAt(i);
+                    int availableBand = ApConfigUtil.removeUnavailableBands(
+                            capability,
+                            configuredBand, coexManager);
+                    if (availableBand != configuredBand) {
+                        Log.i(TAG, "Reset band in index " + i + " from " + configuredBand
+                                + " to " + availableBand + " in dual AP configuration");
+                    }
+                    if (isBandValid(availableBand)) {
+                        newChannels.put(availableBand, channels.valueAt(i));
+                    }
+                }
+                if (newChannels.size() != 0) {
+                    builder.setChannels(newChannels);
+                } else {
+                    builder.setBand(
+                            ApConfigUtil.append24GToBandIf24GSupported(0, context));
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to update config by removing unavailable bands"
+                    + e);
+            return null;
+        }
+
+        return builder.build();
+    }
+
+    /**
      * Remove all unsupported bands from the input band and return the resulting
      * (remaining) support bands. Unsupported bands are those which don't have channels available.
      *
@@ -663,40 +736,71 @@ public class ApConfigUtil {
     }
 
     /**
+     * Checks whether HAL support converting the restricted security type to an allowed one in 6GHz
+     * band configuration.
+     * @param resources the resources to get the OEM configuration for HAL support.
+     * @param type security type.
+     * @return true if HAL support to map WPA3 transition mode to WPA3 in 6GHz band,
+     * false otherwise.
+     */
+    public static boolean canHALConvertRestrictedSecurityTypeFor6GHz(@NonNull Resources resources,
+            @SoftApConfiguration.SecurityType int type) {
+        return type == SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION
+                && resources.getBoolean(R.bool
+                        .config_wifiSofapHalMapWpa3TransitionModeToWpa3OnlyIn6GHzBand);
+    }
+
+    /**
      * Remove {@link SoftApConfiguration#BAND_6GHZ} if multiple bands are configured
      * as a mask when security type is restricted to operate in this band.
      *
+     * @param resources the resources to get the OEM configuration for HAL support.
      * @param config The current {@link SoftApConfiguration}.
+     * @param isBridgedMode true if bridged mode is enabled, false otherwise.
      *
      * @return the updated SoftApConfiguration.
      */
     public static SoftApConfiguration remove6gBandForUnsupportedSecurity(
-            SoftApConfiguration config) {
+            @NonNull Resources resources,
+            SoftApConfiguration config, boolean isBridgedMode) {
         SoftApConfiguration.Builder builder = new SoftApConfiguration.Builder(config);
 
-        if (config.getBands().length == 1) {
-            int configuredBand = config.getBand();
-            if ((configuredBand & SoftApConfiguration.BAND_6GHZ) != 0
-                    && isSecurityTypeRestrictedFor6gBand(config.getSecurityType())) {
-                Log.i(TAG, "remove BAND_6G if multiple bands are configured "
-                        + "as a mask since security type is restricted");
-                builder.setBand(configuredBand & ~SoftApConfiguration.BAND_6GHZ);
-            }
-        } else if (SdkLevel.isAtLeastS()) {
-            SparseIntArray channels = config.getChannels();
-            SparseIntArray newChannels = new SparseIntArray(channels.size());
-            if (isSecurityTypeRestrictedFor6gBand(config.getSecurityType())) {
-                for (int i = 0; i < channels.size(); i++) {
-                    int band = channels.keyAt(i);
-                    if ((band & SoftApConfiguration.BAND_6GHZ) != 0) {
-                        Log.i(TAG, "remove BAND_6G if multiple bands are configured "
-                                + "as a mask when security type is restricted");
-                        band &= ~SoftApConfiguration.BAND_6GHZ;
-                    }
-                    newChannels.put(band, channels.valueAt(i));
+        try {
+            int securityType = config.getSecurityType();
+            if (config.getBands().length == 1) {
+                int configuredBand = config.getBand();
+                if ((configuredBand & SoftApConfiguration.BAND_6GHZ) != 0
+                        && isSecurityTypeRestrictedFor6gBand(config.getSecurityType())) {
+                    Log.i(TAG, "remove BAND_6G if multiple bands are configured "
+                            + "as a mask when security type is restricted");
+                    builder.setBand(configuredBand & ~SoftApConfiguration.BAND_6GHZ);
                 }
-                builder.setChannels(newChannels);
+            } else if (SdkLevel.isAtLeastS()) {
+                SparseIntArray channels = config.getChannels();
+                SparseIntArray newChannels = new SparseIntArray(channels.size());
+                if (isSecurityTypeRestrictedFor6gBand(securityType)) {
+                    for (int i = 0; i < channels.size(); i++) {
+                        int band = channels.keyAt(i);
+                        if ((band & SoftApConfiguration.BAND_6GHZ) != 0
+                                && canHALConvertRestrictedSecurityTypeFor6GHz(resources,
+                                securityType) && isBridgedMode) {
+                            Log.i(TAG, "Do not remove BAND_6G in bridged mode for"
+                                    + " security type: " + securityType
+                                    + " as HAL can convert the security type");
+                        } else {
+                            Log.i(TAG, "remove BAND_6G if multiple bands are configured "
+                                    + "as a mask when security type is restricted");
+                            band &= ~SoftApConfiguration.BAND_6GHZ;
+                        }
+                        newChannels.put(band, channels.valueAt(i));
+                    }
+                    builder.setChannels(newChannels);
+                }
             }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to update config by removing 6G band for unsupported security type:"
+                    + e);
+            return null;
         }
 
         return builder.build();
@@ -711,9 +815,9 @@ public class ApConfigUtil {
      * @param countryCode country code
      * @param config configuration to update
      * @param capability soft ap capability
-     * @return an integer result code
+     * @return the corresponding {@link SoftApManager.StartResult} result code.
      */
-    public static int updateApChannelConfig(WifiNative wifiNative,
+    public static @SoftApManager.StartResult int updateApChannelConfig(WifiNative wifiNative,
             @NonNull CoexManager coexManager,
             Resources resources,
             String countryCode,
@@ -723,16 +827,16 @@ public class ApConfigUtil {
         /* Use default band and channel for device without HAL. */
         if (!wifiNative.isHalStarted()) {
             configBuilder.setChannel(DEFAULT_AP_CHANNEL, DEFAULT_AP_BAND);
-            return SUCCESS;
+            return SoftApManager.START_RESULT_SUCCESS;
         }
 
         /* Country code is mandatory for 5GHz band. */
         if (config.getBand() == SoftApConfiguration.BAND_5GHZ
                 && countryCode == null) {
             Log.e(TAG, "5GHz band is not allowed without country code");
-            return ERROR_GENERIC;
+            return SoftApManager.START_RESULT_FAILURE_GENERAL;
         }
-        if (!capability.areFeaturesSupported(SoftApCapability.SOFTAP_FEATURE_ACS_OFFLOAD)) {
+        if (!capability.areFeaturesSupported(SOFTAP_FEATURE_ACS_OFFLOAD)) {
             /* Select a channel if it is not specified and ACS is not enabled */
             if (config.getChannel() == 0) {
                 int freq = chooseApChannel(config.getBand(), coexManager, resources,
@@ -740,7 +844,7 @@ public class ApConfigUtil {
                 if (freq == -1) {
                     /* We're not able to get channel from wificond. */
                     Log.e(TAG, "Failed to get available channel.");
-                    return ERROR_NO_CHANNEL;
+                    return SoftApManager.START_RESULT_FAILURE_NO_CHANNEL;
                 }
                 configBuilder.setChannel(
                         ScanResult.convertFrequencyMhzToChannelIfSupported(freq),
@@ -761,7 +865,7 @@ public class ApConfigUtil {
             }
         }
 
-        return SUCCESS;
+        return SoftApManager.START_RESULT_SUCCESS;
     }
 
     /**
@@ -831,62 +935,62 @@ public class ApConfigUtil {
         long features = 0;
         if (isAcsSupported(context)) {
             Log.d(TAG, "Update Softap capability, add acs feature support");
-            features |= SoftApCapability.SOFTAP_FEATURE_ACS_OFFLOAD;
+            features |= SOFTAP_FEATURE_ACS_OFFLOAD;
         }
 
         if (isClientForceDisconnectSupported(context)) {
             Log.d(TAG, "Update Softap capability, add client control feature support");
-            features |= SoftApCapability.SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT;
+            features |= SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT;
         }
 
         if (isWpa3SaeSupported(context)) {
             Log.d(TAG, "Update Softap capability, add SAE feature support");
-            features |= SoftApCapability.SOFTAP_FEATURE_WPA3_SAE;
+            features |= SOFTAP_FEATURE_WPA3_SAE;
         }
 
         if (isMacCustomizationSupported(context)) {
             Log.d(TAG, "Update Softap capability, add MAC customization support");
-            features |= SoftApCapability.SOFTAP_FEATURE_MAC_ADDRESS_CUSTOMIZATION;
+            features |= SOFTAP_FEATURE_MAC_ADDRESS_CUSTOMIZATION;
         }
 
         if (isSoftApBandSupported(context, SoftApConfiguration.BAND_2GHZ)) {
             Log.d(TAG, "Update Softap capability, add 2.4G support");
-            features |= SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED;
+            features |= SOFTAP_FEATURE_BAND_24G_SUPPORTED;
         }
 
         if (isSoftApBandSupported(context, SoftApConfiguration.BAND_5GHZ)) {
             Log.d(TAG, "Update Softap capability, add 5G support");
-            features |= SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED;
+            features |= SOFTAP_FEATURE_BAND_5G_SUPPORTED;
         }
 
         if (isSoftApBandSupported(context, SoftApConfiguration.BAND_6GHZ)) {
             Log.d(TAG, "Update Softap capability, add 6G support");
-            features |= SoftApCapability.SOFTAP_FEATURE_BAND_6G_SUPPORTED;
+            features |= SOFTAP_FEATURE_BAND_6G_SUPPORTED;
         }
 
         if (isSoftApBandSupported(context, SoftApConfiguration.BAND_60GHZ)) {
             Log.d(TAG, "Update Softap capability, add 60G support");
-            features |= SoftApCapability.SOFTAP_FEATURE_BAND_60G_SUPPORTED;
+            features |= SOFTAP_FEATURE_BAND_60G_SUPPORTED;
         }
 
         if (isIeee80211axSupported(context)) {
             Log.d(TAG, "Update Softap capability, add ax support");
-            features |= SoftApCapability.SOFTAP_FEATURE_IEEE80211_AX;
+            features |= SOFTAP_FEATURE_IEEE80211_AX;
         }
 
         if (isIeee80211beSupported(context)) {
             Log.d(TAG, "Update Softap capability, add be support");
-            features |= SoftApCapability.SOFTAP_FEATURE_IEEE80211_BE;
+            features |= SOFTAP_FEATURE_IEEE80211_BE;
         }
 
         if (isOweTransitionSupported(context)) {
             Log.d(TAG, "Update Softap capability, add OWE Transition feature support");
-            features |= SoftApCapability.SOFTAP_FEATURE_WPA3_OWE_TRANSITION;
+            features |= SOFTAP_FEATURE_WPA3_OWE_TRANSITION;
         }
 
         if (isOweSupported(context)) {
             Log.d(TAG, "Update Softap capability, add OWE feature support");
-            features |= SoftApCapability.SOFTAP_FEATURE_WPA3_OWE;
+            features |= SOFTAP_FEATURE_WPA3_OWE;
         }
 
         SoftApCapability capability = new SoftApCapability(features);
@@ -897,6 +1001,27 @@ public class ApConfigUtil {
             capability.setMaxSupportedClients(hardwareSupportedMaxClient);
         }
 
+        return capability;
+    }
+
+    /**
+     * Helper function to update SoftApCapability instance based on config store.
+     *
+     * @param capability the original softApCapability
+     * @param configStore where we stored the Capability after first time fetch from driver.
+     * @return SoftApCapability which updated from the config store.
+     */
+    @NonNull
+    public static SoftApCapability updateCapabilityFromConfigStore(
+            SoftApCapability capability,
+            WifiSettingsConfigStore configStore) {
+        if (capability == null) {
+            return null;
+        }
+        if (capability.areFeaturesSupported(SOFTAP_FEATURE_IEEE80211_BE)) {
+            capability.setSupportedFeatures(isIeee80211beEnabledInConfig(configStore),
+                    SOFTAP_FEATURE_IEEE80211_BE);
+        }
         return capability;
     }
 
@@ -923,6 +1048,18 @@ public class ApConfigUtil {
     }
 
     /**
+     * Helper function to check Config supports 802.11 BE on Soft AP or not
+     *
+     * @param configStore to check the support from WifiSettingsConfigStore
+     * @return true if supported, false otherwise.
+     */
+    public static boolean isIeee80211beEnabledInConfig(
+            WifiSettingsConfigStore configStore) {
+        return configStore.get(
+                    WifiSettingsConfigStore.WIFI_WIPHY_11BE_SUPPORTED);
+    }
+
+    /**
      * Helper function to get device support AP MAC randomization or not.
      *
      * @param context the caller context used to get value from resource file.
@@ -937,22 +1074,33 @@ public class ApConfigUtil {
      * Helper function to get HAL support bridged AP or not.
      *
      * @param context the caller context used to get value from resource file.
+     * @param wifiNative to get the Iface combination from device.
      * @return true if supported, false otherwise.
      */
-    public static boolean isBridgedModeSupported(@NonNull Context context) {
+    public static boolean isBridgedModeSupported(
+            @NonNull Context context, @NonNull WifiNative wifiNative) {
         return SdkLevel.isAtLeastS() && context.getResources().getBoolean(
-                    R.bool.config_wifiBridgedSoftApSupported);
+                    R.bool.config_wifiBridgedSoftApSupported)
+                    && wifiNative.canDeviceSupportCreateTypeCombo(new SparseArray<Integer>() {{
+                            put(HDM_CREATE_IFACE_AP_BRIDGE, 1);
+                        }});
     }
 
     /**
      * Helper function to get HAL support STA + bridged AP or not.
      *
      * @param context the caller context used to get value from resource file.
+     * @param wifiNative to get the Iface combination from device.
      * @return true if supported, false otherwise.
      */
-    public static boolean isStaWithBridgedModeSupported(@NonNull Context context) {
+    public static boolean isStaWithBridgedModeSupported(
+            @NonNull Context context, @NonNull WifiNative wifiNative) {
         return SdkLevel.isAtLeastS() && context.getResources().getBoolean(
-                    R.bool.config_wifiStaWithBridgedSoftApConcurrencySupported);
+                    R.bool.config_wifiStaWithBridgedSoftApConcurrencySupported)
+                    && wifiNative.canDeviceSupportCreateTypeCombo(new SparseArray<Integer>() {{
+                            put(HDM_CREATE_IFACE_AP_BRIDGE, 1);
+                            put(HDM_CREATE_IFACE_STA, 1);
+                        }});
     }
 
     /**
@@ -1106,31 +1254,83 @@ public class ApConfigUtil {
      */
     public static boolean checkSupportAllConfiguration(SoftApConfiguration config,
             SoftApCapability capability) {
-        if (!capability.areFeaturesSupported(
-                SoftApCapability.SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT)
+        if (!capability.areFeaturesSupported(SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT)
                 && (config.getMaxNumberOfClients() != 0 || config.isClientControlByUserEnabled()
                 || config.getBlockedClientList().size() != 0)) {
             Log.d(TAG, "Error, Client control requires HAL support");
             return false;
         }
-
-        if (!capability.areFeaturesSupported(SoftApCapability.SOFTAP_FEATURE_WPA3_SAE)
-                && (config.getSecurityType()
-                == SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION
-                || config.getSecurityType() == SoftApConfiguration.SECURITY_TYPE_WPA3_SAE)) {
-            Log.d(TAG, "Error, SAE requires HAL support");
-            return false;
+        if (!capability.areFeaturesSupported(SOFTAP_FEATURE_WPA3_SAE)) {
+            if (config.getSecurityType() == SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION
+                    || config.getSecurityType() == SoftApConfiguration.SECURITY_TYPE_WPA3_SAE) {
+                Log.d(TAG, "Error, SAE requires HAL support");
+                return false;
+            }
+        }
+        if (!capability.areFeaturesSupported(SOFTAP_FEATURE_MAC_ADDRESS_CUSTOMIZATION)) {
+            if (config.getBssid() != null) {
+                Log.d(TAG, "Error, MAC address customization requires HAL support");
+                return false;
+            }
+            if (SdkLevel.isAtLeastS()
+                    && (config.getMacRandomizationSetting()
+                    == SoftApConfiguration.RANDOMIZATION_PERSISTENT
+                    || config.getMacRandomizationSetting()
+                    == SoftApConfiguration.RANDOMIZATION_NON_PERSISTENT)) {
+                Log.d(TAG, "Error, MAC randomization requires HAL support");
+                return false;
+            }
+        }
+        int requestedBands = 0;
+        for (int band : config.getBands()) {
+            requestedBands |= band;
+        }
+        if (!capability.areFeaturesSupported(SOFTAP_FEATURE_BAND_24G_SUPPORTED)) {
+            if ((requestedBands & SoftApConfiguration.BAND_2GHZ) != 0) {
+                Log.d(TAG, "Error, 2.4Ghz band requires HAL support");
+                return false;
+            }
+        }
+        if (!capability.areFeaturesSupported(SOFTAP_FEATURE_BAND_5G_SUPPORTED)) {
+            if ((requestedBands & SoftApConfiguration.BAND_5GHZ) != 0) {
+                Log.d(TAG, "Error, 5Ghz band requires HAL support");
+                return false;
+            }
+        }
+        if (!capability.areFeaturesSupported(SOFTAP_FEATURE_BAND_6G_SUPPORTED)) {
+            if ((requestedBands & SoftApConfiguration.BAND_6GHZ) != 0) {
+                Log.d(TAG, "Error, 6Ghz band requires HAL support");
+                return false;
+            }
+        }
+        if (!capability.areFeaturesSupported(SOFTAP_FEATURE_BAND_60G_SUPPORTED)) {
+            if ((requestedBands & SoftApConfiguration.BAND_60GHZ) != 0) {
+                Log.d(TAG, "Error, 60Ghz band requires HAL support");
+                return false;
+            }
+        }
+        if (!capability.areFeaturesSupported(SOFTAP_FEATURE_WPA3_OWE_TRANSITION)) {
+            if (config.getSecurityType() == SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION) {
+                Log.d(TAG, "Error, OWE transition requires HAL support");
+                return false;
+            }
+        }
+        if (!capability.areFeaturesSupported(SOFTAP_FEATURE_WPA3_OWE)) {
+            if (config.getSecurityType() == SoftApConfiguration.SECURITY_TYPE_WPA3_OWE) {
+                Log.d(TAG, "Error, OWE requires HAL support");
+                return false;
+            }
         }
 
-        // The bands length should always 1 in R. Adding SdkLevel.isAtLeastS for lint check only.
-        if (config.getBands().length > 1 && SdkLevel.isAtLeastS()) {
+        // Checks for Dual AP
+        if (SdkLevel.isAtLeastS() && config.getBands().length > 1) {
             int[] bands = config.getBands();
             if ((bands[0] & SoftApConfiguration.BAND_60GHZ) != 0
                     || (bands[1] & SoftApConfiguration.BAND_60GHZ) != 0) {
                 Log.d(TAG, "Error, dual APs doesn't support on 60GHz");
                 return false;
             }
-            if (!capability.areFeaturesSupported(SoftApCapability.SOFTAP_FEATURE_ACS_OFFLOAD)
+            if (!capability.areFeaturesSupported(SOFTAP_FEATURE_ACS_OFFLOAD)
                     && (config.getChannels().valueAt(0) == 0
                     || config.getChannels().valueAt(1) == 0)) {
                 Log.d(TAG, "Error, dual APs requires HAL ACS support when channel isn't specified");

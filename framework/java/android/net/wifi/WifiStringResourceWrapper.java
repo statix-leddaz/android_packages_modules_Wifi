@@ -17,7 +17,6 @@
 package android.net.wifi;
 
 import android.content.Context;
-import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
@@ -52,7 +51,7 @@ public class WifiStringResourceWrapper {
     private final int mSubId;
     private final int mCarrierId;
 
-    private final Resources mResources;
+    private Resources mResources;
     private final String mCarrierIdPrefix;
 
     @VisibleForTesting
@@ -69,8 +68,6 @@ public class WifiStringResourceWrapper {
         mContext = context;
         mSubId = subId;
         mCarrierId = carrierId;
-
-        mResources = getResourcesForSubId();
         mCarrierIdPrefix =
                 CARRIER_ID_RESOURCE_SEPARATOR + mCarrierId + CARRIER_ID_RESOURCE_SEPARATOR;
     }
@@ -79,28 +76,16 @@ public class WifiStringResourceWrapper {
      * Returns the string corresponding to the resource ID - or null if no resources exist.
      */
     public String getString(String name, Object... args) {
-        if (mResources == null) return null;
+        if (getResourcesForSubId() == null) return null;
         int resourceId = mResources.getIdentifier(name, "string",
                 mContext.getWifiOverlayApkPkgName());
         if (resourceId == 0) return null;
 
         // check if there's a carrier-specific override array
         if (mCarrierId != TelephonyManager.UNKNOWN_CARRIER_ID) {
-            int arrayResourceId = mResources.getIdentifier(name + CARRIER_ID_RESOURCE_NAME_SUFFIX,
-                    "array", mContext.getWifiOverlayApkPkgName());
-            if (arrayResourceId != 0) {
-                String[] carrierIdOverlays = mResources.getStringArray(arrayResourceId);
-                // check for the :::carrier-id::: prefix and if exists format and return it
-                for (String carrierIdOverlay : carrierIdOverlays) {
-                    if (carrierIdOverlay.indexOf(mCarrierIdPrefix) != 0) continue;
-                    try {
-                        return String.format(carrierIdOverlay.substring(mCarrierIdPrefix.length()),
-                                args);
-                    } catch (java.util.IllegalFormatException e) {
-                        Log.e(TAG, "Resource formatting error - '" + name + "' - " + e);
-                        return null;
-                    }
-                }
+            String carrierOverrideString = getCarrierOverrideString(name, args);
+            if (carrierOverrideString != null) {
+                return carrierOverrideString;
             }
         }
 
@@ -113,16 +98,90 @@ public class WifiStringResourceWrapper {
     }
 
     /**
+     * Returns the int corresponding to the resource ID - or the default value if no resources
+     * exist.
+     */
+    public int getInt(String name, int defaultValue) {
+        if (getResourcesForSubId() == null) return defaultValue;
+        int resourceId = mResources.getIdentifier(name, "integer",
+                mContext.getWifiOverlayApkPkgName());
+        if (resourceId == 0) return defaultValue;
+
+        // check if there's a carrier-specific override array
+        if (mCarrierId != TelephonyManager.UNKNOWN_CARRIER_ID) {
+            String carrierOverrideString = getCarrierOverrideString(name);
+            if (carrierOverrideString != null) {
+                try {
+                    return Integer.parseInt(carrierOverrideString);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to parse String into int. String=" + carrierOverrideString);
+                }
+            }
+        }
+        return mResources.getInteger(resourceId);
+    }
+
+    /**
+     * Returns the boolean corresponding to the resource ID - or the default value if no resources
+     * exist.
+     */
+    public boolean getBoolean(String name, boolean defaultValue) {
+        if (getResourcesForSubId() == null) return defaultValue;
+        int resourceId = mResources.getIdentifier(name, "bool",
+                mContext.getWifiOverlayApkPkgName());
+        if (resourceId == 0) return defaultValue;
+
+        // check if there's a carrier-specific override array
+        if (mCarrierId != TelephonyManager.UNKNOWN_CARRIER_ID) {
+            String carrierOverrideString = getCarrierOverrideString(name);
+            if (carrierOverrideString != null) {
+                try {
+                    return Boolean.parseBoolean(carrierOverrideString);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to parse String into boolean. String="
+                            + carrierOverrideString);
+                }
+            }
+        }
+        return mResources.getBoolean(resourceId);
+    }
+
+    /**
+     * Return the String resource override by the carrier, or null if no override is found.
+     */
+    private String getCarrierOverrideString(String name, Object... args) {
+        int arrayResourceId = mResources.getIdentifier(name + CARRIER_ID_RESOURCE_NAME_SUFFIX,
+                "array", mContext.getWifiOverlayApkPkgName());
+        if (arrayResourceId != 0) {
+            String[] carrierIdOverlays = mResources.getStringArray(arrayResourceId);
+            // check for the :::carrier-id::: prefix and if exists format and return it
+            for (String carrierIdOverlay : carrierIdOverlays) {
+                if (carrierIdOverlay.indexOf(mCarrierIdPrefix) != 0) continue;
+                try {
+                    return String.format(carrierIdOverlay.substring(mCarrierIdPrefix.length()),
+                            args);
+                } catch (java.util.IllegalFormatException e) {
+                    Log.e(TAG, "Resource formatting error - '" + name + "' - " + e);
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * Returns the resources from the given context for the MCC/MNC
      * associated with the subscription.
      */
     private Resources getResourcesForSubId() {
-        try {
-            Context resourceContext = mContext.createPackageContext(
-                    mContext.getWifiOverlayApkPkgName(), 0);
-            return SubscriptionManager.getResourcesForSubId(resourceContext, mSubId);
-        } catch (PackageManager.NameNotFoundException ex) {
+        if (mResources != null) {
+            return mResources;
+        }
+        Context context = mContext.getResourcesApkContext();
+        if (context == null) {
             return null;
         }
+        mResources = SubscriptionManager.getResourcesForSubId(context, mSubId);
+        return mResources;
     }
 }

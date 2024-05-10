@@ -463,8 +463,21 @@ public class WifiRttManagerTest {
         assertEquals(result, rereadResult);
 
         // RangingResults constructed with a PeerHandle
-        result = new RangingResult(status, peerHandle, distanceCm, distanceStdDevCm, rssi,
-                numAttemptedMeasurements, numSuccessfulMeasurements, null, null, null, timestamp);
+        result =
+                new RangingResult(
+                        status,
+                        peerHandle,
+                        distanceCm,
+                        distanceStdDevCm,
+                        rssi,
+                        numAttemptedMeasurements,
+                        numSuccessfulMeasurements,
+                        null,
+                        null,
+                        null,
+                        timestamp,
+                        RangingResult.UNSPECIFIED,
+                        RangingResult.UNSPECIFIED);
 
         parcelW = Parcel.obtain();
         result.writeToParcel(parcelW, 0);
@@ -619,5 +632,13 @@ public class WifiRttManagerTest {
         config = ResponderConfig.fromScanResult(scan);
 
         assertEquals(ResponderConfig.PREAMBLE_HE, config.preamble);
+    }
+
+    @Test
+    public void testGetRttCharacteristics() throws Exception {
+        when(mockRttService.getRttCharacteristics()).thenReturn(new Bundle());
+        Bundle characteristics = mDut.getRttCharacteristics();
+        verify(mockRttService).getRttCharacteristics();
+        assertEquals(0, characteristics.size());
     }
 }

@@ -298,6 +298,7 @@ public class NetworkSuggestionStoreDataTest extends WifiBaseTest {
         WifiConfiguration configuration = WifiConfigurationTestUtil.createEapNetwork();
         configuration.enterpriseConfig =
                 WifiConfigurationTestUtil.createPEAPWifiEnterpriseConfigWithGTCPhase2();
+        configuration.priority = 5;
         WifiNetworkSuggestion networkSuggestion =
                 new WifiNetworkSuggestion(configuration, null, false, false, true, true,
                         TEST_PRIORITY_GROUP);
@@ -525,11 +526,6 @@ public class NetworkSuggestionStoreDataTest extends WifiBaseTest {
         homeSp.setFqdn(fqdn);
         homeSp.setFriendlyName(friendlyName);
         config.setHomeSp(homeSp);
-        Map<String, String> friendlyNames = new HashMap<>();
-        friendlyNames.put("en", friendlyName);
-        friendlyNames.put("kr", friendlyName + 1);
-        friendlyNames.put("jp", friendlyName + 2);
-        config.setServiceFriendlyNames(friendlyNames);
         Credential credential = new Credential();
         credential.setRealm(TEST_REALM);
         credential.setCaCertificate(FakeKeys.CA_CERT0);

@@ -66,22 +66,6 @@ public class ScanResultUtil {
         return scanResult.capabilities.contains("WAPI-CERT");
     }
 
-    /**
-     * Helper method to check if the provided |scanResult| corresponds to a EAP network or not.
-     * This checks these conditions:
-     * - Enable EAP/SHA1, EAP/SHA256 AKM, FT/EAP, or EAP-FILS.
-     * - Not a WPA3 Enterprise only network.
-     * - Not a WPA3 Enterprise transition network.
-     */
-    public static boolean isScanResultForEapNetwork(@NonNull ScanResult scanResult) {
-        return (scanResult.capabilities.contains("EAP/SHA1")
-                        || scanResult.capabilities.contains("EAP/SHA256")
-                        || scanResult.capabilities.contains("FT/EAP")
-                        || scanResult.capabilities.contains("EAP-FILS"))
-                && !isScanResultForWpa3EnterpriseOnlyNetwork(scanResult)
-                && !isScanResultForWpa3EnterpriseTransitionNetwork(scanResult);
-    }
-
     private static boolean isScanResultForPmfMandatoryNetwork(@NonNull ScanResult scanResult) {
         return scanResult.capabilities.contains("[MFPR]");
     }
@@ -91,35 +75,25 @@ public class ScanResultUtil {
     }
 
     /**
-     * Helper method to check if the provided |scanResult| corresponds to a Passpoint R1/R2
-     * network or not.
-     * Passpoint R1/R2 requirements:
-     * - WPA2 Enterprise network.
-     * - interworking bit is set.
+     * Helper method to check if the provided |scanResult| corresponds to a Passpoint R1/R2 network
+     * or not. Passpoint R1/R2 requirements:
+     * - Enterprise network not suite B.
+     * - Interworking bit is set.
      * - HotSpot Release presents.
      */
-    public static boolean isScanResultForPasspointR1R2Network(@NonNull ScanResult scanResult) {
-        if (!isScanResultForEapNetwork(scanResult)) return false;
-
+    public static boolean isEapScanResultForPasspointR1R2Network(@NonNull ScanResult scanResult) {
         return scanResult.isPasspointNetwork();
     }
 
     /**
-     * Helper method to check if the provided |scanResult| corresponds to a Passpoint R3
-     * network or not.
-     * Passpoint R3 requirements:
-     * - Must be WPA2 Enterprise network, WPA3 Enterprise network,
-     *   or WPA3 Enterprise 192-bit mode network.
-     * - interworking bit is set.
+     * Helper method to check if the provided |scanResult| corresponds to a Passpoint R3 network or
+     * not. Passpoint R3 requirements:
+     * - Enterprise network not suite B.
+     * - Interworking bit is set.
      * - HotSpot Release presents.
      * - PMF is mandatory.
      */
-    public static boolean isScanResultForPasspointR3Network(@NonNull ScanResult scanResult) {
-        if (!isScanResultForEapNetwork(scanResult)
-                && !isScanResultForWpa3EnterpriseOnlyNetwork(scanResult)
-                && !isScanResultForEapSuiteBNetwork(scanResult)) {
-            return false;
-        }
+    public static boolean isEapScanResultForPasspointR3Network(@NonNull ScanResult scanResult) {
         if (!isScanResultForPmfMandatoryNetwork(scanResult)) return false;
 
         return scanResult.isPasspointNetwork();
@@ -249,6 +223,14 @@ public class ScanResultUtil {
     }
 
     /**
+     * Helper method to check if the provided |scanResult| corresponds to only WPA-Personal network.
+     * This checks if the provided capabilities string contains WPA and not RSN.
+     */
+    public static boolean isScanResultForWpaPersonalOnlyNetwork(@NonNull ScanResult scanResult) {
+        return isScanResultForPskNetwork(scanResult) && !scanResult.capabilities.contains("RSN");
+    }
+
+    /**
      *  Helper method to check if the provided |scanResult| corresponds to an unknown amk network.
      *  This checks if the provided capabilities string contains ? or not.
      */
@@ -257,13 +239,60 @@ public class ScanResultUtil {
     }
 
     /**
+     *  Helper method to check if the provided |scanResult| corresponds to a pure PSK network.
+     */
+    public static boolean isScanResultForPskOnlyNetwork(@NonNull ScanResult r) {
+        return ScanResultUtil.isScanResultForPskNetwork(r)
+                && !ScanResultUtil.isScanResultForSaeNetwork(r);
+    }
+
+    /**
+     *  Helper method to check if the provided |scanResult| corresponds to a pure SAE network.
+     */
+    public static boolean isScanResultForSaeOnlyNetwork(@NonNull ScanResult r) {
+        return !ScanResultUtil.isScanResultForPskNetwork(r)
+                && ScanResultUtil.isScanResultForSaeNetwork(r);
+    }
+
+    /**
+     *  Helper method to check if the provided |scanResult| corresponds to a pure OPEN network.
+     */
+    public static boolean isScanResultForOpenOnlyNetwork(@NonNull ScanResult r) {
+        return ScanResultUtil.isScanResultForOpenNetwork(r)
+                && !ScanResultUtil.isScanResultForOweNetwork(r);
+    }
+
+    /**
+     *  Helper method to check if the provided |scanResult| corresponds to a pure OWE network.
+     */
+    public static boolean isScanResultForOweOnlyNetwork(@NonNull ScanResult r) {
+        return !ScanResultUtil.isScanResultForOweTransitionNetwork(r)
+                && ScanResultUtil.isScanResultForOweNetwork(r);
+    }
+
+    /**
+     * Helper method to check if the provided |scanResult| corresponds to a pure WPA2 Enterprise
+     * network.
+     */
+    public static boolean isScanResultForWpa2EnterpriseOnlyNetwork(@NonNull ScanResult scanResult) {
+        return (scanResult.capabilities.contains("EAP/SHA1")
+                        || scanResult.capabilities.contains("EAP/SHA256")
+                        || scanResult.capabilities.contains("FT/EAP")
+                        || scanResult.capabilities.contains("EAP-FILS"))
+                && !isScanResultForWpa3EnterpriseOnlyNetwork(scanResult)
+                && !isScanResultForWpa3EnterpriseTransitionNetwork(scanResult);
+    }
+
+    /**
      * Helper method to check if the provided |scanResult| corresponds to an open network or not.
      * This checks if the provided capabilities string does not contain either of WEP, PSK, SAE
      * EAP, or unknown encryption types or not.
      */
     public static boolean isScanResultForOpenNetwork(@NonNull ScanResult scanResult) {
-        return (!(isScanResultForWepNetwork(scanResult) || isScanResultForPskNetwork(scanResult)
-                || isScanResultForEapNetwork(scanResult) || isScanResultForSaeNetwork(scanResult)
+        return (!(isScanResultForWepNetwork(scanResult)
+                || isScanResultForPskNetwork(scanResult)
+                || isScanResultForWpa2EnterpriseOnlyNetwork(scanResult)
+                || isScanResultForSaeNetwork(scanResult)
                 || isScanResultForWpa3EnterpriseTransitionNetwork(scanResult)
                 || isScanResultForWpa3EnterpriseOnlyNetwork(scanResult)
                 || isScanResultForWapiPskNetwork(scanResult)
@@ -366,6 +395,7 @@ public class ScanResultUtil {
             return list;
         }
 
+        boolean isEapNetworkAndNotSuiteB = false;
         // WPA3 Enterprise 192-bit mode, WPA2/WPA3 enterprise network & its upgradable types
         if (ScanResultUtil.isScanResultForEapSuiteBNetwork(scanResult)) {
             list.add(SecurityParams.createSecurityParamsBySecurityType(
@@ -375,20 +405,26 @@ public class ScanResultUtil {
                     WifiConfiguration.SECURITY_TYPE_EAP));
             list.add(SecurityParams.createSecurityParamsBySecurityType(
                     WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE));
+            isEapNetworkAndNotSuiteB = true;
         } else if (ScanResultUtil.isScanResultForWpa3EnterpriseOnlyNetwork(scanResult)) {
             list.add(SecurityParams.createSecurityParamsBySecurityType(
                     WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE));
-        } else if (ScanResultUtil.isScanResultForEapNetwork(scanResult)) {
+            isEapNetworkAndNotSuiteB = true;
+        } else if (ScanResultUtil.isScanResultForWpa2EnterpriseOnlyNetwork(scanResult)) {
             list.add(SecurityParams.createSecurityParamsBySecurityType(
                     WifiConfiguration.SECURITY_TYPE_EAP));
+            isEapNetworkAndNotSuiteB = true;
+        }
+        if (!isEapNetworkAndNotSuiteB) {
+            return list;
         }
         // An Enterprise network might be a Passpoint network as well.
         // R3 network might be also a valid R1/R2 network.
-        if (isScanResultForPasspointR1R2Network(scanResult)) {
+        if (isEapScanResultForPasspointR1R2Network(scanResult)) {
             list.add(SecurityParams.createSecurityParamsBySecurityType(
                     WifiConfiguration.SECURITY_TYPE_PASSPOINT_R1_R2));
         }
-        if (isScanResultForPasspointR3Network(scanResult)) {
+        if (isEapScanResultForPasspointR3Network(scanResult)) {
             list.add(SecurityParams.createSecurityParamsBySecurityType(
                     WifiConfiguration.SECURITY_TYPE_PASSPOINT_R3));
         }

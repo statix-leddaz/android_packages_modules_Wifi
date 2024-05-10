@@ -16,12 +16,18 @@
 
 package com.android.server.wifi;
 
+import static android.content.pm.PackageManager.PERMISSION_GRANTED;
+import static android.net.wifi.WifiManager.AddNetworkResult.STATUS_INVALID_CONFIGURATION;
+import static android.net.wifi.WifiManager.AddNetworkResult.STATUS_INVALID_CONFIGURATION_ENTERPRISE;
+import static android.net.wifi.WifiManager.AddNetworkResult.STATUS_NO_PERMISSION_MODIFY_CONFIG;
+import static android.net.wifi.WifiManager.AddNetworkResult.STATUS_SUCCESS;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_TRUST_ON_FIRST_USE;
 
 import android.Manifest;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.app.ActivityManager;
+import android.app.AlarmManager;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -40,6 +46,7 @@ import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
+import android.os.Handler;
 import android.os.Process;
 import android.os.UserHandle;
 import android.os.UserManager;
@@ -47,6 +54,7 @@ import android.provider.Settings;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.LocalLog;
 import android.util.Log;
@@ -60,6 +68,7 @@ import com.android.server.wifi.util.CertificateSubjectInfo;
 import com.android.server.wifi.util.LruConnectionTracker;
 import com.android.server.wifi.util.MissingCounterTimerLockList;
 import com.android.server.wifi.util.WifiPermissionsUtil;
+import com.android.wifi.flags.FeatureFlags;
 import com.android.wifi.resources.R;
 
 import org.xmlpull.v1.XmlPullParserException;
@@ -76,6 +85,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -110,6 +120,23 @@ public class WifiConfigManager {
     @VisibleForTesting
     public static final String PASSWORD_MASK = "*";
 
+    private final AlarmManager mAlarmManager;
+    private final FeatureFlags mFeatureFlags;
+    private boolean mBufferedWritePending;
+    /** Alarm tag to use for starting alarms for buffering file writes. */
+    @VisibleForTesting public static final String BUFFERED_WRITE_ALARM_TAG = "WriteBufferAlarm";
+    /** Time interval for buffering file writes for non-forced writes */
+    private static final int BUFFERED_WRITE_ALARM_INTERVAL_MS = 10 * 1000;
+    /** Alarm listener for flushing out any buffered writes. */
+    private final AlarmManager.OnAlarmListener mBufferedWriteListener =
+            new AlarmManager.OnAlarmListener() {
+                public void onAlarm() {
+                    if (mBufferedWritePending) {
+                        writeBufferedData(true);
+                    }
+                }
+            };
+
     /**
      * Interface for other modules to listen to the network updated events.
      * Note: Credentials are masked to avoid accidentally sending credentials outside the stack.
@@ -143,9 +170,11 @@ public class WifiConfigManager {
          *
          * @param newConfig Updated WifiConfiguration object.
          * @param oldConfig Prev WifiConfiguration object.
+         * @param hasCredentialChanged true if credential is changed, false otherwise.
          */
         default void onNetworkUpdated(
-                @NonNull WifiConfiguration newConfig, @NonNull WifiConfiguration oldConfig) { };
+                @NonNull WifiConfiguration newConfig, @NonNull WifiConfiguration oldConfig,
+                boolean hasCredentialChanged) { };
 
         /**
          * Invoked when user connect choice is set.
@@ -161,7 +190,7 @@ public class WifiConfigManager {
          * Invoked when user connect choice is removed.
          * @param choiceKey The network profile key of the user connect choice that was removed.
          */
-        default void onConnectChoiceRemoved(String choiceKey){ }
+        default void onConnectChoiceRemoved(@NonNull String choiceKey){ }
 
         /**
          * Invoke when security params changed, especially when NetworkTransitionDisable event
@@ -229,8 +258,7 @@ public class WifiConfigManager {
 
     @VisibleForTesting
     public static final int SCAN_RESULT_MISSING_COUNT_THRESHOLD = 1;
-    @VisibleForTesting
-    protected static final String NON_PERSISTENT_MAC_RANDOMIZATION_FEATURE_FORCE_ENABLE_FLAG =
+    public static final String NON_PERSISTENT_MAC_RANDOMIZATION_FEATURE_FORCE_ENABLE_FLAG =
             "non_persistent_mac_randomization_force_enabled";
     private static final int NON_CARRIER_MERGED_NETWORKS_SCAN_CACHE_QUERY_DURATION_MS =
             10 * 60 * 1000; // 10 minutes
@@ -320,6 +348,7 @@ public class WifiConfigManager {
 
     private final FrameworkFacade mFrameworkFacade;
     private final DeviceConfigFacade mDeviceConfigFacade;
+    private final Handler mHandler;
 
     /**
      * Verbose logging flag. Toggled by developer options.
@@ -392,9 +421,7 @@ public class WifiConfigManager {
     }
     private final Map<NetworkIdentifier, List<DhcpOption>> mCustomDhcpOptions = new HashMap<>();
 
-    /**
-     * Create new instance of WifiConfigManager.
-     */
+    /** Create new instance of WifiConfigManager. */
     WifiConfigManager(
             Context context,
             WifiKeyStore wifiKeyStore,
@@ -403,8 +430,10 @@ public class WifiConfigManager {
             NetworkListUserStoreData networkListUserStoreData,
             RandomizedMacStoreData randomizedMacStoreData,
             LruConnectionTracker lruConnectionTracker,
-            WifiInjector wifiInjector) {
+            WifiInjector wifiInjector,
+            Handler handler) {
         mContext = context;
+        mHandler = handler;
         mWifiInjector = wifiInjector;
         mClock = wifiInjector.getClock();
         mUserManager = wifiInjector.getUserManager();
@@ -416,6 +445,7 @@ public class WifiConfigManager {
         mWifiPermissionsUtil = wifiInjector.getWifiPermissionsUtil();
         mFrameworkFacade = wifiInjector.getFrameworkFacade();
         mDeviceConfigFacade = wifiInjector.getDeviceConfigFacade();
+        mFeatureFlags = mDeviceConfigFacade.getFeatureFlags();
         mMacAddressUtil = wifiInjector.getMacAddressUtil();
         mBuildProperties = wifiInjector.getBuildProperties();
 
@@ -441,6 +471,7 @@ public class WifiConfigManager {
         mLocalLog = new LocalLog(
                 context.getSystemService(ActivityManager.class).isLowRamDevice() ? 128 : 256);
         mLruConnectionTracker = lruConnectionTracker;
+        mAlarmManager = context.getSystemService(AlarmManager.class);
     }
 
     /**
@@ -460,12 +491,6 @@ public class WifiConfigManager {
      * @return
      */
     public boolean shouldUseNonPersistentRandomization(WifiConfiguration config) {
-        // If this is the secondary STA for multi internet for DBS AP, use non persistent mac
-        // randomization, as the primary and secondary STAs could connect to the same SSID.
-        if (isMacRandomizationSupported() && config.dbsSecondaryInternet) {
-            return true;
-        }
-
         if (!isMacRandomizationSupported()
                 || config.macRandomizationSetting == WifiConfiguration.RANDOMIZATION_NONE) {
             return false;
@@ -500,8 +525,7 @@ public class WifiConfigManager {
     }
 
     private boolean shouldEnableNonPersistentRandomizationOnOpenNetwork(WifiConfiguration config) {
-        if (!mDeviceConfigFacade.allowNonPersistentMacRandomizationOnOpenSsids()
-                && !mContext.getResources().getBoolean(
+        if (!mContext.getResources().getBoolean(
                         R.bool.config_wifiAllowNonPersistentMacRandomizationOnOpenSsids)) {
             return false;
         }
@@ -556,12 +580,8 @@ public class WifiConfigManager {
                 mRandomizedMacAddressMapping.remove(config.getNetworkKey());
             }
         }
-        MacAddress result = mMacAddressUtil.calculatePersistentMac(config.getNetworkKey(),
-                mMacAddressUtil.obtainMacRandHashFunction(Process.WIFI_UID));
-        if (result == null) {
-            result = mMacAddressUtil.calculatePersistentMac(config.getNetworkKey(),
-                    mMacAddressUtil.obtainMacRandHashFunction(Process.WIFI_UID));
-        }
+        MacAddress result = mMacAddressUtil.calculatePersistentMacForSta(config.getNetworkKey(),
+                Process.WIFI_UID);
         if (result == null) {
             Log.wtf(TAG, "Failed to generate MAC address from KeyStore even after retrying. "
                     + "Using locally generated MAC address instead.");
@@ -636,10 +656,17 @@ public class WifiConfigManager {
      * @param config
      * @return MacAddress
      */
-    public MacAddress getRandomizedMacAndUpdateIfNeeded(WifiConfiguration config) {
+    public MacAddress getRandomizedMacAndUpdateIfNeeded(WifiConfiguration config,
+            boolean isForSecondaryDbs) {
         MacAddress mac = shouldUseNonPersistentRandomization(config)
                 ? updateRandomizedMacIfNeeded(config)
                 : setRandomizedMacToPersistentMac(config);
+        // If this is the secondary STA for multi internet for DBS AP, use a different MAC than the
+        // persistent mac randomization, as the primary and secondary STAs could connect to the
+        // same SSID.
+        if (isForSecondaryDbs) {
+            mac = MacAddressUtil.nextMacAddress(mac);
+        }
         return mac;
     }
 
@@ -719,7 +746,6 @@ public class WifiConfigManager {
 
     /**
      * Returns whether MAC randomization is supported on this device.
-     * @param config
      * @return
      */
     private boolean isMacRandomizationSupported() {
@@ -962,13 +988,26 @@ public class WifiConfigManager {
      *
      * @param reason  The reason for the change, should be one of WifiManager.CHANGE_REASON_ADDED,
      *                WifiManager.CHANGE_REASON_REMOVED, or WifiManager.CHANGE_REASON_CHANGE.
+     * @param config The related to the change. This is only sent out for system users, and could
+     *               be null if multiple WifiConfigurations are affected by the change.
      */
-    private void sendConfiguredNetworkChangedBroadcast(int reason) {
+    private void sendConfiguredNetworkChangedBroadcast(int reason,
+            @Nullable WifiConfiguration config) {
         Intent intent = new Intent(WifiManager.CONFIGURED_NETWORKS_CHANGED_ACTION);
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
         intent.putExtra(WifiManager.EXTRA_MULTIPLE_NETWORKS_CHANGED, true);
         intent.putExtra(WifiManager.EXTRA_CHANGE_REASON, reason);
         mContext.sendBroadcastAsUser(intent, UserHandle.ALL, Manifest.permission.ACCESS_WIFI_STATE);
+
+        // Send another broadcast including the WifiConfiguration to System only
+        Intent intentForSystem = new Intent(WifiManager.CONFIGURED_NETWORKS_CHANGED_ACTION);
+        intentForSystem.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
+        intentForSystem.putExtra(WifiManager.EXTRA_MULTIPLE_NETWORKS_CHANGED, config == null);
+        intentForSystem.putExtra(WifiManager.EXTRA_CHANGE_REASON, reason);
+        intentForSystem.putExtra(WifiManager.EXTRA_WIFI_CONFIGURATION,
+                config == null ? null : createExternalWifiConfiguration(config, true, -1));
+        mContext.sendBroadcastAsUser(intentForSystem, UserHandle.SYSTEM,
+                Manifest.permission.NETWORK_STACK);
     }
 
     /**
@@ -1022,7 +1061,8 @@ public class WifiConfigManager {
             // modify the network.
             return isCreator
                     || mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
-                    || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid);
+                    || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid)
+                    || mWifiPermissionsUtil.checkConfigOverridePermission(uid);
         }
 
         final ContentResolver resolver = mContext.getContentResolver();
@@ -1031,7 +1071,8 @@ public class WifiConfigManager {
         return !isLockdownFeatureEnabled
                 // If not locked down, settings app (i.e user) has permission to modify the network.
                 && (mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
-                || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid));
+                || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid)
+                || mWifiPermissionsUtil.checkConfigOverridePermission(uid));
     }
 
     private void mergeSecurityParamsListWithInternalWifiConfiguration(
@@ -1058,7 +1099,8 @@ public class WifiConfigManager {
         int newType = externalConfig.getDefaultSecurityParams().getSecurityType();
         if (oldType != newType) {
             if (internalConfig.isSecurityType(newType)) {
-                internalConfig.setSecurityParamsIsAddedByAutoUpgrade(newType, false);
+                internalConfig.setSecurityParamsIsAddedByAutoUpgrade(newType,
+                        externalConfig.getDefaultSecurityParams().isAddedByAutoUpgrade());
             } else if (externalConfig.isSecurityType(oldType)) {
                 internalConfig.setSecurityParams(newType);
                 internalConfig.addSecurityParams(oldType);
@@ -1087,6 +1129,20 @@ public class WifiConfigManager {
         }
     }
 
+    private static @WifiEnterpriseConfig.TofuConnectionState int mergeTofuConnectionState(
+            WifiConfiguration internalConfig, WifiConfiguration externalConfig) {
+        // Prioritize the internal config if it has reached a post-connection state.
+        int internalTofuState = internalConfig.enterpriseConfig.getTofuConnectionState();
+        if (internalTofuState == WifiEnterpriseConfig.TOFU_STATE_CONFIGURE_ROOT_CA
+                || internalTofuState == WifiEnterpriseConfig.TOFU_STATE_CERT_PINNING) {
+            return internalTofuState;
+        }
+        // Else assign a pre-connection state based on the latest external config.
+        return externalConfig.enterpriseConfig.isTrustOnFirstUseEnabled()
+                ? WifiEnterpriseConfig.TOFU_STATE_ENABLED_PRE_CONNECTION
+                : WifiEnterpriseConfig.TOFU_STATE_NOT_ENABLED;
+    }
+
     /**
      * Copy over public elements from an external WifiConfiguration object to the internal
      * configuration object if element has been set in the provided external WifiConfiguration.
@@ -1106,12 +1162,25 @@ public class WifiConfigManager {
     private void mergeWithInternalWifiConfiguration(
             WifiConfiguration internalConfig, WifiConfiguration externalConfig) {
         if (externalConfig.SSID != null) {
-            internalConfig.SSID = externalConfig.SSID;
+            // Translate the SSID in case it is in hexadecimal for a translatable charset.
+            if (externalConfig.SSID.length() > 0 && externalConfig.SSID.charAt(0) != '\"') {
+                internalConfig.SSID = mWifiInjector.getSsidTranslator().getTranslatedSsid(
+                        WifiSsid.fromString(externalConfig.SSID)).toString();
+            } else {
+                internalConfig.SSID = externalConfig.SSID;
+            }
         }
-        if (externalConfig.BSSID != null) {
-            internalConfig.BSSID = externalConfig.BSSID.toLowerCase();
+        internalConfig.BSSID = externalConfig.BSSID == null ? null
+                : externalConfig.BSSID.toLowerCase();
+        if (externalConfig.hiddenSSID) {
+            internalConfig.hiddenSSID = true;
+        } else if (internalConfig.getSecurityParams(
+                externalConfig.getDefaultSecurityParams().getSecurityType()) != null) {
+            // Only set hiddenSSID to false if we're updating an existing config.
+            // This is to prevent users from mistakenly converting an existing hidden config to
+            // unhidden when adding a new config of the same security family.
+            internalConfig.hiddenSSID = false;
         }
-        internalConfig.hiddenSSID = externalConfig.hiddenSSID;
 
         if (externalConfig.preSharedKey != null
                 && !externalConfig.preSharedKey.equals(PASSWORD_MASK)) {
@@ -1167,10 +1236,18 @@ public class WifiConfigManager {
         }
 
         internalConfig.allowAutojoin = externalConfig.allowAutojoin;
-        // Copy over the |WifiEnterpriseConfig| parameters if set.
+        // Copy over the |WifiEnterpriseConfig| parameters if set. For fields which should
+        // only be set by the framework, cache the internal config's value and restore.
         if (externalConfig.enterpriseConfig != null) {
+            boolean userApproveNoCaCertInternal =
+                    internalConfig.enterpriseConfig.isUserApproveNoCaCert();
+            int tofuDialogStateInternal = internalConfig.enterpriseConfig.getTofuDialogState();
+            int tofuConnectionState = mergeTofuConnectionState(internalConfig, externalConfig);
             internalConfig.enterpriseConfig.copyFromExternal(
                     externalConfig.enterpriseConfig, PASSWORD_MASK);
+            internalConfig.enterpriseConfig.setUserApproveNoCaCert(userApproveNoCaCertInternal);
+            internalConfig.enterpriseConfig.setTofuDialogState(tofuDialogStateInternal);
+            internalConfig.enterpriseConfig.setTofuConnectionState(tofuConnectionState);
         }
 
         // Copy over any metered information.
@@ -1180,7 +1257,6 @@ public class WifiConfigManager {
         internalConfig.trusted = externalConfig.trusted;
         internalConfig.oemPaid = externalConfig.oemPaid;
         internalConfig.oemPrivate = externalConfig.oemPrivate;
-        internalConfig.dbsSecondaryInternet = externalConfig.dbsSecondaryInternet;
         internalConfig.carrierMerged = externalConfig.carrierMerged;
         internalConfig.restricted = externalConfig.restricted;
 
@@ -1348,7 +1424,8 @@ public class WifiConfigManager {
                     WifiConfigurationUtil.VALIDATE_FOR_ADD)) {
                 Log.e(TAG, "Cannot add network with invalid config");
                 return new Pair<>(
-                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID),
+                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID,
+                                STATUS_INVALID_CONFIGURATION),
                         existingInternalConfig);
             }
             newInternalConfig =
@@ -1365,7 +1442,8 @@ public class WifiConfigManager {
                     config, supportedFeatures, WifiConfigurationUtil.VALIDATE_FOR_UPDATE)) {
                 Log.e(TAG, "Cannot update network with invalid config");
                 return new Pair<>(
-                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID),
+                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID,
+                                STATUS_INVALID_CONFIGURATION),
                         existingInternalConfig);
             }
             // Check for the app's permission before we let it update this network.
@@ -1373,7 +1451,8 @@ public class WifiConfigManager {
                 Log.e(TAG, "UID " + uid + " does not have permission to update configuration "
                         + config.getProfileKey());
                 return new Pair<>(
-                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID),
+                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID,
+                                STATUS_NO_PERMISSION_MODIFY_CONFIG),
                         existingInternalConfig);
             }
             if (mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
@@ -1405,7 +1484,8 @@ public class WifiConfigManager {
         // Only allow changes in Repeater Enabled flag if the user has permission to
         if (WifiConfigurationUtil.hasRepeaterEnabledChanged(
                 existingInternalConfig, newInternalConfig)
-                && !mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)) {
+                && !mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
+                && !mWifiPermissionsUtil.checkConfigOverridePermission(uid)) {
             Log.e(TAG, "UID " + uid
                     + " does not have permission to modify Repeater Enabled Settings "
                     + " , or add a network with Repeater Enabled set to true "
@@ -1418,6 +1498,7 @@ public class WifiConfigManager {
         if (WifiConfigurationUtil.hasMacRandomizationSettingsChanged(existingInternalConfig,
                 newInternalConfig) && !mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
                 && !mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid)
+                && !mWifiPermissionsUtil.checkConfigOverridePermission(uid)
                 && !(newInternalConfig.isPasspoint() && uid == newInternalConfig.creatorUid)
                 && !config.fromWifiNetworkSuggestion
                 && !mWifiPermissionsUtil.isDeviceInDemoMode(mContext)
@@ -1431,6 +1512,31 @@ public class WifiConfigManager {
             return new Pair<>(
                     new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID),
                     existingInternalConfig);
+        }
+
+        if (config.isEnterprise()
+                && config.enterpriseConfig.isEapMethodServerCertUsed()
+                && !config.enterpriseConfig.isMandatoryParameterSetForServerCertValidation()
+                && !config.enterpriseConfig.isTrustOnFirstUseEnabled()) {
+            boolean isSettingsOrSuw = mContext.checkPermission(Manifest.permission.NETWORK_SETTINGS,
+                    -1 /* pid */, uid) == PERMISSION_GRANTED
+                    || mContext.checkPermission(Manifest.permission.NETWORK_SETUP_WIZARD,
+                    -1 /* pid */, uid) == PERMISSION_GRANTED;
+            if (!(mWifiInjector.getWifiGlobals().isInsecureEnterpriseConfigurationAllowed()
+                    && isSettingsOrSuw)) {
+                Log.e(TAG, "Enterprise network configuration is missing either a Root CA "
+                        + "or a domain name");
+                return new Pair<>(
+                        new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID,
+                                STATUS_INVALID_CONFIGURATION_ENTERPRISE),
+                        existingInternalConfig);
+            }
+            Log.w(TAG, "Insecure Enterprise network " + config.SSID
+                    + " configured by Settings/SUW");
+
+            // Implicit user approval, when creating an insecure connection which is allowed
+            // in the configuration of the device
+            newInternalConfig.enterpriseConfig.setUserApproveNoCaCert(true);
         }
 
         // Update the keys for saved enterprise networks. For Passpoint, the certificates
@@ -1482,11 +1588,8 @@ public class WifiConfigManager {
                         existingInternalConfig, newInternalConfig);
         if (hasCredentialChanged) {
             newInternalConfig.getNetworkSelectionStatus().setHasEverConnected(false);
-        }
-
-        // Ensure that the user approve flag is set to false for a new network.
-        if (newNetwork && config.isEnterprise()) {
-            config.enterpriseConfig.setUserApproveNoCaCert(false);
+            newInternalConfig.setHasPreSharedKeyChanged(true);
+            Log.i(TAG, "Credential changed for netId=" + newInternalConfig.networkId);
         }
 
         // Add it to our internal map. This will replace any existing network configuration for
@@ -1502,7 +1605,7 @@ public class WifiConfigManager {
                     new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID),
                     existingInternalConfig);
         }
-        if (removeExcessNetworks()) {
+        if (removeExcessNetworks(uid, packageName)) {
             if (mConfiguredNetworks.getForAllUsers(newInternalConfig.networkId) == null) {
                 Log.e(TAG, "Cannot add network because number of configured networks is maxed.");
                 return new Pair<>(
@@ -1523,6 +1626,7 @@ public class WifiConfigManager {
 
         NetworkUpdateResult result = new NetworkUpdateResult(
                 newInternalConfig.networkId,
+                STATUS_SUCCESS,
                 hasIpChanged,
                 hasProxyChanged,
                 hasCredentialChanged,
@@ -1587,7 +1691,7 @@ public class WifiConfigManager {
         sendConfiguredNetworkChangedBroadcast(
                 result.isNewNetwork()
                         ? WifiManager.CHANGE_REASON_ADDED
-                        : WifiManager.CHANGE_REASON_CONFIG_CHANGE);
+                        : WifiManager.CHANGE_REASON_CONFIG_CHANGE, newConfig);
         // Unless the added network is ephemeral or Passpoint, persist the network update/addition.
         if (!config.ephemeral && !config.isPasspoint()) {
             saveToStore(true);
@@ -1600,10 +1704,25 @@ public class WifiConfigManager {
             } else {
                 listener.onNetworkUpdated(
                         createExternalWifiConfiguration(newConfig, true, Process.WIFI_UID),
-                        createExternalWifiConfiguration(existingConfig, true, Process.WIFI_UID));
+                        createExternalWifiConfiguration(existingConfig, true, Process.WIFI_UID),
+                        result.hasCredentialChanged());
             }
         }
         return result;
+    }
+
+    /**
+     * Adds a network configuration to our database if a matching configuration cannot be found.
+     * @param config provided WifiConfiguration object.
+     * @param uid    UID of the app requesting the network addition.
+     * @return
+     */
+    public NetworkUpdateResult addNetwork(WifiConfiguration config, int uid) {
+        config.convertLegacyFieldsToSecurityParamsIfNeeded();
+        if (getInternalConfiguredNetwork(config) == null) {
+            return addOrUpdateNetwork(config, uid);
+        }
+        return new NetworkUpdateResult(WifiConfiguration.INVALID_NETWORK_ID);
     }
 
     /**
@@ -1629,9 +1748,57 @@ public class WifiConfigManager {
         saveToStore(false);
     }
 
+    private boolean isDeviceOwnerProfileOwnerOrSystem(int uid, String packageName) {
+        return mWifiPermissionsUtil.isDeviceOwner(uid, packageName)
+                || mWifiPermissionsUtil.isProfileOwner(uid, packageName)
+                || mWifiPermissionsUtil.isSystem(packageName, uid)
+                || mWifiPermissionsUtil.isSignedWithPlatformKey(uid);
+    }
+
+    /**
+     * Filter non app-added networks from the input list.
+     *
+     * Note: Optimized to avoid checking the permissions for each config in the input list,
+     * since {@link WifiPermissionsUtil#isProfileOwner(int, String)} is fairly expensive.
+     *
+     * Many configs will have the same creator, so we can cache the permissions per-creator.
+     *
+     * @param networks List of WifiConfigurations to filter.
+     * @return List of app-added networks.
+     */
+    @VisibleForTesting
+    protected List<WifiConfiguration> filterNonAppAddedNetworks(List<WifiConfiguration> networks) {
+        List<WifiConfiguration> appAddedNetworks = new ArrayList<>();
+        Map<Pair<Integer, String>, Boolean> isAppAddedCache = new ArrayMap<>();
+
+        for (WifiConfiguration network : networks) {
+            Pair<Integer, String> identityPair =
+                    new Pair<>(network.creatorUid, network.creatorName);
+            boolean isAppAdded;
+
+            // Checking the DO/PO/System permissions is expensive - cache the result.
+            if (isAppAddedCache.containsKey(identityPair)) {
+                isAppAdded = isAppAddedCache.get(identityPair);
+            } else {
+                isAppAdded = !isDeviceOwnerProfileOwnerOrSystem(
+                        network.creatorUid, network.creatorName);
+                isAppAddedCache.put(identityPair, isAppAdded);
+            }
+
+            if (isAppAdded) {
+                appAddedNetworks.add(network);
+            }
+        }
+        return appAddedNetworks;
+    }
+
     /**
      * Removes excess networks in case the number of saved networks exceeds the max limit
      * specified in config_wifiMaxNumWifiConfigurations.
+     *
+     * If called by a non DO/PO/system app, and a limit on app-added networks is specified in
+     * config_wifiMaxNumWifiConfigurationsForAppAddedNetworks, only removes excess
+     * app-added networks.
      *
      * Configs are removed in ascending order of
      *     1. Non-carrier networks before carrier networks
@@ -1641,28 +1808,49 @@ public class WifiConfigManager {
      *     5. Open and OWE networks before networks with other security types.
      *     6. Number of associations
      *
+     * @param uid    UID of the app requesting the network addition/modification.
+     * @param packageName Package name of the app requesting the network addition/modification.
      * @return {@code true} if networks were removed, {@code false} otherwise.
      */
-    private boolean removeExcessNetworks() {
-        final int maxNumConfigs = mContext.getResources().getInteger(
+    private boolean removeExcessNetworks(int uid, String packageName) {
+        final int maxNumTotalConfigs = mContext.getResources().getInteger(
                 R.integer.config_wifiMaxNumWifiConfigurations);
-        if (maxNumConfigs < 0) {
-            // Max number of saved networks not specified.
+        final int maxNumAppAddedConfigs = mContext.getResources().getInteger(
+                R.integer.config_wifiMaxNumWifiConfigurationsAddedByAllApps);
+
+        boolean callerIsApp = !isDeviceOwnerProfileOwnerOrSystem(uid, packageName);
+        if (maxNumTotalConfigs < 0 && (!callerIsApp || maxNumAppAddedConfigs < 0)) {
+            // Max number of saved networks not specified or does not need to be checked.
             return false;
         }
 
-        List<WifiConfiguration> savedNetworks = getSavedNetworks(Process.WIFI_UID);
-        final int numExcessNetworks = savedNetworks.size() - maxNumConfigs;
+        int numExcessNetworks = -1;
+        List<WifiConfiguration> networkList = getSavedNetworks(Process.WIFI_UID);
+        if (maxNumTotalConfigs >= 0) {
+            numExcessNetworks = networkList.size() - maxNumTotalConfigs;
+        }
+
+        if (callerIsApp && maxNumAppAddedConfigs >= 0
+                && networkList.size() > maxNumAppAddedConfigs) {
+            List<WifiConfiguration> appAddedNetworks = filterNonAppAddedNetworks(networkList);
+            int numExcessAppAddedNetworks = appAddedNetworks.size() - maxNumAppAddedConfigs;
+            if (numExcessAppAddedNetworks > 0) {
+                // Only enforce the limit on app-added networks if it has been exceeded.
+                // Otherwise, default to checking the limit on the total number of networks.
+                numExcessNetworks = numExcessAppAddedNetworks;
+                networkList = appAddedNetworks;
+            }
+        }
+
         if (numExcessNetworks <= 0) {
             return false;
         }
 
-        List<WifiConfiguration> configsToDelete = savedNetworks
+        List<WifiConfiguration> configsToDelete = networkList
                 .stream()
                 .sorted(Comparator.comparing((WifiConfiguration config) -> config.carrierId
-                        == TelephonyManager.UNKNOWN_CARRIER_ID)
-                        .thenComparing((WifiConfiguration config) -> config.status
-                                == WifiConfiguration.Status.CURRENT)
+                        != TelephonyManager.UNKNOWN_CARRIER_ID)
+                        .thenComparing((WifiConfiguration config) -> config.isCurrentlyConnected)
                         .thenComparing((WifiConfiguration config) -> config.getDeletionPriority())
                         .thenComparing((WifiConfiguration config) -> -config.numRebootsSinceLastUse)
                         .thenComparing((WifiConfiguration config) ->
@@ -1758,7 +1946,7 @@ public class WifiConfigManager {
         if (!config.ephemeral && !config.isPasspoint()) {
             mLruConnectionTracker.removeNetwork(config);
         }
-        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_REMOVED);
+        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_REMOVED, config);
         // Unless the removed network is ephemeral or Passpoint, persist the network removal.
         if (!config.ephemeral && !config.isPasspoint()) {
             saveToStore(true);
@@ -1934,7 +2122,7 @@ public class WifiConfigManager {
      */
     private void setNetworkStatus(WifiConfiguration config, int status) {
         config.status = status;
-        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE);
+        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
     }
 
     /**
@@ -1963,14 +2151,22 @@ public class WifiConfigManager {
     private boolean updateNetworkSelectionStatus(@NonNull WifiConfiguration config, int reason) {
         int prevNetworkSelectionStatus = config.getNetworkSelectionStatus()
                 .getNetworkSelectionStatus();
+        int prevAuthFailureCounter = config.getNetworkSelectionStatus().getDisableReasonCounter(
+                WifiConfiguration.NetworkSelectionStatus.DISABLED_AUTHENTICATION_FAILURE);
         if (!mWifiBlocklistMonitor.updateNetworkSelectionStatus(config, reason)) {
             return false;
         }
         int newNetworkSelectionStatus = config.getNetworkSelectionStatus()
                 .getNetworkSelectionStatus();
+        int newAuthFailureCounter = config.getNetworkSelectionStatus().getDisableReasonCounter(
+                WifiConfiguration.NetworkSelectionStatus.DISABLED_AUTHENTICATION_FAILURE);
         if (prevNetworkSelectionStatus != newNetworkSelectionStatus) {
             sendNetworkSelectionStatusChangedUpdate(config, newNetworkSelectionStatus, reason);
-            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE);
+            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
+        } else if (prevAuthFailureCounter != newAuthFailureCounter) {
+            // Send out configured network changed broadcast in this special case since the UI
+            // may need to update the wrong password text.
+            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
         }
         saveToStore(false);
         return true;
@@ -2078,6 +2274,7 @@ public class WifiConfigManager {
                 networkId, WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE)) {
             return false;
         }
+        mWifiBlocklistMonitor.clearBssidBlocklistForSsid(config.SSID);
         saveToStore(true);
         return true;
     }
@@ -2145,7 +2342,7 @@ public class WifiConfigManager {
             removeConnectChoiceFromAllNetworks(config.getProfileKey());
             clearConnectChoiceInternal(config);
         }
-        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE);
+        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
         if (!config.ephemeral) {
             saveToStore(true);
         }
@@ -2183,15 +2380,18 @@ public class WifiConfigManager {
      * 2. Increment |numAssociation| counter.
      * 3. Clear the disable reason counters in the associated |NetworkSelectionStatus|.
      * 4. Set the hasEverConnected| flag in the associated |NetworkSelectionStatus|.
-     * 5. Sets the status of network as |CURRENT|.
+     * 5. Set the status of network to |CURRENT|.
+     * 6. Set the |isCurrentlyConnected| flag to true.
+     * 7. Set the |isUserSelected| flag.
      *
      * @param networkId network ID corresponding to the network.
+     * @param isUserSelected network is user selected.
      * @param shouldSetUserConnectChoice setup user connect choice on this network.
      * @param rssi signal strength of the connected network.
      * @return true if the network was found, false otherwise.
      */
-    public boolean updateNetworkAfterConnect(int networkId, boolean shouldSetUserConnectChoice,
-            int rssi) {
+    public boolean updateNetworkAfterConnect(int networkId, boolean isUserSelected,
+            boolean shouldSetUserConnectChoice, int rssi) {
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "Update network after connect for " + networkId);
         }
@@ -2213,6 +2413,8 @@ public class WifiConfigManager {
         config.getNetworkSelectionStatus().clearDisableReasonCounter();
         config.getNetworkSelectionStatus().setHasEverConnected(true);
         setNetworkStatus(config, WifiConfiguration.Status.CURRENT);
+        config.isCurrentlyConnected = true;
+        config.setIsUserSelected(isUserSelected);
         saveToStore(false);
         return true;
     }
@@ -2232,8 +2434,9 @@ public class WifiConfigManager {
      * Updates a network configuration after disconnection from it.
      *
      * This method updates the following WifiConfiguration elements:
-     * 1. Set the |lastDisConnected| timestamp.
-     * 2. Sets the status of network back to |ENABLED|.
+     * 1. Set the |lastDisconnected| timestamp.
+     * 2. Set the status of network back to |ENABLED|.
+     * 3. Set the |isCurrentlyConnected| flag to false.
      *
      * @param networkId network ID corresponding to the network.
      * @return true if the network was found, false otherwise.
@@ -2254,6 +2457,8 @@ public class WifiConfigManager {
         if (config.status == WifiConfiguration.Status.CURRENT) {
             setNetworkStatus(config, WifiConfiguration.Status.ENABLED);
         }
+        config.isCurrentlyConnected = false;
+        config.setIsUserSelected(false);
         saveToStore(false);
         return true;
     }
@@ -2411,7 +2616,10 @@ public class WifiConfigManager {
             return false;
         }
         config.validatedInternetAccess = validated;
-        config.numNoInternetAccessReports = 0;
+        if (validated) {
+            config.numNoInternetAccessReports = 0;
+            config.getNetworkSelectionStatus().setHasEverValidatedInternetAccess(true);
+        }
         saveToStore(false);
         return true;
     }
@@ -2431,6 +2639,23 @@ public class WifiConfigManager {
         config.noInternetAccessExpected = expected;
         return true;
     }
+
+    /**
+     * Sets whether the provided network is local only due to ip provisioning timeout
+     *
+     * @param networkId             network ID corresponding to the network.
+     * @param isIpProvisionTimedOut Whether the network is local-only or not.
+     * @return true if the network was found, false otherwise.
+     */
+    public boolean setIpProvisioningTimedOut(int networkId, boolean isIpProvisionTimedOut) {
+        WifiConfiguration config = getInternalConfiguredNetwork(networkId);
+        if (config == null) {
+            return false;
+        }
+        config.setIpProvisioningTimedOut(isIpProvisionTimedOut);
+        return true;
+    }
+
 
     /**
      * Helper method to clear out the {@link #mNextNetworkId} user/app network selection. This
@@ -2815,10 +3040,8 @@ public class WifiConfigManager {
      *               checked for potential links.
      */
     private void attemptNetworkLinking(WifiConfiguration config) {
-        // Only link WPA_PSK config.
-        if (!config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
-            return;
-        }
+        if (!WifiConfigurationUtil.isConfigLinkable(config)) return;
+
         ScanDetailCache scanDetailCache = getScanDetailCacheForNetwork(config.networkId);
         // Ignore configurations with large number of BSSIDs.
         if (scanDetailCache != null
@@ -2836,10 +3059,9 @@ public class WifiConfigManager {
                 continue;
             }
             // Network Selector will be allowed to dynamically jump from a linked configuration
-            // to another, hence only link configurations that have WPA_PSK security type.
-            if (!linkConfig.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
-                continue;
-            }
+            // to another, hence only link configurations that have WPA_PSK/SAE security type
+            // if auto upgrade enabled (OR) WPA_PSK if auto upgrade disabled.
+            if (!WifiConfigurationUtil.isConfigLinkable(linkConfig)) continue;
             ScanDetailCache linkScanDetailCache =
                     getScanDetailCacheForNetwork(linkConfig.networkId);
             // Ignore configurations with large number of BSSIDs.
@@ -2877,10 +3099,16 @@ public class WifiConfigManager {
         networks.removeIf(config -> !config.hiddenSSID);
         networks.sort(mScanListComparator);
         // The most frequently connected network has the highest priority now.
+        Set<WifiSsid> ssidSet = new LinkedHashSet<>();
         for (WifiConfiguration config : networks) {
-            if (!autoJoinOnly || config.allowAutojoin) {
-                hiddenList.add(new WifiScanner.ScanSettings.HiddenNetwork(config.SSID));
+            if (autoJoinOnly && !config.allowAutojoin) {
+                continue;
             }
+            ssidSet.addAll(mWifiInjector.getSsidTranslator()
+                    .getAllPossibleOriginalSsids(WifiSsid.fromString(config.SSID)));
+        }
+        for (WifiSsid ssid : ssidSet) {
+            hiddenList.add(new WifiScanner.ScanSettings.HiddenNetwork(ssid.toString()));
         }
         return hiddenList;
     }
@@ -3115,7 +3343,7 @@ public class WifiConfigManager {
         }
         // Switch out the user store file.
         if (loadFromUserStoreAfterUnlockOrSwitch(userId)) {
-            saveToStore(true);
+            writeBufferedData(true);
             mPendingUnlockStoreRead = false;
         }
     }
@@ -3153,7 +3381,7 @@ public class WifiConfigManager {
             return new HashSet<>();
         }
         if (mUserManager.isUserUnlockingOrUnlocked(UserHandle.of(mCurrentUserId))) {
-            saveToStore(true);
+            writeBufferedData(true);
         }
         // Remove any private networks of the old user before switching the userId.
         Set<Integer> removedNetworkIds = clearInternalDataForUser(mCurrentUserId);
@@ -3212,7 +3440,7 @@ public class WifiConfigManager {
         }
         if (userId == mCurrentUserId
                 && mUserManager.isUserUnlockingOrUnlocked(UserHandle.of(mCurrentUserId))) {
-            saveToStore(true);
+            writeBufferedData(true);
             clearInternalDataForUser(mCurrentUserId);
         }
     }
@@ -3264,7 +3492,7 @@ public class WifiConfigManager {
             }
         }
         if (!removedNetworkIds.isEmpty()) {
-            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_REMOVED);
+            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_REMOVED, null);
         }
         mUserTemporarilyDisabledList.clear();
         mNonCarrierMergedNetworksStatusTracker.clear();
@@ -3413,7 +3641,7 @@ public class WifiConfigManager {
         // on load (i.e. boot) so that if the user changed SIMs while the device was powered off,
         // we do not reuse stale credentials that would lead to authentication failure.
         resetSimNetworks();
-        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_ADDED);
+        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_ADDED, null);
         mPendingStoreRead = false;
     }
 
@@ -3516,11 +3744,42 @@ public class WifiConfigManager {
      * @param forceWrite Whether the write needs to be forced or not.
      * @return Whether the write was successful or not, this is applicable only for force writes.
      */
-    public boolean saveToStore(boolean forceWrite) {
+    public synchronized boolean saveToStore(boolean forceWrite) {
         if (mPendingStoreRead) {
             Log.e(TAG, "Cannot save to store before store is read!");
             return false;
         }
+        if (mFeatureFlags.delaySaveToStore()) {
+            // When feature enabled, always do a delay write
+            startBufferedWriteAlarm();
+            return true;
+        }
+        return writeBufferedData(forceWrite);
+    }
+
+    /** Helper method to start a buffered write alarm if one doesn't already exist. */
+    private void startBufferedWriteAlarm() {
+        if (!mBufferedWritePending) {
+            mAlarmManager.set(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    mClock.getElapsedSinceBootMillis() + BUFFERED_WRITE_ALARM_INTERVAL_MS,
+                    BUFFERED_WRITE_ALARM_TAG,
+                    mBufferedWriteListener,
+                    mHandler);
+            mBufferedWritePending = true;
+        }
+    }
+
+    /** Helper method to stop a buffered write alarm if one exists. */
+    private void stopBufferedWriteAlarm() {
+        if (mBufferedWritePending) {
+            mAlarmManager.cancel(mBufferedWriteListener);
+            mBufferedWritePending = false;
+        }
+    }
+
+    private boolean writeBufferedData(Boolean forceWrite) {
+        stopBufferedWriteAlarm();
         ArrayList<WifiConfiguration> sharedConfigurations = new ArrayList<>();
         ArrayList<WifiConfiguration> userConfigurations = new ArrayList<>();
         // List of network IDs for legacy Passpoint configuration to be removed.
@@ -3573,7 +3832,9 @@ public class WifiConfigManager {
         mRandomizedMacStoreData.setMacMapping(mRandomizedMacAddressMapping);
 
         try {
+            long start = mClock.getElapsedSinceBootMillis();
             mWifiConfigStore.write(forceWrite);
+            mWifiMetrics.wifiConfigStored((int) (mClock.getElapsedSinceBootMillis() - start));
         } catch (IOException | IllegalStateException e) {
             Log.wtf(TAG, "Writing to store failed. Saved networks maybe lost!", e);
             return false;
@@ -3633,7 +3894,8 @@ public class WifiConfigManager {
                 mWifiPermissionsUtil.checkNetworkManagedProvisioningPermission(uid);
         // If |uid| corresponds to the admin, allow all modifications.
         if (isAdmin || hasNetworkSettingsPermission
-                || hasNetworkSetupWizardPermission || hasNetworkManagedProvisioningPermission) {
+                || hasNetworkSetupWizardPermission || hasNetworkManagedProvisioningPermission
+                || mWifiPermissionsUtil.checkConfigOverridePermission(uid)) {
             return true;
         }
         if (mVerboseLoggingEnabled) {
@@ -3682,7 +3944,7 @@ public class WifiConfigManager {
         int previousReason = config.recentFailure.getAssociationStatus();
         config.recentFailure.setAssociationStatus(reason, mClock.getElapsedSinceBootMillis());
         if (previousReason != reason) {
-            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE);
+            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
         }
     }
 
@@ -3709,7 +3971,8 @@ public class WifiConfigManager {
                     && mClock.getElapsedSinceBootMillis()
                     >= config.recentFailure.getLastUpdateTimeSinceBootMillis() + timeoutDuration) {
                 config.recentFailure.clear();
-                sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE);
+                sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE,
+                        config);
             }
         }
     }
@@ -3965,14 +4228,22 @@ public class WifiConfigManager {
         }
         for (String configKey : linkedConfigurations.keySet()) {
             WifiConfiguration linkConfig = getConfiguredNetworkWithoutMasking(configKey);
-            if (linkConfig == null
-                    || !linkConfig.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
-                continue;
+            if (linkConfig == null) continue;
+
+            if (!WifiConfigurationUtil.isConfigLinkable(linkConfig)) continue;
+
+            SecurityParams defaultParams =
+                     SecurityParams.createSecurityParamsBySecurityType(
+                             WifiConfiguration.SECURITY_TYPE_PSK);
+
+            if (!linkConfig.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)
+                    || !linkConfig.getSecurityParams(
+                            WifiConfiguration.SECURITY_TYPE_PSK).isEnabled()) {
+                defaultParams = SecurityParams.createSecurityParamsBySecurityType(
+                        WifiConfiguration.SECURITY_TYPE_SAE);
             }
 
-            linkConfig.getNetworkSelectionStatus().setCandidateSecurityParams(
-                    SecurityParams.createSecurityParamsBySecurityType(
-                            WifiConfiguration.SECURITY_TYPE_PSK));
+            linkConfig.getNetworkSelectionStatus().setCandidateSecurityParams(defaultParams);
             linkedNetworks.put(configKey, linkConfig);
         }
         return linkedNetworks;
@@ -4054,16 +4325,21 @@ public class WifiConfigManager {
     }
 
     /**
-     * This method updates the Root CA certifiate and the domain name of the
+     * This method updates the Root CA certificate and the domain name of the
      * server in the internal network.
      *
      * @param networkId networkId corresponding to the network to be updated.
      * @param caCert Root CA certificate to be updated.
      * @param serverCert Server certificate to be updated.
+     * @param certHash Server certificate hash (for TOFU case with no Root CA). Replaces the use of
+     *                 a Root CA certificate for authentication.
+     * @param useSystemTrustStore Indicate if to use the system trust store for authentication. If
+     *                            this flag is set, then any Root CA or certificate hash specified
+     *                            is not used.
      * @return true if updating Root CA certificate successfully; otherwise, false.
      */
     public boolean updateCaCertificate(int networkId, @NonNull X509Certificate caCert,
-            @NonNull X509Certificate serverCert) {
+            @NonNull X509Certificate serverCert, String certHash, boolean useSystemTrustStore) {
         WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
         if (internalConfig == null) {
             Log.e(TAG, "No network for network ID " + networkId);
@@ -4086,7 +4362,7 @@ public class WifiConfigManager {
             return false;
         }
         CertificateSubjectInfo serverCertInfo = CertificateSubjectInfo.parse(
-                serverCert.getSubjectDN().getName());
+                serverCert.getSubjectX500Principal().getName());
         if (null == serverCertInfo) {
             Log.e(TAG, "Invalid Server CA cert subject");
             return false;
@@ -4095,11 +4371,18 @@ public class WifiConfigManager {
         WifiConfiguration newConfig = new WifiConfiguration(internalConfig);
         try {
             if (newConfig.enterpriseConfig.isTrustOnFirstUseEnabled()) {
-                newConfig.enterpriseConfig.setCaCertificateForTrustOnFirstUse(caCert);
-                // setCaCertificate will mark that this CA certifiate should be removed on
-                // removing this configuration.
+                if (useSystemTrustStore) {
+                    newConfig.enterpriseConfig
+                            .setCaPath(WifiConfigurationUtil.getSystemTrustStorePath());
+                } else if (TextUtils.isEmpty(certHash)) {
+                    newConfig.enterpriseConfig.setCaCertificateForTrustOnFirstUse(caCert);
+                } else {
+                    newConfig.enterpriseConfig.setServerCertificateHash(certHash);
+                }
                 newConfig.enterpriseConfig.enableTrustOnFirstUse(false);
             } else {
+                // setCaCertificate will mark that this CA certificate should be removed on
+                // removing this configuration.
                 newConfig.enterpriseConfig.setCaCertificate(caCert);
             }
         } catch (IllegalArgumentException ex) {
@@ -4121,7 +4404,7 @@ public class WifiConfigManager {
             newConfig.enterpriseConfig.setDomainSuffixMatch(serverCertInfo.commonName);
         }
         newConfig.enterpriseConfig.setUserApproveNoCaCert(false);
-        // Trigger an update to install CA certifiate and the corresponding configuration.
+        // Trigger an update to install CA certificate and the corresponding configuration.
         NetworkUpdateResult result = addOrUpdateNetwork(newConfig, internalConfig.creatorUid);
         if (!result.isSuccess()) {
             Log.e(TAG, "Failed to install CA cert for network " + internalConfig.SSID);
@@ -4174,6 +4457,41 @@ public class WifiConfigManager {
     }
 
     /**
+     * Indicate whether the user approved the TOFU dialog for this network.
+     *
+     * @param networkId networkId corresponding to the network to be updated.
+     * @param approved true if the user approved the dialog, false otherwise.
+     */
+    public void setTofuDialogApproved(int networkId, boolean approved) {
+        WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
+        if (internalConfig == null) return;
+        if (!internalConfig.isEnterprise()) return;
+        if (!internalConfig.enterpriseConfig.isEapMethodServerCertUsed()) return;
+        internalConfig.enterpriseConfig.setTofuDialogApproved(approved);
+    }
+
+    /**
+     * Indicate the post-connection TOFU state for this network.
+     *
+     * @param networkId networkId corresponding to the network to be updated.
+     * @param state one of the post-connection {@link WifiEnterpriseConfig.TofuConnectionState}
+     *              values
+     */
+    public void setTofuPostConnectionState(int networkId,
+            @WifiEnterpriseConfig.TofuConnectionState int state) {
+        if (state != WifiEnterpriseConfig.TOFU_STATE_CONFIGURE_ROOT_CA
+                && state != WifiEnterpriseConfig.TOFU_STATE_CERT_PINNING) {
+            Log.e(TAG, "Invalid post-connection TOFU state " + state);
+            return;
+        }
+        WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
+        if (internalConfig == null) return;
+        if (!internalConfig.isEnterprise()) return;
+        if (!internalConfig.enterpriseConfig.isEapMethodServerCertUsed()) return;
+        internalConfig.enterpriseConfig.setTofuConnectionState(state);
+    }
+
+    /**
      * Add custom DHCP options.
      *
      * @param ssid the network SSID.
@@ -4214,5 +4532,16 @@ public class WifiConfigManager {
             }
         }
         return new ArrayList<>(results);
+    }
+
+    /**
+     * Handle the device shutdown, should write all cached data to the storage
+     */
+    public void handleShutDown() {
+        if (mPendingStoreRead) {
+            Log.e(TAG, "Cannot save to store before store is read!");
+            return;
+        }
+        writeBufferedData(true);
     }
 }

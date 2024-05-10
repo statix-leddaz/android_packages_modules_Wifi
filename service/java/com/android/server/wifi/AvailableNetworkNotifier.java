@@ -263,6 +263,7 @@ public class AvailableNetworkNotifier {
 
         if (mState != STATE_NO_NOTIFICATION) {
             mWifiNotificationManager.cancel(mSystemMessageNotificationId);
+            Log.i(mTag, "notification canceled");
 
             if (mRecommendedNetwork != null) {
                 Log.d(mTag, "Notification with state="
@@ -273,6 +274,10 @@ public class AvailableNetworkNotifier {
             mState = STATE_NO_NOTIFICATION;
             mRecommendedNetwork = null;
         }
+    }
+
+    public boolean isSettingEnabled() {
+        return mSettingEnabled;
     }
 
     private boolean isControllerEnabled() {
@@ -430,6 +435,7 @@ public class AvailableNetworkNotifier {
 
     private void postNotification(Notification notification) {
         mWifiNotificationManager.notify(mSystemMessageNotificationId, notification);
+        Log.i(mTag, "notification send");
     }
 
     private void handleConnectToNetworkAction() {
@@ -509,9 +515,10 @@ public class AvailableNetworkNotifier {
     private void startWifiSettings() {
         // Close notification drawer before opening the picker.
         mContext.sendBroadcast(new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
-        mContext.startActivity(
+        mContext.startActivityAsUser(
                 new Intent(Settings.ACTION_WIFI_SETTINGS)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                UserHandle.CURRENT);
         clearPendingNotification(false /* resetRepeatTime */);
     }
 

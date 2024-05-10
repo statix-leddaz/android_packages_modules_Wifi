@@ -29,11 +29,11 @@ import android.util.Log;
 
 import com.android.server.wifi.Clock;
 import com.android.server.wifi.ScanDetail;
+import com.android.server.wifi.WifiGlobals;
 import com.android.server.wifi.WifiMonitor;
 import com.android.server.wifi.WifiNative;
 import com.android.server.wifi.scanner.ChannelHelper.ChannelCollection;
 import com.android.server.wifi.util.NativeUtil;
-import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -62,6 +62,7 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
     private static final int MAX_SCAN_BUCKETS = 16;
 
     private final Context mContext;
+    private final WifiGlobals mWifiGlobals;
     private final WifiNative mWifiNative;
     private final WifiMonitor mWifiMonitor;
     private final AlarmManager mAlarmManager;
@@ -94,11 +95,12 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
     @GuardedBy("mSettingsLock")
     private AlarmManager.OnAlarmListener mScanTimeoutListener;
 
-    public WificondScannerImpl(Context context, String ifaceName, WifiNative wifiNative,
-                               WifiMonitor wifiMonitor, ChannelHelper channelHelper,
-                               Looper looper, Clock clock) {
+    public WificondScannerImpl(Context context, String ifaceName, WifiGlobals wifiGlobals,
+                               WifiNative wifiNative, WifiMonitor wifiMonitor,
+                               ChannelHelper channelHelper, Looper looper, Clock clock) {
         super(ifaceName);
         mContext = context;
+        mWifiGlobals = wifiGlobals;
         mWifiNative = wifiNative;
         mWifiMonitor = wifiMonitor;
         mChannelHelper = channelHelper;
@@ -118,7 +120,7 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
     public void cleanup() {
         synchronized (mSettingsLock) {
             cancelScanTimeout();
-            reportScanFailure();
+            reportScanFailure(WifiScanner.REASON_UNSPECIFIED);
             stopHwPnoScan();
             mMaxNumScanSsids = -1;
             mNextHiddenNetworkScanId = 0;
@@ -213,22 +215,23 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
                     mClock.getElapsedSinceBootNanos(),
                     reportFullResults, allFreqs, eventHandler);
 
-            boolean success = false;
+            int scanStatus = WifiScanner.REASON_UNSPECIFIED;
             Set<Integer> freqs = Collections.emptySet();
             if (!allFreqs.isEmpty()) {
                 freqs = allFreqs.getScanFreqs();
-                success = mWifiNative.scan(
+                scanStatus = mWifiNative.scan(
                         getIfaceName(), settings.scanType, freqs, hiddenNetworkSSIDSet,
-                        settings.enable6GhzRnr);
-                if (!success) {
-                    Log.e(TAG, "Failed to start scan, freqs=" + freqs);
+                        settings.enable6GhzRnr, settings.vendorIes);
+                if (scanStatus != WifiScanner.REASON_SUCCEEDED) {
+                    Log.e(TAG, "Failed to start scan, freqs=" + freqs + " status: "
+                            + scanStatus);
                 }
             } else {
                 // There is a scan request but no available channels could be scanned for.
                 // We regard it as a scan failure in this case.
                 Log.e(TAG, "Failed to start scan because there is no available channel to scan");
             }
-            if (success) {
+            if (scanStatus == WifiScanner.REASON_SUCCEEDED) {
                 if (DBG) {
                     Log.d(TAG, "Starting wifi scan for freqs=" + freqs
                             + " on iface " + getIfaceName());
@@ -245,7 +248,8 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
                         TIMEOUT_ALARM_TAG, mScanTimeoutListener, mEventHandler);
             } else {
                 // indicate scan failure async
-                mEventHandler.post(() -> reportScanFailure());
+                int finalScanStatus = scanStatus;
+                mEventHandler.post(() -> reportScanFailure(finalScanStatus));
             }
 
             return true;
@@ -282,7 +286,7 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
     private void handleScanTimeout() {
         synchronized (mSettingsLock) {
             Log.e(TAG, "Timed out waiting for scan result from wificond");
-            reportScanFailure();
+            reportScanFailure(WifiScanner.REASON_TIMEOUT);
             mScanTimeoutListener = null;
         }
     }
@@ -291,9 +295,9 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
     public boolean handleMessage(Message msg) {
         switch(msg.what) {
             case WifiMonitor.SCAN_FAILED_EVENT:
-                Log.w(TAG, "Scan failed");
+                Log.w(TAG, "Scan failed: error code: " + msg.arg1);
                 cancelScanTimeout();
-                reportScanFailure();
+                reportScanFailure(msg.arg1);
                 break;
             case WifiMonitor.PNO_SCAN_RESULTS_EVENT:
                 pollLatestScanDataForPno();
@@ -317,12 +321,12 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
         }
     }
 
-    private void reportScanFailure() {
+    private void reportScanFailure(int errorCode) {
         synchronized (mSettingsLock) {
             if (mLastScanSettings != null) {
                 if (mLastScanSettings.singleScanEventHandler != null) {
                     mLastScanSettings.singleScanEventHandler
-                            .onScanStatus(WifiNative.WIFI_SCAN_FAILED);
+                            .onScanRequestFailed(errorCode);
                 }
                 mLastScanSettings = null;
             }
@@ -457,7 +461,7 @@ public class WificondScannerImpl extends WifiScannerImpl implements Handler.Call
      */
     private boolean isHwPnoScanRequired(boolean isConnectedPno) {
         return (!isConnectedPno
-                && mContext.getResources().getBoolean(R.bool.config_wifi_background_scan_support));
+                && mWifiGlobals.isBackgroundScanSupported());
     }
 
     @Override

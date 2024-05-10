@@ -16,6 +16,7 @@
 // ============================================================
 
 package {
+    default_team: "trendy_team_fwk_wifi_hal",
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
@@ -43,7 +44,7 @@ android_test {
         "wifi-modules-utils",
         "net-tests-utils",
         "net-utils-framework-common",
-        "truth-prebuilt",
+        "truth",
     ],
 
     libs: [

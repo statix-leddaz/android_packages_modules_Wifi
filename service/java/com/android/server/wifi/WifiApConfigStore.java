@@ -22,7 +22,7 @@ import static android.net.wifi.SoftApConfiguration.SECURITY_TYPE_WPA3_SAE;
 import static android.net.wifi.SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION;
 
 import android.annotation.NonNull;
-import android.compat.Compatibility;
+import android.app.compat.CompatChanges;
 import android.content.Context;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
@@ -41,7 +41,6 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.net.module.util.MacAddressUtils;
 import com.android.server.wifi.util.ApConfigUtil;
-import com.android.server.wifi.util.ArrayUtils;
 import com.android.wifi.resources.R;
 
 import java.nio.charset.CharsetEncoder;
@@ -74,7 +73,9 @@ public class WifiApConfigStore {
     @VisibleForTesting
     static final int PSK_SAE_ASCII_MAX_LEN = 63;
 
+    // Should only be accessed via synchronized methods.
     private SoftApConfiguration mPersistentWifiApConfig = null;
+    private String mLastConfiguredPassphrase = null;
 
     private final Context mContext;
     private final Handler mHandler;
@@ -83,10 +84,12 @@ public class WifiApConfigStore {
     private final MacAddressUtil mMacAddressUtil;
     private final WifiConfigManager mWifiConfigManager;
     private final ActiveModeWarden mActiveModeWarden;
+    private final WifiNative mWifiNative;
     private boolean mHasNewDataToSerialize = false;
     private boolean mForceApChannel = false;
     private int mForcedApBand;
     private int mForcedApChannel;
+    private int mForcedApMaximumChannelBandWidth;
     private final boolean mIsAutoAppendLowerBandEnabled;
 
     /**
@@ -104,6 +107,9 @@ public class WifiApConfigStore {
                 config = updatePersistentRandomizedMacAddress(config);
             }
             mPersistentWifiApConfig = new SoftApConfiguration.Builder(config).build();
+            if (!TextUtils.isEmpty(mPersistentWifiApConfig.getPassphrase())) {
+                mLastConfiguredPassphrase = mPersistentWifiApConfig.getPassphrase();
+            }
         }
 
         public void reset() {
@@ -129,7 +135,7 @@ public class WifiApConfigStore {
         mWifiConfigManager = wifiConfigManager;
         mActiveModeWarden = activeModeWarden;
         mWifiMetrics = wifiMetrics;
-
+        mWifiNative = wifiInjector.getWifiNative();
         // Register store data listener
         wifiConfigStore.registerStoreData(
                 wifiInjector.makeSoftApStoreData(new SoftApStoreDataSource()));
@@ -159,13 +165,31 @@ public class WifiApConfigStore {
         }
 
         if (mForceApChannel) {
-            Log.d(TAG, "getApConfiguration: Band force to " + mForcedApBand
-                    + ", and channel force to " + mForcedApChannel);
-            return mForcedApChannel == 0
-                    ? new SoftApConfiguration.Builder(mPersistentWifiApConfig)
-                            .setBand(mForcedApBand).build()
-                    : new SoftApConfiguration.Builder(mPersistentWifiApConfig)
-                            .setChannel(mForcedApChannel, mForcedApBand).build();
+            Log.d(TAG, "getApConfiguration: Band force to "
+                    + mForcedApBand
+                    + ", and channel force to "
+                    + mForcedApChannel
+                    + ", and maximum channel width limited to "
+                    + mForcedApMaximumChannelBandWidth);
+            if (SdkLevel.isAtLeastT()) {
+                return mForcedApChannel == 0
+                        ? new SoftApConfiguration.Builder(mPersistentWifiApConfig)
+                                .setBand(mForcedApBand)
+                                .setMaxChannelBandwidth(mForcedApMaximumChannelBandWidth)
+                                .build()
+                        : new SoftApConfiguration.Builder(mPersistentWifiApConfig)
+                                .setChannel(mForcedApChannel, mForcedApBand)
+                                .setMaxChannelBandwidth(mForcedApMaximumChannelBandWidth)
+                                .build();
+            } else {
+                return mForcedApChannel == 0
+                        ? new SoftApConfiguration.Builder(mPersistentWifiApConfig)
+                                .setBand(mForcedApBand)
+                                .build()
+                        : new SoftApConfiguration.Builder(mPersistentWifiApConfig)
+                                .setChannel(mForcedApChannel, mForcedApBand)
+                                .build();
+            }
         }
         return mPersistentWifiApConfig;
     }
@@ -188,9 +212,10 @@ public class WifiApConfigStore {
      * Returns SoftApConfiguration in which some parameters might be upgrade to supported default
      * configuration.
      */
-    public SoftApConfiguration upgradeSoftApConfiguration(@NonNull SoftApConfiguration config) {
+    public synchronized SoftApConfiguration upgradeSoftApConfiguration(
+            @NonNull SoftApConfiguration config) {
         SoftApConfiguration.Builder configBuilder = new SoftApConfiguration.Builder(config);
-        if (SdkLevel.isAtLeastS() && ApConfigUtil.isBridgedModeSupported(mContext)
+        if (SdkLevel.isAtLeastS() && ApConfigUtil.isBridgedModeSupported(mContext, mWifiNative)
                 && config.getBands().length == 1 && mContext.getResources().getBoolean(
                         R.bool.config_wifiSoftapAutoUpgradeToBridgedConfigWhenSupported)) {
             int[] dual_bands = new int[] {
@@ -221,7 +246,7 @@ public class WifiApConfigStore {
      * - If previous bands configuration is bridged mode. Reset to 2.4G when device doesn't support
      *   it.
      */
-    public SoftApConfiguration resetToDefaultForUnsupportedConfig(
+    public synchronized SoftApConfiguration resetToDefaultForUnsupportedConfig(
             @NonNull SoftApConfiguration config) {
         SoftApConfiguration.Builder configBuilder = new SoftApConfiguration.Builder(config);
         if ((!ApConfigUtil.isClientForceDisconnectSupported(mContext)
@@ -246,8 +271,12 @@ public class WifiApConfigStore {
                 == SECURITY_TYPE_WPA3_SAE
                 || config.getSecurityType()
                 == SECURITY_TYPE_WPA3_SAE_TRANSITION)) {
-            configBuilder.setPassphrase(generatePassword(),
-                    SECURITY_TYPE_WPA2_PSK);
+            try {
+                configBuilder.setPassphrase(generatePassword(),
+                        SECURITY_TYPE_WPA2_PSK);
+            } catch (IllegalArgumentException e) {
+                Log.wtf(TAG, "Generated password was invalid: " + e);
+            }
             Log.i(TAG, "Device doesn't support WPA3-SAE, reset config to WPA2");
         }
 
@@ -261,7 +290,7 @@ public class WifiApConfigStore {
         }
 
         if (SdkLevel.isAtLeastS() && config.getBands().length > 1) {
-            if (!ApConfigUtil.isBridgedModeSupported(mContext)
+            if (!ApConfigUtil.isBridgedModeSupported(mContext, mWifiNative)
                     || !isBandsSupported(config.getBands(), mContext)) {
                 int newSingleApBand = 0;
                 for (int targetBand : config.getBands()) {
@@ -295,7 +324,7 @@ public class WifiApConfigStore {
         if (mContext.getResources().getBoolean(
                 R.bool.config_wifiSoftapResetAutoShutdownTimerConfig)
                 && config.getShutdownTimeoutMillis() > 0) {
-            if (Compatibility.isChangeEnabled(
+            if (CompatChanges.isChangeEnabled(
                     SoftApConfiguration.REMOVE_ZERO_FOR_TIMEOUT_SETTING)) {
                 configBuilder.setShutdownTimeoutMillis(SoftApConfiguration.DEFAULT_TIMEOUT);
             } else {
@@ -352,10 +381,14 @@ public class WifiApConfigStore {
         return convertedConfigBuilder.build();
     }
 
-    private void persistConfigAndTriggerBackupManagerProxy(SoftApConfiguration config) {
+    private synchronized void persistConfigAndTriggerBackupManagerProxy(
+            SoftApConfiguration config) {
         mPersistentWifiApConfig = config;
+        if (!TextUtils.isEmpty(config.getPassphrase())) {
+            mLastConfiguredPassphrase = config.getPassphrase();
+        }
         mHasNewDataToSerialize = true;
-        mWifiConfigManager.saveToStore(true);
+        mHandler.post(() -> mWifiConfigManager.saveToStore(true));
         mBackupManagerProxy.notifyDataChanged();
     }
 
@@ -371,17 +404,21 @@ public class WifiApConfigStore {
         configBuilder.setBand(generateDefaultBand(mContext));
         configBuilder.setSsid(mContext.getResources().getString(
                 R.string.wifi_tether_configure_ssid_default) + "_" + getRandomIntForDefaultSsid());
-        if (ApConfigUtil.isWpa3SaeSupported(mContext)) {
-            configBuilder.setPassphrase(generatePassword(),
-                    SECURITY_TYPE_WPA3_SAE_TRANSITION);
-        } else {
-            configBuilder.setPassphrase(generatePassword(),
-                    SECURITY_TYPE_WPA2_PSK);
+        try {
+            if (ApConfigUtil.isWpa3SaeSupported(mContext)) {
+                configBuilder.setPassphrase(generatePassword(),
+                        SECURITY_TYPE_WPA3_SAE_TRANSITION);
+            } else {
+                configBuilder.setPassphrase(generatePassword(),
+                        SECURITY_TYPE_WPA2_PSK);
+            }
+        } catch (IllegalArgumentException e) {
+            Log.wtf(TAG, "Generated password was invalid: " + e);
         }
 
         // It is new overlay configuration, it should always false in R. Add SdkLevel.isAtLeastS for
         // lint check
-        if (ApConfigUtil.isBridgedModeSupported(mContext)) {
+        if (ApConfigUtil.isBridgedModeSupported(mContext, mWifiNative)) {
             if (SdkLevel.isAtLeastS()) {
                 int[] dual_bands = new int[] {
                         SoftApConfiguration.BAND_2GHZ,
@@ -436,40 +473,44 @@ public class WifiApConfigStore {
             configBuilder.setBand(generateDefaultBand(context));
             // Default to disable the auto shutdown
             configBuilder.setAutoShutdownEnabled(false);
-            if (ApConfigUtil.isWpa3SaeSupported(context)) {
-                configBuilder.setPassphrase(generatePassword(),
-                        SECURITY_TYPE_WPA3_SAE_TRANSITION);
-            } else {
-                configBuilder.setPassphrase(generatePassword(),
-                        SECURITY_TYPE_WPA2_PSK);
+            try {
+                if (ApConfigUtil.isWpa3SaeSupported(context)) {
+                    configBuilder.setPassphrase(generatePassword(),
+                            SECURITY_TYPE_WPA3_SAE_TRANSITION);
+                } else {
+                    configBuilder.setPassphrase(generatePassword(),
+                            SECURITY_TYPE_WPA2_PSK);
+                }
+            } catch (IllegalArgumentException e) {
+                Log.wtf(TAG, "Generated password was invalid: " + e);
             }
-            // Update default MAC randomization setting to NONE when feature doesn't support it or
-            // It was disabled in tethered mode.
-            if (!ApConfigUtil.isApMacRandomizationSupported(context)
-                    || (mPersistentWifiApConfig != null
-                    && mPersistentWifiApConfig.getMacRandomizationSettingInternal()
-                           == SoftApConfiguration.RANDOMIZATION_NONE)) {
-                if (SdkLevel.isAtLeastS()) {
-                    configBuilder.setMacRandomizationSetting(
-                            SoftApConfiguration.RANDOMIZATION_NONE);
+            synchronized (this) {
+                // Update default MAC randomization setting to NONE when feature doesn't support
+                // it, or it was disabled in tethered mode.
+                if (!ApConfigUtil.isApMacRandomizationSupported(context)
+                        || (mPersistentWifiApConfig != null
+                        && mPersistentWifiApConfig.getMacRandomizationSettingInternal()
+                        == SoftApConfiguration.RANDOMIZATION_NONE)) {
+                    if (SdkLevel.isAtLeastS()) {
+                        configBuilder.setMacRandomizationSetting(
+                                SoftApConfiguration.RANDOMIZATION_NONE);
+                    }
                 }
             }
         }
 
         // Automotive mode can force the LOHS to specific bands
         if (hasAutomotiveFeature(context)) {
+            int desiredBand = SoftApConfiguration.BAND_2GHZ;
             if (context.getResources().getBoolean(R.bool.config_wifiLocalOnlyHotspot6ghz)
-                    && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_6GHZ, mContext)
-                    && !ArrayUtils.isEmpty(capability
-                          .getSupportedChannelList(SoftApConfiguration.BAND_6GHZ))) {
-                configBuilder.setBand(SoftApConfiguration.BAND_6GHZ);
-            } else if (context.getResources().getBoolean(
-                        R.bool.config_wifi_local_only_hotspot_5ghz)
-                    && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_5GHZ, mContext)
-                    && !ArrayUtils.isEmpty(capability
-                          .getSupportedChannelList(SoftApConfiguration.BAND_5GHZ))) {
-                configBuilder.setBand(SoftApConfiguration.BAND_5GHZ);
+                    && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_6GHZ, mContext)) {
+                desiredBand |= SoftApConfiguration.BAND_6GHZ;
             }
+            if (context.getResources().getBoolean(R.bool.config_wifi_local_only_hotspot_5ghz)
+                    && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_5GHZ, mContext)) {
+                desiredBand |= SoftApConfiguration.BAND_5GHZ;
+            }
+            configBuilder.setBand(desiredBand);
         }
         if (customConfig == null || customConfig.getSsid() == null) {
             configBuilder.setSsid(generateLohsSsid(context));
@@ -493,9 +534,8 @@ public class WifiApConfigStore {
                 macAddress = config.getPersistentRandomizedMacAddress();
                 if (macAddress == null) {
                     WifiSsid ssid = config.getWifiSsid();
-                    macAddress = mMacAddressUtil.calculatePersistentMac(
-                            ssid != null ? ssid.toString() : null,
-                            mMacAddressUtil.obtainMacRandHashFunctionForSap(Process.WIFI_UID));
+                    macAddress = mMacAddressUtil.calculatePersistentMacForSap(
+                            ssid != null ? ssid.toString() : null, Process.WIFI_UID);
                     if (macAddress == null) {
                         Log.e(TAG, "Failed to calculate MAC from SSID. "
                                 + "Generating new random MAC instead.");
@@ -547,11 +587,12 @@ public class WifiApConfigStore {
      *
      * @param apConfig {@link SoftApConfiguration} to use for softap mode
      * @param isPrivileged indicate the caller can pass some fields check or not
+     * @param wifiNative to use native API to get iface combinations.
      * @return boolean true if the provided config meets the minimum set of details, false
      * otherwise.
      */
     static boolean validateApWifiConfiguration(@NonNull SoftApConfiguration apConfig,
-            boolean isPrivileged, Context context) {
+            boolean isPrivileged, Context context, WifiNative wifiNative) {
         // first check the SSID
         WifiSsid ssid = apConfig.getWifiSsid();
         if (ssid == null || ssid.getBytes().length == 0) {
@@ -615,9 +656,12 @@ public class WifiApConfigStore {
 
         if (ApConfigUtil.isSecurityTypeRestrictedFor6gBand(authType)) {
             for (int band : apConfig.getBands()) {
-                // Only return failure if requested band is limitted to 6GHz only
-                if (band == SoftApConfiguration.BAND_6GHZ) {
-                    Log.d(TAG, "security type is not allowed for softap in 6GHz band");
+                // Only return failure if requested band is limited to 6GHz only
+                if (band == SoftApConfiguration.BAND_6GHZ
+                        && !ApConfigUtil.canHALConvertRestrictedSecurityTypeFor6GHz(
+                                context.getResources(), authType)) {
+                    Log.d(TAG, "security type: " +  authType
+                            + " is not allowed for softap in 6GHz band");
                     return false;
                 }
             }
@@ -625,7 +669,7 @@ public class WifiApConfigStore {
 
         if (SdkLevel.isAtLeastT()
                 && authType == SECURITY_TYPE_WPA3_OWE_TRANSITION) {
-            if (!ApConfigUtil.isBridgedModeSupported(context)) {
+            if (!ApConfigUtil.isBridgedModeSupported(context, wifiNative)) {
                 Log.d(TAG, "softap owe transition needs bridge mode support");
                 return false;
             } else if (apConfig.getBands().length > 1) {
@@ -681,26 +725,28 @@ public class WifiApConfigStore {
      *
      * @param forcedApBand The forced band.
      * @param forcedApChannel The forced IEEE channel number or 0 when forced AP band only.
+     * @param forcedApMaximumChannelBandWidth The forced maximum channel bandwidth.
      */
-    public void enableForceSoftApBandOrChannel(@BandType int forcedApBand, int forcedApChannel) {
+    public synchronized void enableForceSoftApBandOrChannel(
+            @BandType int forcedApBand, int forcedApChannel, int forcedApMaximumChannelBandWidth) {
         mForceApChannel = true;
         mForcedApChannel = forcedApChannel;
         mForcedApBand = forcedApBand;
+        mForcedApMaximumChannelBandWidth = forcedApMaximumChannelBandWidth;
     }
 
     /**
      * Disable force-soft-AP-channel mode which take effect when soft AP starts next time
      */
-    public void disableForceSoftApBandOrChannel() {
+    public synchronized void disableForceSoftApBandOrChannel() {
         mForceApChannel = false;
     }
 
     private SoftApConfiguration updatePersistentRandomizedMacAddress(SoftApConfiguration config) {
         // Update randomized MacAddress
         WifiSsid ssid = config.getWifiSsid();
-        MacAddress randomizedMacAddress = mMacAddressUtil.calculatePersistentMac(
-                ssid != null ? ssid.toString() : null,
-                mMacAddressUtil.obtainMacRandHashFunctionForSap(Process.WIFI_UID));
+        MacAddress randomizedMacAddress = mMacAddressUtil.calculatePersistentMacForSap(
+                ssid != null ? ssid.toString() : null, Process.WIFI_UID);
         if (randomizedMacAddress != null) {
             return new SoftApConfiguration.Builder(config)
                     .setRandomizedMacAddress(randomizedMacAddress).build();
@@ -713,5 +759,12 @@ public class WifiApConfigStore {
         randomizedMacAddress = MacAddressUtils.createRandomUnicastAddress();
         return new SoftApConfiguration.Builder(config)
                 .setRandomizedMacAddress(randomizedMacAddress).build();
+    }
+
+    /**
+     * Returns the last configured Wi-Fi tethered AP passphrase.
+     */
+    public synchronized String getLastConfiguredTetheredApPassphraseSinceBoot() {
+        return mLastConfiguredPassphrase;
     }
 }

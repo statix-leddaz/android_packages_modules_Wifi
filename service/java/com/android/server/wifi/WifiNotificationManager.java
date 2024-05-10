@@ -16,6 +16,7 @@
 
 package com.android.server.wifi;
 
+import static com.android.server.wifi.WifiService.NOTIFICATION_APM_ALERTS;
 import static com.android.server.wifi.WifiService.NOTIFICATION_NETWORK_ALERTS;
 import static com.android.server.wifi.WifiService.NOTIFICATION_NETWORK_AVAILABLE;
 import static com.android.server.wifi.WifiService.NOTIFICATION_NETWORK_STATUS;
@@ -30,6 +31,7 @@ import android.os.UserHandle;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 
+import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
 import com.android.wifi.resources.R;
 
 import java.util.ArrayList;
@@ -97,12 +99,21 @@ public class WifiNotificationManager {
         networkAvailable.setBlockable(true);
         channelsList.add(networkAvailable);
 
+        final NotificationChannel apmAlertsChannel = new NotificationChannel(
+                NOTIFICATION_APM_ALERTS,
+                mContext.getResources().getString(
+                        R.string.notification_channel_apm_alerts),
+                NotificationManager.IMPORTANCE_HIGH);
+        apmAlertsChannel.setBlockable(true);
+        channelsList.add(apmAlertsChannel);
+
         mNotificationManager.createNotificationChannels(channelsList);
     }
 
     private void cleanAllWifiNotification() {
         for (StatusBarNotification notification : getActiveNotifications()) {
-            if (NOTIFICATION_TAG.equals(notification.getTag())) {
+            if (NOTIFICATION_TAG.equals(notification.getTag())
+                    && notification.getId() != SystemMessage.NOTE_WIFI_APM_NOTIFICATION) {
                 cancel(notification.getId());
             }
         }
