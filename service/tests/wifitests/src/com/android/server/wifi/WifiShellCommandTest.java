@@ -36,6 +36,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -49,11 +50,13 @@ import android.net.MacAddress;
 import android.net.NetworkRequest;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.SupplicantState;
+import android.net.wifi.WifiAvailableChannel;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiNetworkSpecifier;
 import android.net.wifi.WifiNetworkSuggestion;
+import android.net.wifi.WifiScanner;
 import android.os.Binder;
 import android.os.PatternMatcher;
 import android.os.Process;
@@ -99,6 +102,9 @@ public class WifiShellCommandTest extends WifiBaseTest {
     @Mock WifiGlobals mWifiGlobals;
     @Mock WifiThreadRunner mWifiThreadRunner;
     @Mock ScanRequestProxy mScanRequestProxy;
+    @Mock WifiDiagnostics mWifiDiagnostics;
+    @Mock DeviceConfigFacade mDeviceConfig;
+    @Mock WifiScanner mWifiScanner;
 
     WifiShellCommand mWifiShellCommand;
 
@@ -123,6 +129,9 @@ public class WifiShellCommandTest extends WifiBaseTest {
         when(mWifiInjector.getWifiNetworkFactory()).thenReturn(mWifiNetworkFactory);
         when(mWifiInjector.getScanRequestProxy()).thenReturn(mScanRequestProxy);
         when(mContext.getSystemService(ConnectivityManager.class)).thenReturn(mConnectivityManager);
+        when(mWifiInjector.getWifiDiagnostics()).thenReturn(mWifiDiagnostics);
+        when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mDeviceConfig);
+        when(mContext.getSystemService(WifiScanner.class)).thenReturn(mWifiScanner);
 
         mWifiShellCommand = new WifiShellCommand(mWifiInjector, mWifiService, mContext,
                 mWifiGlobals, mWifiThreadRunner);
@@ -722,7 +731,7 @@ public class WifiShellCommandTest extends WifiBaseTest {
         verify(mWifiService).isScanAlwaysAvailable();
         verify(mWifiService).getConnectionInfo(SHELL_PACKAGE_NAME, null);
 
-        verify(mPrimaryClientModeManager, never()).syncRequestConnectionInfo();
+        verify(mPrimaryClientModeManager, never()).getConnectionInfo();
         verify(mActiveModeWarden, never()).getClientModeManagers();
 
         // rooted shell.
@@ -734,17 +743,17 @@ public class WifiShellCommandTest extends WifiBaseTest {
 
         WifiInfo wifiInfo = new WifiInfo();
         wifiInfo.setSupplicantState(SupplicantState.COMPLETED);
-        when(mPrimaryClientModeManager.syncRequestConnectionInfo()).thenReturn(wifiInfo);
-        when(additionalClientModeManager.syncRequestConnectionInfo()).thenReturn(wifiInfo);
+        when(mPrimaryClientModeManager.getConnectionInfo()).thenReturn(wifiInfo);
+        when(additionalClientModeManager.getConnectionInfo()).thenReturn(wifiInfo);
 
         mWifiShellCommand.exec(
                 new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
                 new String[]{"status"});
         verify(mActiveModeWarden).getClientModeManagers();
-        verify(mPrimaryClientModeManager).syncRequestConnectionInfo();
-        verify(mPrimaryClientModeManager).syncGetCurrentNetwork();
-        verify(additionalClientModeManager).syncRequestConnectionInfo();
-        verify(additionalClientModeManager).syncGetCurrentNetwork();
+        verify(mPrimaryClientModeManager).getConnectionInfo();
+        verify(mPrimaryClientModeManager).getCurrentNetwork();
+        verify(additionalClientModeManager).getConnectionInfo();
+        verify(additionalClientModeManager).getCurrentNetwork();
     }
 
     @Test
@@ -990,5 +999,46 @@ public class WifiShellCommandTest extends WifiBaseTest {
                                 .build())
                         .build()),
                 (ConnectivityManager.NetworkCallback) any());
+    }
+
+    @Test
+    public void testTakeBugreport() {
+        when(mDeviceConfig.isInterfaceFailureBugreportEnabled()).thenReturn(true);
+        mWifiShellCommand.exec(new Binder(), new FileDescriptor(), new FileDescriptor(),
+                new FileDescriptor(), new String[]{"take-bugreport"});
+        verify(mWifiDiagnostics).takeBugReport("Wifi bugreport test", "");
+    }
+
+    @Test
+    public void testGetAllowedChannel() {
+        assumeTrue(SdkLevel.isAtLeastS());
+        BinderUtil.setUid(Process.ROOT_UID);
+        doThrow(UnsupportedOperationException.class).when(mWifiService).getUsableChannels(
+                eq(WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_GHZ), eq(WifiAvailableChannel.OP_MODE_STA),
+                eq(WifiAvailableChannel.FILTER_REGULATORY), eq(SHELL_PACKAGE_NAME), any());
+        mWifiShellCommand.exec(new Binder(), new FileDescriptor(), new FileDescriptor(),
+                new FileDescriptor(), new String[]{"get-allowed-channel", "-b",
+                        String.valueOf(WifiScanner.WIFI_BAND_24_GHZ)});
+        verify(mWifiScanner).getAvailableChannels(eq(WifiScanner.WIFI_BAND_24_GHZ));
+
+        when(mWifiService.getUsableChannels(eq(WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_GHZ),
+                eq(WifiAvailableChannel.OP_MODE_STA), eq(WifiAvailableChannel.FILTER_REGULATORY),
+                eq(SHELL_PACKAGE_NAME), any())).thenReturn(null);
+        doThrow(IllegalArgumentException.class).when(mWifiService).getUsableChannels(
+                eq(WifiScanner.WIFI_BAND_BOTH), anyInt(),
+                eq(WifiAvailableChannel.FILTER_REGULATORY), eq(SHELL_PACKAGE_NAME), any());
+        mWifiShellCommand.exec(new Binder(), new FileDescriptor(), new FileDescriptor(),
+                new FileDescriptor(), new String[]{"get-allowed-channel", "-b",
+                        String.valueOf(WifiScanner.WIFI_BAND_BOTH)});
+        verify(mWifiService, never()).getUsableChannels(eq(WifiScanner.WIFI_BAND_BOTH),
+                eq(WifiAvailableChannel.OP_MODE_SAP), eq(WifiAvailableChannel.FILTER_REGULATORY),
+                eq(SHELL_PACKAGE_NAME), any());
+
+        mWifiShellCommand.exec(new Binder(), new FileDescriptor(), new FileDescriptor(),
+                new FileDescriptor(), new String[]{"get-allowed-channel", "-b",
+                        String.valueOf(WifiScanner.WIFI_BAND_BOTH_WITH_DFS)});
+        verify(mWifiService, times(6)).getUsableChannels(eq(WifiScanner.WIFI_BAND_BOTH_WITH_DFS),
+                anyInt(), eq(WifiAvailableChannel.FILTER_REGULATORY), eq(SHELL_PACKAGE_NAME),
+                any());
     }
 }

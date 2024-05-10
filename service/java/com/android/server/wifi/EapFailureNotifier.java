@@ -16,6 +16,7 @@
 
 package com.android.server.wifi;
 
+import android.annotation.Nullable;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Intent;
@@ -30,6 +31,7 @@ import android.text.TextUtils;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
+import com.android.modules.utils.build.SdkLevel;
 
 /**
  * This class may be used to launch notifications when EAP failure occurs.
@@ -41,12 +43,22 @@ public class EapFailureNotifier {
     @VisibleForTesting
     static final String ERROR_MESSAGE_OVERLAY_UNKNOWN_ERROR_CODE =
             "wifi_eap_error_message_unknown_error_code";
+    @VisibleForTesting
+    static final String CONFIG_EAP_FAILURE_DISABLE_THRESHOLD =
+            "config_wifiDisableReasonAuthenticationFailureCarrierSpecificThreshold";
+    @VisibleForTesting
+    static final String CONFIG_EAP_FAILURE_DISABLE_DURATION =
+            "config_wifiDisableReasonAuthenticationFailureCarrierSpecificDurationMs";
+    // Special error message that results in the EAP failure code to get ignored on devices pre
+    // Android 13.
+    public static final String ERROR_MESSAGE_IGNORE_ON_PRE_ANDROID_13 = "IgnorePreAndroid13";
 
     private static final long CANCEL_TIMEOUT_MILLISECONDS = 5 * 60 * 1000;
     private final WifiContext mContext;
     private final WifiNotificationManager mNotificationManager;
     private final FrameworkFacade mFrameworkFacade;
     private final WifiCarrierInfoManager mWifiCarrierInfoManager;
+    private final WifiGlobals mWifiGlobals;
 
     // Unique ID associated with the notification.
     public static final int NOTIFICATION_ID = SystemMessage.NOTE_WIFI_EAP_FAILURE;
@@ -54,11 +66,13 @@ public class EapFailureNotifier {
 
     public EapFailureNotifier(WifiContext context, FrameworkFacade frameworkFacade,
             WifiCarrierInfoManager wifiCarrierInfoManager,
-            WifiNotificationManager wifiNotificationManager) {
+            WifiNotificationManager wifiNotificationManager,
+            WifiGlobals wifiGlobals) {
         mContext = context;
         mFrameworkFacade = frameworkFacade;
         mWifiCarrierInfoManager = wifiCarrierInfoManager;
         mNotificationManager = wifiNotificationManager;
+        mWifiGlobals = wifiGlobals;
     }
 
     /**
@@ -66,36 +80,58 @@ public class EapFailureNotifier {
      *
      * @param errorCode error code which delivers from supplicant
      * @param showNotification whether to display the notification
-     * @return true if the receiving error code is found in wifi resource
+     * @return CarrierSpecificEapFailureConfig if the receiving error code is found in wifi resource
+     *         null if not found.
      */
-    public boolean onEapFailure(int errorCode, WifiConfiguration config, boolean showNotification) {
+    public @Nullable WifiBlocklistMonitor.CarrierSpecificEapFailureConfig onEapFailure(
+            int errorCode, WifiConfiguration config, boolean showNotification) {
         if (errorCode < 0) {
             // EapErrorCode is defined as an unsigned uint32_t in ISupplicantStaIfaceCallback, so
             // only consider non-negative error codes for carrier-specific error messages.
-            return false;
+            return null;
         }
+        int carrierId = config.carrierId == TelephonyManager.UNKNOWN_CARRIER_ID
+                ? mWifiCarrierInfoManager.getDefaultDataSimCarrierId()
+                : config.carrierId;
         WifiStringResourceWrapper sr = mContext.getStringResourceWrapper(
                 mWifiCarrierInfoManager.getBestMatchSubscriptionId(config),
-                config.carrierId == TelephonyManager.UNKNOWN_CARRIER_ID
-                        ? mWifiCarrierInfoManager.getDefaultDataSimCarrierId() : config.carrierId);
+                carrierId);
         String errorMessage = sr.getString(ERROR_MESSAGE_OVERLAY_PREFIX + errorCode, config.SSID);
-        if (errorMessage == null) {
-            // Use the generic error message if the code does not match any known code.
-            errorMessage = sr.getString(ERROR_MESSAGE_OVERLAY_UNKNOWN_ERROR_CODE, config.SSID);
+        if (SdkLevel.isAtLeastT()) {
+            if (errorMessage == null) {
+                // Use the generic error message if the code does not match any known code.
+                errorMessage = sr.getString(ERROR_MESSAGE_OVERLAY_UNKNOWN_ERROR_CODE, config.SSID);
+            }
+        } else if (errorMessage != null
+                && errorMessage.contains(ERROR_MESSAGE_IGNORE_ON_PRE_ANDROID_13)) {
+            return null;
         }
-        if (TextUtils.isEmpty(errorMessage)) return false;
+        if (TextUtils.isEmpty(errorMessage)) return null;
+        WifiBlocklistMonitor.CarrierSpecificEapFailureConfig eapFailureConfig =
+                new WifiBlocklistMonitor.CarrierSpecificEapFailureConfig(
+                        sr.getInt(CONFIG_EAP_FAILURE_DISABLE_THRESHOLD, 1),
+                        sr.getInt(CONFIG_EAP_FAILURE_DISABLE_DURATION, -1),
+                        true);
+        if (SdkLevel.isAtLeastU()) {
+            WifiBlocklistMonitor.CarrierSpecificEapFailureConfig carrierSpecificOverride =
+                    mWifiGlobals.getCarrierSpecificEapFailureConfig(carrierId, errorCode);
+            if (carrierSpecificOverride != null) {
+                eapFailureConfig = carrierSpecificOverride;
+            }
+        }
+
         StatusBarNotification[] activeNotifications = mNotificationManager.getActiveNotifications();
         for (StatusBarNotification activeNotification : activeNotifications) {
             if ((activeNotification.getId() == NOTIFICATION_ID)
                     && TextUtils.equals(config.SSID, mCurrentShownSsid)) {
-                return true;
+                return eapFailureConfig;
             }
         }
 
-        if (showNotification) {
+        if (showNotification && eapFailureConfig.displayNotification) {
             showNotification(errorMessage, config.SSID);
         }
-        return true;
+        return eapFailureConfig;
     }
 
     /**

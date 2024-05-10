@@ -25,6 +25,7 @@ import android.net.wifi.IDppCallback;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiSsid;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -48,6 +49,7 @@ import com.android.server.wifi.WifiNative.DppEventCallback;
 import com.android.server.wifi.util.ApConfigUtil;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -57,6 +59,7 @@ import java.util.List;
  */
 public class DppManager {
     private static final String TAG = "DppManager";
+    private final WifiInjector mWifiInjector;
     private final Handler mHandler;
 
     private DppRequestInfo mDppRequestInfo = null;
@@ -80,9 +83,10 @@ public class DppManager {
 
     private final DppEventCallback mDppEventCallback = new DppEventCallback() {
         @Override
-        public void onSuccessConfigReceived(WifiConfiguration newWifiConfiguration) {
+        public void onSuccessConfigReceived(WifiConfiguration newWifiConfiguration,
+                boolean connStatusRequested) {
             mHandler.post(() -> {
-                DppManager.this.onSuccessConfigReceived(newWifiConfiguration);
+                DppManager.this.onSuccessConfigReceived(newWifiConfiguration, connStatusRequested);
             });
         }
 
@@ -113,11 +117,20 @@ public class DppManager {
                 DppManager.this.onDppConfiguratorKeyUpdate(key);
             });
         }
+
+        @Override
+        public void onConnectionStatusResultSent(int result) {
+            mHandler.post(() -> {
+                DppManager.this.onConnectionStatusResultSent(result);
+            });
+
+        }
     };
 
-    DppManager(Handler handler, WifiNative wifiNative, WifiConfigManager wifiConfigManager,
-            Context context, DppMetrics dppMetrics, ScanRequestProxy scanRequestProxy,
-            WifiPermissionsUtil wifiPermissionsUtil) {
+    DppManager(WifiInjector wifiInjector, Handler handler, WifiNative wifiNative,
+            WifiConfigManager wifiConfigManager, Context context, DppMetrics dppMetrics,
+            ScanRequestProxy scanRequestProxy, WifiPermissionsUtil wifiPermissionsUtil) {
+        mWifiInjector = wifiInjector;
         mHandler = handler;
         mWifiNative = wifiNative;
         mWifiConfigManager = wifiConfigManager;
@@ -135,16 +148,16 @@ public class DppManager {
         });
     }
 
-    private static String encodeStringToHex(String str) {
+    private static String encodeStringToUtf8Hex(String str) {
         if ((str.length() > 1) && (str.charAt(0) == '"') && (str.charAt(str.length() - 1) == '"')) {
             // Remove the surrounding quotes
             str = str.substring(1, str.length() - 1);
 
             // Convert to Hex
-            char[] charsArray = str.toCharArray();
+            byte[] bytesArray = str.getBytes(StandardCharsets.UTF_8);
             StringBuffer hexBuffer = new StringBuffer();
-            for (int i = 0; i < charsArray.length; i++) {
-                hexBuffer.append(Integer.toHexString((int) charsArray[i]));
+            for (int i = 0; i < bytesArray.length; i++) {
+                hexBuffer.append(Integer.toHexString(0xFF & bytesArray[i]));
             }
             return hexBuffer.toString();
         }
@@ -353,11 +366,17 @@ public class DppManager {
         // Auth init
         logd("Authenticating");
 
-        String ssidEncoded = encodeStringToHex(selectedNetwork.SSID);
+        String ssidEncoded;
+        WifiSsid originalSsid = mWifiInjector.getSsidTranslator().getOriginalSsid(selectedNetwork);
+        if (originalSsid != null) {
+            ssidEncoded = encodeStringToUtf8Hex(originalSsid.toString());
+        } else {
+            ssidEncoded = encodeStringToUtf8Hex(selectedNetwork.SSID);
+        }
         String passwordEncoded = null;
 
         if (password != null) {
-            passwordEncoded = encodeStringToHex(selectedNetwork.preSharedKey);
+            passwordEncoded = encodeStringToUtf8Hex(selectedNetwork.preSharedKey);
         }
 
         if (!mWifiNative.startDppConfiguratorInitiator(mClientIfaceName,
@@ -564,8 +583,13 @@ public class DppManager {
                 Log.e(TAG, "Failed to stop DPP Initiator");
             }
         }
-
         mDppRequestInfo.isGeneratingSelfConfiguration = false;
+
+        if (mDppRequestInfo.connStatusRequested) {
+            logd("skip DPP resource cleanup - waiting for send connection status result");
+            return;
+        }
+
         cleanupDppResources();
 
         logd("Success: Stopped DPP Session");
@@ -620,6 +644,7 @@ public class DppManager {
         public int bootstrapId;
         public int networkId;
         public boolean isGeneratingSelfConfiguration = false;
+        public boolean connStatusRequested = false;
 
         @Override
         public String toString() {
@@ -629,7 +654,8 @@ public class DppManager {
                     .append(", peerId=").append(peerId)
                     .append(", authRole=").append(authRole)
                     .append(", bootstrapId=").append(bootstrapId)
-                    .append(", nId=").append(networkId).toString();
+                    .append(", nId=").append(networkId)
+                    .append(", connStatusRequested=").append(connStatusRequested).toString();
         }
     }
 
@@ -642,11 +668,15 @@ public class DppManager {
         mVerboseLoggingEnabled = verboseEnabled;
     }
 
-    private void onSuccessConfigReceived(WifiConfiguration newWifiConfiguration) {
+    private void onSuccessConfigReceived(WifiConfiguration newWifiConfiguration,
+            boolean connStatusRequested) {
         try {
-            logd("onSuccessConfigReceived");
-
-            if (mDppRequestInfo != null && mDppRequestInfo.isGeneratingSelfConfiguration) {
+            if (mDppRequestInfo == null) {
+                Log.e(TAG, "onSuccessConfigReceived event without a request information object");
+                return;
+            }
+            logd("onSuccessConfigReceived: connection status requested: " + connStatusRequested);
+            if (mDppRequestInfo.isGeneratingSelfConfiguration) {
                 WifiConfiguration existingWifiConfig = mWifiConfigManager
                         .getConfiguredNetworkWithoutMasking(mDppRequestInfo.networkId);
 
@@ -676,7 +706,7 @@ public class DppManager {
                 }
                 // Done with self configuration. reset flag.
                 mDppRequestInfo.isGeneratingSelfConfiguration = false;
-            } else if (mDppRequestInfo != null) {
+            } else {
                 long now = mClock.getElapsedSinceBootMillis();
                 mDppMetrics.updateDppOperationTime((int) (now - mDppRequestInfo.startTime));
 
@@ -688,6 +718,7 @@ public class DppManager {
                     if (mDppRequestInfo.authRole == DPP_AUTH_ROLE_RESPONDER) {
                         mDppMetrics.updateDppEnrolleeResponderSuccess();
                     }
+                    mDppRequestInfo.connStatusRequested = connStatusRequested;
                     mDppRequestInfo.callback.onSuccessConfigReceived(
                             networkUpdateResult.getNetworkId());
                 } else {
@@ -697,15 +728,20 @@ public class DppManager {
                     mDppRequestInfo.callback.onFailure(EasyConnectStatusCallback
                             .EASY_CONNECT_EVENT_FAILURE_CONFIGURATION, null, null, new int[0]);
                 }
-            } else {
-                Log.e(TAG, "Unexpected null Wi-Fi configuration object");
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Callback failure");
         }
 
-        // Success, DPP is complete. Clear the DPP session automatically
-        cleanupDppResources();
+        // Success
+        // If Peer configurator has not requested for connection status,
+        // DPP session is completed. Clear the DPP session immediately, otherwise wait for
+        // send connection status result
+        if (!mDppRequestInfo.connStatusRequested) {
+            cleanupDppResources();
+        } else {
+            Log.d(TAG, "Wait for enrollee to send connection status");
+        }
     }
 
     private void onSuccess(int dppStatusCode) {
@@ -828,6 +864,16 @@ public class DppManager {
                 Log.e(TAG, "Failed to update DPP configurator key.");
             }
         }
+    }
+
+    private void onConnectionStatusResultSent(int result) {
+        if (mDppRequestInfo == null) {
+            Log.e(TAG,
+                    "onConnectionStatusResultSent event without a request information object");
+            return;
+        }
+        logd("onConnectionStatusResultSent: result code: " + result);
+        cleanupDppResources();
     }
 
     /**
@@ -1049,6 +1095,12 @@ public class DppManager {
 
                 mHandler.post(() -> {
                     dppRequestInfo.isGeneratingSelfConfiguration = false;
+                    // Clean up supplicant resource
+                    if (mDppRequestInfo.authRole == DPP_AUTH_ROLE_INITIATOR) {
+                        if (!mWifiNative.stopDppInitiator(mClientIfaceName)) {
+                            Log.e(TAG, "Failed to stop DPP Initiator");
+                        }
+                    }
                     cleanupDppResources();
                 });
             }

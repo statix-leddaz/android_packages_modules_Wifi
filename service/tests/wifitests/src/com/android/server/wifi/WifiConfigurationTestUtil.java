@@ -32,6 +32,7 @@ import android.net.wifi.WifiSsid;
 import android.text.TextUtils;
 
 import com.android.modules.utils.build.SdkLevel;
+import com.android.server.wifi.util.NativeUtil;
 
 import java.net.InetAddress;
 import java.security.cert.X509Certificate;
@@ -191,6 +192,7 @@ public class WifiConfigurationTestUtil {
         if ((security & SECURITY_EAP_SUITE_B) != 0) {
             config.addSecurityParams(
                     WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT);
+            config.enterpriseConfig.setDomainSuffixMatch(TEST_DOM_SUBJECT_MATCH);
         }
 
         if ((security & SECURITY_WAPI_PSK) != 0) {
@@ -376,6 +378,15 @@ public class WifiConfigurationTestUtil {
     public static WifiConfiguration createPskHiddenNetwork() {
         WifiConfiguration configuration = createPskNetwork();
         configuration.hiddenSSID = true;
+        return configuration;
+    }
+
+    public static WifiConfiguration createCaptivePortalNetwork() {
+        WifiConfiguration configuration = createPskNetwork();
+        NetworkSelectionStatus.Builder builder = new NetworkSelectionStatus.Builder();
+        NetworkSelectionStatus networkSelectionStatus = builder.build();
+        networkSelectionStatus.setHasNeverDetectedCaptivePortal(false);
+        configuration.setNetworkSelectionStatus(networkSelectionStatus);
         return configuration;
     }
 
@@ -704,7 +715,7 @@ public class WifiConfigurationTestUtil {
             WifiConfiguration expected, WifiConfiguration actual, boolean isSupplicantBackup) {
         assertNotNull(expected);
         assertNotNull(actual);
-        assertEquals(expected.SSID, actual.SSID);
+        assertEquals(WifiSsid.fromString(expected.SSID), WifiSsid.fromString(actual.SSID));
         assertEquals(expected.BSSID, actual.BSSID);
         assertEquals(expected.preSharedKey, actual.preSharedKey);
         assertEquals(expected.wepKeys, actual.wepKeys);
@@ -713,6 +724,7 @@ public class WifiConfigurationTestUtil {
         assertEquals(expected.requirePmf, actual.requirePmf);
         assertEquals(expected.allowedKeyManagement, actual.allowedKeyManagement);
         assertEquals(expected.allowedAuthAlgorithms, actual.allowedAuthAlgorithms);
+        assertEquals(expected.priority, actual.priority);
         // Supplicant backup does not include the following fields.
         if (!isSupplicantBackup) {
             assertEquals(expected.allowedProtocols, actual.allowedProtocols);
@@ -825,8 +837,10 @@ public class WifiConfigurationTestUtil {
         assertNotNull(expected);
         assertNotNull(actual);
         assertEquals(expected.SSID, actual.SSID);
-        assertEquals(expected.getNetworkSelectionStatus().getNetworkSelectionBSSID(),
-                actual.getNetworkSelectionStatus().getNetworkSelectionBSSID());
+        assertArrayEquals(NativeUtil.macAddressToByteArray(expected.getNetworkSelectionStatus()
+                        .getNetworkSelectionBSSID()),
+                NativeUtil.macAddressToByteArray(actual.getNetworkSelectionStatus()
+                        .getNetworkSelectionBSSID()));
         assertEquals(expected.preSharedKey, actual.preSharedKey);
         assertEquals(expected.wepKeys, actual.wepKeys);
         assertEquals(expected.wepTxKeyIndex, actual.wepTxKeyIndex);

@@ -17,6 +17,7 @@
 package android.net.wifi;
 
 import android.annotation.NonNull;
+import android.app.ActivityManager;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
@@ -25,7 +26,9 @@ import android.content.pm.ResolveInfo;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.net.wifi.util.Environment;
+import android.os.UserHandle;
 import android.util.Log;
+import android.util.SparseArray;
 
 import androidx.annotation.Nullable;
 
@@ -57,6 +60,9 @@ public class WifiContext extends ContextWrapper {
     private AssetManager mWifiAssetsFromApk;
     private Resources mWifiResourcesFromApk;
     private Resources.Theme mWifiThemeFromApk;
+    private Context mResourcesApkContext;
+    private SparseArray<WifiStringResourceWrapper> mWifiStringResourceWrapperSparseArray =
+            new SparseArray<>();
 
     public WifiContext(@NonNull Context contextBase) {
         super(contextBase);
@@ -67,7 +73,7 @@ public class WifiContext extends ContextWrapper {
         if (mWifiOverlayApkPkgName != null) {
             return mWifiOverlayApkPkgName;
         }
-        mWifiOverlayApkPkgName = getApkPkgNameForAction(ACTION_RESOURCES_APK);
+        mWifiOverlayApkPkgName = getApkPkgNameForAction(ACTION_RESOURCES_APK, null);
         if (mWifiOverlayApkPkgName == null) {
             // Resource APK not loaded yet, print a stack trace to see where this is called from
             Log.e(TAG, "Attempted to fetch resources before Wifi Resources APK is loaded!",
@@ -83,7 +89,8 @@ public class WifiContext extends ContextWrapper {
         if (mWifiDialogApkPkgName != null) {
             return mWifiDialogApkPkgName;
         }
-        mWifiDialogApkPkgName = getApkPkgNameForAction(ACTION_WIFI_DIALOG_APK);
+        mWifiDialogApkPkgName = getApkPkgNameForAction(ACTION_WIFI_DIALOG_APK,
+                UserHandle.of(ActivityManager.getCurrentUser()));
         if (mWifiDialogApkPkgName == null) {
             // WifiDialog APK not loaded yet, print a stack trace to see where this is called from
             Log.e(TAG, "Attempted to fetch WifiDialog apk before it is loaded!",
@@ -95,10 +102,19 @@ public class WifiContext extends ContextWrapper {
     }
 
     /** Gets the package name of the apk responding to the given intent action */
-    private String getApkPkgNameForAction(@NonNull String action) {
-        List<ResolveInfo> resolveInfos = getPackageManager().queryIntentActivities(
-                new Intent(action),
-                PackageManager.MATCH_SYSTEM_ONLY);
+    private String getApkPkgNameForAction(@NonNull String action, UserHandle userHandle) {
+
+        List<ResolveInfo> resolveInfos;
+        if (userHandle != null) {
+            resolveInfos = getPackageManager().queryIntentActivitiesAsUser(
+                    new Intent(action),
+                    PackageManager.MATCH_SYSTEM_ONLY,
+                    userHandle);
+        } else {
+            resolveInfos = getPackageManager().queryIntentActivities(
+                    new Intent(action),
+                    PackageManager.MATCH_SYSTEM_ONLY);
+        }
         Log.i(TAG, "Got resolveInfos for " + action + ": " + resolveInfos);
 
         // remove apps that don't live in the Wifi apex
@@ -122,16 +138,20 @@ public class WifiContext extends ContextWrapper {
         return info.activityInfo.applicationInfo.packageName;
     }
 
-    private Context getResourcesApkContext() {
+    /** Get the Resource APK context */
+    public Context getResourcesApkContext() {
+        if (mResourcesApkContext != null) {
+            return mResourcesApkContext;
+        }
         try {
             String packageName = getWifiOverlayApkPkgName();
             if (packageName != null) {
-                return createPackageContext(packageName, 0);
+                mResourcesApkContext = createPackageContext(packageName, 0);
             }
         } catch (PackageManager.NameNotFoundException e) {
             Log.wtf(TAG, "Failed to load resources", e);
         }
-        return null;
+        return mResourcesApkContext;
     }
 
     /**
@@ -189,12 +209,19 @@ public class WifiContext extends ContextWrapper {
         mWifiAssetsFromApk = null;
         mWifiResourcesFromApk = null;
         mWifiThemeFromApk = null;
+        mResourcesApkContext = null;
+        mWifiStringResourceWrapperSparseArray.clear();
     }
 
     /**
      * Returns an instance of WifiStringResourceWrapper with the given subId and carrierId.
      */
     public WifiStringResourceWrapper getStringResourceWrapper(int subId, int carrierId) {
-        return new WifiStringResourceWrapper(this, subId, carrierId);
+        if (mWifiStringResourceWrapperSparseArray.contains(subId)) {
+            return mWifiStringResourceWrapperSparseArray.get(subId);
+        }
+        WifiStringResourceWrapper wrapper = new WifiStringResourceWrapper(this, subId, carrierId);
+        mWifiStringResourceWrapperSparseArray.append(subId, wrapper);
+        return wrapper;
     }
 }

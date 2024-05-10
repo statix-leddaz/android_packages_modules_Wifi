@@ -13,6 +13,7 @@
 // limitations under the License.
 
 package {
+    default_team: "trendy_team_fwk_wifi_hal",
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
@@ -50,6 +51,17 @@ filegroup {
 filegroup {
     name: "framework-wifi-annotations",
     srcs: ["java/android/net/wifi/WifiAnnotations.java"],
+}
+
+filegroup {
+    name: "wifi_javadoc_only_files",
+    srcs: [
+        "java/android/net/wifi/package.html",
+        "java/android/net/wifi/rtt/package.html",
+        "java/android/net/wifi/p2p/package.html",
+        "java/android/net/wifi/aware/package.html",
+    ],
+    path: "java/android/net/wifi",
 }
 
 // list of tests that are allowed to access @hide APIs from framework-wifi
@@ -99,10 +111,10 @@ java_defaults {
     libs: [
         "androidx.annotation_annotation",
         "unsupportedappusage", // for android.compat.annotation.UnsupportedAppUsage
-        "framework-connectivity.stubs.module_lib",
         "app-compat-annotations",
     ],
     aidl: {
+        generate_get_transaction_name: true,
         include_dirs: [
             "packages/modules/Connectivity/framework/aidl-export",
         ],
@@ -119,7 +131,12 @@ java_library {
     name: "framework-wifi-pre-jarjar",
     defaults: ["framework-wifi-defaults"],
     sdk_version: "module_current",
-    libs: ["framework-annotations-lib"],
+    libs: [
+        "framework-annotations-lib",
+        "framework-connectivity.stubs.module_lib",
+        "framework-location.stubs.module_lib",
+        "framework-tethering.stubs.module_lib",
+    ],
     installable: false,
     visibility: [
         "//frameworks/opt/net/wifi/service",
@@ -137,13 +154,40 @@ java_sdk_library {
         "framework-wifi-defaults",
     ],
 
-    stub_only_libs: ["framework-connectivity.stubs.module_lib"],
+    impl_only_libs: [
+        "framework-location.stubs.module_lib",
+        "framework-connectivity.stubs.module_lib",
+        "framework-location.stubs.module_lib",
+        "framework-tethering.stubs.module_lib",
+    ],
+
+    public: {
+        libs: [
+            "framework-connectivity.stubs",
+            "framework-location.stubs",
+            "framework-tethering.stubs",
+        ],
+    },
+    system: {
+        libs: [
+            "framework-connectivity.stubs.system",
+            "framework-location.stubs.system",
+            "framework-tethering.stubs.system",
+        ],
+    },
+    module_lib: {
+        libs: [
+            "framework-connectivity.stubs.module_lib",
+            "framework-location.stubs.module_lib",
+            "framework-tethering.stubs.module_lib",
+        ],
+    },
 
     jarjar_rules: ":wifi-jarjar-rules",
 
     installable: true,
     optimize: {
-        enabled: false
+        enabled: false,
     },
     hostdex: true, // for hiddenapi check
 
@@ -166,6 +210,7 @@ java_sdk_library {
     ],
     lint: {
         strict_updatability_linting: true,
+
     },
 }
 
@@ -190,35 +235,7 @@ filegroup {
     srcs: ["jarjar-rules.txt"],
 }
 
-platform_compat_config
-{
+platform_compat_config {
     name: "wifi-compat-config",
     src: ":framework-wifi-pre-jarjar",
-}
-
-java_api_contribution {
-    name: "framework-wifi-public-stubs",
-    api_surface: "public",
-    api_file: "api/current.txt",
-    visibility: [
-        "//build/orchestrator/apis",
-    ],
-}
-
-java_api_contribution {
-    name: "framework-wifi-system-stubs",
-    api_surface: "system",
-    api_file: "api/system-current.txt",
-    visibility: [
-        "//build/orchestrator/apis",
-    ],
-}
-
-java_api_contribution {
-    name: "framework-wifi-module-lib-stubs",
-    api_surface: "module-lib",
-    api_file: "api/module-lib-current.txt",
-    visibility: [
-        "//build/orchestrator/apis",
-    ],
 }

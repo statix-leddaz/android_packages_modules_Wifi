@@ -16,6 +16,7 @@
 // Used to test functionality that is only guaranteed to be implemented in the Wifi Mainline module,
 // but is not required if the Wifi Mainline module is not present on the device.
 package {
+    default_team: "trendy_team_fwk_wifi_hal",
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
@@ -32,7 +33,7 @@ android_test {
         "android.test.base.stubs",
     ],
 
-    srcs: [ "src/**/*.java" ],
+    srcs: ["src/**/*.java"],
 
     static_libs: [
         // for ShellIdentityUtils, builds against test_current
@@ -41,7 +42,7 @@ android_test {
         "ctstestserver",
         "junit",
         "junit-params",
-        "truth-prebuilt",
+        "truth",
         // for Wifi protos, builds against system_current
         "wifi-nano-protos",
         // for AndroidJUnit4

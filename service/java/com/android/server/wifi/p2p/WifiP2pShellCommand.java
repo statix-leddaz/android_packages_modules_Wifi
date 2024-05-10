@@ -19,6 +19,7 @@ package com.android.server.wifi.p2p;
 import android.content.Context;
 import android.net.MacAddress;
 import android.net.NetworkInfo;
+import android.net.wifi.SynchronousExecutor;
 import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pDeviceList;
@@ -199,7 +200,7 @@ public class WifiP2pShellCommand extends BasicShellCommandHandler {
                         new WifiP2pManager.GroupInfoListener() {
                             @Override
                             public void onGroupInfoAvailable(WifiP2pGroup group) {
-                                pw.println(group.toString());
+                                pw.println(group);
                                 countDownLatch.countDown();
                             }
                         });
@@ -247,6 +248,25 @@ public class WifiP2pShellCommand extends BasicShellCommandHandler {
                         });
                 countDownLatch.await(1000, TimeUnit.MILLISECONDS);
                 return 0;
+            case "get-listen-state": {
+                mWifiP2pManager.getListenState(sWifiP2pChannel, new SynchronousExecutor(),
+                        state -> {
+                            switch (state) {
+                                case WifiP2pManager.WIFI_P2P_LISTEN_STARTED:
+                                    pw.println("STARTED");
+                                    break;
+                                case WifiP2pManager.WIFI_P2P_LISTEN_STOPPED:
+                                    pw.println("STOPPED");
+                                    break;
+                                default:
+                                    pw.println("UNKNOWN");
+                                    break;
+                            }
+                            countDownLatch.countDown();
+                        });
+                countDownLatch.await(1000, TimeUnit.MILLISECONDS);
+                return 0;
+            }
             case "get-network-info":
                 mWifiP2pManager.requestNetworkInfo(sWifiP2pChannel,
                         new WifiP2pManager.NetworkInfoListener() {
@@ -347,8 +367,11 @@ public class WifiP2pShellCommand extends BasicShellCommandHandler {
                 countDownLatch.await(1000, TimeUnit.MILLISECONDS);
                 return 0;
             case "connect": {
-                WifiP2pConfig config = new WifiP2pConfig();
-                config.deviceAddress = getNextArgRequired();
+                WifiP2pConfig config = buildWifiP2pConfig(pw);
+                if (null == config) {
+                    pw.println("Invalid argument to 'connect'");
+                    return -1;
+                }
                 mWifiP2pManager.connect(sWifiP2pChannel, config, actionListener);
                 countDownLatch.await(3000, TimeUnit.MILLISECONDS);
                 return 0;
@@ -438,6 +461,65 @@ public class WifiP2pShellCommand extends BasicShellCommandHandler {
                 return "UNAVAILABLE";
         }
         return "UNKNOWN";
+    }
+
+    private WifiP2pConfig buildWifiP2pConfig(PrintWriter pw) {
+        String deviceAddress = getNextArgRequired();
+        int goIntent = WifiP2pConfig.GROUP_OWNER_INTENT_AUTO;
+        int ipProvisioningMode = WifiP2pConfig.GROUP_CLIENT_IP_PROVISIONING_MODE_IPV4_DHCP;
+        String option = getNextOption();
+        while (option != null) {
+            if (option.equals("-i")) {
+                try {
+                    goIntent = Integer.parseInt(getNextArgRequired());
+                } catch (NumberFormatException e) {
+                    pw.println("Invalid argument for group owner intent "
+                            + "- must be an integer");
+                    return null;
+                }
+                if (goIntent < WifiP2pConfig.GROUP_OWNER_INTENT_MIN
+                        || goIntent > WifiP2pConfig.GROUP_OWNER_INTENT_MAX) {
+                    pw.println("Invalid argument for group owner intent "
+                            + "- must be from "
+                            + WifiP2pConfig.GROUP_OWNER_INTENT_MIN + " to "
+                            + WifiP2pConfig.GROUP_OWNER_INTENT_MAX);
+                    return null;
+                }
+            } else if (option.equals("-m")) {
+                if (!SdkLevel.isAtLeastT()) {
+                    pw.println("Invalid argument for group client IP provisioning mode "
+                            + "- IP provisioning mode is supported only on SdkLevel T or later");
+                    return null;
+                }
+                try {
+                    ipProvisioningMode = Integer.parseInt(getNextArgRequired());
+                } catch (NumberFormatException e) {
+                    pw.println("Invalid argument for group client IP provisioning mode "
+                            + "- must be an integer");
+                    return null;
+                }
+                if (ipProvisioningMode != WifiP2pConfig.GROUP_CLIENT_IP_PROVISIONING_MODE_IPV4_DHCP
+                        && ipProvisioningMode
+                        != WifiP2pConfig.GROUP_CLIENT_IP_PROVISIONING_MODE_IPV6_LINK_LOCAL) {
+                    pw.println("Invalid argument for group client IP provisioning mode "
+                            + "- must be "
+                            + WifiP2pConfig.GROUP_CLIENT_IP_PROVISIONING_MODE_IPV4_DHCP + " or "
+                            + WifiP2pConfig.GROUP_CLIENT_IP_PROVISIONING_MODE_IPV6_LINK_LOCAL);
+                    return null;
+                }
+            } else {
+                pw.println("Ignoring unknown option " + option);
+            }
+            option = getNextOption();
+        }
+        WifiP2pConfig.Builder configBuilder = new WifiP2pConfig.Builder();
+        configBuilder.setDeviceAddress(MacAddress.fromString(deviceAddress));
+        if (SdkLevel.isAtLeastT()) {
+            configBuilder.setGroupClientIpProvisioningMode(ipProvisioningMode);
+        }
+        WifiP2pConfig config = configBuilder.build();
+        config.groupOwnerIntent = goIntent;
+        return config;
     }
 
     private WifiP2pConfig prepareWifiP2pConfig(PrintWriter pw) {
@@ -535,6 +617,8 @@ public class WifiP2pShellCommand extends BasicShellCommandHandler {
         pw.println("    Get P2P state.");
         pw.println("  get-discovery-state");
         pw.println("    Indicate whether p2p discovery is running or not.");
+        pw.println("  get-listen-state");
+        pw.println("    Indicate whether p2p listen is running or not.");
         pw.println("  list-saved-groups");
         pw.println("    List saved groups.");
         pw.println("  delete-saved-group <networkId>");
@@ -549,8 +633,20 @@ public class WifiP2pShellCommand extends BasicShellCommandHandler {
         pw.println("    Accept an incoming connection request.");
         pw.println("  reject-connection");
         pw.println("    Reject an incoming connection request.");
-        pw.println("  connect <device address>");
-        pw.println("    Connect to a device.");
+        pw.println("  connect <device address> [-i <groupOwnerIntent>] "
+                        + "[-m <groupClientIpProvisioningMode>]");
+        pw.println("    <device address> - the peer's MAC address.");
+        pw.println("    <groupOwnerIntent> - Set group owner intent value. The value range is "
+                + WifiP2pConfig.GROUP_OWNER_INTENT_MIN + " to "
+                + WifiP2pConfig.GROUP_OWNER_INTENT_MAX);
+        pw.println("    <groupClientIpProvisioningMode> - Set group client IP provisioning "
+                        + "mode (supported on SdkLevel T or later)");
+        pw.println("        - Use '" + WifiP2pConfig.GROUP_CLIENT_IP_PROVISIONING_MODE_IPV4_DHCP
+                + "' to select IPv4 DHCP which is system default behavior");
+        pw.println("        - Use '"
+                + WifiP2pConfig.GROUP_CLIENT_IP_PROVISIONING_MODE_IPV6_LINK_LOCAL
+                + "' to select IPv6 link-local.");
+        pw.println("    Connect to a device with provided params.");
         pw.println("  connect-with-config <network name> <passphrase>"
                         + " <bandOrFreq> <persistent>");
         pw.println("    <bandOrFreq> - select the preferred band or frequency.");

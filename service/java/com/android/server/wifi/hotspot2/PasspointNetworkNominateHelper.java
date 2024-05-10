@@ -19,11 +19,16 @@ package com.android.server.wifi.hotspot2;
 import static com.android.server.wifi.hotspot2.PasspointMatch.HomeProvider;
 
 import android.annotation.NonNull;
+import android.content.res.Resources;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.util.ScanResultUtil;
+import android.util.ArrayMap;
 import android.util.LocalLog;
 import android.util.Pair;
 
+import androidx.annotation.VisibleForTesting;
+
+import com.android.server.wifi.Clock;
 import com.android.server.wifi.NetworkUpdateResult;
 import com.android.server.wifi.ScanDetail;
 import com.android.server.wifi.WifiCarrierInfoManager;
@@ -31,14 +36,20 @@ import com.android.server.wifi.WifiConfigManager;
 import com.android.server.wifi.hotspot2.anqp.ANQPElement;
 import com.android.server.wifi.hotspot2.anqp.Constants;
 import com.android.server.wifi.hotspot2.anqp.HSWanMetricsElement;
+import com.android.server.wifi.util.InformationElementUtil;
+import com.android.wifi.resources.R;
 
+import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -48,9 +59,13 @@ import java.util.stream.Collectors;
 public class PasspointNetworkNominateHelper {
     @NonNull private final PasspointManager mPasspointManager;
     @NonNull private final WifiConfigManager mWifiConfigManager;
-    @NonNull private final List<ScanDetail> mCachedScanDetails = new ArrayList<>();
+    @NonNull private final Map<String, ScanDetail> mCachedScanDetails = new ArrayMap<>();
     @NonNull private final LocalLog mLocalLog;
     @NonNull private final WifiCarrierInfoManager mCarrierInfoManager;
+    @NonNull private final Resources mResources;
+    @NonNull private final Clock mClock;
+
+    @VisibleForTesting static final long SCAN_DETAIL_EXPIRATION_MS = 60_000;
 
     /**
      * Contained information for a Passpoint network candidate.
@@ -69,11 +84,13 @@ public class PasspointNetworkNominateHelper {
 
     public PasspointNetworkNominateHelper(@NonNull PasspointManager passpointManager,
             @NonNull WifiConfigManager wifiConfigManager, @NonNull LocalLog localLog,
-            WifiCarrierInfoManager carrierInfoManager) {
+            WifiCarrierInfoManager carrierInfoManager, Resources resources, Clock clock) {
         mPasspointManager = passpointManager;
         mWifiConfigManager = wifiConfigManager;
         mLocalLog = localLog;
         mCarrierInfoManager = carrierInfoManager;
+        mResources = resources;
+        mClock = clock;
     }
 
     /**
@@ -81,26 +98,25 @@ public class PasspointNetworkNominateHelper {
      * Should be called each time have new scan details.
      */
     public void updatePasspointConfig(List<ScanDetail> scanDetails) {
-        filterAndUpdateScanDetails(scanDetails);
-        updateBestMatchScanDetailForProviders();
+        updateBestMatchScanDetailForProviders(filterAndUpdateScanDetails(scanDetails));
     }
 
     /**
      * Get best matched available Passpoint network candidates for scanDetails.
+     *
      * @param scanDetails List of ScanDetail.
-     * @param isFromSuggestion True to indicate profile from suggestion, false for user saved.
      * @return List of pair of scanDetail and WifiConfig from matched available provider.
      */
     public List<Pair<ScanDetail, WifiConfiguration>> getPasspointNetworkCandidates(
-            List<ScanDetail> scanDetails, boolean isFromSuggestion) {
-        filterAndUpdateScanDetails(scanDetails);
-        return findBestMatchScanDetailForProviders(isFromSuggestion);
+            List<ScanDetail> scanDetails) {
+        return findBestMatchScanDetailForProviders(
+                filterAndUpdateScanDetails(scanDetails));
     }
 
     /**
      * Filter out non-passpoint networks
      */
-    private void filterAndUpdateScanDetails(List<ScanDetail> scanDetails) {
+    @NonNull private List<ScanDetail> filterAndUpdateScanDetails(List<ScanDetail> scanDetails) {
         // Sweep the ANQP cache to remove any expired ANQP entries.
         mPasspointManager.sweepCache();
         List<ScanDetail> filteredScanDetails = new ArrayList<>();
@@ -114,10 +130,26 @@ public class PasspointNetworkNominateHelper {
             }
             filteredScanDetails.add(scanDetail);
         }
-        if (!filteredScanDetails.isEmpty()) {
-            mCachedScanDetails.clear();
-            mCachedScanDetails.addAll(filteredScanDetails);
+        addCachedScanDetails(filteredScanDetails);
+        return filteredScanDetails;
+    }
+
+    private void addCachedScanDetails(List<ScanDetail> scanDetails) {
+        for (ScanDetail scanDetail : scanDetails) {
+            mCachedScanDetails.put(scanDetail.toKeyString(), scanDetail);
         }
+        removeExpiredScanDetails();
+    }
+
+    private List<ScanDetail> updateAndGetCachedScanDetails() {
+        removeExpiredScanDetails();
+        return new ArrayList<>(mCachedScanDetails.values());
+    }
+
+    private void removeExpiredScanDetails() {
+        long currentMillis = mClock.getWallClockMillis();
+        mCachedScanDetails.values().removeIf(detail ->
+                currentMillis >= detail.getSeen() + SCAN_DETAIL_EXPIRATION_MS);
     }
 
     /**
@@ -143,21 +175,20 @@ public class PasspointNetworkNominateHelper {
             // WAN Metrics ANQP element is not initialized in this network. Ignore it.
             return false;
         }
-        return wm.getStatus() != HSWanMetricsElement.LINK_STATUS_UP || wm.isAtCapacity();
+        return wm.getStatus() != HSWanMetricsElement.LINK_STATUS_UP;
     }
 
     /**
-     * Use the latest scan details to add/update the matched passpoint to WifiConfigManager.  This
-     * should be used if new profiles have been added but scan results remain the same, or new
-     * ScanDetails available.
+     * Use the latest scan details to add/update the matched passpoint to WifiConfigManager.
+     * @param scanDetails
      */
-    public void updateBestMatchScanDetailForProviders() {
-        if (mPasspointManager.isProvidersListEmpty()
-                || !mPasspointManager.isWifiPasspointEnabled() || mCachedScanDetails.isEmpty()) {
+    public void updateBestMatchScanDetailForProviders(List<ScanDetail> scanDetails) {
+        if (mPasspointManager.isProvidersListEmpty() || !mPasspointManager.isWifiPasspointEnabled()
+                || scanDetails.isEmpty()) {
             return;
         }
         Map<PasspointProvider, List<PasspointNetworkCandidate>> candidatesPerProvider =
-                getMatchedCandidateGroupByProvider(mCachedScanDetails, false);
+                getMatchedCandidateGroupByProvider(scanDetails, false);
         // For each provider find the best scanDetail(prefer home, higher RSSI) for it and update
         // it to the WifiConfigManager.
         for (List<PasspointNetworkCandidate> candidates : candidatesPerProvider.values()) {
@@ -171,30 +202,38 @@ public class PasspointNetworkNominateHelper {
     }
 
     /**
+     * Refreshes the Wifi configs for each provider using the cached scans.
+     */
+    public void refreshWifiConfigsForProviders() {
+        updateBestMatchScanDetailForProviders(updateAndGetCachedScanDetails());
+    }
+
+    /**
      * Match available providers for each scan detail and add their configs to WifiConfigManager.
      * Then for each available provider, find the best scan detail for it.
-     * @param isFromSuggestion True to indicate profile from suggestion, false for user saved.
+     *
+     * @param scanDetailList Scan details to choose from.
      * @return List of pair of scanDetail and WifiConfig from matched available provider.
      */
     private @NonNull List<Pair<ScanDetail, WifiConfiguration>> findBestMatchScanDetailForProviders(
-            boolean isFromSuggestion) {
-        List<ScanDetail> scanDetails = mCachedScanDetails.stream()
-                .filter(a -> !isApWanLinkStatusDown(a))
-                .collect(Collectors.toList());
+            List<ScanDetail> scanDetailList) {
+        if (mResources.getBoolean(
+                R.bool.config_wifiPasspointUseApWanLinkStatusAnqpElement)) {
+            scanDetailList = scanDetailList.stream()
+                    .filter(a -> !isApWanLinkStatusDown(a))
+                    .collect(Collectors.toList());
+        }
         if (mPasspointManager.isProvidersListEmpty()
-                || !mPasspointManager.isWifiPasspointEnabled() || scanDetails.isEmpty()) {
+                || !mPasspointManager.isWifiPasspointEnabled() || scanDetailList.isEmpty()) {
             return Collections.emptyList();
         }
         List<Pair<ScanDetail, WifiConfiguration>> results = new ArrayList<>();
         Map<PasspointProvider, List<PasspointNetworkCandidate>> candidatesPerProvider =
-                getMatchedCandidateGroupByProvider(mCachedScanDetails, true);
+                getMatchedCandidateGroupByProvider(scanDetailList, true);
         // For each provider find the best scanDetails(prefer home) for it and create selection
         // candidate pair.
         for (Map.Entry<PasspointProvider, List<PasspointNetworkCandidate>> candidates :
                 candidatesPerProvider.entrySet()) {
-            if (candidates.getKey().isFromSuggestion() != isFromSuggestion) {
-                continue;
-            }
             List<PasspointNetworkCandidate> bestCandidates =
                     findHomeNetworksIfPossible(candidates.getValue());
             for (PasspointNetworkCandidate candidate : bestCandidates) {
@@ -222,12 +261,22 @@ public class PasspointNetworkNominateHelper {
             boolean onlyHomeIfAvailable) {
         Map<PasspointProvider, List<PasspointNetworkCandidate>> candidatesPerProvider =
                 new HashMap<>();
+        Set<String> fqdnSet = new HashSet<>(Arrays.asList(mResources.getStringArray(
+                R.array.config_wifiPasspointUseApWanLinkStatusAnqpElementFqdnAllowlist)));
         // Match each scanDetail with the best provider (home > roaming), and grouped by provider.
         for (ScanDetail scanDetail : scanDetails) {
             List<Pair<PasspointProvider, PasspointMatch>> matchedProviders =
                     mPasspointManager.matchProvider(scanDetail.getScanResult());
             if (matchedProviders == null) {
                 continue;
+            }
+            // If wan link status check is disabled, check the FQDN allow list.
+            if (!mResources.getBoolean(R.bool.config_wifiPasspointUseApWanLinkStatusAnqpElement)
+                    && !fqdnSet.isEmpty()) {
+                matchedProviders = matchedProviders.stream().filter(a ->
+                                !fqdnSet.contains(a.first.getConfig().getHomeSp().getFqdn())
+                                        || !isApWanLinkStatusDown(scanDetail))
+                        .collect(Collectors.toList());
             }
             if (onlyHomeIfAvailable) {
                 List<Pair<PasspointProvider, PasspointMatch>> homeProviders =
@@ -317,5 +366,18 @@ public class PasspointNetworkNominateHelper {
             return networkList;
         }
         return homeProviderCandidates;
+    }
+
+    /**
+     * Dump the current state of PasspointNetworkNominateHelper to the provided output stream.
+     */
+    public void dump(PrintWriter pw) {
+        pw.println("Dump of PasspointNetworkNominateHelper");
+        for (Map.Entry<String, ScanDetail> entry : mCachedScanDetails.entrySet()) {
+            pw.println(entry.getKey());
+            pw.println(InformationElementUtil.getRoamingConsortiumIE(
+                    entry.getValue().getScanResult().informationElements));
+        }
+        pw.println("PasspointNetworkNominateHelper --- end ---");
     }
 }

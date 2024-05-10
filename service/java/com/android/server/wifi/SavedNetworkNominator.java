@@ -24,7 +24,6 @@ import android.telephony.TelephonyManager;
 import android.util.LocalLog;
 import android.util.Pair;
 
-import com.android.server.wifi.hotspot2.PasspointNetworkNominateHelper;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 
 import java.util.List;
@@ -40,19 +39,20 @@ public class SavedNetworkNominator implements WifiNetworkSelector.NetworkNominat
     private final WifiConfigManager mWifiConfigManager;
     private final LocalLog mLocalLog;
     private final WifiCarrierInfoManager mWifiCarrierInfoManager;
-    private final PasspointNetworkNominateHelper mPasspointNetworkNominateHelper;
+    private final WifiPseudonymManager mWifiPseudonymManager;
     private final WifiPermissionsUtil mWifiPermissionsUtil;
     private final WifiNetworkSuggestionsManager mWifiNetworkSuggestionsManager;
 
     SavedNetworkNominator(WifiConfigManager configManager,
-            PasspointNetworkNominateHelper nominateHelper, LocalLog localLog,
+            LocalLog localLog,
             WifiCarrierInfoManager wifiCarrierInfoManager,
+            WifiPseudonymManager wifiPseudonymManager,
             WifiPermissionsUtil wifiPermissionsUtil,
             WifiNetworkSuggestionsManager wifiNetworkSuggestionsManager) {
         mWifiConfigManager = configManager;
-        mPasspointNetworkNominateHelper = nominateHelper;
         mLocalLog = localLog;
         mWifiCarrierInfoManager = wifiCarrierInfoManager;
+        mWifiPseudonymManager = wifiPseudonymManager;
         mWifiPermissionsUtil = wifiPermissionsUtil;
         mWifiNetworkSuggestionsManager = wifiNetworkSuggestionsManager;
     }
@@ -82,9 +82,6 @@ public class SavedNetworkNominator implements WifiNetworkSelector.NetworkNominat
      */
     @Override
     public void update(List<ScanDetail> scanDetails) {
-        // Update the matching profiles into WifiConfigManager, help displaying Passpoint networks
-        // in Wifi Picker
-        mPasspointNetworkNominateHelper.updatePasspointConfig(scanDetails);
     }
 
     /**
@@ -92,14 +89,19 @@ public class SavedNetworkNominator implements WifiNetworkSelector.NetworkNominat
      *
      */
     @Override
-    public void nominateNetworks(List<ScanDetail> scanDetails,
+    public void nominateNetworks(@NonNull List<ScanDetail> scanDetails,
+            @NonNull List<Pair<ScanDetail, WifiConfiguration>> passpointCandidates,
             boolean untrustedNetworkAllowed /* unused */,
             boolean oemPaidNetworkAllowed /* unused */,
             boolean oemPrivateNetworkAllowed /* unused */,
             Set<Integer> restrictedNetworkAllowedUids /* unused */,
             @NonNull OnConnectableListener onConnectableListener) {
-        findMatchedSavedNetworks(scanDetails, onConnectableListener);
-        findMatchedPasspointNetworks(scanDetails, onConnectableListener);
+        if (scanDetails != null) {
+            findMatchedSavedNetworks(scanDetails, onConnectableListener);
+        }
+        if (passpointCandidates != null) {
+            findMatchedPasspointNetworks(passpointCandidates, onConnectableListener);
+        }
     }
 
     private void findMatchedSavedNetworks(List<ScanDetail> scanDetails,
@@ -175,7 +177,10 @@ public class SavedNetworkNominator implements WifiNetworkSelector.NetworkNominat
             }
             if (isNetworkSimBasedCredential(network) && !isSimBasedNetworkAbleToAutoJoin(network)) {
                 localLog("Ignoring SIM auto join disabled SSID: " + network.SSID);
+                mWifiPseudonymManager.retrievePseudonymOnFailureTimeoutExpired(network);
                 continue;
+            } else {
+                mWifiPseudonymManager.updateWifiConfiguration(network);
             }
 
             // If the network is marked to use external scores, or is an open network with
@@ -199,17 +204,21 @@ public class SavedNetworkNominator implements WifiNetworkSelector.NetworkNominat
         }
     }
 
-    private void findMatchedPasspointNetworks(List<ScanDetail> scanDetails,
+    private void findMatchedPasspointNetworks(List<Pair<ScanDetail, WifiConfiguration>> candidates,
             OnConnectableListener onConnectableListener) {
-        List<Pair<ScanDetail, WifiConfiguration>> candidates =
-                mPasspointNetworkNominateHelper.getPasspointNetworkCandidates(scanDetails, false);
         for (Pair<ScanDetail, WifiConfiguration> candidate : candidates) {
             WifiConfiguration config = candidate.second;
+            if (config.fromWifiNetworkSuggestion) {
+                return;
+            }
             if (!config.allowAutojoin) {
                 continue;
             }
             if (isNetworkSimBasedCredential(config) && !isSimBasedNetworkAbleToAutoJoin(config)) {
+                mWifiPseudonymManager.retrievePseudonymOnFailureTimeoutExpired(config);
                 continue;
+            } else {
+                mWifiPseudonymManager.updateWifiConfiguration(config);
             }
             onConnectableListener.onConnectable(candidate.first, config);
         }
@@ -225,15 +234,25 @@ public class SavedNetworkNominator implements WifiNetworkSelector.NetworkNominat
                     + WifiNetworkSelector.toNetworkString(network));
             return false;
         }
-        // Ignore IMSI info not available or protection exemption pending network.
+        boolean imsiProtected = false;
         if (mWifiCarrierInfoManager.requiresImsiEncryption(subId)) {
+            imsiProtected = true;
             if (!mWifiCarrierInfoManager.isImsiEncryptionInfoAvailable(subId)) {
-                localLog("Imsi protection required but not available for Network "
+                localLog("Ignore. Imsi protection required but not available for Network "
                         + WifiNetworkSelector.toNetworkString(network));
                 return false;
             }
-        } else if (isImsiProtectionApprovalNeeded(network.creatorUid, carrierId)) {
-            localLog("Imsi protection exemption needed for Network "
+        }
+        if (mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(carrierId)) {
+            imsiProtected = true;
+            if (mWifiPseudonymManager.getValidPseudonymInfo(carrierId).isEmpty()) {
+                mLocalLog.log("Ignore. There isn't any valid pseudonym, "
+                        + "subId: " + subId + " carrierId: " + carrierId);
+                return false;
+            }
+        }
+        if (!imsiProtected && isImsiProtectionApprovalNeeded(network.creatorUid, carrierId)) {
+            localLog("Ignore. Imsi protection exemption needed for Network "
                     + WifiNetworkSelector.toNetworkString(network));
             return false;
         }

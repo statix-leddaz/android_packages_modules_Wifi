@@ -35,10 +35,10 @@ import com.android.server.wifi.MockResources;
 import com.android.server.wifi.MockWifiMonitor;
 import com.android.server.wifi.ScanResults;
 import com.android.server.wifi.WifiBaseTest;
+import com.android.server.wifi.WifiGlobals;
 import com.android.server.wifi.WifiMonitor;
 import com.android.server.wifi.WifiNative;
 import com.android.server.wifi.scanner.ChannelHelper.ChannelCollection;
-import com.android.wifi.resources.R;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -64,6 +64,7 @@ public class WificondPnoScannerTest extends WifiBaseTest {
     MockResources mResources;
     @Mock Clock mClock;
     WificondScannerImpl mScanner;
+    @Mock WifiGlobals mWifiGlobals;
 
     @Before
     public void setup() throws Exception {
@@ -160,9 +161,10 @@ public class WificondPnoScannerTest extends WifiBaseTest {
     }
 
     private void createScannerWithHwPnoScanSupport() {
-        mResources.setBoolean(R.bool.config_wifi_background_scan_support, true);
-        mScanner = new WificondScannerImpl(mContext, IFACE_NAME, mWifiNative, mWifiMonitor,
-                new WificondChannelHelper(mWifiNative), mLooper.getLooper(), mClock);
+        when(mWifiGlobals.isBackgroundScanSupported()).thenReturn(true);
+        mScanner = new WificondScannerImpl(mContext, IFACE_NAME, mWifiGlobals, mWifiNative,
+                mWifiMonitor, new WificondChannelHelper(mWifiNative), mLooper.getLooper(),
+                mClock);
     }
 
     private WifiNative.PnoNetwork createDummyPnoNetwork(String ssid) {
@@ -203,8 +205,8 @@ public class WificondPnoScannerTest extends WifiBaseTest {
             WifiNative.PnoSettings pnoSettings, WifiNative.ScanEventHandler scanEventHandler,
             WifiNative.PnoEventHandler pnoEventHandler) {
         // Scans succeed
-        when(mWifiNative.scan(eq(IFACE_NAME), anyInt(), any(), any(List.class), anyBoolean()))
-                .thenReturn(true);
+        when(mWifiNative.scan(eq(IFACE_NAME), anyInt(), any(), any(List.class), anyBoolean(),
+                any())).thenReturn(WifiScanner.REASON_SUCCEEDED);
         when(mWifiNative.startPnoScan(eq(IFACE_NAME), any(WifiNative.PnoSettings.class)))
                 .thenReturn(true);
         when(mWifiNative.stopPnoScan(IFACE_NAME)).thenReturn(true);
